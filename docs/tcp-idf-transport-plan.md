@@ -73,11 +73,11 @@ The bridge listens for a single TCP stream on the port previously used for UDP, 
 Expected CLI:
 
 ```sh
-python3 bridge/http-wav/server.py \
+make bridge-run BRIDGE_ARGS='\
   --tcp-bind 0.0.0.0 \
   --tcp-port 39000 \
   --http-bind 0.0.0.0 \
-  --http-port 8088
+  --http-port 8088'
 ```
 
 The old UDP input was removed on this branch; the bridge is TCP-only.

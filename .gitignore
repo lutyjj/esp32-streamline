@@ -1,9 +1,13 @@
 .pio/
 .platformio-home/
+.cache/
+.mypy_cache/
+.ruff_cache/
 __pycache__/
 *.py[cod]
-device/esp32/udp-stream/src/local_config.h
-device/esp32/stream/src/generated_web_ui.h
+firmware/streamline/src/local_config.h
+firmware/streamline/src/generated_web_ui.h
 captures/
 analysis-data/
+dist/
 .DS_Store

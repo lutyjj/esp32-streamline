@@ -4,7 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VERSION: "0.1.0"
+        VERSION: ${STREAMLINE_VERSION:-dev}
+    image: ${STREAMLINE_IMAGE:-esp32-streamline-bridge}:${STREAMLINE_IMAGE_TAG:-local}
     restart: unless-stopped
     environment:
       STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}

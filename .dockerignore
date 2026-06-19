@@ -1,4 +1,10 @@
+.git
 .pio
-.platformio-home
-firmware/codec-scan/.pio
-
+.cache
+.mypy_cache
+.ruff_cache
+__pycache__
+*.py[cod]
+analysis-data
+captures
+dist

@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [mainline]
-    tags: ['v*']
   pull_request:
     branches: [mainline]
   workflow_dispatch:
@@ -29,9 +28,5 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # No cache: make test runs pio inside Docker as root, so any cached
-      # .platformio-home files would be root-owned and unreadable by the
-      # post-job cache step. PlatformIO's toolchain download is fast enough
-      # (~30s) that re-fetching per run is simpler than fixing ownership.
       - name: Run make test
         run: make test

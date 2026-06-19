@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "streamline-bridge"
+version = "0.1.0"
+description = "ESP32 StreamLine TCP PCM to HTTP WAV bridge"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-or-later" }
+
+[project.scripts]
+streamline-bridge = "streamline_bridge.server:main"
+
+[tool.hatch.envs.static-analysis]
+dependencies = [
+  "mypy==1.16.1",
+  "ruff==0.12.1",
+]
+
+[tool.hatch.envs.static-analysis.scripts]
+check = [
+  "ruff format --check src tests",
+  "ruff check src tests",
+  "mypy",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+files = ["src/streamline_bridge"]
+exclude = ["^tests/"]
+mypy_path = ["src"]

@@ -1,4 +1,4 @@
-# ESP32 StreamLine 0.1.0
+# ESP32 StreamLine
 
 ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It captures analog audio (like from a vinyl record player or CD deck), packetizes the raw PCM and sends it over a persistent TCP/Wi-Fi connection to a self-hosted bridge for ingestion into systems like Snapcast, Icecast, or Music Assistant.
 
@@ -36,23 +36,23 @@ PlatformIO is run inside Docker, so you don't need the ESP32 toolchain installed
 
 1. **Build the firmware:**
    ```sh
-   make stream
+   make firmware-streamline
    ```
 
 2. **Flash to the board:**
    *Note: Docker Desktop on macOS does not reliably expose `/dev/cu.*` serial devices, so flashing requires `esptool` installed on your host.*
    ```sh
-   make flash PROJECT=stream
+   make firmware-flash FIRMWARE_TARGET=streamline
    ```
    *If you are on Linux or Windows, override the default macOS port:*
    ```sh
-   make flash PROJECT=stream PORT=/dev/ttyUSB0  # Linux
-   make flash PROJECT=stream PORT=COM3          # Windows
+   make firmware-flash FIRMWARE_TARGET=streamline PORT=/dev/ttyUSB0  # Linux
+   make firmware-flash FIRMWARE_TARGET=streamline PORT=COM3          # Windows
    ```
 
 3. **Monitor serial output:**
    ```sh
-   make monitor
+   make firmware-monitor PORT=/dev/ttyUSB0
    ```
 
 ### Configuration
@@ -72,12 +72,12 @@ Run the HTTP bridge on your server or host machine to receive the TCP stream and
 
 **Via Docker Compose:**
 ```sh
-docker compose -f bridge/http-wav/compose.yml up -d --build
+make bridge-up
 ```
 
-**Via Python:**
+**Direct Docker image:**
 ```sh
-python3 bridge/http-wav/server.py
+make bridge-run
 ```
 
 Your audio will now be available as a live WAV stream at `http://<bridge-host>:8088/streamline.wav`. You can add this URL directly to Music Assistant as a radio/web stream.
@@ -87,13 +87,13 @@ The HTTP bridge defaults to a 1 second playout buffer. It smooths timing jitter 
 Useful bridge options:
 
 ```sh
-python3 bridge/http-wav/server.py \
+make bridge-run BRIDGE_ARGS='\
   --source-allow 192.0.2.10 \
   --playout-buffer-seconds 1.0 \
   --client-buffer-chunks 2048 \
   --max-repeat-conceal-packets 3 \
   --max-outage-silence-seconds 5.0 \
-  --source-idle-timeout-seconds 5.0
+  --source-idle-timeout-seconds 5.0'
 ```
 
 `--source-allow` is optional but recommended: provide the ESP32's IPv4 address
@@ -113,6 +113,22 @@ make format
 make lint
 make test
 ```
+
+### Releases
+
+Releases are tag-based. Set the version in `bridge/pyproject.toml`, build the
+local release deliverables, then create the matching tag through the normal
+pull-request workflow:
+
+```sh
+make release VERSION=0.1.1
+git tag v0.1.1
+git push github v0.1.1
+```
+
+`make release` runs the checks, writes firmware binaries and checksums to
+`dist/firmware`, and builds the versioned bridge image. It does not publish.
+The tag workflow publishes those deliverables to GitHub and GHCR.
 
 ## Scope
 

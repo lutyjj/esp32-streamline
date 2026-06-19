@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [mainline]
+    tags: ['v*']
+  pull_request:
+    branches: [mainline]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff, clang-format, mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run make lint
+        run: make lint
+
+  test:
+    name: Test (bridge unittests + firmware builds)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # PlatformIO downloads the ESP32 toolchain + frameworks into
+      # .platformio-home (~hundreds of MB). Caching it across runs keeps
+      # the three firmware builds fast. The Makefile mounts the workspace
+      # into the container at /workspace, so the cache is visible there as
+      # /workspace/.platformio-home via PLATFORMIO_CORE_DIR.
+      - name: Cache PlatformIO core
+        uses: actions/cache@v4
+        with:
+          path: .platformio-home
+          key: pio-${{ hashFiles('device/esp32/*/platformio.ini', 'requirements-dev.txt') }}
+          restore-keys: pio-
+
+      - name: Run make test
+        run: make test

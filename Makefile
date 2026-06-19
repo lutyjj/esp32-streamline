@@ -22,7 +22,7 @@ DIST_DIR ?= dist
 .PHONY: check lint test format clean \
 	tools-image analysis-image \
 	bridge-format bridge-lint bridge-test bridge-image bridge-run bridge-up \
-	firmware-format firmware-lint firmware-build firmware-streamline firmware-audio-level firmware-codec-scan firmware-flash firmware-monitor firmware-clean firmware-artifacts \
+	firmware-format firmware-lint firmware-build firmware-streamline firmware-audio-level firmware-codec-scan firmware-flash firmware-flash-full firmware-monitor firmware-clean firmware-artifacts \
 	analysis-lint analysis-capture \
 	version-check release
 
@@ -118,6 +118,11 @@ firmware-flash:
 		0x8000 $(FIRMWARE_DIR)/.pio/build/$(FIRMWARE_ENV)/partitions.bin \
 		0x10000 $(FIRMWARE_DIR)/.pio/build/$(FIRMWARE_ENV)/firmware.bin
 
+firmware-flash-full:
+	@test -f $(DIST_DIR)/firmware/streamline-$(VERSION)-full.bin || (echo "run make firmware-artifacts VERSION=$(VERSION) first" >&2; exit 2)
+	esptool --chip esp32 --port $(PORT) --baud 460800 write-flash \
+		0x0 $(DIST_DIR)/firmware/streamline-$(VERSION)-full.bin
+
 firmware-monitor:
 	esptool --port $(PORT) run
 	screen $(PORT) 115200
@@ -137,6 +142,17 @@ firmware-artifacts: firmware-streamline
 	cp firmware/streamline/.pio/build/stream/bootloader.bin $(DIST_DIR)/firmware/streamline-$(VERSION)-bootloader.bin
 	cp firmware/streamline/.pio/build/stream/partitions.bin $(DIST_DIR)/firmware/streamline-$(VERSION)-partitions.bin
 	cp firmware/streamline/.pio/build/stream/firmware.bin $(DIST_DIR)/firmware/streamline-$(VERSION).bin
+	docker run --rm \
+		-v "$(PWD):/workspace" \
+		-v "$(PLATFORMIO_CACHE_VOLUME):/platformio" \
+		-w /workspace/firmware/streamline \
+		$(TOOLS_IMAGE) \
+		python /platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin \
+			--output /workspace/$(DIST_DIR)/firmware/streamline-$(VERSION)-full.bin \
+			--flash_mode keep --flash_freq keep --flash_size keep \
+			0x1000 .pio/build/stream/bootloader.bin \
+			0x8000 .pio/build/stream/partitions.bin \
+			0x10000 .pio/build/stream/firmware.bin
 	shasum -a 256 $(DIST_DIR)/firmware/streamline-$(VERSION)*.bin > $(DIST_DIR)/firmware/SHA256SUMS
 
 analysis-lint: analysis-image

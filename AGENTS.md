@@ -12,11 +12,12 @@ talk much; they do.
 Read `README.md` and `docs/` to understand the project. Do not re-derive
 decisions already documented there.
 
-## Build flows live in the Makefile
+## Build flows live in Makefiles
 
-To understand the layout, run `tree` (or `git ls-files`). To build, lint, test,
-or flash, read the `Makefile` — it is the source of truth for every flow.
-Prefer its targets over ad-hoc docker/pio invocations.
+To understand the layout, run `tree` (or `git ls-files`). The root `Makefile`
+is the public cross-project interface; each component Makefile owns its local
+build, lint, test, and image flows. Prefer these targets over ad-hoc
+docker/pio invocations.
 
 ## A change is ready only when it is clean
 

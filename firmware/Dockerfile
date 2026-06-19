@@ -6,7 +6,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates clang-format git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY containers/requirements-tools.txt /tmp/requirements-tools.txt
-RUN pip install --no-cache-dir -r /tmp/requirements-tools.txt
+COPY requirements-dev.txt /tmp/requirements-dev.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-dev.txt
 
 WORKDIR /workspace

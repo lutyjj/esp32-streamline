@@ -55,6 +55,17 @@ PlatformIO is run inside Docker, so you don't need the ESP32 toolchain installed
    make firmware-monitor PORT=/dev/ttyUSB0
    ```
 
+For a published release, use the single `streamline-<version>-full.bin` asset
+and flash it at offset `0x0`:
+
+```sh
+esptool --chip esp32 --port /dev/cu.usbserial-0001 --baud 460800 write-flash \
+  0x0 streamline-<version>-full.bin
+```
+
+The release also includes separate bootloader, partition, and application images
+for advanced use; the `full.bin` image is the default customer install path.
+
 ### Configuration
 
 If no config is saved, the device will host an open setup network named `esp32-streamline-XXXX`.

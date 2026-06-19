@@ -8,13 +8,13 @@ This is the second hardware bring-up target after `codec-scan`.
 Build:
 
 ```sh
-make audio-level
+make firmware-audio-level
 ```
 
 Flash:
 
 ```sh
-make flash PROJECT=audio-level
+make firmware-flash FIRMWARE_TARGET=audio-level
 ```
 
 Expected serial output:

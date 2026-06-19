@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from protocol import DEFAULT_FORMAT, HEADER, MAGIC, VERSION, parse_header, parse_packet
+from streamline_bridge.protocol import DEFAULT_FORMAT, HEADER, MAGIC, VERSION, parse_header, parse_packet
 
 
 def make_header(**overrides: int | bytes) -> bytes:

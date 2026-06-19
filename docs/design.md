@@ -70,7 +70,7 @@ but the line-in path should publish a stream URL or feed Snapcast/Icecast.
 
 ## HTTP WAV Bridge
 
-`bridge/http-wav/server.py` is the deployable bridge:
+`bridge` is the deployable HTTP WAV bridge:
 
 ```text
 ESP32 TCP PCM -> bridge -> http://host:8088/streamline.wav
@@ -87,13 +87,13 @@ It exposes:
 Run directly:
 
 ```sh
-python3 bridge/http-wav/server.py
+make bridge-up
 ```
 
 Run with Docker:
 
 ```sh
-docker compose -f bridge/http-wav/compose.yml up -d --build
+make bridge-up
 ```
 
 Set the ESP32 TCP target to the bridge host IP and port `39000`. For Music
@@ -129,7 +129,7 @@ ES8388 board profiles, and pairs with `arduino-audio-tools` for I2S stream plumb
 
 ## Capture Bring-Up
 
-`device/esp32/audio-level` is the first ES8388 capture target. It uses:
+`firmware/diagnostics/audio-level` is the first ES8388 capture target. It uses:
 
 ```text
 codec:       ES8388 at 0x10

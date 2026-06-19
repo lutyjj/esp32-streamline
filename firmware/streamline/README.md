@@ -84,7 +84,7 @@ the normal-mode status console with `-D STREAMLINE_WEB_SERVER=1`.
 You can still provide compile-time defaults for development:
 
 ```sh
-cp device/esp32/stream/src/local_config.example.h device/esp32/stream/src/local_config.h
+cp firmware/streamline/src/local_config.example.h firmware/streamline/src/local_config.h
 ```
 
 Edit `local_config.h`:
@@ -102,13 +102,13 @@ defaults.
 Build:
 
 ```sh
-make stream
+make firmware-streamline
 ```
 
 Flash:
 
 ```sh
-make flash PROJECT=stream
+make firmware-flash FIRMWARE_TARGET=streamline
 ```
 
 Serial output will show either the setup AP URL or the LAN config URL.
@@ -116,7 +116,7 @@ Serial output will show either the setup AP URL or the LAN config URL.
 Run the HTTP bridge:
 
 ```sh
-python3 bridge/http-wav/server.py
+make bridge-up
 ```
 
 With the bridge running, set the TCP target host to the machine running the bridge

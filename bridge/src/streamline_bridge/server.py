@@ -16,11 +16,21 @@ import time
 from dataclasses import asdict, dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.metadata import PackageNotFoundError, version
 from typing import NoReturn
 
-from protocol import DEFAULT_FORMAT, DEFAULT_RATE, HEADER, PcmFormat, parse_header
+from streamline_bridge.protocol import DEFAULT_FORMAT, DEFAULT_RATE, HEADER, PcmFormat, parse_header
 
-BRIDGE_VERSION = "0.1.0"
+
+def bridge_version() -> str:
+    """Return installed package metadata, or a clear source-tree development value."""
+    try:
+        return version("streamline-bridge")
+    except PackageNotFoundError:
+        return "dev"
+
+
+BRIDGE_VERSION = bridge_version()
 MAX_UINT32 = 0xFFFFFFFF
 UINT32_MOD = 0x100000000
 DEFAULT_PLAYOUT_BUFFER_SECONDS = 1.0

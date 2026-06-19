@@ -4,8 +4,8 @@ import argparse
 import socket
 import unittest
 
-from protocol import DEFAULT_FORMAT
-from server import AudioHub, TcpSourceGate, validate_args, wav_header
+from streamline_bridge.protocol import DEFAULT_FORMAT
+from streamline_bridge.server import AudioHub, TcpSourceGate, validate_args, wav_header
 
 
 def make_hub() -> AudioHub:

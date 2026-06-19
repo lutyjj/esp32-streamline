@@ -43,11 +43,13 @@ Do not commit generated or local-only files (`generated_web_ui.h`,
 `local_config.h`, `.pio/`, `.platformio-home/`, `__pycache__/`). See
 `.gitignore`. Extend it if needed.
 
-## Bump all version strings together
+## Releases are tag-based
 
-Version strings live in `README.md`, `bridge/http-wav/Dockerfile` (`ARG
-VERSION`), `bridge/http-wav/compose.yml`, and `bridge/http-wav/server.py`
-(`BRIDGE_VERSION`). Bump all of them together for a release.
+The bridge package version in `bridge/pyproject.toml` is the checked-in product
+version. Create the matching `vX.Y.Z` tag only after `make release
+VERSION=X.Y.Z` passes. This target validates and builds local deliverables but
+does not publish. GitHub publishes the firmware artifacts and bridge image from
+that tag.
 
 ## Docs win on conflict
 

@@ -119,3 +119,6 @@ make test
 ESP32 StreamLine is an audio ingestion source, not a network renderer. It focuses
 on reliable analog capture and transport; playback, encoding, and multiroom
 synchronization belong to the software consuming the published stream.
+
+## AI usage
+AI usage and contributions are more than welcome. This project was created with heavy usage of AI.

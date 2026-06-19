@@ -1,0 +1,20 @@
+services:
+  streamline-http:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "0.1.0"
+    restart: unless-stopped
+    environment:
+      STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    ports:
+      - "39000:39000/tcp"
+      - "8088:8088/tcp"

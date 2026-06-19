@@ -29,17 +29,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # PlatformIO downloads the ESP32 toolchain + frameworks into
-      # .platformio-home (~hundreds of MB). Caching it across runs keeps
-      # the three firmware builds fast. The Makefile mounts the workspace
-      # into the container at /workspace, so the cache is visible there as
-      # /workspace/.platformio-home via PLATFORMIO_CORE_DIR.
-      - name: Cache PlatformIO core
-        uses: actions/cache@v5
-        with:
-          path: .platformio-home
-          key: pio-${{ hashFiles('device/esp32/*/platformio.ini', 'requirements-dev.txt') }}
-          restore-keys: pio-
-
+      # No cache: make test runs pio inside Docker as root, so any cached
+      # .platformio-home files would be root-owned and unreadable by the
+      # post-job cache step. PlatformIO's toolchain download is fast enough
+      # (~30s) that re-fetching per run is simpler than fixing ownership.
       - name: Run make test
         run: make test

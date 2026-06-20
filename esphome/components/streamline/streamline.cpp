@@ -16,6 +16,7 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
+#include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
 namespace esphome::streamline {
@@ -133,7 +134,16 @@ void StreamLine::network_task_(void *parameter) {
 }
 
 void StreamLine::run_network_task_() {
+  uint32_t last_stats = millis();
   while (!this->stopping_) {
+    const uint32_t now = millis();
+    if (now - last_stats >= 5000) {
+      last_stats = now;
+      ESP_LOGI(TAG, "stats: queue=%u/%u drops=%u net_errors=%u reconnects=%u",
+               static_cast<unsigned>(uxQueueMessagesWaiting(this->queue_)), QUEUE_DEPTH,
+               this->queue_drops_, this->network_errors_, this->reconnects_);
+    }
+
     AudioPacket packet{};
     if (xQueueReceive(this->queue_, &packet, pdMS_TO_TICKS(100)) != pdPASS)
       continue;

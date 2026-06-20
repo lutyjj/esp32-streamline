@@ -15,6 +15,23 @@ TCP protocol and Python bridge unchanged.
 It intentionally does not yet expose Home Assistant entities. A successful
 stream is the first acceptance criterion; HA controls are optional afterwards.
 
+## Forked es8388 codec
+
+ESPHome's built-in `es8388` component is tuned for voice recording: it
+force-enables ALC (up to +23.5 dB auto-gain) and a noise gate, and exposes no
+configuration for gain or ALC ([docs] list only `address` and `i2c_id`). A
+line-level source clips constantly under that AGC. `components/es8388` vendors
+the component and adds two options, defaulting to a clean line-in:
+
+- `auto_gain` (bool, default `false`) — enable the ALC register block
+- `mic_gain` (`0dB`..`24dB` in 3 dB steps, default `0dB`) — fixed ADC input PGA
+
+`audio-kit.yaml` shadows the built-in component through `external_components` and
+captures at 0 dB with ALC off. Measured on hardware: full-scale clipping on both
+channels before the fork, zero clipped samples after.
+
+[docs]: https://esphome.io/components/audio_dac/es8388/
+
 ## Run
 
 1. Start the existing bridge from the repository root:
@@ -43,13 +60,14 @@ This needs a board before it can be called viable. Test the following in order:
 2. Ten minutes of capture has zero steady-state queue drops and network errors.
 3. Stop the bridge for at least five seconds, restart it, and confirm capture
    continues and the bridge re-buffers.
-4. Play left-only then right-only test audio. Confirm `swap_stereo: true` maps
-   ESPHome's documented right/left callback ordering to StreamLine's L/R PCM
-   contract. Flip it only if the physical result proves otherwise.
+4. Play left-only then right-only test audio. The i2s_audio microphone documents
+   stereo data as right-then-left, so `swap_stereo: true` maps it to StreamLine's
+   left-then-right PCM contract. Flip it only if the physical result proves
+   otherwise.
 5. Compare gain, noise floor, clipping, and channel balance against the current
-   v0.2.0 Rust firmware. ESPHome's ES8388 implementation is voice-oriented and
-   has different gain/ALC defaults, so fidelity must be measured rather than
-   assumed.
+   v0.2.0 Rust firmware. With the forked codec (`auto_gain: false`,
+   `mic_gain: 0dB`) the ADC path matches the Rust/0.1.2 fixed-gain config; raise
+   `mic_gain` for weaker sources.
 
 ## Security
 

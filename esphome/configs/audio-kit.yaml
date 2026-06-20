@@ -32,11 +32,17 @@ logger:
 wifi:
   ssid: "REPLACE_WITH_WIFI_SSID"
   password: "REPLACE_WITH_WIFI_PASSWORD"
+  # Continuous PCM streaming needs the radio always on. ESPHome's default
+  # light power-save sleeps between beacons, which some APs answer with an
+  # "Auth Expired" deauth -> reconnect loop that shreds the stream.
+  power_save_mode: none
+  # Reconnect to the known BSSID without a full scan on every drop.
+  fast_connect: true
   ap:
     ssid: "ESP32-StreamLine-Fallback"
     password: "REPLACE_WITH_A_LONG_UNIQUE_PASSWORD"
-    # Keep commissioning testable without waiting for the production default.
-    ap_timeout: 10s
+    # Don't bail to the fallback AP on a brief drop; only after a real outage.
+    ap_timeout: 1min
 
 captive_portal:
 

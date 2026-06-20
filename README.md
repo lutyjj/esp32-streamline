@@ -5,7 +5,7 @@ ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It capt
 ## Features
 
 - **Dumb Node Architecture**: The ESP32 stays simple—capturing and moving packets. All encoding, buffering, and syncing lives on the bridge.
-- **Secure-by-default configuration**: Starts an `esp32-streamline-XXXX` setup AP if unconfigured. Configuration changes are accepted only from setup mode; the optional normal-mode web console is read-only.
+- **Zero-config commissioning**: Starts an `esp32-streamline-XXXX` setup AP when unconfigured; set Wi-Fi, stream target, and audio from a small web console and tune levels live while streaming. The console and HTTP API are unauthenticated and meant for a trusted LAN — see [Security Notes](docs/security.md).
 - **Easily Self-Hosted Bridge**: Includes Python scripts and Docker Compose files to bridge the TCP PCM stream into a live HTTP WAV stream.
 - **Bridge Playout Buffer**: The bridge buffers the stream before exposing the WAV output, smoothing timing jitter and concealing any gaps around disconnects.
 
@@ -32,22 +32,24 @@ vinyl/CD switch
 
 ### Build and Flash
 
-PlatformIO is run inside Docker, so you don't need the ESP32 toolchain installed on your host machine.
+The Rust/ESP-IDF firmware is built in Docker. Flashing is host-side because
+Docker Desktop does not reliably expose macOS serial devices.
 
 1. **Build the firmware:**
    ```sh
-   make firmware-streamline
+   make firmware-build
    ```
 
 2. **Flash to the board:**
    *Note: Docker Desktop on macOS does not reliably expose `/dev/cu.*` serial devices, so flashing requires `esptool` installed on your host.*
    ```sh
-   make firmware-flash FIRMWARE_TARGET=streamline
+   cargo install espflash
+   make firmware-flash
    ```
    *If you are on Linux or Windows, override the default macOS port:*
    ```sh
-   make firmware-flash FIRMWARE_TARGET=streamline PORT=/dev/ttyUSB0  # Linux
-   make firmware-flash FIRMWARE_TARGET=streamline PORT=COM3          # Windows
+   make firmware-flash PORT=/dev/ttyUSB0  # Linux
+   make firmware-flash PORT=COM3          # Windows
    ```
 
 3. **Monitor serial output:**
@@ -55,16 +57,7 @@ PlatformIO is run inside Docker, so you don't need the ESP32 toolchain installed
    make firmware-monitor PORT=/dev/ttyUSB0
    ```
 
-For a published release, use the single `streamline-<version>-full.bin` asset
-and flash it at offset `0x0`:
-
-```sh
-esptool --chip esp32 --port /dev/cu.usbserial-0001 --baud 460800 write-flash \
-  0x0 streamline-<version>-full.bin
-```
-
-The release also includes separate bootloader, partition, and application images
-for advanced use; the `full.bin` image is the default customer install path.
+Release artifacts contain an `espflash`-compatible merged image plus the ELF.
 
 ### Configuration
 
@@ -74,8 +67,8 @@ If no config is saved, the device will host an open setup network named `esp32-s
 3. Set the **TCP Target Host** to the IP of your bridge server.
 4. Save and let the device reboot onto your network.
 
-To change settings later, connect over serial and enter `setup`. The device starts
-the setup AP again while retaining the current values for review and editing.
+To change settings later, clear configuration from setup mode and reboot. The
+device will return to the setup AP.
 
 ### HTTP WAV Bridge
 

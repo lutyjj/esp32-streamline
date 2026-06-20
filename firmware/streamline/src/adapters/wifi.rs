@@ -64,3 +64,12 @@ pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<Str
     wifi.wait_netif_up()?;
     Ok(ssid)
 }
+
+pub fn device_suffix() -> Result<String> {
+    let mut mac = [0_u8; 6];
+    let code = unsafe { esp_idf_svc::sys::esp_efuse_mac_get_default(mac.as_mut_ptr()) };
+    if code != esp_idf_svc::sys::ESP_OK {
+        return Err(esp_idf_svc::sys::EspError::from(code).unwrap().into());
+    }
+    Ok(format!("{:02X}{:02X}{:02X}", mac[3], mac[4], mac[5]))
+}

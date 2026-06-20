@@ -1,0 +1,107 @@
+use std::sync::{Arc, Mutex};
+
+use anyhow::Result;
+use esp_idf_svc::{
+    eventloop::EspSystemEventLoop,
+    hal::{delay::FreeRtos, peripherals::Peripherals},
+    nvs::EspDefaultNvsPartition,
+};
+use streamline_firmware::{
+    adapters::{
+        codec,
+        http::{self, ApiState, Mode},
+        i2s::Capture,
+        nvs::ConfigStore,
+        tcp::TargetAddress,
+        wifi,
+    },
+    config::{AudioSettings, InputLine, RuntimeConfig},
+    runtime,
+};
+
+fn main() -> Result<()> {
+    // Required by esp-idf-sys to link runtime patches on an ESP-IDF target.
+    esp_idf_svc::sys::link_patches();
+    esp_idf_svc::log::EspLogger::initialize_default();
+
+    let peripherals = Peripherals::take()?;
+    let event_loop = EspSystemEventLoop::take()?;
+    let nvs_partition = EspDefaultNvsPartition::take()?;
+    let store = Arc::new(Mutex::new(ConfigStore::open(nvs_partition.clone())?));
+    let persisted = store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
+        .load()?;
+    let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
+    let suffix = wifi::device_suffix()?;
+
+    let (mode, config, stream) = match persisted {
+        Some(config) => match wifi::connect_station(&mut wifi, &config) {
+            Ok(()) => match TargetAddress::resolve(&config) {
+                Ok(target) => {
+                    let capture = Capture::new(
+                        peripherals.i2s0,
+                        peripherals.pins.gpio27,
+                        peripherals.pins.gpio35,
+                        peripherals.pins.gpio0,
+                        peripherals.pins.gpio25,
+                    )?;
+                    codec::configure(
+                        peripherals.i2c0,
+                        peripherals.pins.gpio33,
+                        peripherals.pins.gpio32,
+                        config.audio,
+                    )?;
+                    let stream = runtime::start(capture, target)?;
+                    log::info!("StreamLine Rust firmware started TCP streaming");
+                    (Mode::Streaming, config, Some(stream))
+                }
+                Err(error) => {
+                    log::warn!("TCP target resolution failed; opening setup AP: {error:#}");
+                    start_setup(&mut wifi, &suffix)?
+                }
+            },
+            Err(error) => {
+                log::warn!("Wi-Fi station connection failed; opening setup AP: {error:#}");
+                start_setup(&mut wifi, &suffix)?
+            }
+        },
+        None => start_setup(&mut wifi, &suffix)?,
+    };
+
+    let state = Arc::new(ApiState {
+        mode,
+        config: Arc::new(Mutex::new(config)),
+        store,
+        stream,
+    });
+    let _server = http::start(state)?;
+    loop {
+        FreeRtos::delay_ms(1_000);
+    }
+}
+
+fn start_setup(
+    wifi: &mut wifi::WifiController<'_>,
+    suffix: &str,
+) -> Result<(Mode, RuntimeConfig, Option<Arc<runtime::StreamStatus>>)> {
+    let ssid = wifi::start_setup_ap(wifi, suffix)?;
+    log::info!("setup AP started: {ssid}");
+    Ok((
+        Mode::SetupAp,
+        RuntimeConfig {
+            ssid: String::new(),
+            password: String::new(),
+            target_host: String::new(),
+            target_port: 39_000,
+            // Safe line-in baseline: 0 dB PGA (no clipping) on line 2, matching
+            // the previously deployed firmware. Adjust per board in setup mode.
+            audio: AudioSettings {
+                input_line: InputLine::Two,
+                input_gain: 0,
+                adc_attenuation_db: 0,
+            },
+        },
+        None,
+    ))
+}

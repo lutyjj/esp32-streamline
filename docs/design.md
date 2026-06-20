@@ -123,13 +123,12 @@ Detected addresses determine the driver path:
 0x10 -> ES8388 candidate  <-- current board
 ```
 
-After the codec is known, use an existing codec driver rather than writing register
-init tables from scratch. `pschatzmann/arduino-audio-driver` supports both AC101 and
-ES8388 board profiles, and pairs with `arduino-audio-tools` for I2S stream plumbing.
+The firmware owns a minimal typed ES8388 register sequence for this board. It
+does not depend on an Arduino codec abstraction.
 
 ## Capture Bring-Up
 
-`firmware/diagnostics/audio-level` is the first ES8388 capture target. It uses:
+The production Rust capture adapter uses:
 
 ```text
 codec:       ES8388 at 0x10
@@ -137,9 +136,8 @@ I2C:         SDA GPIO33 / SCL GPIO32
 I2S:         MCLK GPIO0 / BCLK GPIO27 / LRCLK GPIO25 / DIN GPIO35
 sample rate: 48000 Hz
 format:      16-bit stereo I2S
-input:       ES8388 line input 1
-gain:        AUDIO_INPUT_GAIN=25
+input:       ES8388 line input 1 or 2 (NVS configured)
+gain:        0-100 (NVS configured)
 ```
 
-It prints one-second RMS and peak readings over serial. This target proves codec
-initialization and I2S capture before adding Wi-Fi streaming.
+The streaming task exports queue and transport counters via `/api/status`.

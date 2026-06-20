@@ -1,5 +1,0 @@
-.pio
-__pycache__
-*.py[cod]
-src/generated_web_ui.h
-src/local_config.h

@@ -61,7 +61,7 @@ button.action.primary{background:#153a5c;border-color:#245b8f}
       <div class="panel metric" id="modeMetric"><div class="label">Mode</div><div class="value" id="mode">--</div></div>
       <div class="panel metric"><div class="label">Station IP</div><div class="value" id="staIp">--</div></div>
       <div class="panel metric"><div class="label">TCP Target</div><div class="value" id="targetAddr">--</div></div>
-      <div class="panel metric" id="clipMetric"><div class="label">Clips Last Report</div><div class="value" id="clipsLast">--</div></div>
+      <div class="panel metric" id="clipMetric"><div class="label">Clips Total</div><div class="value" id="clipsLast">--</div></div>
       <div class="panel metric"><div class="label">Peak L / R</div><div class="value" id="peakLR">--</div></div>
       <div class="panel metric"><div class="label">RMS L / R</div><div class="value" id="rmsLR">--</div></div>
       <div class="panel metric"><div class="label">RSSI</div><div class="value" id="rssi">--</div></div>
@@ -123,17 +123,17 @@ async function api(path,opts){const r=await fetch(path,opts);const text=await r.
 function applyStatus(s){
   $('subtitle').textContent='v'+s.firmware_version+' / '+s.audio.sample_rate+' Hz / '+s.audio.channels+' ch / '+s.audio.bits_per_sample+' bit';
   $('mode').textContent=s.mode;$('staIp').textContent=s.wifi.sta_ip;$('targetAddr').textContent=s.target.target_host+':'+s.target.target_port;
-  $('clipsLast').textContent=s.metrics.clipped_samples_last_report;$('peakLR').textContent=dbfs(s.metrics.peak_abs_left)+' / '+dbfs(s.metrics.peak_abs_right);$('rmsLR').textContent=dbfs(s.metrics.rms_left)+' / '+dbfs(s.metrics.rms_right);
+  $('clipsLast').textContent=s.metrics.clipped_samples_total;$('peakLR').textContent=dbfs(s.metrics.peak_abs_left)+' / '+dbfs(s.metrics.peak_abs_right);$('rmsLR').textContent=dbfs(s.metrics.rms_left)+' / '+dbfs(s.metrics.rms_right);
   $('rssi').textContent=s.wifi.rssi+' dBm';$('sequence').textContent=s.metrics.sequence;
-  setMetricClass($('clipMetric'),s.metrics.clipped_samples_last_report===0);
+  setMetricClass($('clipMetric'),s.metrics.clipped_samples_total===0);
   setMetricClass($('modeMetric'),s.mode==='streaming');
   kv($('runtimeKv'),[['Config',s.config_source],['SSID',s.wifi.ssid],['Wi-Fi Status',s.wifi.status],['AP IP',s.wifi.ap_ip],['Clip Total',s.metrics.clipped_samples_total]]);
-  kv($('audioKv'),[['Input Line',s.audio.input_line],['Input Gain',s.audio.input_gain],['ADC Attenuation',s.audio.adc_atten_db+' dB'],['Clip Threshold',s.metrics.clip_threshold_abs],['Current Clips',s.metrics.clipped_samples_current],['Last Clips',s.metrics.clipped_samples_last_report]]);
+  kv($('audioKv'),[['Input Line',s.audio.input_line],['Input Gain',s.audio.input_gain],['ADC Attenuation',s.audio.adc_atten_db+' dB'],['Clip Threshold',s.metrics.clip_threshold_abs],['Peak L',dbfs(s.metrics.peak_abs_left)],['Peak R',dbfs(s.metrics.peak_abs_right)]]);
   $('apiDump').textContent=JSON.stringify(s,null,2);
   $('clip_threshold').value=s.metrics.clip_threshold_abs;
   setConfigWritable(s.configuration_writable);
 }
-function setConfigWritable(writable){document.querySelectorAll('#setupForm input,#setupForm button,#audioForm input:not(#clip_threshold),#audioForm select,#audioForm button').forEach(el=>{el.disabled=!writable;el.title=writable?'':'Configuration is writable only in setup mode'})}
+function setConfigWritable(writable){document.querySelectorAll('#setupForm input,#setupForm button').forEach(el=>{el.disabled=!writable;el.title=writable?'':'Wi-Fi and target are writable only in setup mode'})}
 async function refresh(){try{applyStatus(await api('/api/status'));}catch(e){setMsg(e.message,'err')}}
 async function loadConfig(){const c=await api('/api/config');$('ssid').value=c.ssid;$('target_host').value=c.target_host;$('target_port').value=c.target_port;$('input_line').value=c.input_line;$('input_gain').value=c.input_gain;$('adc_atten_db').value=c.adc_atten_db}
 function formBody(form){return new URLSearchParams(new FormData(form))}

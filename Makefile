@@ -10,7 +10,7 @@ CAP ?=
 .PHONY: check lint test format clean \
 	bridge-format bridge-lint bridge-test bridge-image bridge-run bridge-up \
 	firmware-format firmware-lint firmware-build firmware-streamline firmware-audio-level firmware-codec-scan firmware-flash firmware-flash-full firmware-monitor firmware-clean firmware-artifacts \
-	analysis-lint analysis-capture \
+	analysis-lint analysis-capture esphome-validate esphome-build \
 	version-check release
 
 check: lint test
@@ -77,6 +77,12 @@ analysis-lint:
 
 analysis-capture:
 	$(MAKE) -C tools/analysis capture REF="$(REF)" CAP="$(CAP)"
+
+esphome-validate:
+	$(MAKE) -C esphome validate
+
+esphome-build:
+	$(MAKE) -C esphome build
 
 version-check:
 	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)

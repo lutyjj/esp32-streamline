@@ -1,0 +1,88 @@
+substitutions:
+  name: esp32-streamline
+  friendly_name: ESP32 StreamLine
+  bridge_host: 192.168.100.161
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  project:
+    name: lutyjj.esp32-streamline
+    version: 0.2.0-esphome-spike
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [streamline]
+
+esp32:
+  board: esp32dev
+  flash_size: 8MB
+  toolchain: esp-idf
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+
+# This node streams to the bridge without Home Assistant. Add an encrypted `api:`
+# block only when Home Assistant diagnostics/control are wanted.
+wifi:
+  ssid: "REPLACE_WITH_WIFI_SSID"
+  password: "REPLACE_WITH_WIFI_PASSWORD"
+  ap:
+    ssid: "ESP32-StreamLine-Fallback"
+    password: "REPLACE_WITH_A_LONG_UNIQUE_PASSWORD"
+    # Keep commissioning testable without waiting for the production default.
+    ap_timeout: 10s
+
+captive_portal:
+
+ota:
+  - platform: esphome
+    password: "REPLACE_WITH_A_LONG_UNIQUE_PASSWORD"
+
+i2c:
+  sda: GPIO33
+  scl: GPIO32
+  frequency: 100kHz
+  id: audio_i2c
+
+audio_dac:
+  - platform: es8388
+    id: es8388_codec
+
+# ESPHome's ES8388 component exposes line selection. This spike keeps its
+# default codec gain/ALC behavior; do an A/B fidelity test before relying on it.
+select:
+  - platform: es8388
+    es8388_id: es8388_codec
+    adc_input_mic:
+      name: "StreamLine ADC Input"
+
+i2s_audio:
+  id: audio_i2s
+  i2s_lrclk_pin: GPIO25
+  i2s_bclk_pin: GPIO27
+  i2s_mclk_pin: GPIO0
+
+microphone:
+  - platform: i2s_audio
+    id: line_in
+    i2s_audio_id: audio_i2s
+    i2s_din_pin: GPIO35
+    adc_type: external
+    pdm: false
+    sample_rate: 48000
+    bits_per_sample: 16bit
+    channel: stereo
+    use_apll: true
+
+streamline:
+  microphone_id: line_in
+  target_host: ${bridge_host}
+  target_port: 39000
+  # ESPHome documents stereo microphone data as right then left. StreamLine's
+  # protocol is left then right, so retain this default until hardware A/B test.
+  swap_stereo: true

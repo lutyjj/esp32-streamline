@@ -11,10 +11,11 @@ esphome:
     version: 0.2.0-esphome-spike
 
 external_components:
+  # es8388 shadows the built-in component to add fixed-gain / ALC-off line-in.
   - source:
       type: local
       path: ../components
-    components: [streamline]
+    components: [streamline, es8388]
 
 esp32:
   board: esp32dev
@@ -49,12 +50,16 @@ i2c:
   frequency: 100kHz
   id: audio_i2c
 
+# Upstream's es8388 forces voice-recording ALC (up to +23.5 dB auto-gain), which
+# clips a line-level source. The vendored copy under components/es8388 exposes
+# these knobs; capture line-in clean at fixed 0 dB gain with ALC off.
 audio_dac:
   - platform: es8388
     id: es8388_codec
+    auto_gain: false
+    mic_gain: 0dB
 
-# ESPHome's ES8388 component exposes line selection. This spike keeps its
-# default codec gain/ALC behavior; do an A/B fidelity test before relying on it.
+# The es8388 component also exposes the ADC input line selection.
 select:
   - platform: es8388
     es8388_id: es8388_codec

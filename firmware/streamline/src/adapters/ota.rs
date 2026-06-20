@@ -30,7 +30,10 @@ use esp_idf_svc::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::update::{self, OtaRelease};
+use crate::{
+    adapters::time,
+    update::{self, OtaRelease},
+};
 
 /// GitHub repository that publishes releases. The `latest/download/` path always
 /// resolves to the newest release's assets, so no API token or version lookup is
@@ -223,6 +226,11 @@ pub fn spawn_update(progress: Arc<OtaProgress>) -> Result<()> {
 
 fn run(progress: &OtaProgress) {
     let current = env!("CARGO_PKG_VERSION");
+    progress.set_message("synchronizing clock");
+    if let Err(error) = time::wait_for_sync() {
+        return progress.fail(format!("time synchronization failed: {error:#}"));
+    }
+    progress.set_message("checking latest release");
     let release = match check() {
         Ok(release) => release,
         Err(error) => return progress.fail(format!("update check failed: {error:#}")),
@@ -253,6 +261,7 @@ fn client() -> Result<Client<EspHttpConnection>> {
         crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
         follow_redirects_policy: FollowRedirectsPolicy::FollowAll,
         buffer_size: Some(READ_CHUNK_BYTES),
+        buffer_size_tx: Some(1024),
         ..Default::default()
     })
     .context("cannot create HTTPS client")?;

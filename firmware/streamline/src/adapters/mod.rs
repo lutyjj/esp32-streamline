@@ -9,4 +9,5 @@ pub mod i2s;
 pub mod nvs;
 pub mod ota;
 pub mod tcp;
+pub mod time;
 pub mod wifi;

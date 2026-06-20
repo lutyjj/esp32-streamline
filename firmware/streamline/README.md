@@ -1,7 +1,6 @@
-# Rust firmware
+# Firmware
 
-This is the complete ESP32 Audio Kit firmware. It uses Rust on ESP-IDF v5.5.3;
-there is no Arduino or PlatformIO firmware in this repository.
+The ESP32 Audio Kit firmware: Rust on ESP-IDF v5.5.3.
 
 ## Runtime
 
@@ -10,7 +9,7 @@ there is no Arduino or PlatformIO firmware in this repository.
 - byte-exact `ELI1` TCP packets, 256 frames / 1,024 PCM bytes
 - bounded 32-packet drop-oldest queue
 - capture task: core 1, priority 3; TCP task: core 1, priority 2
-- bounded raw-lwIP TCP connect/send behavior with `TCP_NODELAY`
+- bounded TCP connect/send via `std::net` (`TCP_NODELAY`, 250 ms timeouts)
 - NVS-backed configuration and a setup AP at `esp32-streamline-XXXX`
 - unauthenticated HTTP config/status API, writable in any mode (trusted LAN; see
   `docs/security.md`)

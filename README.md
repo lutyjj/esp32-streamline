@@ -67,8 +67,11 @@ If no config is saved, the device will host an open setup network named `esp32-s
 3. Set the **TCP Target Host** to the IP of your bridge server.
 4. Save and let the device reboot onto your network.
 
-To change settings later, clear configuration from setup mode and reboot. The
-device will return to the setup AP.
+Once it is on your network, open the device's web console at its station IP to
+change Wi-Fi, target, or audio settings at any time; each save reboots to apply.
+Resetting configuration returns the device to the setup AP. The console and API
+are unauthenticated, so keep the device on a trusted LAN (see
+[Security Notes](docs/security.md)).
 
 ### HTTP WAV Bridge
 

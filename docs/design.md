@@ -23,11 +23,11 @@ The bridge host should:
 ## Protocol Choice
 
 The device sends raw PCM with a small fixed header. The wire format is transport-
-agnostic (see `docs/pcm-protocol.md`); the current transport is a persistent TCP
-connection using raw lwIP sockets. Earlier builds used UDP, but UDP cannot recover
-lost packets and the first Arduino `WiFiClient` TCP attempt was unstable, so the
-firmware now uses raw sockets with a split capture/network task design. See
-`docs/tcp-idf-transport-plan.md` for the full rationale and results.
+agnostic (see `docs/pcm-protocol.md`); the transport is a persistent TCP connection
+using the Rust standard library (`std::net`) over lwIP. TCP gives ordered,
+recoverable delivery, and a split capture/network task design keeps a network
+stall from blocking I2S capture. See `docs/tcp-idf-transport-plan.md` for the
+runtime contract.
 
 Format:
 
@@ -101,30 +101,25 @@ Assistant, add `http://<bridge-host>:8088/streamline.wav` as a URL/radio stream.
 Music Assistant proves unreliable with live WAV, keep this bridge and add
 Liquidsoap/Icecast after it to publish FLAC/MP3/Opus.
 
-## Codec Discovery
+## Codec
 
-The next firmware should scan I2C on likely Audio Kit pins:
+The codec sits on I2C on the Audio Kit pins:
 
 ```text
 SDA GPIO33
 SCL GPIO32
 ```
 
-Detected on this board:
+The board's codec answers at `0x10`:
 
 ```text
-SDA GPIO33 / SCL GPIO32 -> 0x10
+0x10 -> ES8388  <-- current board
+0x1A -> AC101   <-- other ESP32-A1S variant
 ```
 
-Detected addresses determine the driver path:
-
-```text
-0x1A -> AC101 candidate
-0x10 -> ES8388 candidate  <-- current board
-```
-
-The firmware owns a minimal typed ES8388 register sequence for this board. It
-does not depend on an Arduino codec abstraction.
+The firmware owns a minimal typed ES8388 register sequence behind a `Codec`
+trait, so other ESP32-A1S codec variants can be added as their own
+implementation without touching the capture or transport paths.
 
 ## Capture Bring-Up
 

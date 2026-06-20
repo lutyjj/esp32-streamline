@@ -14,7 +14,7 @@ use esp_idf_svc::http::server::{Configuration, EspHttpServer};
 use serde::Serialize;
 
 use crate::{
-    adapters::nvs::ConfigStore,
+    adapters::{nvs::ConfigStore, wifi},
     config::{AudioSettings, InputLine, RuntimeConfig},
     levels::CLIP_THRESHOLD_ABS,
     runtime::StreamStatus,
@@ -279,8 +279,8 @@ struct StatusResponse<'a> {
 struct WifiStatus<'a> {
     ssid: &'a str,
     status: &'a str,
-    sta_ip: &'a str,
-    ap_ip: &'a str,
+    sta_ip: String,
+    ap_ip: String,
     rssi: i32,
 }
 
@@ -353,9 +353,9 @@ fn status_json(state: &ApiState) -> String {
         wifi: WifiStatus {
             ssid: &config.ssid,
             status: wifi_status,
-            sta_ip: "",
-            ap_ip: "",
-            rssi: 0,
+            sta_ip: wifi::station_ip().unwrap_or_default(),
+            ap_ip: wifi::access_point_ip().unwrap_or_default(),
+            rssi: wifi::rssi().unwrap_or(0),
         },
         target: TargetStatus {
             target_host: &config.target_host,

@@ -1,6 +1,6 @@
 //! ESP-IDF Wi-Fi ownership and mode transitions.
 
-use core::convert::TryInto;
+use core::{convert::TryInto, ffi::CStr};
 
 use anyhow::Result;
 use embedded_svc::wifi::{
@@ -10,6 +10,10 @@ use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     hal::modem::Modem,
     nvs::EspDefaultNvsPartition,
+    sys::{
+        esp_netif_get_handle_from_ifkey, esp_netif_get_ip_info, esp_netif_ip_info_t,
+        esp_wifi_sta_get_ap_info, wifi_ap_record_t, ESP_OK,
+    },
     wifi::{BlockingWifi, EspWifi},
 };
 
@@ -63,6 +67,38 @@ pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<Str
     wifi.start()?;
     wifi.wait_netif_up()?;
     Ok(ssid)
+}
+
+/// Current station RSSI in dBm, or `None` when not associated.
+pub fn rssi() -> Option<i32> {
+    let mut record: wifi_ap_record_t = unsafe { core::mem::zeroed() };
+    let code = unsafe { esp_wifi_sta_get_ap_info(&mut record) };
+    (code == ESP_OK).then_some(i32::from(record.rssi))
+}
+
+/// Dotted IPv4 of the station interface, or `None` when it has no address.
+pub fn station_ip() -> Option<String> {
+    interface_ipv4(c"WIFI_STA_DEF")
+}
+
+/// Dotted IPv4 of the soft-AP interface, or `None` when the AP is not up.
+pub fn access_point_ip() -> Option<String> {
+    interface_ipv4(c"WIFI_AP_DEF")
+}
+
+fn interface_ipv4(key: &CStr) -> Option<String> {
+    let netif = unsafe { esp_netif_get_handle_from_ifkey(key.as_ptr()) };
+    if netif.is_null() {
+        return None;
+    }
+    let mut info: esp_netif_ip_info_t = unsafe { core::mem::zeroed() };
+    if unsafe { esp_netif_get_ip_info(netif, &mut info) } != ESP_OK || info.ip.addr == 0 {
+        return None;
+    }
+    // esp_ip4_addr stores the address in network order: the first octet is the
+    // least-significant byte on this little-endian target.
+    let [a, b, c, d] = info.ip.addr.to_le_bytes();
+    Some(format!("{a}.{b}.{c}.{d}"))
 }
 
 pub fn device_suffix() -> Result<String> {

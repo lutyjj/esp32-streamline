@@ -8,6 +8,7 @@ CODEOWNERS = ["@P4uLT", "@lutyjj"]
 CONF_ES8388_ID = "es8388_id"
 CONF_AUTO_GAIN = "auto_gain"
 CONF_MIC_GAIN = "mic_gain"
+CONF_ADC_ATTENUATION = "adc_attenuation"
 
 # ES8388 ADC input PGA: nine 3 dB steps mapped to the ADCCONTROL1 nibble.
 MIC_GAIN = {
@@ -37,6 +38,10 @@ CONFIG_SCHEMA = (
             # opt into automatic level control explicitly.
             cv.Optional(CONF_AUTO_GAIN, default=False): cv.boolean,
             cv.Optional(CONF_MIC_GAIN, default="0dB"): cv.enum(MIC_GAIN, upper=True),
+            # ADC digital attenuation in dB; gives a hot line source headroom.
+            cv.Optional(CONF_ADC_ATTENUATION, default=0.0): cv.float_range(
+                min=0.0, max=96.0
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -50,3 +55,4 @@ async def to_code(config):
     await i2c.register_i2c_device(var, config)
     cg.add(var.set_auto_gain(config[CONF_AUTO_GAIN]))
     cg.add(var.set_mic_gain(config[CONF_MIC_GAIN]))
+    cg.add(var.set_adc_attenuation(config[CONF_ADC_ATTENUATION]))

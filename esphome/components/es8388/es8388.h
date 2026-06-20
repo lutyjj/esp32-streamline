@@ -70,15 +70,25 @@ class ES8388 : public audio_dac::AudioDac, public Component, public i2c::I2CDevi
 
   /// @brief Enables automatic level control (ALC) on the ADC. Off by default so
   /// a line-level source is captured at fixed gain instead of being clipped by
-  /// the voice-recording AGC the upstream component hardcodes.
-  void set_auto_gain(bool auto_gain) { this->auto_gain_ = auto_gain; }
+  /// the voice-recording AGC the upstream component hardcodes. Applied live once
+  /// the codec is initialized, so it is controllable at runtime (e.g. from HA).
+  void set_auto_gain(bool auto_gain);
 
   /// @brief Sets the fixed ADC input PGA gain as a 0..8 nibble (0..24 dB).
-  void set_mic_gain(uint8_t mic_gain) { this->mic_gain_ = mic_gain; }
+  void set_mic_gain(uint8_t mic_gain);
+
+  /// @brief Sets the ADC digital attenuation in dB (0..96, 0.5 dB steps).
+  void set_adc_attenuation(float db);
 
  protected:
+  bool apply_mic_gain_();
+  bool apply_adc_attenuation_();
+  bool apply_auto_gain_();
+
+  bool initialized_{false};
   bool auto_gain_{false};
   uint8_t mic_gain_{0};
+  uint8_t adc_attenuation_reg_{0};
 
   /// @brief Mutes or unmutes the DAC audio out
   /// @param mute_state True to mute, false to unmute

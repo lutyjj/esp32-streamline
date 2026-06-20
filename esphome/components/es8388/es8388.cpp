@@ -57,8 +57,7 @@ void ES8388::setup() {
   ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCPOWER, 0xFF));
 
   // Fixed ADC input PGA gain (0..24 dB in 3 dB steps), same value on L and R.
-  const uint8_t pga = static_cast<uint8_t>((this->mic_gain_ << 4) | this->mic_gain_);
-  ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL1, pga));
+  ES8388_ERROR_FAILED(this->apply_mic_gain_());
 
   // set to Mono Right
   ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL3, 0x02));
@@ -68,27 +67,11 @@ void ES8388::setup() {
   // ADCFsMode,singel SPEED,RATIO=256
   ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL5, 0x02));
 
-  // ADC Volume
-  ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL8, 0x00));
-  ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL9, 0x00));
+  // ADC digital volume / attenuation (ADCCONTROL8/9).
+  ES8388_ERROR_FAILED(this->apply_adc_attenuation_());
 
-  if (this->auto_gain_) {
-    // ALC config as recommended by the ES8388 user guide for voice recording.
-    // Reg 0x12 = 0xe2 (ALC enable, PGA Max. Gain=23.5dB, Min. Gain=0dB)
-    ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL10, 0xe2));
-    // Reg 0x13 = 0xa0 (ALC Target=-1.5dB, ALC Hold time =0 mS)
-    ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL11, 0xa0));
-    // Reg 0x14 = 0x12 (Decay time =820uS, Attack time = 416 uS)
-    ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL12, 0x12));
-    // Reg 0x15 = 0x06 (ALC mode)
-    ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL13, 0x06));
-    // Reg 0x16 = 0xc3 (noise gate = -40.5dB, NGG = 0x01 (mute ADC))
-    ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL14, 0xc3));
-  } else {
-    // ALC off: capture a line-level source at the fixed PGA gain set above,
-    // with no automatic level control or noise gate to clip/pump it.
-    ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL10, 0x00));
-  }
+  // ALC: off for line-in, or the voice-recording AGC block when enabled.
+  ES8388_ERROR_FAILED(this->apply_auto_gain_());
 
   // Power on ADC
   ES8388_ERROR_FAILED(this->write_byte(ES8388_DACCONTROL21, 0x80));
@@ -111,6 +94,9 @@ void ES8388::setup() {
 
   // Power on ADC, Enable LIN&RIN, Power off MICBIAS, set int1lp to low power mode
   ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCPOWER, 0x09));
+
+  // Setters may now write ADC registers live (e.g. from HA number/switch).
+  this->initialized_ = true;
 
 #ifdef USE_SELECT
   if (this->dac_output_select_ != nullptr) {
@@ -141,8 +127,10 @@ void ES8388::dump_config() {
   LOG_I2C_DEVICE(this);
   ESP_LOGCONFIG(TAG,
                 "  Auto gain (ALC): %s\n"
-                "  Mic PGA gain: %u dB",
-                YESNO(this->auto_gain_), static_cast<unsigned>(this->mic_gain_) * 3);
+                "  Mic PGA gain: %u dB\n"
+                "  ADC attenuation: %.1f dB",
+                YESNO(this->auto_gain_), static_cast<unsigned>(this->mic_gain_) * 3,
+                this->adc_attenuation_reg_ / 2.0f);
 #ifdef USE_SELECT
   LOG_SELECT("  ", "DacOutputSelect", this->dac_output_select_);
   LOG_SELECT("  ", "ADCInputMicSelect", this->adc_input_mic_select_);
@@ -152,6 +140,53 @@ void ES8388::dump_config() {
     ESP_LOGCONFIG(TAG, "  Failed to initialize");
     return;
   }
+}
+
+bool ES8388::apply_mic_gain_() {
+  // ADCCONTROL1 packs the L and R PGA gain in its two nibbles (0..8 -> 0..24 dB).
+  const uint8_t pga = static_cast<uint8_t>((this->mic_gain_ << 4) | this->mic_gain_);
+  return this->write_byte(ES8388_ADCCONTROL1, pga);
+}
+
+bool ES8388::apply_adc_attenuation_() {
+  return this->write_byte(ES8388_ADCCONTROL8, this->adc_attenuation_reg_) &&
+         this->write_byte(ES8388_ADCCONTROL9, this->adc_attenuation_reg_);
+}
+
+bool ES8388::apply_auto_gain_() {
+  if (this->auto_gain_) {
+    // ALC config as recommended by the ES8388 user guide for voice recording.
+    return this->write_byte(ES8388_ADCCONTROL10, 0xe2) &&  // ALC on, max gain 23.5 dB
+           this->write_byte(ES8388_ADCCONTROL11, 0xa0) &&  // target -1.5 dB, hold 0 ms
+           this->write_byte(ES8388_ADCCONTROL12, 0x12) &&  // decay 820 us, attack 416 us
+           this->write_byte(ES8388_ADCCONTROL13, 0x06) &&  // ALC mode
+           this->write_byte(ES8388_ADCCONTROL14, 0xc3);    // noise gate -40.5 dB
+  }
+  // ALC off: fixed PGA gain with no automatic level control or noise gate.
+  return this->write_byte(ES8388_ADCCONTROL10, 0x00);
+}
+
+void ES8388::set_auto_gain(bool auto_gain) {
+  this->auto_gain_ = auto_gain;
+  if (this->initialized_)
+    this->apply_auto_gain_();
+}
+
+void ES8388::set_mic_gain(uint8_t mic_gain) {
+  this->mic_gain_ = mic_gain > 8 ? 8 : mic_gain;
+  if (this->initialized_)
+    this->apply_mic_gain_();
+}
+
+void ES8388::set_adc_attenuation(float db) {
+  int reg = static_cast<int>(db * 2.0f + 0.5f);
+  if (reg < 0)
+    reg = 0;
+  if (reg > 192)
+    reg = 192;
+  this->adc_attenuation_reg_ = static_cast<uint8_t>(reg);
+  if (this->initialized_)
+    this->apply_adc_attenuation_();
 }
 
 bool ES8388::set_volume(float volume) {

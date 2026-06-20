@@ -5,9 +5,9 @@ pub const MAX_ADC_ATTENUATION_DB: u8 = 48;
 /// Minimum length for the console secret that guards the mutating HTTP API. Short
 /// enough to type during commissioning, long enough to resist casual guessing.
 pub const MIN_ADMIN_SECRET_LEN: usize = 8;
-/// Bumped to 2 when the admin secret was added; older stored configurations are
-/// treated as unconfigured so the device re-commissions instead of booting
-/// without a secret.
+/// Version stamped into persisted configuration. An incompatible stored version is
+/// treated as unconfigured so the device re-commissions rather than booting without
+/// a secret.
 pub const CONFIG_SCHEMA_VERSION: u8 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

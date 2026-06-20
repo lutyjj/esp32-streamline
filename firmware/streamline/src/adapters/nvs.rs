@@ -35,9 +35,9 @@ impl ConfigStore {
         if schema.is_none() {
             return Ok(None);
         }
-        // A schema from an older firmware lacks fields this build requires (for
-        // example the admin secret). Treat it as unconfigured so the device
-        // re-commissions cleanly instead of refusing to boot.
+        // An incompatible schema may lack fields this build requires (such as the
+        // admin secret). Treat it as unconfigured so the device re-commissions
+        // cleanly instead of refusing to boot.
         if schema != Some(CONFIG_SCHEMA_VERSION) {
             log::warn!(
                 "ignoring incompatible stored configuration schema {schema:?}; re-commissioning"

@@ -97,8 +97,8 @@ fn start_setup(
             // No secret yet: an unprovisioned device accepts setup writes over its
             // own AP so commissioning can establish one. See `http::authorized`.
             admin_secret: String::new(),
-            // Safe line-in baseline: 0 dB PGA (no clipping) on line 2, matching
-            // the previously deployed firmware. Adjust per board in setup mode.
+            // Safe line-in baseline: 0 dB PGA (no clipping) on line 2. Adjust per
+            // board in setup mode.
             audio: AudioSettings {
                 input_line: InputLine::Two,
                 input_gain: 0,

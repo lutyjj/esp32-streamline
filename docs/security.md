@@ -17,15 +17,15 @@ on a trusted segment; do not expose its HTTP port or setup AP to untrusted netwo
 | Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access (out of scope) |
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
 
-The main risk auth closes is **CSRF**: previously any web page in the owner's
+The main risk auth closes is **CSRF**: without it, any web page in the owner's
 browser could POST `/api/reset` or repoint the stream. A token in a custom
 `Authorization` header forces a CORS preflight the device never approves, so
-cross-origin requests are blocked. Cookies/Basic Auth would not help here —
+cross-origin requests are blocked. Cookies or Basic Auth would not help —
 browsers send those automatically.
 
 ## Roadmap
 
-### Tier 0 — API auth (#6) — done
+### Tier 0 — API authentication (#6)
 
 - Mutating endpoints (`/api/setup`, `/api/audio`, `/api/reset`) require the secret
   as a bearer token, checked with a constant-time compare (`http::constant_time_eq`).
@@ -33,7 +33,8 @@ browsers send those automatically.
   write-only. An unprovisioned device accepts setup writes so the first secret can
   be set; after that, every write needs it.
 - Web UI keeps the token in `localStorage` and sends it on every request; `401`
-  prompts for it. Config schema bumped 1→2; older configs re-commission.
+  prompts for it. The config schema is versioned, so an incompatible stored config
+  triggers re-commissioning instead of booting without a secret.
 - Lost secret ⇒ reflash to recover. No remote reset without the token, by design.
 
 ### Tier 1 — secure OTA (#7)

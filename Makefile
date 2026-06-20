@@ -9,17 +9,17 @@ CAP ?=
 
 .PHONY: check lint test format clean \
 	bridge-format bridge-lint bridge-test bridge-image bridge-run bridge-up \
-	firmware-format firmware-lint firmware-build firmware-streamline firmware-audio-level firmware-codec-scan firmware-flash firmware-flash-full firmware-monitor firmware-clean firmware-artifacts \
+	firmware-format firmware-lint firmware-build firmware-streamline firmware-audio-level firmware-codec-scan firmware-rust-format firmware-rust-lint firmware-rust firmware-rust-test firmware-flash firmware-flash-full firmware-monitor firmware-clean firmware-artifacts \
 	analysis-lint analysis-capture \
 	version-check release
 
 check: lint test
 
-format: bridge-format firmware-format
+format: bridge-format firmware-format firmware-rust-format
 
-lint: bridge-lint firmware-lint analysis-lint
+lint: bridge-lint firmware-lint firmware-rust-lint analysis-lint
 
-test: bridge-test firmware-codec-scan firmware-audio-level firmware-streamline
+test: bridge-test firmware-codec-scan firmware-audio-level firmware-streamline firmware-rust-test firmware-rust
 
 bridge-format:
 	$(MAKE) -C bridge format
@@ -56,6 +56,18 @@ firmware-audio-level:
 
 firmware-codec-scan:
 	$(MAKE) -C firmware build TARGET=codec-scan VERSION=$(VERSION)
+
+firmware-rust-format:
+	$(MAKE) -C firmware rust-format
+
+firmware-rust-lint:
+	$(MAKE) -C firmware rust-lint
+
+firmware-rust:
+	$(MAKE) -C firmware rust-build
+
+firmware-rust-test:
+	$(MAKE) -C firmware rust-test
 
 firmware-flash:
 	$(MAKE) -C firmware flash TARGET=$(FIRMWARE_TARGET) PORT=$(PORT)

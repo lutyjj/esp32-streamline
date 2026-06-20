@@ -7,6 +7,8 @@ __pycache__/
 *.py[cod]
 firmware/streamline/src/local_config.h
 firmware/streamline/src/generated_web_ui.h
+firmware/rust/.embuild/
+firmware/rust/target/
 captures/
 analysis-data/
 dist/

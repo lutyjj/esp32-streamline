@@ -1,0 +1,26 @@
+[package]
+name = "streamline-firmware"
+version = "0.1.2"
+edition = "2021"
+rust-version = "1.82"
+
+[[bin]]
+name = "streamline-firmware"
+harness = false
+
+[lib]
+name = "streamline_firmware"
+
+[profile.release]
+opt-level = "s"
+
+[profile.dev]
+debug = true
+opt-level = "z"
+
+[target.'cfg(target_os = "espidf")'.dependencies]
+esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
+log = "0.4"
+
+[build-dependencies]
+embuild = { version = "0.33", features = ["espidf"] }

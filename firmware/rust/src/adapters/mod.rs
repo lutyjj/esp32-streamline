@@ -4,3 +4,4 @@
 //! persistence and hardware/runtime translation.
 
 pub mod nvs;
+pub mod wifi;

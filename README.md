@@ -32,9 +32,7 @@ vinyl/CD switch
 
 ### 1. Flash the Firmware
 
-We provide pre-built firmware binaries on the [GitHub Releases](../../releases) page so you don't need to build from source.
-
-1. Download the latest `esp32-streamline-vX.Y.Z-merged.bin` from the Releases page.
+1. Download the latest `esp32-streamline-vX.Y.Z-merged.bin` from [Releases](../../releases).
 2. Flash it to your ESP32 Audio Kit using `esptool.py` (install via `pip install esptool`):
    ```sh
    esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 esp32-streamline-vX.Y.Z-merged.bin
@@ -42,8 +40,6 @@ We provide pre-built firmware binaries on the [GitHub Releases](../../releases) 
    *(Adjust `-p` to your serial port, e.g., `/dev/cu.usbserial-0001` on macOS or `COM3` on Windows)*
 
 ### 2. Run the HTTP Bridge
-
-The bridge is provided as a pre-built Docker image on GitHub Container Registry. 
 
 **Via Docker Compose:**
 Create a `docker-compose.yml` file on your server:

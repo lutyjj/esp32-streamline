@@ -12,6 +12,7 @@ use streamline_firmware::{
         http::{self, ApiState, Mode},
         i2s::Capture,
         nvs::ConfigStore,
+        ota,
         tcp::TargetAddress,
         wifi,
     },
@@ -69,11 +70,20 @@ fn main() -> Result<()> {
         None => start_setup(&mut wifi, &suffix)?,
     };
 
+    // Reaching a healthy streaming state is the signal an over-the-air image
+    // booted correctly; confirm the slot so the rollback watchdog accepts it. A
+    // device that fell back to the setup AP stays in pending-verify and reverts
+    // to the previous firmware on the next reboot.
+    if mode == Mode::Streaming {
+        ota::mark_current_valid();
+    }
+
     let state = Arc::new(ApiState {
         mode,
         config: Arc::new(Mutex::new(config)),
         store,
         stream,
+        ota: Arc::new(ota::OtaProgress::default()),
     });
     let _server = http::start(state)?;
     loop {

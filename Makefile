@@ -1,4 +1,5 @@
 PROJECT_VERSION := $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' bridge/pyproject.toml)
+FIRMWARE_VERSION := $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' firmware/streamline/Cargo.toml)
 VERSION ?= $(PROJECT_VERSION)
 PORT ?= /dev/cu.usbserial-0001
 BRIDGE_ARGS ?=
@@ -70,6 +71,7 @@ analysis-capture:
 version-check:
 	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
 	@test "$(VERSION)" = "$(PROJECT_VERSION)" || (echo "VERSION=$(VERSION) does not match bridge/pyproject.toml ($(PROJECT_VERSION))" >&2; exit 2)
+	@test "$(VERSION)" = "$(FIRMWARE_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.toml ($(FIRMWARE_VERSION))" >&2; exit 2)
 	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$$' || (echo "VERSION must be a semantic version" >&2; exit 2)
 
 release: version-check check firmware-artifacts bridge-image

@@ -46,8 +46,15 @@ monitor:
 clean: image
 	$(DOCKER_RUN) cargo clean
 
+# `-full.bin` is the serial-flash image: it bundles the OTA-capable partition
+# table and the rollback-enabled bootloader the ESP-IDF build produced, so a
+# device flashed over USB lands on the two-slot layout that over-the-air updates
+# need. `-ota.bin` is the bare application image the device pulls and writes into
+# the inactive slot. SHA256SUMS stores basenames so the device can match the
+# `-ota.bin` entry by filename.
 artifacts: build
 	mkdir -p $(DIST_DIR)/firmware
-	docker run $(DOCKER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-$(VERSION)-full.bin --merge --skip-padding
+	docker run $(DOCKER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-$(VERSION)-full.bin --merge --skip-padding --flash-size 8mb --bootloader target/$(TARGET)/release/bootloader.bin --partition-table partitions.csv
+	docker run $(DOCKER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size 8MB -o /dist/firmware/streamline-$(VERSION)-ota.bin $(ELF)'
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-$(VERSION).elf
-	shasum -a 256 $(DIST_DIR)/firmware/streamline-$(VERSION)-full.bin $(DIST_DIR)/firmware/streamline-$(VERSION).elf > $(DIST_DIR)/firmware/SHA256SUMS
+	cd $(DIST_DIR)/firmware && shasum -a 256 streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf > SHA256SUMS

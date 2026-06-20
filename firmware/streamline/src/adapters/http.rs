@@ -14,7 +14,11 @@ use esp_idf_svc::http::server::{Configuration, EspHttpServer};
 use serde::Serialize;
 
 use crate::{
-    adapters::{nvs::ConfigStore, wifi},
+    adapters::{
+        nvs::ConfigStore,
+        ota::{self, OtaProgress, OtaSnapshot},
+        wifi,
+    },
     config::{AudioSettings, InputLine, RuntimeConfig},
     levels::CLIP_THRESHOLD_ABS,
     runtime::StreamStatus,
@@ -34,6 +38,7 @@ pub struct ApiState {
     pub config: Arc<Mutex<RuntimeConfig>>,
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
+    pub ota: Arc<OtaProgress>,
 }
 
 pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
@@ -128,6 +133,32 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         };
         save(&state_for_audio, next)?;
         reboot_response(request)
+    })?;
+
+    // Pull the latest GitHub release and flash it to the inactive OTA slot. The
+    // work runs on a background task; clients poll `/api/status` (the `ota` field)
+    // for progress, and the device reboots into the new image on success.
+    let state_for_ota = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>("/api/ota/update", Method::Post, move |request| {
+        if !authorized(&request, &state_for_ota) {
+            return unauthorized(request);
+        }
+        match ota::spawn_update(Arc::clone(&state_for_ota.ota)) {
+            Ok(()) => respond(
+                request,
+                202,
+                "application/json",
+                r#"{"ok":true,"started":true}"#,
+            ),
+            Err(error) => {
+                let body = format!(
+                    r#"{{"error":{}}}"#,
+                    serde_json::to_string(&error.to_string())
+                        .unwrap_or_else(|_| "\"update unavailable\"".to_owned())
+                );
+                respond(request, 409, "application/json", &body)
+            }
+        }
     })?;
 
     server.fn_handler::<anyhow::Error, _>("/api/reset", Method::Post, move |request| {
@@ -345,6 +376,7 @@ struct StatusResponse<'a> {
     target: TargetStatus<'a>,
     audio: AudioStatus,
     metrics: MetricsStatus,
+    ota: OtaSnapshot,
 }
 
 #[derive(Serialize)]
@@ -460,6 +492,7 @@ fn status_json(state: &ApiState) -> String {
             rms_right: metrics.rms_right,
             clipped_samples_total: metrics.clipped_total,
         },
+        ota: state.ota.snapshot(),
     })
 }
 

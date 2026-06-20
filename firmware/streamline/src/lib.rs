@@ -10,6 +10,7 @@ pub mod config;
 pub mod levels;
 pub mod packet;
 pub mod protocol;
+pub mod update;
 
 #[cfg(target_os = "espidf")]
 pub mod adapters;

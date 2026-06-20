@@ -70,6 +70,8 @@ audio_dac:
     auto_gain: false
     mic_gain: 0dB
     adc_attenuation: 12
+    # The board's line-in jack is wired to the codec's line2 inputs.
+    adc_input: line2
 
 # The es8388 component also exposes the ADC input line selection.
 select:

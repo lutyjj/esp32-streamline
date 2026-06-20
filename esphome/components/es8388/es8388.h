@@ -80,6 +80,11 @@ class ES8388 : public audio_dac::AudioDac, public Component, public i2c::I2CDevi
   /// @brief Sets the ADC digital attenuation in dB (0..96, 0.5 dB steps).
   void set_adc_attenuation(float db);
 
+  /// @brief Selects the ADC input line applied at setup. The board's line-in
+  /// jack is on line2, whereas the chip resets to line1, so this is set to line2
+  /// by default. Runtime changes still go through the select component.
+  void set_default_adc_input(uint8_t input) { this->default_adc_input_ = static_cast<AdcInputMicLine>(input); }
+
  protected:
   bool apply_mic_gain_();
   bool apply_adc_attenuation_();
@@ -89,6 +94,7 @@ class ES8388 : public audio_dac::AudioDac, public Component, public i2c::I2CDevi
   bool auto_gain_{false};
   uint8_t mic_gain_{0};
   uint8_t adc_attenuation_reg_{0};
+  AdcInputMicLine default_adc_input_{ADC_INPUT_MIC_LINE2};
 
   /// @brief Mutes or unmutes the DAC audio out
   /// @param mute_state True to mute, false to unmute

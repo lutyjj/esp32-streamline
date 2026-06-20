@@ -9,6 +9,15 @@ CONF_ES8388_ID = "es8388_id"
 CONF_AUTO_GAIN = "auto_gain"
 CONF_MIC_GAIN = "mic_gain"
 CONF_ADC_ATTENUATION = "adc_attenuation"
+CONF_ADC_INPUT = "adc_input"
+
+# ES8388 ADC input selection (ADCCONTROL2). The Audio Kit line-in jack is wired
+# to LINPUT2/RINPUT2, so default to line2 instead of the chip reset (line1).
+ADC_INPUT = {
+    "LINE1": 0,
+    "LINE2": 1,
+    "DIFFERENCE": 2,
+}
 
 # ES8388 ADC input PGA: nine 3 dB steps mapped to the ADCCONTROL1 nibble.
 MIC_GAIN = {
@@ -42,6 +51,10 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_ADC_ATTENUATION, default=0.0): cv.float_range(
                 min=0.0, max=96.0
             ),
+            # Default ADC input line. The board's line-in jack is on line2.
+            cv.Optional(CONF_ADC_INPUT, default="line2"): cv.enum(
+                ADC_INPUT, upper=True
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -56,3 +69,4 @@ async def to_code(config):
     cg.add(var.set_auto_gain(config[CONF_AUTO_GAIN]))
     cg.add(var.set_mic_gain(config[CONF_MIC_GAIN]))
     cg.add(var.set_adc_attenuation(config[CONF_ADC_ATTENUATION]))
+    cg.add(var.set_default_adc_input(config[CONF_ADC_INPUT]))

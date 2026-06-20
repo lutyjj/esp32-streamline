@@ -59,6 +59,10 @@ void ES8388::setup() {
   // Fixed ADC input PGA gain (0..24 dB in 3 dB steps), same value on L and R.
   ES8388_ERROR_FAILED(this->apply_mic_gain_());
 
+  // Select the ADC input line (ADCCONTROL2). Defaults to line2 for the board's
+  // line-in jack; the chip would otherwise reset to line1.
+  ES8388_ERROR_FAILED(this->set_adc_input_mic(this->default_adc_input_));
+
   // set to Mono Right
   ES8388_ERROR_FAILED(this->write_byte(ES8388_ADCCONTROL3, 0x02));
 
@@ -128,9 +132,11 @@ void ES8388::dump_config() {
   ESP_LOGCONFIG(TAG,
                 "  Auto gain (ALC): %s\n"
                 "  Mic PGA gain: %u dB\n"
-                "  ADC attenuation: %.1f dB",
+                "  ADC attenuation: %.1f dB\n"
+                "  Default ADC input: line%u",
                 YESNO(this->auto_gain_), static_cast<unsigned>(this->mic_gain_) * 3,
-                this->adc_attenuation_reg_ / 2.0f);
+                this->adc_attenuation_reg_ / 2.0f,
+                static_cast<unsigned>(this->default_adc_input_) + 1);
 #ifdef USE_SELECT
   LOG_SELECT("  ", "DacOutputSelect", this->dac_output_select_);
   LOG_SELECT("  ", "ADCInputMicSelect", this->adc_input_mic_select_);

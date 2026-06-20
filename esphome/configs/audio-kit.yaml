@@ -27,8 +27,13 @@ esp32:
 logger:
   level: INFO
 
-# This node streams to the bridge without Home Assistant. Add an encrypted `api:`
-# block only when Home Assistant diagnostics/control are wanted.
+# Native API for Home Assistant. Streaming to the bridge does not need this; it
+# is here to expose the codec controls and diagnostics below. Generate your own
+# key with `openssl rand -base64 32` and treat it as a secret for real use.
+api:
+  encryption:
+    key: "NabtgRinXUWTvImpPncSmdwZDlNla9m1JkfIoEeMUHI="
+
 wifi:
   ssid: "REPLACE_WITH_WIFI_SSID"
   password: "REPLACE_WITH_WIFI_PASSWORD"
@@ -58,12 +63,13 @@ i2c:
 
 # Upstream's es8388 forces voice-recording ALC (up to +23.5 dB auto-gain), which
 # clips a line-level source. The vendored copy under components/es8388 exposes
-# these knobs; capture line-in clean at fixed 0 dB gain with ALC off.
+# these knobs. These are the boot defaults; the HA controls below tune them live.
 audio_dac:
   - platform: es8388
     id: es8388_codec
     auto_gain: false
     mic_gain: 0dB
+    adc_attenuation: 12
 
 # The es8388 component also exposes the ADC input line selection.
 select:
@@ -71,6 +77,50 @@ select:
     es8388_id: es8388_codec
     adc_input_mic:
       name: "StreamLine ADC Input"
+
+# Live HA control of the codec gain path. Values are applied to the ES8388 over
+# I2C immediately and restored across reboots.
+number:
+  - platform: template
+    name: "Mic Gain"
+    id: mic_gain
+    unit_of_measurement: "dB"
+    min_value: 0
+    max_value: 24
+    step: 3
+    initial_value: 0
+    optimistic: true
+    restore_value: true
+    set_action:
+      - lambda: "id(es8388_codec).set_mic_gain((uint8_t) (x / 3));"
+  - platform: template
+    name: "ADC Attenuation"
+    id: adc_attenuation
+    unit_of_measurement: "dB"
+    min_value: 0
+    max_value: 48
+    step: 0.5
+    initial_value: 12
+    optimistic: true
+    restore_value: true
+    set_action:
+      - lambda: "id(es8388_codec).set_adc_attenuation(x);"
+
+switch:
+  - platform: template
+    name: "Auto Gain (ALC)"
+    id: auto_gain
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - lambda: "id(es8388_codec).set_auto_gain(true);"
+    turn_off_action:
+      - lambda: "id(es8388_codec).set_auto_gain(false);"
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 5s
 
 i2s_audio:
   id: audio_i2s

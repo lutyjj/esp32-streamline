@@ -12,6 +12,8 @@
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
 
+#include <esp_system.h>
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -27,7 +29,12 @@ constexpr const char *const TAG = "streamline";
 constexpr uint32_t SAMPLE_RATE = 48000;
 constexpr TickType_t NETWORK_RETRY_TICKS = pdMS_TO_TICKS(250);
 constexpr int TCP_TIMEOUT_MS = 250;
-constexpr UBaseType_t NETWORK_TASK_PRIORITY = 18;
+// Stay below the lwIP TCP/IP thread (CONFIG_LWIP_TCPIP_TASK_PRIO=18). At equal
+// priority the two round-robin on the same core, so this send loop steals slices
+// from the thread that processes segments and ACKs and throttles throughput
+// below the DMA-paced producer rate -> the queue overflows and drops. Sitting
+// under the stack lets TCP/IP always preempt and drain promptly.
+constexpr UBaseType_t NETWORK_TASK_PRIORITY = 2;
 constexpr uint32_t NETWORK_TASK_STACK_BYTES = 8192;
 
 } // namespace
@@ -135,23 +142,43 @@ void StreamLine::network_task_(void *parameter) {
 
 void StreamLine::run_network_task_() {
   uint32_t last_stats = millis();
+  uint32_t sent_window = 0;
+  uint32_t max_send_us = 0;
+  uint32_t blocked_sends = 0;  // sends that took longer than one packet period
   while (!this->stopping_) {
     const uint32_t now = millis();
     if (now - last_stats >= 5000) {
+      const uint32_t elapsed_ms = now - last_stats;
       last_stats = now;
-      ESP_LOGI(TAG, "stats: queue=%u/%u drops=%u net_errors=%u reconnects=%u",
+      ESP_LOGI(TAG,
+               "stats: queue=%u/%u sent=%u/s drops=%u net_errors=%u reconnects=%u "
+               "max_send=%ums slow_sends=%u heap=%u",
                static_cast<unsigned>(uxQueueMessagesWaiting(this->queue_)), QUEUE_DEPTH,
-               this->queue_drops_, this->network_errors_, this->reconnects_);
+               static_cast<unsigned>(sent_window * 1000 / elapsed_ms), this->queue_drops_,
+               this->network_errors_, this->reconnects_, max_send_us / 1000, blocked_sends,
+               static_cast<unsigned>(esp_get_free_heap_size()));
+      sent_window = 0;
+      max_send_us = 0;
+      blocked_sends = 0;
     }
 
     AudioPacket packet{};
     if (xQueueReceive(this->queue_, &packet, pdMS_TO_TICKS(100)) != pdPASS)
       continue;
 
+    const uint32_t send_start = micros();
     while (!this->stopping_ && !this->send_packet_(packet)) {
       this->network_errors_++;
       vTaskDelay(NETWORK_RETRY_TICKS);
     }
+    const uint32_t send_us = micros() - send_start;
+    if (send_us > max_send_us)
+      max_send_us = send_us;
+    // One packet is 256 frames at 48 kHz ~= 5.33 ms; a send longer than that
+    // cannot keep up with the producer and is what backs the queue up.
+    if (send_us > 5333)
+      blocked_sends++;
+    sent_window++;
   }
   vTaskDelete(nullptr);
 }

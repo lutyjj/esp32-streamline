@@ -28,9 +28,68 @@ vinyl/CD switch
   -> Music Assistant / players
 ```
 
-## Getting Started
+## Quick Start
 
-### Build and Flash
+### 1. Flash the Firmware
+
+We provide pre-built firmware binaries on the [GitHub Releases](../../releases) page so you don't need to build from source.
+
+1. Download the latest `esp32-streamline-vX.Y.Z-merged.bin` from the Releases page.
+2. Flash it to your ESP32 Audio Kit using `esptool.py` (install via `pip install esptool`):
+   ```sh
+   esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 esp32-streamline-vX.Y.Z-merged.bin
+   ```
+   *(Adjust `-p` to your serial port, e.g., `/dev/cu.usbserial-0001` on macOS or `COM3` on Windows)*
+
+### 2. Run the HTTP Bridge
+
+The bridge is provided as a pre-built Docker image on GitHub Container Registry. 
+
+**Via Docker Compose:**
+Create a `docker-compose.yml` file on your server:
+```yaml
+services:
+  streamline-http:
+    image: ghcr.io/lutyjj/esp32-streamline-bridge:latest
+    restart: unless-stopped
+    ports:
+      - "39000:39000/tcp"
+      - "8088:8088/tcp"
+    environment:
+      # Optional: Restrict bridge input to your ESP32's IP
+      # STREAMLINE_SOURCE_ALLOW: 192.168.1.100
+```
+Then start it: `docker compose up -d`
+
+**Via direct Docker command:**
+```sh
+docker run -d --restart unless-stopped -p 39000:39000 -p 8088:8088 ghcr.io/lutyjj/esp32-streamline-bridge:latest
+```
+
+Your audio will now be available as a live WAV stream at `http://<bridge-host>:8088/streamline.wav`. You can add this URL directly to Music Assistant as a radio/web stream. Status is exposed as JSON at `http://<bridge-host>:8088/status`.
+
+The HTTP bridge defaults to a 1 second playout buffer. It smooths timing jitter from the TCP stream and keeps the audio timeline stable by concealing missing packets instead of skipping over them.
+
+### 3. Configuration
+
+If no config is saved, the device will host an open setup network named `esp32-streamline-XXXX`.
+1. Connect to the network and open `http://192.168.4.1/`.
+2. Enter your home Wi-Fi credentials.
+3. Set the **TCP Target Host** to the IP of your bridge server.
+4. Set a **Console Secret** (minimum 8 characters) — you'll need it to change
+   settings later. Save it; the console keeps it as your token automatically.
+5. Save and let the device reboot onto your network.
+
+Once it is on your network, open the device's web console at its station IP and
+enter the console token to change Wi-Fi, target, or audio settings at any time;
+each save reboots to apply. Reads (status) stay open; writes require the token.
+Resetting configuration returns the device to the setup AP. Traffic is plain HTTP,
+so keep the device on a trusted LAN (see [Security Notes](docs/security.md)). If you
+lose the secret, re-commission by reflashing.
+
+## Advanced Usage & Development
+
+### Building from Source
 
 The Rust/ESP-IDF firmware is built in Docker. Flashing is host-side because
 Docker Desktop does not reliably expose macOS serial devices.
@@ -59,24 +118,7 @@ Docker Desktop does not reliably expose macOS serial devices.
 
 Release artifacts contain an `espflash`-compatible merged image plus the ELF.
 
-### Configuration
-
-If no config is saved, the device will host an open setup network named `esp32-streamline-XXXX`.
-1. Connect to the network and open `http://192.168.4.1/`.
-2. Enter your home Wi-Fi credentials.
-3. Set the **TCP Target Host** to the IP of your bridge server.
-4. Set a **Console Secret** (minimum 8 characters) — you'll need it to change
-   settings later. Save it; the console keeps it as your token automatically.
-5. Save and let the device reboot onto your network.
-
-Once it is on your network, open the device's web console at its station IP and
-enter the console token to change Wi-Fi, target, or audio settings at any time;
-each save reboots to apply. Reads (status) stay open; writes require the token.
-Resetting configuration returns the device to the setup AP. Traffic is plain HTTP,
-so keep the device on a trusted LAN (see [Security Notes](docs/security.md)). If you
-lose the secret, re-commission by reflashing.
-
-### HTTP WAV Bridge
+### Running the Bridge from Source
 
 Run the HTTP bridge on your server or host machine to receive the TCP stream and expose it as an HTTP stream.
 
@@ -89,10 +131,6 @@ make bridge-up
 ```sh
 make bridge-run
 ```
-
-Your audio will now be available as a live WAV stream at `http://<bridge-host>:8088/streamline.wav`. You can add this URL directly to Music Assistant as a radio/web stream.
-
-The HTTP bridge defaults to a 1 second playout buffer. It smooths timing jitter from the TCP stream and keeps the audio timeline stable by concealing missing packets instead of skipping over them. Status is exposed as JSON at `http://<bridge-host>:8088/status`.
 
 Useful bridge options:
 

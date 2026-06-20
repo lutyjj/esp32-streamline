@@ -7,6 +7,13 @@ Rules for AI coding agents in this repository.
 Say what you want to say with the fewest words. Good engineers don't
 talk much; they do.
 
+## Write for the present, not the past
+
+Document and comment the current state only. Never frame things as history —
+no "previously X, now Y", "was/now", "changed from", "bumped to", or changelog
+narration in docs or code comments. Write as if the code was always this way.
+History lives in git.
+
 ## Understand before changing
 
 Read `README.md` and `docs/` to understand the project. Do not re-derive

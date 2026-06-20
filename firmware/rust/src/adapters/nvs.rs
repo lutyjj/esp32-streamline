@@ -1,0 +1,119 @@
+//! ESP-IDF NVS persistence for StreamLine configuration.
+
+use anyhow::{ensure, Result};
+use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
+
+use crate::config::{AudioSettings, ConfigError, InputLine, RuntimeConfig, CONFIG_SCHEMA_VERSION};
+
+const NAMESPACE: &str = "streamline";
+const KEY_SCHEMA: &str = "schema";
+const KEY_SSID: &str = "ssid";
+const KEY_PASSWORD: &str = "password";
+const KEY_TARGET_HOST: &str = "target_host";
+const KEY_TARGET_PORT: &str = "target_port";
+const KEY_INPUT_LINE: &str = "input_line";
+const KEY_INPUT_GAIN: &str = "input_gain";
+const KEY_ADC_ATTENUATION: &str = "adc_attenuation";
+
+/// Owns the NVS namespace and keeps the partition alive for the lifetime of
+/// all reads and writes. The namespace is versioned so future migrations have
+/// an explicit decision point rather than silently accepting incompatible data.
+pub struct ConfigStore {
+    nvs: EspDefaultNvs,
+}
+
+impl ConfigStore {
+    pub fn open(partition: EspDefaultNvsPartition) -> Result<Self> {
+        Ok(Self {
+            nvs: EspNvs::new(partition, NAMESPACE, true)?,
+        })
+    }
+
+    pub fn load(&self) -> Result<Option<RuntimeConfig>> {
+        let schema = self.nvs.get_u8(KEY_SCHEMA)?;
+        if schema.is_none() {
+            return Ok(None);
+        }
+        ensure!(
+            schema == Some(CONFIG_SCHEMA_VERSION),
+            "unsupported StreamLine configuration schema: {schema:?}"
+        );
+
+        let config = RuntimeConfig {
+            ssid: self.required_string(KEY_SSID)?,
+            password: self.required_string(KEY_PASSWORD)?,
+            target_host: self.required_string(KEY_TARGET_HOST)?,
+            target_port: self.required_u16(KEY_TARGET_PORT)?,
+            audio: AudioSettings {
+                input_line: InputLine::try_from(self.required_u8(KEY_INPUT_LINE)?)
+                    .map_err(config_error)?,
+                input_gain: self.required_u8(KEY_INPUT_GAIN)?,
+                adc_attenuation_db: self.required_u8(KEY_ADC_ATTENUATION)?,
+            },
+        };
+        config.validate().map_err(config_error)?;
+        Ok(Some(config))
+    }
+
+    pub fn save(&self, config: &RuntimeConfig) -> Result<()> {
+        config.validate().map_err(config_error)?;
+        self.nvs.set_str(KEY_SSID, &config.ssid)?;
+        self.nvs.set_str(KEY_PASSWORD, &config.password)?;
+        self.nvs.set_str(KEY_TARGET_HOST, &config.target_host)?;
+        self.nvs.set_u16(KEY_TARGET_PORT, config.target_port)?;
+        self.nvs.set_u8(
+            KEY_INPUT_LINE,
+            match config.audio.input_line {
+                InputLine::One => 1,
+                InputLine::Two => 2,
+            },
+        )?;
+        self.nvs.set_u8(KEY_INPUT_GAIN, config.audio.input_gain)?;
+        self.nvs
+            .set_u8(KEY_ADC_ATTENUATION, config.audio.adc_attenuation_db)?;
+        self.nvs.set_u8(KEY_SCHEMA, CONFIG_SCHEMA_VERSION)?;
+        Ok(())
+    }
+
+    pub fn clear(&self) -> Result<()> {
+        for key in [
+            KEY_SCHEMA,
+            KEY_SSID,
+            KEY_PASSWORD,
+            KEY_TARGET_HOST,
+            KEY_TARGET_PORT,
+            KEY_INPUT_LINE,
+            KEY_INPUT_GAIN,
+            KEY_ADC_ATTENUATION,
+        ] {
+            self.nvs.remove(key)?;
+        }
+        Ok(())
+    }
+
+    fn required_string(&self, key: &str) -> Result<String> {
+        // ESP-IDF limits NVS string values to the partition entry capacity;
+        // this upper bound comfortably covers WPA credentials and DNS hosts.
+        let mut buffer = [0_u8; 256];
+        self.nvs
+            .get_str(key, &mut buffer)?
+            .map(str::to_owned)
+            .ok_or_else(|| anyhow::anyhow!("missing required configuration key: {key}"))
+    }
+
+    fn required_u8(&self, key: &str) -> Result<u8> {
+        self.nvs
+            .get_u8(key)?
+            .ok_or_else(|| anyhow::anyhow!("missing required configuration key: {key}"))
+    }
+
+    fn required_u16(&self, key: &str) -> Result<u16> {
+        self.nvs
+            .get_u16(key)?
+            .ok_or_else(|| anyhow::anyhow!("missing required configuration key: {key}"))
+    }
+}
+
+fn config_error(error: ConfigError) -> anyhow::Error {
+    anyhow::anyhow!("invalid stored configuration: {error:?}")
+}

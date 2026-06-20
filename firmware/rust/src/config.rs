@@ -2,6 +2,7 @@
 
 pub const MIN_PORT: u16 = 1;
 pub const MAX_ADC_ATTENUATION_DB: u8 = 48;
+pub const CONFIG_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputLine {
@@ -76,6 +77,33 @@ pub enum ConfigError {
     InvalidAdcAttenuation,
 }
 
+/// The application-owned configuration loaded from persistent storage.
+///
+/// The configuration is intentionally independent of ESP-IDF types. Hardware
+/// adapters translate it only at their boundary, so validation can be tested
+/// on the host and used by both the setup HTTP service and boot path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeConfig {
+    pub ssid: String,
+    pub password: String,
+    pub target_host: String,
+    pub target_port: u16,
+    pub audio: AudioSettings,
+}
+
+impl RuntimeConfig {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        NetworkSettings {
+            ssid: &self.ssid,
+            target_host: &self.target_host,
+            target_port: self.target_port,
+        }
+        .validate()?;
+        self.audio.validate()?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{AudioSettings, ConfigError, InputLine, NetworkSettings};
@@ -122,5 +150,22 @@ mod tests {
             .validate(),
             Err(ConfigError::InvalidInputGain)
         );
+    }
+
+    #[test]
+    fn validates_an_owned_runtime_configuration() {
+        let config = super::RuntimeConfig {
+            ssid: "studio".to_owned(),
+            password: "secret".to_owned(),
+            target_host: "bridge.local".to_owned(),
+            target_port: 39_000,
+            audio: AudioSettings {
+                input_line: InputLine::Two,
+                input_gain: 0,
+                adc_attenuation_db: 0,
+            },
+        };
+
+        assert_eq!(config.validate(), Ok(()));
     }
 }

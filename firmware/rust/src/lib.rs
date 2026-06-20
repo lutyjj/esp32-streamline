@@ -10,3 +10,6 @@ pub mod config;
 pub mod mode;
 pub mod protocol;
 pub mod telemetry;
+
+#[cfg(target_os = "espidf")]
+pub mod adapters;

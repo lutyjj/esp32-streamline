@@ -19,6 +19,7 @@ debug = true
 opt-level = "z"
 
 [target.'cfg(target_os = "espidf")'.dependencies]
+anyhow = "1"
 esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
 log = "0.4"
 

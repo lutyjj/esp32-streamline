@@ -1,12 +1,10 @@
-.pio/
-.platformio-home/
 .cache/
 .mypy_cache/
 .ruff_cache/
 __pycache__/
 *.py[cod]
-firmware/streamline/src/local_config.h
-firmware/streamline/src/generated_web_ui.h
+firmware/streamline/.embuild/
+firmware/streamline/target/
 captures/
 analysis-data/
 dist/

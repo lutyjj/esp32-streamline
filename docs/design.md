@@ -23,11 +23,11 @@ The bridge host should:
 ## Protocol Choice
 
 The device sends raw PCM with a small fixed header. The wire format is transport-
-agnostic (see `docs/pcm-protocol.md`); the current transport is a persistent TCP
-connection using raw lwIP sockets. Earlier builds used UDP, but UDP cannot recover
-lost packets and the first Arduino `WiFiClient` TCP attempt was unstable, so the
-firmware now uses raw sockets with a split capture/network task design. See
-`docs/tcp-idf-transport-plan.md` for the full rationale and results.
+agnostic (see `docs/pcm-protocol.md`); the transport is a persistent TCP connection
+using the Rust standard library (`std::net`) over lwIP. TCP gives ordered,
+recoverable delivery, and a split capture/network task design keeps a network
+stall from blocking I2S capture. See `docs/tcp-idf-transport-plan.md` for the
+runtime contract.
 
 Format:
 
@@ -101,35 +101,29 @@ Assistant, add `http://<bridge-host>:8088/streamline.wav` as a URL/radio stream.
 Music Assistant proves unreliable with live WAV, keep this bridge and add
 Liquidsoap/Icecast after it to publish FLAC/MP3/Opus.
 
-## Codec Discovery
+## Codec
 
-The next firmware should scan I2C on likely Audio Kit pins:
+The codec sits on I2C on the Audio Kit pins:
 
 ```text
 SDA GPIO33
 SCL GPIO32
 ```
 
-Detected on this board:
+The board's codec answers at `0x10`:
 
 ```text
-SDA GPIO33 / SCL GPIO32 -> 0x10
+0x10 -> ES8388  <-- current board
+0x1A -> AC101   <-- other ESP32-A1S variant
 ```
 
-Detected addresses determine the driver path:
-
-```text
-0x1A -> AC101 candidate
-0x10 -> ES8388 candidate  <-- current board
-```
-
-After the codec is known, use an existing codec driver rather than writing register
-init tables from scratch. `pschatzmann/arduino-audio-driver` supports both AC101 and
-ES8388 board profiles, and pairs with `arduino-audio-tools` for I2S stream plumbing.
+The firmware owns a minimal typed ES8388 register sequence behind a `Codec`
+trait, so other ESP32-A1S codec variants can be added as their own
+implementation without touching the capture or transport paths.
 
 ## Capture Bring-Up
 
-`firmware/diagnostics/audio-level` is the first ES8388 capture target. It uses:
+The production Rust capture adapter uses:
 
 ```text
 codec:       ES8388 at 0x10
@@ -137,9 +131,8 @@ I2C:         SDA GPIO33 / SCL GPIO32
 I2S:         MCLK GPIO0 / BCLK GPIO27 / LRCLK GPIO25 / DIN GPIO35
 sample rate: 48000 Hz
 format:      16-bit stereo I2S
-input:       ES8388 line input 1
-gain:        AUDIO_INPUT_GAIN=25
+input:       ES8388 line input 1 or 2 (NVS configured)
+gain:        0-100 (NVS configured)
 ```
 
-It prints one-second RMS and peak readings over serial. This target proves codec
-initialization and I2S capture before adding Wi-Fi streaming.
+The streaming task exports queue and transport counters via `/api/status`.

@@ -1,18 +1,35 @@
 # Security Notes
 
-ESP32 StreamLine is intended for a trusted local network. It does not provide TLS,
-user accounts, or encrypted audio transport.
+ESP32 StreamLine is a trusted-LAN appliance. It has **no HTTP API authentication**,
+no transport encryption (TLS), and no user accounts. Assume any host that can reach
+the device can fully control it. Run it only on a trusted network segment and do not
+expose its HTTP port or setup AP to untrusted networks.
 
-## Firmware
+## Firmware threat model
 
-- The setup AP is open so an unconfigured device can be commissioned without a
-  pre-shared password. Use it only on a trusted network and finish setup promptly.
-- A configured device does not expose its web console by default. Enter `web` over
-  serial to enable the read-only status console.
-- Configuration writes are accepted only while the device is in setup AP mode.
-  Enter `setup` over serial to return to that mode.
-- The firmware stores Wi-Fi credentials in ESP32 NVS. It never returns the saved
-  password through its HTTP API.
+- The HTTP API is fully open. Any client that can reach the device can read status
+  and change every setting — Wi-Fi credentials, stream target, and audio levels —
+  and trigger a configuration reset. There is no authentication yet; it is tracked
+  in [issue #6](https://github.com/lutyjj/esp32-streamline/issues/6).
+- The setup AP (shown only while the device is unconfigured) is open, so initial
+  commissioning needs no pre-shared secret. Finish setup promptly on a trusted
+  network.
+- Saved Wi-Fi credentials live in ESP32 NVS and are never returned through the API
+  — the password field is write-only.
+- Captured audio is sent as clear PCM over TCP; it is not encrypted.
+
+Prefer an isolated IoT VLAN with firewall rules limiting which hosts can reach the
+device and the bridge.
+
+## Hardening roadmap
+
+The most sensible next step is request authentication (issue #6): provision a
+per-device secret and require it on the mutating endpoints (`/api/setup`,
+`/api/audio`, `/api/reset`) while leaving reads open. That stops casual tampering
+and accidental resets without the cost of on-device TLS, which is impractical to
+manage for a LAN appliance. Network isolation remains the primary control; add a
+TLS-terminating, authenticating reverse proxy only if the device is ever exposed
+beyond a trusted LAN.
 
 ## Bridge
 

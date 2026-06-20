@@ -15,15 +15,16 @@ place, and the standing items we track or have accepted.
 | HTTP writes (`:80`) | Token-gated once provisioned | No token, no control (config, target, reset) |
 | HTTP reads (`:80`) | Open; never returns secrets | Status readable, no control |
 | Setup AP | Open; writes open only until a secret is set | Brief window at first commissioning |
+| OTA update (`/api/ota/update`) | Token-gated; HTTPS to GitHub, SHA-256 verified, auto-rollback | Owner-only; authenticity rests on TLS to GitHub, not a signing key |
 | PCM stream (`:39000`) | Cleartext TCP | LAN sniffer can capture audio |
 | Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access |
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
 
 ## Authentication
 
-- Mutating endpoints (`/api/setup`, `/api/audio`, `/api/reset`) require the console
-  secret as a bearer token, checked with a constant-time compare. Reads are open and
-  never return secrets.
+- Mutating endpoints (`/api/setup`, `/api/audio`, `/api/reset`, `/api/ota/update`)
+  require the console secret as a bearer token, checked with a constant-time compare.
+  Reads are open and never return secrets.
 - The token rides in a custom `Authorization` header, not a cookie or Basic Auth, so
   the API is CSRF-safe: a cross-origin request triggers a CORS preflight the device
   never approves. Cookies/Basic Auth would be sent by the browser automatically.

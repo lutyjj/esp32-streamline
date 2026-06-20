@@ -8,6 +8,7 @@ ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It capt
 - **Zero-config commissioning**: Starts an `esp32-streamline-XXXX` setup AP when unconfigured; set Wi-Fi, stream target, and audio from a small web console and tune levels live while streaming. A per-device console secret set at commissioning gates all config writes; reads stay open. Traffic is plain HTTP, so keep the device on a trusted LAN — see [Security Notes](docs/security.md).
 - **Easily Self-Hosted Bridge**: Includes Python scripts and Docker Compose files to bridge the TCP PCM stream into a live HTTP WAV stream.
 - **Bridge Playout Buffer**: The bridge buffers the stream before exposing the WAV output, smoothing timing jitter and concealing any gaps around disconnects.
+- **Over-the-Air Updates**: One console button pulls the latest GitHub release over HTTPS, verifies its SHA-256, and flashes it to a second app slot with automatic rollback if the new image fails to boot — see [OTA Updates](docs/ota.md).
 
 ## Hardware
 
@@ -32,10 +33,10 @@ vinyl/CD switch
 
 ### 1. Flash the Firmware
 
-1. Download the latest `esp32-streamline-vX.Y.Z-merged.bin` from [Releases](../../releases).
+1. Download the latest `streamline-X.Y.Z-full.bin` from [Releases](../../releases).
 2. Flash it to your ESP32 Audio Kit using `esptool.py` (install via `pip install esptool`):
    ```sh
-   esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 esp32-streamline-vX.Y.Z-merged.bin
+   esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 streamline-X.Y.Z-full.bin
    ```
    *(Adjust `-p` to your serial port, e.g., `/dev/cu.usbserial-0001` on macOS or `COM3` on Windows)*
 
@@ -82,6 +83,14 @@ each save reboots to apply. Reads (status) stay open; writes require the token.
 Resetting configuration returns the device to the setup AP. Traffic is plain HTTP,
 so keep the device on a trusted LAN (see [Security Notes](docs/security.md)). If you
 lose the secret, re-commission by reflashing.
+
+### 4. Updating
+
+Open the console's **Advanced** tab and click **Check & update firmware**. The
+device pulls the latest GitHub release over HTTPS, verifies it, and reboots into
+it; a failed image rolls back automatically. Devices flashed before OTA support
+must be re-flashed once over serial with a `-full.bin` to gain the two-slot
+layout — see [OTA Updates](docs/ota.md).
 
 ## Advanced Usage & Development
 

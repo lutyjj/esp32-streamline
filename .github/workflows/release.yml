@@ -25,6 +25,7 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           test "$version" = "$(sed -n 's/^version = "\([^"]*\)"/\1/p' bridge/pyproject.toml)"
+          test "$version" = "$(sed -n 's/^version = "\([^"]*\)"/\1/p' firmware/streamline/Cargo.toml)"
           printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Build release deliverables

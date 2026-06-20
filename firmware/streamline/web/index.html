@@ -110,6 +110,13 @@ button.action.primary{background:#153a5c;border-color:#245b8f}
         </div>
       </form>
     </div>
+    <div class="panel" style="margin-top:12px">
+      <div class="kv" id="otaKv"></div>
+      <div class="actions" style="margin-top:10px">
+        <button class="action primary" type="button" id="updateButton">Check &amp; update firmware</button>
+      </div>
+      <div class="msg" id="otaMsg">Pulls the latest release from GitHub and reboots into it.</div>
+    </div>
   </section>
 
   <section id="api" class="section">
@@ -137,6 +144,17 @@ function applyStatus(s){
   $('apiDump').textContent=JSON.stringify(s,null,2);
   $('clip_threshold').value=s.metrics.clip_threshold_abs;
   setConfigWritable(s.configuration_writable);
+  applyOta(s.firmware_version,s.ota);
+}
+function applyOta(current,o){
+  if(!o)return;
+  const rows=[['Current',current]];
+  if(o.latest_version)rows.push(['Latest',o.latest_version]);
+  rows.push(['Update',o.phase]);
+  if(o.phase==='downloading'&&o.bytes_total)rows.push(['Progress',Math.round(100*o.bytes_written/o.bytes_total)+'%']);
+  kv($('otaKv'),rows);
+  $('updateButton').disabled=o.busy;
+  if(o.message)$('otaMsg').textContent=o.message;
 }
 function setConfigWritable(writable){document.querySelectorAll('#setupForm input,#setupForm button').forEach(el=>{el.disabled=!writable;el.title=writable?'':'Wi-Fi and target are writable only in setup mode'})}
 async function refresh(){try{applyStatus(await api('/api/status'));}catch(e){setMsg(e.message,'err')}}
@@ -147,6 +165,7 @@ document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{doc
 $('setupForm').addEventListener('submit',async e=>{e.preventDefault();try{validateSetup();await api('/api/setup',{method:'POST',body:formBody(e.target)});const s=$('admin_secret').value.trim();if(s){localStorage.setItem('streamline_token',s);tokenInput.value=s}setMsg('setup saved; rebooting','ok')}catch(err){setMsg(err.message,'err')}})
 $('audioForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/audio',{method:'POST',body:formBody(e.target)});setMsg('audio saved; rebooting','ok')}catch(err){setMsg(err.message,'err')}})
 $('resetButton').addEventListener('click',async()=>{if(!confirm('Clear saved config and reboot?'))return;try{await api('/api/reset',{method:'POST'});setMsg('config cleared; rebooting','ok')}catch(err){setMsg(err.message,'err')}})
+$('updateButton').addEventListener('click',async()=>{if(!confirm('Download the latest firmware from GitHub and flash it? The device reboots if an update is found.'))return;$('updateButton').disabled=true;try{await api('/api/ota/update',{method:'POST'});$('otaMsg').textContent='checking for updates…'}catch(err){$('otaMsg').textContent=err.message;$('updateButton').disabled=false}})
 const tokenInput=$('token');tokenInput.value=token();tokenInput.addEventListener('change',()=>localStorage.setItem('streamline_token',tokenInput.value.trim()));
 loadConfig().then(refresh).catch(e=>setMsg(e.message,'err'));setInterval(refresh,1500);
 </script>

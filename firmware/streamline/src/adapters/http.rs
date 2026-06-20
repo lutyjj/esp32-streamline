@@ -65,12 +65,16 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         )
     })?;
 
-    // The whole configuration API is writable in any mode on the trusted-LAN
-    // assumption; request authentication is tracked separately (issue #6). A
-    // Wi-Fi/target change reboots the device so it reconnects with the new
-    // settings, which keeps swapping the stream target during testing cheap.
+    // Mutating endpoints require the console secret once one is provisioned (see
+    // `authorized`); an unconfigured device accepts setup writes so the first
+    // secret can be set. A Wi-Fi/target change reboots the device so it reconnects
+    // with the new settings, which keeps swapping the stream target during testing
+    // cheap.
     let state_for_setup = Arc::clone(&state);
     server.fn_handler::<anyhow::Error, _>("/api/setup", Method::Post, move |mut request| {
+        if !authorized(&request, &state_for_setup) {
+            return unauthorized(request);
+        }
         let form = form(&mut request)?;
         let current = state_for_setup
             .config
@@ -82,11 +86,19 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             .filter(|value| !value.is_empty())
             .cloned()
             .unwrap_or(current.password);
+        // The secret is preserved when left blank, just like the password, so a
+        // routine Wi-Fi/target change does not require retyping it.
+        let admin_secret = form
+            .get("admin_secret")
+            .filter(|value| !value.is_empty())
+            .cloned()
+            .unwrap_or(current.admin_secret);
         let next = RuntimeConfig {
             ssid: required(&form, "ssid")?.to_owned(),
             password,
             target_host: required(&form, "target_host")?.trim().to_owned(),
             target_port: parse_u16(&form, "target_port")?,
+            admin_secret,
             audio: current.audio,
         };
         save(&state_for_setup, next)?;
@@ -96,6 +108,9 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     // Audio params take effect after the reboot re-applies the codec config.
     let state_for_audio = Arc::clone(&state);
     server.fn_handler::<anyhow::Error, _>("/api/audio", Method::Post, move |mut request| {
+        if !authorized(&request, &state_for_audio) {
+            return unauthorized(request);
+        }
         let form = form(&mut request)?;
         let current = state_for_audio
             .config
@@ -116,6 +131,9 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     })?;
 
     server.fn_handler::<anyhow::Error, _>("/api/reset", Method::Post, move |request| {
+        if !authorized(&request, &state) {
+            return unauthorized(request);
+        }
         state
             .store
             .lock()
@@ -179,6 +197,59 @@ where
         )?
         .write_all(body.as_bytes())?;
     Ok(())
+}
+
+/// Authorize a mutating request against the configured console secret.
+///
+/// An unprovisioned device (empty secret) accepts writes so it can be commissioned
+/// over its own setup AP. Once a secret is set, callers must present it as a
+/// `Bearer` token. Using a custom header (rather than a cookie or HTTP Basic) makes
+/// the API CSRF-safe: a cross-origin browser request carrying it triggers a CORS
+/// preflight that this server never approves.
+fn authorized<C>(request: &embedded_svc::http::server::Request<C>, state: &ApiState) -> bool
+where
+    C: embedded_svc::http::server::Connection,
+{
+    let secret = match state.config.lock() {
+        Ok(config) => config.admin_secret.clone(),
+        Err(_) => return false,
+    };
+    if secret.is_empty() {
+        return true;
+    }
+    match request
+        .header("Authorization")
+        .and_then(|value| value.strip_prefix("Bearer "))
+    {
+        Some(token) => constant_time_eq(token.as_bytes(), secret.as_bytes()),
+        None => false,
+    }
+}
+
+/// Length-checked constant-time byte comparison so token validation does not leak
+/// the secret through response timing.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0_u8;
+    for (x, y) in a.iter().zip(b) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+fn unauthorized<C>(request: embedded_svc::http::server::Request<C>) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    respond(
+        request,
+        401,
+        "application/json",
+        r#"{"error":"unauthorized"}"#,
+    )
 }
 
 fn form<C>(request: &mut embedded_svc::http::server::Request<C>) -> Result<BTreeMap<String, String>>
@@ -269,6 +340,7 @@ struct StatusResponse<'a> {
     config_source: &'a str,
     web_server: bool,
     configuration_writable: bool,
+    auth_required: bool,
     wifi: WifiStatus<'a>,
     target: TargetStatus<'a>,
     audio: AudioStatus,
@@ -350,6 +422,7 @@ fn status_json(state: &ApiState) -> String {
         config_source: "nvs",
         web_server: true,
         configuration_writable: true,
+        auth_required: !config.admin_secret.is_empty(),
         wifi: WifiStatus {
             ssid: &config.ssid,
             status: wifi_status,
@@ -405,12 +478,20 @@ const fn line(line: InputLine) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_form;
+    use super::{constant_time_eq, parse_form};
 
     #[test]
     fn decodes_browser_urlencoded_forms() {
         let form = parse_form("ssid=Studio+WiFi&target_host=bridge%2Elocal").expect("valid form");
         assert_eq!(form["ssid"], "Studio WiFi");
         assert_eq!(form["target_host"], "bridge.local");
+    }
+
+    #[test]
+    fn constant_time_eq_matches_only_identical_secrets() {
+        assert!(constant_time_eq(b"console-secret", b"console-secret"));
+        assert!(!constant_time_eq(b"console-secret", b"console-secre"));
+        assert!(!constant_time_eq(b"console-secret", b"console-secreX"));
+        assert!(!constant_time_eq(b"", b"x"));
     }
 }

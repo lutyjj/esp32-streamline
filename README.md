@@ -5,7 +5,7 @@ ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It capt
 ## Features
 
 - **Dumb Node Architecture**: The ESP32 stays simple—capturing and moving packets. All encoding, buffering, and syncing lives on the bridge.
-- **Zero-config commissioning**: Starts an `esp32-streamline-XXXX` setup AP when unconfigured; set Wi-Fi, stream target, and audio from a small web console and tune levels live while streaming. The console and HTTP API are unauthenticated and meant for a trusted LAN — see [Security Notes](docs/security.md).
+- **Zero-config commissioning**: Starts an `esp32-streamline-XXXX` setup AP when unconfigured; set Wi-Fi, stream target, and audio from a small web console and tune levels live while streaming. A per-device console secret set at commissioning gates all config writes; reads stay open. Traffic is plain HTTP, so keep the device on a trusted LAN — see [Security Notes](docs/security.md).
 - **Easily Self-Hosted Bridge**: Includes Python scripts and Docker Compose files to bridge the TCP PCM stream into a live HTTP WAV stream.
 - **Bridge Playout Buffer**: The bridge buffers the stream before exposing the WAV output, smoothing timing jitter and concealing any gaps around disconnects.
 
@@ -65,13 +65,16 @@ If no config is saved, the device will host an open setup network named `esp32-s
 1. Connect to the network and open `http://192.168.4.1/`.
 2. Enter your home Wi-Fi credentials.
 3. Set the **TCP Target Host** to the IP of your bridge server.
-4. Save and let the device reboot onto your network.
+4. Set a **Console Secret** (minimum 8 characters) — you'll need it to change
+   settings later. Save it; the console keeps it as your token automatically.
+5. Save and let the device reboot onto your network.
 
-Once it is on your network, open the device's web console at its station IP to
-change Wi-Fi, target, or audio settings at any time; each save reboots to apply.
-Resetting configuration returns the device to the setup AP. The console and API
-are unauthenticated, so keep the device on a trusted LAN (see
-[Security Notes](docs/security.md)).
+Once it is on your network, open the device's web console at its station IP and
+enter the console token to change Wi-Fi, target, or audio settings at any time;
+each save reboots to apply. Reads (status) stay open; writes require the token.
+Resetting configuration returns the device to the setup AP. Traffic is plain HTTP,
+so keep the device on a trusted LAN (see [Security Notes](docs/security.md)). If you
+lose the secret, re-commission by reflashing.
 
 ### HTTP WAV Bridge
 

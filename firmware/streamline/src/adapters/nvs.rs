@@ -1,6 +1,6 @@
 //! ESP-IDF NVS persistence for StreamLine configuration.
 
-use anyhow::{ensure, Result};
+use anyhow::Result;
 use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
 
 use crate::config::{AudioSettings, ConfigError, InputLine, RuntimeConfig, CONFIG_SCHEMA_VERSION};
@@ -11,6 +11,7 @@ const KEY_SSID: &str = "ssid";
 const KEY_PASSWORD: &str = "password";
 const KEY_TARGET_HOST: &str = "target_host";
 const KEY_TARGET_PORT: &str = "target_port";
+const KEY_ADMIN_SECRET: &str = "admin_secret";
 const KEY_INPUT_LINE: &str = "input_line";
 const KEY_INPUT_GAIN: &str = "input_gain";
 const KEY_ADC_ATTENUATION: &str = "adc_attenuation";
@@ -34,16 +35,22 @@ impl ConfigStore {
         if schema.is_none() {
             return Ok(None);
         }
-        ensure!(
-            schema == Some(CONFIG_SCHEMA_VERSION),
-            "unsupported StreamLine configuration schema: {schema:?}"
-        );
+        // A schema from an older firmware lacks fields this build requires (for
+        // example the admin secret). Treat it as unconfigured so the device
+        // re-commissions cleanly instead of refusing to boot.
+        if schema != Some(CONFIG_SCHEMA_VERSION) {
+            log::warn!(
+                "ignoring incompatible stored configuration schema {schema:?}; re-commissioning"
+            );
+            return Ok(None);
+        }
 
         let config = RuntimeConfig {
             ssid: self.required_string(KEY_SSID)?,
             password: self.required_string(KEY_PASSWORD)?,
             target_host: self.required_string(KEY_TARGET_HOST)?,
             target_port: self.required_u16(KEY_TARGET_PORT)?,
+            admin_secret: self.required_string(KEY_ADMIN_SECRET)?,
             audio: AudioSettings {
                 input_line: InputLine::try_from(self.required_u8(KEY_INPUT_LINE)?)
                     .map_err(config_error)?,
@@ -61,6 +68,7 @@ impl ConfigStore {
         self.nvs.set_str(KEY_PASSWORD, &config.password)?;
         self.nvs.set_str(KEY_TARGET_HOST, &config.target_host)?;
         self.nvs.set_u16(KEY_TARGET_PORT, config.target_port)?;
+        self.nvs.set_str(KEY_ADMIN_SECRET, &config.admin_secret)?;
         self.nvs.set_u8(
             KEY_INPUT_LINE,
             match config.audio.input_line {
@@ -82,6 +90,7 @@ impl ConfigStore {
             KEY_PASSWORD,
             KEY_TARGET_HOST,
             KEY_TARGET_PORT,
+            KEY_ADMIN_SECRET,
             KEY_INPUT_LINE,
             KEY_INPUT_GAIN,
             KEY_ADC_ATTENUATION,

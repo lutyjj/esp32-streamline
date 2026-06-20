@@ -2,7 +2,13 @@
 
 pub const MIN_PORT: u16 = 1;
 pub const MAX_ADC_ATTENUATION_DB: u8 = 48;
-pub const CONFIG_SCHEMA_VERSION: u8 = 1;
+/// Minimum length for the console secret that guards the mutating HTTP API. Short
+/// enough to type during commissioning, long enough to resist casual guessing.
+pub const MIN_ADMIN_SECRET_LEN: usize = 8;
+/// Bumped to 2 when the admin secret was added; older stored configurations are
+/// treated as unconfigured so the device re-commissions instead of booting
+/// without a secret.
+pub const CONFIG_SCHEMA_VERSION: u8 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputLine {
@@ -75,6 +81,7 @@ pub enum ConfigError {
     InvalidInputLine,
     InvalidInputGain,
     InvalidAdcAttenuation,
+    WeakAdminSecret,
 }
 
 /// The application-owned configuration loaded from persistent storage.
@@ -88,6 +95,9 @@ pub struct RuntimeConfig {
     pub password: String,
     pub target_host: String,
     pub target_port: u16,
+    /// Shared secret required on the mutating HTTP API. Set during commissioning
+    /// and write-only: it is persisted but never returned through the API.
+    pub admin_secret: String,
     pub audio: AudioSettings,
 }
 
@@ -99,6 +109,9 @@ impl RuntimeConfig {
             target_port: self.target_port,
         }
         .validate()?;
+        if self.admin_secret.len() < MIN_ADMIN_SECRET_LEN {
+            return Err(ConfigError::WeakAdminSecret);
+        }
         self.audio.validate()?;
         Ok(())
     }
@@ -152,20 +165,33 @@ mod tests {
         );
     }
 
-    #[test]
-    fn validates_an_owned_runtime_configuration() {
-        let config = super::RuntimeConfig {
+    fn sample_runtime_config() -> super::RuntimeConfig {
+        super::RuntimeConfig {
             ssid: "studio".to_owned(),
             password: "secret".to_owned(),
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
+            admin_secret: "console-secret".to_owned(),
             audio: AudioSettings {
                 input_line: InputLine::Two,
                 input_gain: 0,
                 adc_attenuation_db: 0,
             },
-        };
+        }
+    }
 
-        assert_eq!(config.validate(), Ok(()));
+    #[test]
+    fn validates_an_owned_runtime_configuration() {
+        assert_eq!(sample_runtime_config().validate(), Ok(()));
+    }
+
+    #[test]
+    fn rejects_a_short_admin_secret() {
+        let mut config = sample_runtime_config();
+        config.admin_secret = "short".to_owned();
+        assert_eq!(config.validate(), Err(ConfigError::WeakAdminSecret));
+
+        config.admin_secret = String::new();
+        assert_eq!(config.validate(), Err(ConfigError::WeakAdminSecret));
     }
 }

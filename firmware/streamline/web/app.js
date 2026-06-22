@@ -55,6 +55,8 @@ function applyStatus(s) {
     'v' + s.firmware_version + ' / ' + s.audio.sample_rate + ' Hz / ' +
     s.audio.channels + ' ch / ' + s.audio.bits_per_sample + ' bit';
   $('mode').textContent = s.mode;
+  $('playing').textContent = s.metrics.playing ? 'yes' : 'no';
+  setMetricClass($('playingMetric'), s.metrics.playing);
   $('staIp').textContent = s.wifi.sta_ip;
   $('targetAddr').textContent = s.target.target_host + ':' + s.target.target_port;
   $('clipsLast').textContent = s.metrics.clipped_samples_total;

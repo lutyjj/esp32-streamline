@@ -4,43 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ESP32 StreamLine</title>
-<style>
-:root{color-scheme:dark;--bg:#101214;--panel:#181b1f;--panel2:#121519;--line:#2b3138;--text:#e7e9ec;--muted:#97a0aa;--good:#51d88a;--warn:#f4c95d;--bad:#ff6b6b;--accent:#6db7ff}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif}
-.wrap{max-width:1120px;margin:0 auto;padding:20px}
-.top{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
-h1{font-size:20px;line-height:1.1;margin:0 0 6px}
-.sub{color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
-.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:16px}
-.tab{appearance:none;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);padding:10px 12px;font:600 13px system-ui;cursor:pointer}
-.tab.active{color:var(--text);border-color:var(--accent)}
-.section{display:none}.section.active{display:block}
-.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px}
-.metric .label{color:var(--muted);font-size:12px}
-.metric .value{font:600 20px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:6px;overflow-wrap:anywhere}
-.metric.good .value{color:var(--good)}.metric.warn .value{color:var(--warn)}.metric.bad .value{color:var(--bad)}
-.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.kv{display:grid;grid-template-columns:160px minmax(0,1fr);gap:8px 12px}
-.kv div:nth-child(odd){color:var(--muted)}
-.kv div:nth-child(even){font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
-form{display:grid;gap:12px}
-.field{display:grid;gap:6px}
-label{font-weight:650;color:#cfd5dc}
-input,select{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--text);padding:10px 11px;font:14px system-ui}
-input:focus,select:focus{outline:2px solid rgba(109,183,255,.28);border-color:var(--accent)}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-button.action{border:1px solid var(--line);border-radius:6px;background:#20252b;color:var(--text);padding:9px 12px;font:650 13px system-ui;cursor:pointer}
-button.action.primary{background:#153a5c;border-color:#245b8f}
-.danger{background:#3a1d1d!important;border-color:#733030!important}
-.msg{min-height:20px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
-.ok{color:var(--good)}.err{color:var(--bad)}
-.api{background:#0c0e11;border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#c8d1dc;max-height:320px}
-@media(max-width:820px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols,.row{grid-template-columns:1fr}.kv{grid-template-columns:120px minmax(0,1fr)}.top{display:block}}
-@media(max-width:480px){.wrap{padding:14px}.grid{grid-template-columns:1fr}.tabs{overflow:auto}.tab{white-space:nowrap}}
-</style>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
 <main class="wrap">
@@ -95,6 +59,7 @@ button.action.primary{background:#153a5c;border-color:#245b8f}
 
   <section id="advanced" class="section">
     <div class="panel">
+      <h2 class="phead">Sound</h2>
       <form id="audioForm">
         <div class="row">
           <div class="field"><label for="input_line">Input Line</label><select id="input_line" name="line"><option value="1">Line 1</option><option value="2">Line 2</option></select></div>
@@ -110,12 +75,23 @@ button.action.primary{background:#153a5c;border-color:#245b8f}
         </div>
       </form>
     </div>
-    <div class="panel" style="margin-top:12px">
-      <div class="kv" id="otaKv"></div>
-      <div class="actions" style="margin-top:10px">
-        <button class="action primary" type="button" id="updateButton">Check &amp; update firmware</button>
+
+    <div class="panel">
+      <h2 class="phead">Firmware Update</h2>
+      <div class="cols">
+        <div>
+          <div class="subhead">Current state</div>
+          <div class="kv" id="otaKv"></div>
+          <div class="actions" style="margin-top:14px">
+            <button class="action" type="button" id="checkButton">Check for updates</button>
+            <button class="action primary" type="button" id="installButton" hidden>Install update</button>
+          </div>
+        </div>
+        <div>
+          <div class="subhead">Activity</div>
+          <div class="log" id="otaLog"><span class="dim">No update activity yet. Check pulls the latest release from GitHub; Install flashes it and reboots.</span></div>
+        </div>
       </div>
-      <div class="msg" id="otaMsg">Pulls the latest release from GitHub and reboots into it.</div>
     </div>
   </section>
 
@@ -123,51 +99,6 @@ button.action.primary{background:#153a5c;border-color:#245b8f}
     <div class="api" id="apiDump">{}</div>
   </section>
 </main>
-<script>
-const $=id=>document.getElementById(id);
-const msg=$('message');
-function setMsg(text,cls=''){msg.textContent=text;msg.className='msg '+cls}
-function dbfs(abs){if(!abs)return '-inf dBFS';return (20*Math.log10(abs/32768)).toFixed(1)+' dBFS'}
-function kv(el,rows){el.innerHTML='';for(const [k,v] of rows){const a=document.createElement('div');a.textContent=k;const b=document.createElement('div');b.textContent=v;el.append(a,b)}}
-function setMetricClass(el,good){el.classList.toggle('good',good);el.classList.toggle('bad',!good)}
-function token(){return localStorage.getItem('streamline_token')||''}
-async function api(path,opts={}){const headers=Object.assign({},opts.headers);const t=token();if(t)headers['Authorization']='Bearer '+t;const r=await fetch(path,Object.assign({},opts,{headers}));const text=await r.text();let data={};try{data=text?JSON.parse(text):{}}catch(e){data={message:text}}if(r.status===401)throw new Error('unauthorized — set the console token');if(!r.ok)throw new Error(data.error||text||r.status);return data}
-function applyStatus(s){
-  $('subtitle').textContent='v'+s.firmware_version+' / '+s.audio.sample_rate+' Hz / '+s.audio.channels+' ch / '+s.audio.bits_per_sample+' bit';
-  $('mode').textContent=s.mode;$('staIp').textContent=s.wifi.sta_ip;$('targetAddr').textContent=s.target.target_host+':'+s.target.target_port;
-  $('clipsLast').textContent=s.metrics.clipped_samples_total;$('peakLR').textContent=dbfs(s.metrics.peak_abs_left)+' / '+dbfs(s.metrics.peak_abs_right);$('rmsLR').textContent=dbfs(s.metrics.rms_left)+' / '+dbfs(s.metrics.rms_right);
-  $('rssi').textContent=s.wifi.rssi+' dBm';$('sequence').textContent=s.metrics.sequence;
-  setMetricClass($('clipMetric'),s.metrics.clipped_samples_total===0);
-  setMetricClass($('modeMetric'),s.mode==='streaming');
-  kv($('runtimeKv'),[['Config',s.config_source],['SSID',s.wifi.ssid],['Wi-Fi Status',s.wifi.status],['AP IP',s.wifi.ap_ip],['Clip Total',s.metrics.clipped_samples_total]]);
-  kv($('audioKv'),[['Input Line',s.audio.input_line],['Input Gain',s.audio.input_gain],['ADC Attenuation',s.audio.adc_atten_db+' dB'],['Clip Threshold',s.metrics.clip_threshold_abs],['Peak L',dbfs(s.metrics.peak_abs_left)],['Peak R',dbfs(s.metrics.peak_abs_right)]]);
-  $('apiDump').textContent=JSON.stringify(s,null,2);
-  $('clip_threshold').value=s.metrics.clip_threshold_abs;
-  setConfigWritable(s.configuration_writable);
-  applyOta(s.firmware_version,s.ota);
-}
-function applyOta(current,o){
-  if(!o)return;
-  const rows=[['Current',current]];
-  if(o.latest_version)rows.push(['Latest',o.latest_version]);
-  rows.push(['Update',o.phase]);
-  if(o.phase==='downloading'&&o.bytes_total)rows.push(['Progress',Math.round(100*o.bytes_written/o.bytes_total)+'%']);
-  kv($('otaKv'),rows);
-  $('updateButton').disabled=o.busy;
-  if(o.message)$('otaMsg').textContent=o.message;
-}
-function setConfigWritable(writable){document.querySelectorAll('#setupForm input,#setupForm button').forEach(el=>{el.disabled=!writable;el.title=writable?'':'Wi-Fi and target are writable only in setup mode'})}
-async function refresh(){try{applyStatus(await api('/api/status'));}catch(e){setMsg(e.message,'err')}}
-async function loadConfig(){const c=await api('/api/config');$('ssid').value=c.ssid;$('target_host').value=c.target_host;$('target_port').value=c.target_port;$('input_line').value=c.input_line;$('input_gain').value=c.input_gain;$('adc_atten_db').value=c.adc_atten_db}
-function formBody(form){return new URLSearchParams(new FormData(form))}
-function validateSetup(){const host=$('target_host').value.trim();if(host.includes(':')||host.includes('/'))throw new Error('TCP target host must not include port, scheme, or path')}
-document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab,.section').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active')}))
-$('setupForm').addEventListener('submit',async e=>{e.preventDefault();try{validateSetup();await api('/api/setup',{method:'POST',body:formBody(e.target)});const s=$('admin_secret').value.trim();if(s){localStorage.setItem('streamline_token',s);tokenInput.value=s}setMsg('setup saved; rebooting','ok')}catch(err){setMsg(err.message,'err')}})
-$('audioForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/audio',{method:'POST',body:formBody(e.target)});setMsg('audio saved; rebooting','ok')}catch(err){setMsg(err.message,'err')}})
-$('resetButton').addEventListener('click',async()=>{if(!confirm('Clear saved config and reboot?'))return;try{await api('/api/reset',{method:'POST'});setMsg('config cleared; rebooting','ok')}catch(err){setMsg(err.message,'err')}})
-$('updateButton').addEventListener('click',async()=>{if(!confirm('Download the latest firmware from GitHub and flash it? The device reboots if an update is found.'))return;$('updateButton').disabled=true;try{await api('/api/ota/update',{method:'POST'});$('otaMsg').textContent='checking for updates…'}catch(err){$('otaMsg').textContent=err.message;$('updateButton').disabled=false}})
-const tokenInput=$('token');tokenInput.value=token();tokenInput.addEventListener('change',()=>localStorage.setItem('streamline_token',tokenInput.value.trim()));
-loadConfig().then(refresh).catch(e=>setMsg(e.message,'err'));setInterval(refresh,1500);
-</script>
+<script src="/app.js"></script>
 </body>
 </html>

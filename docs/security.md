@@ -22,8 +22,9 @@ place, and the standing items we track or have accepted.
 
 ## Authentication
 
-- Mutating endpoints (`/api/setup`, `/api/audio`, `/api/reset`, `/api/ota/update`)
-  require the console secret as a bearer token, checked with a constant-time compare.
+- Mutating endpoints (`/api/setup`, `/api/audio`, `/api/reset`, `/api/ota/check`,
+  `/api/ota/update`) require the console secret as a bearer token, checked with a
+  constant-time compare.
   Reads are open and never return secrets.
 - The token rides in a custom `Authorization` header, not a cookie or Basic Auth, so
   the API is CSRF-safe: a cross-origin request triggers a CORS preflight the device

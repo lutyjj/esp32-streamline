@@ -25,6 +25,8 @@ use crate::{
 };
 
 const INDEX: &str = include_str!("../../web/index.html");
+const APP_CSS: &str = include_str!("../../web/app.css");
+const APP_JS: &str = include_str!("../../web/app.js");
 const MAX_REQUEST_BYTES: usize = 512;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,6 +50,12 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     })?;
     server.fn_handler("/", Method::Get, move |request| {
         respond(request, 200, "text/html; charset=utf-8", INDEX)
+    })?;
+    server.fn_handler("/app.css", Method::Get, move |request| {
+        respond(request, 200, "text/css; charset=utf-8", APP_CSS)
+    })?;
+    server.fn_handler("/app.js", Method::Get, move |request| {
+        respond(request, 200, "text/javascript; charset=utf-8", APP_JS)
     })?;
 
     let state_for_status = Arc::clone(&state);
@@ -135,6 +143,17 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         reboot_response(request)
     })?;
 
+    // Check GitHub for a newer release without installing it. The work runs on a
+    // background task; clients poll `/api/status` (the `ota` field) for the
+    // outcome (`up-to-date` or `update-available`).
+    let state_for_check = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>("/api/ota/check", Method::Post, move |request| {
+        if !authorized(&request, &state_for_check) {
+            return unauthorized(request);
+        }
+        ota_accepted(request, ota::spawn_check(Arc::clone(&state_for_check.ota)))
+    })?;
+
     // Pull the latest GitHub release and flash it to the inactive OTA slot. The
     // work runs on a background task; clients poll `/api/status` (the `ota` field)
     // for progress, and the device reboots into the new image on success.
@@ -143,22 +162,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         if !authorized(&request, &state_for_ota) {
             return unauthorized(request);
         }
-        match ota::spawn_update(Arc::clone(&state_for_ota.ota)) {
-            Ok(()) => respond(
-                request,
-                202,
-                "application/json",
-                r#"{"ok":true,"started":true}"#,
-            ),
-            Err(error) => {
-                let body = format!(
-                    r#"{{"error":{}}}"#,
-                    serde_json::to_string(&error.to_string())
-                        .unwrap_or_else(|_| "\"update unavailable\"".to_owned())
-                );
-                respond(request, 409, "application/json", &body)
-            }
-        }
+        ota_accepted(request, ota::spawn_update(Arc::clone(&state_for_ota.ota)))
     })?;
 
     server.fn_handler::<anyhow::Error, _>("/api/reset", Method::Post, move |request| {
@@ -228,6 +232,34 @@ where
         )?
         .write_all(body.as_bytes())?;
     Ok(())
+}
+
+/// Answer an OTA trigger: `202` once the background worker is running, or `409`
+/// with the reason if one is already in progress.
+fn ota_accepted<C>(
+    request: embedded_svc::http::server::Request<C>,
+    spawned: anyhow::Result<()>,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    match spawned {
+        Ok(()) => respond(
+            request,
+            202,
+            "application/json",
+            r#"{"ok":true,"started":true}"#,
+        ),
+        Err(error) => {
+            let body = format!(
+                r#"{{"error":{}}}"#,
+                serde_json::to_string(&error.to_string())
+                    .unwrap_or_else(|_| "\"update unavailable\"".to_owned())
+            );
+            respond(request, 409, "application/json", &body)
+        }
+    }
 }
 
 /// Authorize a mutating request against the configured console secret.

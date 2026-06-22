@@ -56,6 +56,8 @@ pub enum Phase {
     /// Image flashed and verified; the device is about to reboot into it.
     Installed = 5,
     Failed = 6,
+    /// A check found a newer release; the user can choose to install it.
+    UpdateAvailable = 7,
 }
 
 impl Phase {
@@ -68,6 +70,7 @@ impl Phase {
             Phase::Verifying => "verifying",
             Phase::Installed => "installed",
             Phase::Failed => "failed",
+            Phase::UpdateAvailable => "update-available",
         }
     }
 
@@ -79,6 +82,7 @@ impl Phase {
             4 => Phase::Verifying,
             5 => Phase::Installed,
             6 => Phase::Failed,
+            7 => Phase::UpdateAvailable,
             _ => Phase::Idle,
         }
     }
@@ -195,10 +199,30 @@ pub fn mark_current_valid() {
     }
 }
 
+/// Whether a worker should stop after checking or go on to install.
+#[derive(Clone, Copy)]
+enum Action {
+    /// Report whether a newer release exists, then stop.
+    Check,
+    /// Check and, if newer, download, verify, and reboot into it.
+    Install,
+}
+
+/// Check GitHub for a newer release without installing anything. The HTTP
+/// handler returns immediately; callers poll [`OtaProgress::snapshot`] for the
+/// result (`up-to-date` or `update-available`).
+pub fn spawn_check(progress: Arc<OtaProgress>) -> Result<()> {
+    spawn(progress, Action::Check)
+}
+
 /// Kick off a check-and-install on a worker thread. The HTTP handler returns
 /// immediately; callers poll [`OtaProgress::snapshot`] for status. A successful
 /// install reboots the device into the new slot.
 pub fn spawn_update(progress: Arc<OtaProgress>) -> Result<()> {
+    spawn(progress, Action::Install)
+}
+
+fn spawn(progress: Arc<OtaProgress>, action: Action) -> Result<()> {
     if !progress.begin() {
         bail!("an update is already in progress");
     }
@@ -213,7 +237,7 @@ pub fn spawn_update(progress: Arc<OtaProgress>) -> Result<()> {
 
     let spawned = thread::Builder::new()
         .stack_size(WORKER_STACK_BYTES)
-        .spawn(move || run(&progress))
+        .spawn(move || run(&progress, action))
         .context("cannot spawn OTA task");
 
     ThreadSpawnConfiguration::default()
@@ -223,7 +247,7 @@ pub fn spawn_update(progress: Arc<OtaProgress>) -> Result<()> {
     spawned.map(drop)
 }
 
-fn run(progress: &OtaProgress) {
+fn run(progress: &OtaProgress, action: Action) {
     let current = env!("CARGO_PKG_VERSION");
     progress.set_message("synchronizing clock");
     if let Err(error) = time::wait_for_sync() {
@@ -239,6 +263,12 @@ fn run(progress: &OtaProgress) {
     if !update::is_newer(current, &release.version) {
         progress.set_message(&format!("already on the latest release ({current})"));
         progress.set_phase(Phase::UpToDate);
+        return;
+    }
+
+    if let Action::Check = action {
+        progress.set_message(&format!("update {} available", release.version));
+        progress.set_phase(Phase::UpdateAvailable);
         return;
     }
 

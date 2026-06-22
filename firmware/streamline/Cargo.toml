@@ -18,6 +18,11 @@ opt-level = "s"
 debug = true
 opt-level = "z"
 
+[dependencies]
+# Used by the host-testable verifying-download pipeline in `update`, so it must
+# build for every target, not only the device.
+sha2 = { version = "0.10", default-features = false }
+
 [target.'cfg(target_os = "espidf")'.dependencies]
 anyhow = "1"
 embedded-svc = "0.29"
@@ -25,7 +30,6 @@ esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = { version = "0.10", default-features = false }
 
 [build-dependencies]
 embuild = { version = "0.33", features = ["espidf"] }

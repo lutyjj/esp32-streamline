@@ -28,9 +28,11 @@ use esp_idf_svc::{
     ota::EspOta,
 };
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 
-use crate::update::{self, OtaRelease};
+use crate::{
+    adapters::time,
+    update::{self, ImageSink, ImageSource, InstallProgress, OtaRelease},
+};
 
 /// GitHub repository that publishes releases. The `latest/download/` path always
 /// resolves to the newest release's assets, so no API token or version lookup is
@@ -223,6 +225,11 @@ pub fn spawn_update(progress: Arc<OtaProgress>) -> Result<()> {
 
 fn run(progress: &OtaProgress) {
     let current = env!("CARGO_PKG_VERSION");
+    progress.set_message("synchronizing clock");
+    if let Err(error) = time::wait_for_sync() {
+        return progress.fail(format!("time synchronization failed: {error:#}"));
+    }
+    progress.set_message("checking latest release");
     let release = match check() {
         Ok(release) => release,
         Err(error) => return progress.fail(format!("update check failed: {error:#}")),
@@ -253,6 +260,7 @@ fn client() -> Result<Client<EspHttpConnection>> {
         crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
         follow_redirects_policy: FollowRedirectsPolicy::FollowAll,
         buffer_size: Some(READ_CHUNK_BYTES),
+        buffer_size_tx: Some(1024),
         ..Default::default()
     })
     .context("cannot create HTTPS client")?;
@@ -298,6 +306,10 @@ fn check() -> Result<OtaRelease> {
 
 /// Stream the application image into the inactive slot, verifying its SHA-256
 /// before committing the boot pointer.
+///
+/// The verifying-download logic lives in [`update::install_verified`]; this only
+/// wires the HTTPS response and the flash slot into it and commits or discards
+/// the slot on the outcome.
 fn install(release: &OtaRelease, progress: &OtaProgress) -> Result<()> {
     let url = download_url(&release.filename);
     let mut client = client()?;
@@ -315,61 +327,53 @@ fn install(release: &OtaRelease, progress: &OtaProgress) -> Result<()> {
     let mut ota = EspOta::new().context("cannot open OTA partition set")?;
     let mut slot = ota.initiate_update().context("cannot begin OTA write")?;
 
-    let result = stream_into(&mut response, &mut slot, release, progress);
-    match result {
-        Ok(()) => {
-            slot.complete().context("cannot finalize OTA image")?;
-            Ok(())
-        }
+    let outcome = {
+        let mut source = ResponseSource(&mut response);
+        let mut sink = SlotSink(&mut slot);
+        let mut reporter = Reporter { progress, total };
+        update::install_verified(&mut source, &mut sink, &release.sha256, &mut reporter)
+    };
+    match outcome {
+        Ok(()) => slot.complete().context("cannot finalize OTA image"),
         Err(error) => {
             let _ = slot.abort();
-            Err(error)
+            Err(anyhow!("{error}"))
         }
     }
 }
 
-fn stream_into(
-    response: &mut impl Read,
-    slot: &mut esp_idf_svc::ota::EspOtaUpdate<'_>,
-    release: &OtaRelease,
-    progress: &OtaProgress,
-) -> Result<()> {
-    use embedded_svc::io::Write;
+/// Adapts an HTTPS response body to the byte source the installer reads from.
+struct ResponseSource<'a, R: Read>(&'a mut R);
 
-    let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; READ_CHUNK_BYTES];
-    let mut written: u32 = 0;
-    loop {
-        let read = try_read_full(&mut *response, &mut buffer)
-            .map_err(|error| anyhow!("download read failed: {:?}", error.0))?;
-        if read == 0 {
-            break;
-        }
-        let chunk = &buffer[..read];
-        hasher.update(chunk);
-        slot.write_all(chunk)
-            .map_err(|error| anyhow!("flash write failed: {error:?}"))?;
-        written = written.saturating_add(read as u32);
-        progress.set_progress(written, progress.total.load(Ordering::Relaxed));
+impl<R: Read> ImageSource for ResponseSource<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> Result<usize, String> {
+        try_read_full(&mut *self.0, buffer).map_err(|error| format!("{:?}", error.0))
     }
-
-    progress.set_phase(Phase::Verifying);
-    let digest = hasher.finalize();
-    let actual = hex_lower(&digest);
-    if actual != release.sha256 {
-        bail!(
-            "checksum mismatch: expected {}, got {actual}",
-            release.sha256
-        );
-    }
-    Ok(())
 }
 
-fn hex_lower(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(char::from_digit((byte >> 4) as u32, 16).unwrap());
-        out.push(char::from_digit((byte & 0x0f) as u32, 16).unwrap());
+/// Adapts an OTA flash slot to the byte sink the installer writes to.
+struct SlotSink<'a, 'b>(&'a mut esp_idf_svc::ota::EspOtaUpdate<'b>);
+
+impl ImageSink for SlotSink<'_, '_> {
+    fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
+        use embedded_svc::io::Write;
+        self.0
+            .write_all(chunk)
+            .map_err(|error| format!("{error:?}"))
     }
-    out
+}
+
+/// Surfaces installer lifecycle events on the shared [`OtaProgress`].
+struct Reporter<'a> {
+    progress: &'a OtaProgress,
+    total: u32,
+}
+
+impl InstallProgress for Reporter<'_> {
+    fn downloaded(&mut self, bytes: u32) {
+        self.progress.set_progress(bytes, self.total);
+    }
+    fn verifying(&mut self) {
+        self.progress.set_phase(Phase::Verifying);
+    }
 }

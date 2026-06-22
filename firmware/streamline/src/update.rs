@@ -7,6 +7,8 @@
 //! comparison here makes them host-testable, away from the network and flash
 //! adapters.
 
+use sha2::{Digest, Sha256};
+
 /// The application image published for over-the-air updates. Its filename
 /// carries the release version, so one `SHA256SUMS` entry yields everything the
 /// installer needs.
@@ -81,9 +83,205 @@ fn parse_semver(version: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
+/// Bytes pulled in one read; large enough to keep flash writes efficient without
+/// crowding the worker stack.
+const CHUNK_BYTES: usize = 4_096;
+
+/// A source of firmware-image bytes. The download pipeline reads from this rather
+/// than a concrete HTTP client, so it runs against an in-memory buffer in tests.
+pub trait ImageSource {
+    /// Read into `buffer`, returning the byte count; `Ok(0)` signals end of stream.
+    fn read(&mut self, buffer: &mut [u8]) -> Result<usize, String>;
+}
+
+/// A destination for verified firmware bytes: an OTA flash slot on device, a
+/// `Vec<u8>` in tests.
+pub trait ImageSink {
+    fn write(&mut self, chunk: &[u8]) -> Result<(), String>;
+}
+
+/// Lifecycle callbacks the pipeline emits so a caller can surface progress
+/// however it likes (atomic counters on device, nothing in tests).
+pub trait InstallProgress {
+    fn downloaded(&mut self, bytes: u32);
+    fn verifying(&mut self);
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InstallError {
+    Source(String),
+    Sink(String),
+    Checksum { expected: String, actual: String },
+}
+
+impl std::fmt::Display for InstallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InstallError::Source(error) => write!(f, "download read failed: {error}"),
+            InstallError::Sink(error) => write!(f, "flash write failed: {error}"),
+            InstallError::Checksum { expected, actual } => {
+                write!(f, "checksum mismatch: expected {expected}, got {actual}")
+            }
+        }
+    }
+}
+
+/// Stream the image from `source` into `sink`, hashing as it goes, and reject a
+/// payload whose SHA-256 does not match `expected_sha256`.
+///
+/// The hash is verified only after the last byte, so the caller commits the slot
+/// on `Ok` and discards it on `Err`: a wrong or corrupt image is never booted.
+pub fn install_verified(
+    source: &mut impl ImageSource,
+    sink: &mut impl ImageSink,
+    expected_sha256: &str,
+    progress: &mut impl InstallProgress,
+) -> Result<(), InstallError> {
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; CHUNK_BYTES];
+    let mut written: u32 = 0;
+    loop {
+        let read = source.read(&mut buffer).map_err(InstallError::Source)?;
+        if read == 0 {
+            break;
+        }
+        let chunk = &buffer[..read];
+        hasher.update(chunk);
+        sink.write(chunk).map_err(InstallError::Sink)?;
+        written = written.saturating_add(read as u32);
+        progress.downloaded(written);
+    }
+
+    progress.verifying();
+    let actual = hex_lower(&hasher.finalize());
+    if actual != expected_sha256 {
+        return Err(InstallError::Checksum {
+            expected: expected_sha256.to_owned(),
+            actual,
+        });
+    }
+    Ok(())
+}
+
+/// Render bytes as a lowercase hex string for digest comparison.
+pub fn hex_lower(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(char::from_digit((byte >> 4) as u32, 16).unwrap());
+        out.push(char::from_digit((byte & 0x0f) as u32, 16).unwrap());
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{is_newer, parse_release, OtaRelease};
+    use super::{
+        install_verified, is_newer, parse_release, ImageSink, ImageSource, InstallError,
+        InstallProgress, OtaRelease,
+    };
+
+    /// SHA-256 of `b"hello"`, the reference vector the pipeline tests verify against.
+    const HELLO_SHA256: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+
+    struct SliceSource<'a> {
+        data: &'a [u8],
+        position: usize,
+    }
+
+    impl ImageSource for SliceSource<'_> {
+        fn read(&mut self, buffer: &mut [u8]) -> Result<usize, String> {
+            let remaining = &self.data[self.position..];
+            let take = remaining.len().min(buffer.len());
+            buffer[..take].copy_from_slice(&remaining[..take]);
+            self.position += take;
+            Ok(take)
+        }
+    }
+
+    struct FailingSource;
+
+    impl ImageSource for FailingSource {
+        fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, String> {
+            Err("connection reset".to_owned())
+        }
+    }
+
+    #[derive(Default)]
+    struct VecSink(Vec<u8>);
+
+    impl ImageSink for VecSink {
+        fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
+            self.0.extend_from_slice(chunk);
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct CountingProgress {
+        last_written: u32,
+        verifying_calls: u32,
+    }
+
+    impl InstallProgress for CountingProgress {
+        fn downloaded(&mut self, bytes: u32) {
+            self.last_written = bytes;
+        }
+        fn verifying(&mut self) {
+            self.verifying_calls += 1;
+        }
+    }
+
+    #[test]
+    fn install_commits_a_payload_whose_digest_matches() {
+        let mut source = SliceSource {
+            data: b"hello",
+            position: 0,
+        };
+        let mut sink = VecSink::default();
+        let mut progress = CountingProgress::default();
+
+        install_verified(&mut source, &mut sink, HELLO_SHA256, &mut progress)
+            .expect("matching digest installs");
+
+        assert_eq!(sink.0, b"hello");
+        assert_eq!(progress.last_written, 5);
+        assert_eq!(progress.verifying_calls, 1);
+    }
+
+    #[test]
+    fn install_rejects_a_digest_mismatch() {
+        let mut source = SliceSource {
+            data: b"hello",
+            position: 0,
+        };
+        let mut sink = VecSink::default();
+        let mut progress = CountingProgress::default();
+        let expected = "0".repeat(64);
+
+        let error = install_verified(&mut source, &mut sink, &expected, &mut progress)
+            .expect_err("wrong digest is rejected");
+
+        assert_eq!(
+            error,
+            InstallError::Checksum {
+                expected,
+                actual: HELLO_SHA256.to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn install_surfaces_a_source_error() {
+        let mut source = FailingSource;
+        let mut sink = VecSink::default();
+        let mut progress = CountingProgress::default();
+
+        let error = install_verified(&mut source, &mut sink, HELLO_SHA256, &mut progress)
+            .expect_err("read failure aborts");
+
+        assert_eq!(error, InstallError::Source("connection reset".to_owned()));
+        assert!(sink.0.is_empty());
+    }
 
     const SUMS: &str = "\
 647c75052d1d7863a2b9a1692268843fde27f454dfe112db57906f20c6bc360f  streamline-0.2.2-full.bin

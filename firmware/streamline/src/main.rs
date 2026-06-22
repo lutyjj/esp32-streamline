@@ -14,7 +14,7 @@ use streamline_firmware::{
         nvs::ConfigStore,
         ota,
         tcp::TargetAddress,
-        wifi,
+        time, wifi,
     },
     config::{AudioSettings, InputLine, RuntimeConfig},
     runtime,
@@ -75,6 +75,9 @@ fn main() -> Result<()> {
     // device that fell back to the setup AP stays in pending-verify and reverts
     // to the previous firmware on the next reboot.
     if mode == Mode::Streaming {
+        if let Err(error) = time::start() {
+            log::warn!("SNTP initialization failed: {error:#}");
+        }
         ota::mark_current_valid();
     }
 

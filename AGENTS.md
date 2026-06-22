@@ -19,6 +19,27 @@ History lives in git.
 Read `README.md` and `docs/` to understand the project. Do not re-derive
 decisions already documented there.
 
+## Keep logic testable; push hardware to the edges
+
+Application logic lives in the crate root (`config`, `packet`, `protocol`,
+`update`) and is tested on the host. ESP-IDF, the network, and flash live behind
+`adapters/`. New logic goes in the core; adapters stay thin wiring. When the core
+must reach hardware, define a small trait it owns and implement that trait in the
+adapter — never call a concrete driver from the core.
+
+## One module, one job
+
+Each module does its own thing. Transport, parsing, orchestration, and
+persistence do not share a file. A reader should learn what a module does from
+its name and the first line of its doc comment.
+
+## Simple, with seams
+
+Write the simplest thing that works; do not add abstraction on speculation. But
+isolate what changes — URLs, transports, sinks, clocks — behind a narrow
+interface so it can be swapped or faked in a test. Abstract when it removes
+duplication or unlocks a test, not before.
+
 ## Build flows live in Makefiles
 
 To understand the layout, run `tree` (or `git ls-files`). The root `Makefile`

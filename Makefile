@@ -2,6 +2,8 @@ PROJECT_VERSION := $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' bridge/pyproje
 FIRMWARE_VERSION := $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' firmware/streamline/Cargo.toml)
 VERSION ?= $(PROJECT_VERSION)
 PORT ?= /dev/cu.usbserial-0001
+CAPTURE_SECS ?= 20
+CAPTURE_ARGS ?=
 BRIDGE_ARGS ?=
 BRIDGE_PORTS ?= -p 39000:39000 -p 8088:8088
 REF ?=
@@ -9,7 +11,7 @@ CAP ?=
 
 .PHONY: check lint test format clean \
 	bridge-format bridge-lint bridge-test bridge-image bridge-run bridge-up \
-	firmware-format firmware-lint firmware-build firmware-test firmware-flash firmware-monitor firmware-clean firmware-artifacts \
+	firmware-format firmware-lint firmware-build firmware-test firmware-flash firmware-monitor firmware-capture firmware-clean firmware-artifacts \
 	analysis-lint analysis-capture version-check release
 
 check: lint test
@@ -55,6 +57,9 @@ firmware-flash:
 
 firmware-monitor:
 	$(MAKE) -C firmware monitor PORT=$(PORT)
+
+firmware-capture:
+	$(MAKE) -C firmware capture PORT=$(PORT) CAPTURE_SECS=$(CAPTURE_SECS) CAPTURE_ARGS=$(CAPTURE_ARGS)
 
 firmware-clean:
 	$(MAKE) -C firmware clean

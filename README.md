@@ -120,6 +120,11 @@ Docker Desktop does not reliably expose macOS serial devices.
    ```sh
    make firmware-monitor PORT=/dev/ttyUSB0
    ```
+   `firmware-monitor` is interactive. For a bounded, non-interactive capture
+   that returns on its own (CI, scripts, a quick look), use `firmware-capture`:
+   ```sh
+   make firmware-capture CAPTURE_SECS=30 PORT=/dev/ttyUSB0
+   ```
 
 Release artifacts contain an `espflash`-compatible merged image plus the ELF.
 

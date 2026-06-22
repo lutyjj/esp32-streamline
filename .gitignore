@@ -9,3 +9,4 @@ captures/
 analysis-data/
 dist/
 .DS_Store
+.env

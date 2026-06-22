@@ -15,7 +15,9 @@ DOCKER_FLAGS := --rm --user 0:0 -e HOME=/home/esp \
 	-v "$(CURDIR)/$(SRC):/workspace" -w /workspace
 DOCKER_RUN := docker run $(DOCKER_FLAGS) $(IMAGE)
 
-.PHONY: image format lint build test flash monitor clean artifacts
+CAPTURE_SECS ?= 20
+
+.PHONY: image format lint build test flash monitor capture clean artifacts
 
 image:
 	docker build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -42,6 +44,14 @@ flash: build
 monitor:
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
 	espflash monitor --chip esp32 --port $(PORT)
+
+# Time-boxed, non-interactive capture for CI and agents that cannot drive the
+# blocking interactive monitor. `make capture CAPTURE_SECS=30` resets the device
+# and reads its serial output for a fixed window, then stops. Pass extra espflash
+# monitor flags through CAPTURE_ARGS.
+capture:
+	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
+	python3 scripts/capture.py --seconds $(CAPTURE_SECS) --port $(PORT) --chip esp32 $(if $(wildcard $(SRC)/$(ELF)),--elf $(SRC)/$(ELF),) $(CAPTURE_ARGS)
 
 clean: image
 	$(DOCKER_RUN) cargo clean

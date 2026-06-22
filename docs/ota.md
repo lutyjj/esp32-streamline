@@ -19,11 +19,17 @@ out of `sdkconfig.defaults`):
 
 ## Update flow
 
-1. The console `POST`s `/api/ota/update` with the console-secret bearer token.
+The console separates checking from installing: `POST /api/ota/check` reports
+whether a newer release exists (`up-to-date` or `update-available`) without
+touching flash, and `POST /api/ota/update` performs the install. Both run on a
+background worker and require the console-secret bearer token.
+
+1. The console `POST`s `/api/ota/check` or `/api/ota/update`.
 2. A worker task fetches `releases/latest/download/SHA256SUMS` over HTTPS and
    reads the `-ota.bin` entry — one small file yields both the latest version
    and the expected digest, so no GitHub API call or token is needed.
-3. If the release is newer than the running firmware, it streams
+3. For a check, it reports the result and stops. For an update, if the release
+   is newer than the running firmware, it streams
    `releases/latest/download/streamline-<ver>-ota.bin` straight into the
    inactive slot, hashing as it writes.
 4. On a SHA-256 match it commits the boot pointer and reboots; a mismatch aborts

@@ -37,6 +37,7 @@ h1 { font-size: 20px; line-height: 1.1; margin: 0 0 6px; }
 .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; }
 .panel + .panel { margin-top: 12px; }
+.grid > .panel, .cols > .panel { margin-top: 0; }
 .phead { margin: 0 0 14px; font: 650 15px system-ui; color: var(--text); }
 .subhead { margin: 0 0 8px; color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
 

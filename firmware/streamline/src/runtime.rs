@@ -83,19 +83,19 @@ impl StreamStatus {
             self.clipped_total
                 .fetch_add(levels.clipped, Ordering::Relaxed);
         }
-        // Silence detection: both channels must be below threshold.
+        // Silence detection: both channels must be below threshold. Only the
+        // capture task writes silence_packets, so load-then-store is race-free.
+        // The counter saturates at the window so resume latency stays bounded
+        // regardless of how long the input was idle.
         let is_silent =
             levels.rms_left < SILENCE_RMS_THRESHOLD && levels.rms_right < SILENCE_RMS_THRESHOLD;
-        if is_silent {
-            self.silence_packets.fetch_add(1, Ordering::Relaxed);
+        let count = self.silence_packets.load(Ordering::Relaxed);
+        let silence_count = if is_silent {
+            count.saturating_add(1).min(SILENCE_DETECTION_WINDOW)
         } else {
-            let count = self.silence_packets.load(Ordering::Relaxed);
-            if count > 0 {
-                self.silence_packets
-                    .fetch_sub(count.min(SILENCE_HYSTERESIS), Ordering::Relaxed);
-            }
-        }
-        let silence_count = self.silence_packets.load(Ordering::Relaxed);
+            count.saturating_sub(SILENCE_HYSTERESIS)
+        };
+        self.silence_packets.store(silence_count, Ordering::Relaxed);
         if silence_count >= SILENCE_DETECTION_WINDOW {
             self.playing.store(false, Ordering::Relaxed);
         } else if silence_count == 0 {

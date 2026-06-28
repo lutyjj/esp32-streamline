@@ -4,7 +4,7 @@ use core::ffi::CStr;
 use std::{
     collections::VecDeque,
     sync::{
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc, Condvar, Mutex,
     },
     thread,
@@ -18,7 +18,7 @@ use crate::{
         i2s::Capture,
         tcp::{TargetAddress, TcpClient},
     },
-    levels::LevelStats,
+    levels::{LevelStats, SILENCE_RMS_THRESHOLD},
     packet::AudioPacket,
     protocol::PAYLOAD_BYTES,
 };
@@ -45,6 +45,8 @@ pub struct StreamStatus {
     rms_left: AtomicU32,
     rms_right: AtomicU32,
     clipped_total: AtomicU32,
+    silence_packets: AtomicU32,
+    playing: AtomicBool,
 }
 
 impl StreamStatus {
@@ -64,6 +66,7 @@ impl StreamStatus {
             rms_left: self.rms_left.load(Ordering::Relaxed),
             rms_right: self.rms_right.load(Ordering::Relaxed),
             clipped_total: self.clipped_total.load(Ordering::Relaxed),
+            playing: self.playing.load(Ordering::Relaxed),
         }
     }
 
@@ -79,6 +82,24 @@ impl StreamStatus {
         if levels.clipped > 0 {
             self.clipped_total
                 .fetch_add(levels.clipped, Ordering::Relaxed);
+        }
+        // Silence detection: both channels must be below threshold. Only the
+        // capture task writes silence_packets, so load-then-store is race-free.
+        // The counter saturates at the window so resume latency stays bounded
+        // regardless of how long the input was idle.
+        let is_silent =
+            levels.rms_left < SILENCE_RMS_THRESHOLD && levels.rms_right < SILENCE_RMS_THRESHOLD;
+        let count = self.silence_packets.load(Ordering::Relaxed);
+        let silence_count = if is_silent {
+            count.saturating_add(1).min(SILENCE_DETECTION_WINDOW)
+        } else {
+            count.saturating_sub(SILENCE_HYSTERESIS)
+        };
+        self.silence_packets.store(silence_count, Ordering::Relaxed);
+        if silence_count >= SILENCE_DETECTION_WINDOW {
+            self.playing.store(false, Ordering::Relaxed);
+        } else if silence_count == 0 {
+            self.playing.store(true, Ordering::Relaxed);
         }
     }
 }
@@ -99,6 +120,7 @@ pub struct StreamSnapshot {
     pub rms_left: u32,
     pub rms_right: u32,
     pub clipped_total: u32,
+    pub playing: bool,
 }
 
 struct PacketQueue {
@@ -192,8 +214,15 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
     }
 }
 
+const SILENCE_DETECTION_WINDOW: u32 = 5;
+const SILENCE_HYSTERESIS: u32 = 2;
+
 fn network_loop(mut tcp: TcpClient, queue: Arc<PacketQueue>, status: Arc<StreamStatus>) -> ! {
     loop {
+        if !status.playing.load(Ordering::Relaxed) {
+            FreeRtos::delay_ms(100);
+            continue;
+        }
         let (packet, depth) = queue.pop();
         status.queue_depth.store(depth as u32, Ordering::Relaxed);
         loop {

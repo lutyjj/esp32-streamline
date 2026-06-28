@@ -454,6 +454,7 @@ struct MetricsStatus {
     rms_left: u32,
     rms_right: u32,
     clipped_samples_total: u32,
+    playing: bool,
 }
 
 fn config_json(state: &ApiState) -> String {
@@ -523,6 +524,7 @@ fn status_json(state: &ApiState) -> String {
             rms_left: metrics.rms_left,
             rms_right: metrics.rms_right,
             clipped_samples_total: metrics.clipped_total,
+            playing: metrics.playing,
         },
         ota: state.ota.snapshot(),
     })

@@ -10,9 +10,9 @@ REF ?=
 CAP ?=
 
 .PHONY: check lint test format clean \
-	bridge-format bridge-lint bridge-test bridge-image bridge-run bridge-up \
-	firmware-format firmware-lint firmware-build firmware-test firmware-flash firmware-monitor firmware-capture firmware-clean firmware-artifacts \
-	analysis-lint analysis-capture version-check release
+	bridge-format bridge-lint bridge-test bridge-check bridge-image bridge-run bridge-up \
+	firmware-format firmware-lint firmware-build firmware-test firmware-check firmware-flash firmware-monitor firmware-capture firmware-clean firmware-artifacts \
+	analysis-lint analysis-check analysis-capture version-check release
 
 check: lint test
 
@@ -21,6 +21,15 @@ format: bridge-format firmware-format
 lint: bridge-lint firmware-lint analysis-lint
 
 test: bridge-test firmware-test firmware-build
+
+# Per-component check aggregates. CI fans out over these by name, so a new
+# component becomes CI-covered the moment it has a `<name>-check` target and a
+# path filter entry — no workflow job to add.
+bridge-check: bridge-lint bridge-test
+
+firmware-check: firmware-lint firmware-test firmware-build
+
+analysis-check: analysis-lint
 
 bridge-format:
 	$(MAKE) -C bridge format

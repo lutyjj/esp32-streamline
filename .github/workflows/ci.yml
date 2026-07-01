@@ -13,20 +13,137 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint (ruff, clang-format, mypy)
+  # Single source of truth for "what is a component". The `filters` block maps
+  # paths to component names; this job turns the ones a change touched into a
+  # matrix. Adding a lightweight component is two declarative edits and no new
+  # job: a filter entry here, plus a `<name>-check` target in the Makefile.
+  # `firmware` is deliberately excluded from the matrix — its toolchain caching
+  # makes it fundamentally different, so it keeps a bespoke job below.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      components: ${{ steps.matrix.outputs.components }}
+      firmware: ${{ steps.filter.outputs.firmware }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # A change to the shared build entrypoints re-runs every component.
+          filters: |
+            shared: &shared
+              - '.github/workflows/ci.yml'
+              - 'Makefile'
+            bridge:
+              - *shared
+              - 'bridge/**'
+            analysis:
+              - *shared
+              - 'tools/analysis/**'
+            firmware:
+              - *shared
+              - 'firmware/**'
+      - id: matrix
+        # Fan out over every matched component except the bespoke firmware one
+        # (and the internal `shared` pseudo-filter).
+        run: |
+          components=$(echo '${{ steps.filter.outputs.changes }}' \
+            | jq -c '[.[] | select(. != "firmware" and . != "shared")]')
+          echo "components=$components" >> "$GITHUB_OUTPUT"
+
+  # One job, every lightweight component. The command is uniform because each
+  # component owns a `make <name>-check` recipe.
+  checks:
+    name: ${{ matrix.component }}
+    needs: changes
+    if: ${{ needs.changes.outputs.components != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJSON(needs.changes.outputs.components) }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: make ${{ matrix.component }}-check
+
+  firmware:
+    name: Firmware (clippy · test · release build)
+    needs: changes
+    if: ${{ needs.changes.outputs.firmware == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Run make lint
-        run: make lint
+      # esp-idf-sys compiles the whole ESP-IDF into .embuild (~4 GB); it only
+      # changes when the toolchain or esp-idf-sys version does, so it gets a
+      # stable content-addressed key. Restore and save are split so we only
+      # write it back on a clean success — a cancelled or failed build can never
+      # poison this key with a half-built ESP-IDF. This restore is what turns a
+      # ~6 min cold build into ~1-2 min. Bump the v1 prefix to invalidate keys.
+      - name: Restore ESP-IDF build (.embuild)
+        id: embuild
+        uses: actions/cache/restore@v4
+        with:
+          path: firmware/streamline/.embuild
+          key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
-  test:
-    name: Test (bridge unittests + firmware builds)
+      # target/ (~1.4 GB) changes on every source edit, so it rolls: restore the
+      # newest snapshot for this lockfile via restore-keys, then save a fresh one
+      # under a run-unique key so cargo stays warm build-to-build.
+      - name: Restore cargo target
+        uses: actions/cache/restore@v4
+        with:
+          path: firmware/streamline/target
+          key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-
+
+      - name: Check
+        run: make firmware-check
+
+      # The Makefile runs the container as root (see firmware/Makefile), so the
+      # build dirs are root-owned; hand them to the runner user before the cache
+      # save reads them. Runs even on failure so the save steps below can decide.
+      - name: Reclaim cache ownership
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" firmware/streamline/.embuild firmware/streamline/target
+
+      - name: Save ESP-IDF build (.embuild)
+        if: ${{ success() && steps.embuild.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: firmware/streamline/.embuild
+          key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
+
+      - name: Save cargo target
+        if: ${{ success() }}
+        uses: actions/cache/save@v4
+        with:
+          path: firmware/streamline/target
+          key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}
+
+  # Single stable status the whole workflow rolls up into. Mark THIS as the
+  # required check in branch protection: it passes when the relevant jobs pass
+  # and treats skipped (unchanged) components as a pass, so path-filtering never
+  # leaves a PR stuck waiting on a check that will not report. It needs no edit
+  # when a component is added — the matrix job covers all of them.
+  ci-complete:
+    name: CI complete
+    if: ${{ always() }}
+    needs: [changes, checks, firmware]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      - name: Run make test
-        run: make test
+      - name: Verify no required job failed
+        run: |
+          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }}"
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "::error::change detection failed"; exit 1
+          fi
+          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}"; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a required job did not pass ($r)"; exit 1 ;;
+            esac
+          done
+          echo "All required checks passed."

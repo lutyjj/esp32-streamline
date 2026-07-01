@@ -52,4 +52,23 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/firmware/* --generate-notes
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          # A semver pre-release (e.g. 0.4.0-rc.1) must not become GitHub's
+          # "latest": the firmware OTA path and the WebFlasher both track the
+          # latest stable release.
+          prerelease=
+          case "$VERSION" in *-*) prerelease=--prerelease ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/firmware/* --generate-notes $prerelease
+
+  # Refresh the GitHub Pages WebFlasher so it serves the firmware just released.
+  # Chained explicitly because releases created with GITHUB_TOKEN don't emit a
+  # `release` event capable of triggering the pages workflow on their own.
+  deploy-flasher:
+    name: Refresh WebFlasher
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

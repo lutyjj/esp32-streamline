@@ -8,5 +8,7 @@ firmware/streamline/target/
 captures/
 analysis-data/
 dist/
+# Firmware bundled into the WebFlasher site at deploy time; never committed.
+webflasher/*.bin
 .DS_Store
 .env

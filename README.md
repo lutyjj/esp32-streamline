@@ -33,6 +33,13 @@ vinyl/CD switch
 
 ### 1. Flash the Firmware
 
+**Easiest — flash from your browser:** open the
+[WebFlasher](https://lutyjj.github.io/esp32-streamline/) in desktop Chrome or
+Edge, plug the ESP32 Audio Kit in over USB, and click **Connect & Install**. It
+installs the latest release with no toolchain required.
+
+**Manual — via `esptool`:**
+
 1. Download the latest `streamline-X.Y.Z-full.bin` from [Releases](../../releases).
 2. Flash it to your ESP32 Audio Kit using `esptool.py` (install via `pip install esptool`):
    ```sh

@@ -1,0 +1,16 @@
+{
+  "name": "ESP32 StreamLine",
+  "version": "latest",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "streamline-full.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

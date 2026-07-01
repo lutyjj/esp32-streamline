@@ -1,0 +1,59 @@
+name: Deploy WebFlasher
+
+on:
+  push:
+    branches: ["mainline"]
+    paths:
+      - "webflasher/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+  # Called by release.yml after a release is published, so the flasher always
+  # serves the newest stable firmware. GitHub-token-created releases don't fire
+  # the `release` event for other workflows, so we chain explicitly instead.
+  workflow_call:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish WebFlasher to GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Bundle latest stable firmware into the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # esp-web-tools fetches the firmware relative to the manifest, and
+          # GitHub release assets send no CORS headers to a Pages origin. So we
+          # copy the latest stable release's merged image into the site and serve
+          # it same-origin. Only this one binary ships in the Pages artifact (it
+          # never enters git history), avoiding the repo-bloat that catches
+          # projects committing binaries to a gh-pages branch.
+          tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
+          gh release download "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'streamline-[0-9]*-full.bin' \
+            --dir webflasher --clobber
+          mv webflasher/streamline-[0-9]*-full.bin webflasher/streamline-full.bin
+          # Surface the real version in the install dialog instead of "latest".
+          jq --arg v "${tag#v}" '.version = $v' webflasher/manifest.json > webflasher/manifest.json.tmp
+          mv webflasher/manifest.json.tmp webflasher/manifest.json
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: webflasher
+      - id: deployment
+        uses: actions/deploy-pages@v4

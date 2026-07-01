@@ -72,7 +72,7 @@
       <li>Connect the ESP32 Audio Kit to your computer with a data-capable USB cable.</li>
       <li>Some boards need a USB-to-UART driver (CP210x or CH340) installed first.</li>
       <li>The installer erases the device, then writes a clean <code>-full.bin</code> (the
-        OTA-capable two-slot layout). Any saved Wi-Fi, console secret, and audio settings are
+        OTA-capable two-slot layout). Any saved Wi-Fi, admin key, and audio settings are
         cleared, so the device always starts fresh in setup mode.</li>
     </ul>
   </div>
@@ -81,8 +81,10 @@
     <h2>After flashing</h2>
     <ol>
       <li>The device boots an open <code>esp32-streamline-XXXX</code> setup network.</li>
-      <li>Connect to it and open <code>http://192.168.4.1/</code>.</li>
-      <li>Enter your Wi-Fi, the bridge's TCP target, and a console secret, then save.</li>
+      <li>Connect to it and open <code>http://192.168.71.1/</code>.</li>
+      <li>Enter your Wi-Fi and the bridge's TCP target.</li>
+      <li>Copy the generated admin key, then save. After the device joins your LAN, paste
+        the key once in the station console and remember it there if desired.</li>
     </ol>
     <p class="note">Full walkthrough in the
       <a href="https://github.com/lutyjj/esp32-streamline#readme">project README</a>.</p>

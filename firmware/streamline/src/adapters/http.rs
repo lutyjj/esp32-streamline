@@ -78,9 +78,9 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         )
     })?;
 
-    // Mutating endpoints require the console secret once one is provisioned (see
+    // Mutating endpoints require the admin key once one is provisioned (see
     // `authorized`); an unconfigured device accepts setup writes so the first
-    // secret can be set. A Wi-Fi/target change reboots the device so it reconnects
+    // key can be set. A Wi-Fi/target change reboots the device so it reconnects
     // with the new settings, which keeps swapping the stream target during testing
     // cheap.
     let state_for_setup = Arc::clone(&state);
@@ -88,34 +88,39 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         if !authorized(&request, &state_for_setup) {
             return unauthorized(request);
         }
-        let form = form(&mut request)?;
-        let current = state_for_setup
-            .config
-            .lock()
-            .map_err(|_| anyhow!("configuration lock poisoned"))?
-            .clone();
-        let password = form
-            .get("password")
-            .filter(|value| !value.is_empty())
-            .cloned()
-            .unwrap_or(current.password);
-        // The secret is preserved when left blank, just like the password, so a
-        // routine Wi-Fi/target change does not require retyping it.
-        let admin_secret = form
-            .get("admin_secret")
-            .filter(|value| !value.is_empty())
-            .cloned()
-            .unwrap_or(current.admin_secret);
-        let next = RuntimeConfig {
-            ssid: required(&form, "ssid")?.to_owned(),
-            password,
-            target_host: required(&form, "target_host")?.trim().to_owned(),
-            target_port: parse_u16(&form, "target_port")?,
-            admin_secret,
-            audio: current.audio,
-        };
-        save(&state_for_setup, next)?;
-        reboot_response(request)
+        let result = (|| -> Result<()> {
+            let form = form(&mut request)?;
+            let current = state_for_setup
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            let password = form
+                .get("password")
+                .filter(|value| !value.is_empty())
+                .cloned()
+                .unwrap_or(current.password);
+            // The admin key is preserved when left blank, just like the password, so a
+            // routine Wi-Fi/target change does not require retyping it.
+            let admin_secret = form
+                .get("admin_secret")
+                .filter(|value| !value.is_empty())
+                .cloned()
+                .unwrap_or(current.admin_secret);
+            let next = RuntimeConfig {
+                ssid: required(&form, "ssid")?.to_owned(),
+                password,
+                target_host: required(&form, "target_host")?.trim().to_owned(),
+                target_port: parse_u16(&form, "target_port")?,
+                admin_secret,
+                audio: current.audio,
+            };
+            save(&state_for_setup, next)
+        })();
+        match result {
+            Ok(()) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
     })?;
 
     // Audio params take effect after the reboot re-applies the codec config.
@@ -124,23 +129,49 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         if !authorized(&request, &state_for_audio) {
             return unauthorized(request);
         }
-        let form = form(&mut request)?;
-        let current = state_for_audio
-            .config
-            .lock()
-            .map_err(|_| anyhow!("configuration lock poisoned"))?
-            .clone();
-        let next = RuntimeConfig {
-            audio: AudioSettings {
-                input_line: InputLine::try_from(parse_u8(&form, "line")?)
-                    .map_err(|_| anyhow!("line must be 1 or 2"))?,
-                input_gain: parse_u8(&form, "gain")?,
-                adc_attenuation_db: parse_u8(&form, "atten")?,
-            },
-            ..current
-        };
-        save(&state_for_audio, next)?;
-        reboot_response(request)
+        let result = (|| -> Result<()> {
+            let form = form(&mut request)?;
+            let current = state_for_audio
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            let next = RuntimeConfig {
+                audio: AudioSettings {
+                    input_line: InputLine::try_from(parse_u8(&form, "line")?)
+                        .map_err(|_| anyhow!("line must be 1 or 2"))?,
+                    input_gain: parse_u8(&form, "gain")?,
+                    adc_attenuation_db: parse_u8(&form, "atten")?,
+                },
+                ..current
+            };
+            save(&state_for_audio, next)
+        })();
+        match result {
+            Ok(()) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
+
+    let state_for_admin_key = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>("/api/admin-key", Method::Post, move |mut request| {
+        if !authorized(&request, &state_for_admin_key) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form = form(&mut request)?;
+            let mut next = state_for_admin_key
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            next.admin_secret = required(&form, "admin_secret")?.to_owned();
+            save(&state_for_admin_key, next)
+        })();
+        match result {
+            Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
+            Err(error) => bad_request(request, error),
+        }
     })?;
 
     // Check GitHub for a newer release without installing it. The work runs on a
@@ -262,10 +293,10 @@ where
     }
 }
 
-/// Authorize a mutating request against the configured console secret.
+/// Authorize a mutating request against the configured admin key.
 ///
-/// An unprovisioned device (empty secret) accepts writes so it can be commissioned
-/// over its own setup AP. Once a secret is set, callers must present it as a
+/// An unprovisioned device (empty key) accepts writes so it can be commissioned
+/// over its own setup AP. Once a key is set, callers must present it as a
 /// `Bearer` token. Using a custom header (rather than a cookie or HTTP Basic) makes
 /// the API CSRF-safe: a cross-origin browser request carrying it triggers a CORS
 /// preflight that this server never approves.
@@ -280,17 +311,21 @@ where
     if secret.is_empty() {
         return true;
     }
-    match request
-        .header("Authorization")
-        .and_then(|value| value.strip_prefix("Bearer "))
-    {
+    authorized_secret(&secret, request.header("Authorization"))
+}
+
+fn authorized_secret(secret: &str, authorization: Option<&str>) -> bool {
+    if secret.is_empty() {
+        return true;
+    }
+    match authorization.and_then(|value| value.strip_prefix("Bearer ")) {
         Some(token) => constant_time_eq(token.as_bytes(), secret.as_bytes()),
         None => false,
     }
 }
 
-/// Length-checked constant-time byte comparison so token validation does not leak
-/// the secret through response timing.
+/// Length-checked constant-time byte comparison so key validation does not leak
+/// through response timing.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -312,6 +347,24 @@ where
         401,
         "application/json",
         r#"{"error":"unauthorized"}"#,
+    )
+}
+
+fn bad_request<C>(
+    request: embedded_svc::http::server::Request<C>,
+    error: anyhow::Error,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    let message =
+        serde_json::to_string(&error.to_string()).unwrap_or_else(|_| "\"bad request\"".to_owned());
+    respond(
+        request,
+        400,
+        "application/json",
+        &format!(r#"{{"error":{message}}}"#),
     )
 }
 
@@ -545,7 +598,7 @@ const fn line(line: InputLine) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{constant_time_eq, parse_form};
+    use super::{authorized_secret, constant_time_eq, parse_form};
 
     #[test]
     fn decodes_browser_urlencoded_forms() {
@@ -560,5 +613,20 @@ mod tests {
         assert!(!constant_time_eq(b"console-secret", b"console-secre"));
         assert!(!constant_time_eq(b"console-secret", b"console-secreX"));
         assert!(!constant_time_eq(b"", b"x"));
+    }
+
+    #[test]
+    fn bearer_secret_authorizes_mutating_requests() {
+        assert!(authorized_secret("", None));
+        assert!(authorized_secret(
+            "console-secret",
+            Some("Bearer console-secret")
+        ));
+        assert!(!authorized_secret("console-secret", None));
+        assert!(!authorized_secret("console-secret", Some("console-secret")));
+        assert!(!authorized_secret(
+            "console-secret",
+            Some("Bearer console-secreX")
+        ));
     }
 }

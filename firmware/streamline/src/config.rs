@@ -2,12 +2,11 @@
 
 pub const MIN_PORT: u16 = 1;
 pub const MAX_ADC_ATTENUATION_DB: u8 = 48;
-/// Minimum length for the console secret that guards the mutating HTTP API. Short
-/// enough to type during commissioning, long enough to resist casual guessing.
+/// Minimum length for the admin key that guards the mutating HTTP API.
 pub const MIN_ADMIN_SECRET_LEN: usize = 8;
 /// Version stamped into persisted configuration. An incompatible stored version is
 /// treated as unconfigured so the device re-commissions rather than booting without
-/// a secret.
+/// an admin key.
 pub const CONFIG_SCHEMA_VERSION: u8 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,7 +94,7 @@ pub struct RuntimeConfig {
     pub password: String,
     pub target_host: String,
     pub target_port: u16,
-    /// Shared secret required on the mutating HTTP API. Set during commissioning
+    /// Admin key required on the mutating HTTP API. Set during commissioning
     /// and write-only: it is persisted but never returned through the API.
     pub admin_secret: String,
     pub audio: AudioSettings,

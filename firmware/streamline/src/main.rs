@@ -107,7 +107,7 @@ fn start_setup(
             password: String::new(),
             target_host: String::new(),
             target_port: 39_000,
-            // No secret yet: an unprovisioned device accepts setup writes over its
+            // No admin key yet: an unprovisioned device accepts setup writes over its
             // own AP so commissioning can establish one. See `http::authorized`.
             admin_secret: String::new(),
             // Safe line-in baseline: 0 dB PGA (no clipping) on line 2. Adjust per

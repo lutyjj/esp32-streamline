@@ -1,3 +1,5 @@
+include ../mk/container.mk
+
 IMAGE := esp32-streamline-firmware
 SRC := streamline
 TARGET := xtensa-esp32-espidf
@@ -11,29 +13,29 @@ DIST_DIR ?= $(abspath ../dist)
 # workspace as the runner UID, which the image's unprivileged user cannot write
 # (cargo target/, esp-idf .embuild/). On macOS the bind mount is UID-mapped, so
 # artifacts still land readable on the host.
-DOCKER_FLAGS := --rm --user 0:0 -e HOME=/home/esp \
+CONTAINER_FLAGS := --rm --user 0:0 -e HOME=/home/esp \
 	-v "$(CURDIR)/$(SRC):/workspace" -w /workspace
-DOCKER_RUN := docker run $(DOCKER_FLAGS) $(IMAGE)
+CONTAINER_RUN := $(CONTAINER) run $(CONTAINER_FLAGS) $(IMAGE)
 
 CAPTURE_SECS ?= 20
 
 .PHONY: image format lint build test flash monitor capture clean artifacts
 
 image:
-	docker build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
+	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
 
 format: image
-	$(DOCKER_RUN) cargo fmt --all
+	$(CONTAINER_RUN) cargo fmt --all
 
 lint: image
-	$(DOCKER_RUN) cargo fmt --all -- --check
-	$(DOCKER_RUN) cargo clippy --lib -- -D warnings
+	$(CONTAINER_RUN) cargo fmt --all -- --check
+	$(CONTAINER_RUN) cargo clippy --lib -- -D warnings
 
 build: image
-	$(DOCKER_RUN) cargo build --release --target $(TARGET)
+	$(CONTAINER_RUN) cargo build --release --target $(TARGET)
 
 test: image
-	$(DOCKER_RUN) cargo test --lib
+	$(CONTAINER_RUN) cargo test --lib
 
 # Serial devices are host resources; Docker Desktop on macOS cannot expose the
 # /dev/cu.* device reliably. Install espflash on the host for these two targets.
@@ -54,7 +56,7 @@ capture:
 	python3 scripts/capture.py --seconds $(CAPTURE_SECS) --port $(PORT) --chip esp32 $(if $(wildcard $(SRC)/$(ELF)),--elf $(SRC)/$(ELF),) $(CAPTURE_ARGS)
 
 clean: image
-	$(DOCKER_RUN) cargo clean
+	$(CONTAINER_RUN) cargo clean
 
 # `-full.bin` is the serial-flash image: it bundles the OTA-capable partition
 # table and the rollback-enabled bootloader the ESP-IDF build produced, so a
@@ -64,7 +66,7 @@ clean: image
 # `-ota.bin` entry by filename.
 artifacts: build
 	mkdir -p $(DIST_DIR)/firmware
-	docker run $(DOCKER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-$(VERSION)-full.bin --merge --skip-padding --flash-size 8mb --bootloader target/$(TARGET)/release/bootloader.bin --partition-table partitions.csv
-	docker run $(DOCKER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size 8MB -o /dist/firmware/streamline-$(VERSION)-ota.bin $(ELF)'
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-$(VERSION)-full.bin --merge --skip-padding --flash-size 8mb --bootloader target/$(TARGET)/release/bootloader.bin --partition-table partitions.csv
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size 8MB -o /dist/firmware/streamline-$(VERSION)-ota.bin $(ELF)'
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-$(VERSION).elf
 	cd $(DIST_DIR)/firmware && shasum -a 256 streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf > SHA256SUMS

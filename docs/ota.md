@@ -12,7 +12,7 @@ out of `sdkconfig.defaults`):
 
 | Partition | Size | Role |
 |---|---|---|
-| `nvs` | 24 KB | Wi-Fi/target/audio config and console secret |
+| `nvs` | 24 KB | Wi-Fi/target/audio config and admin key |
 | `otadata` | 8 KB | Records the bootable slot |
 | `phy_init` | 4 KB | RF calibration |
 | `ota_0`, `ota_1` | 3 MB each | Application slots; the bootloader runs one and updates the other |
@@ -22,7 +22,7 @@ out of `sdkconfig.defaults`):
 The console separates checking from installing: `POST /api/ota/check` reports
 whether a newer release exists (`up-to-date` or `update-available`) without
 touching flash, and `POST /api/ota/update` performs the install. Both run on a
-background worker and require the console-secret bearer token.
+background worker and require the admin-key bearer token.
 
 1. The console `POST`s `/api/ota/check` or `/api/ota/update`.
 2. A worker task fetches `releases/latest/download/SHA256SUMS` over HTTPS and
@@ -49,7 +49,7 @@ on the next reset. A bad update cannot brick the device.
 
 | Control | Effect |
 |---|---|
-| Console-secret bearer token on `/api/ota/update` | Only the owner can trigger an update |
+| Admin-key bearer token on `/api/ota/update` | Only the owner can trigger an update |
 | TLS via the mbedTLS certificate bundle | Authenticates `github.com`; the image cannot be swapped in transit |
 | Published SHA-256 verified before commit | Detects truncated or corrupted downloads |
 | Bootloader image checksum + rollback | A malformed or non-booting image reverts automatically |

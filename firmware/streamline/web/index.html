@@ -10,11 +10,17 @@
 <main class="wrap">
   <div class="top">
     <div><h1>ESP32 StreamLine</h1><div class="sub" id="subtitle">loading</div></div>
-    <div style="min-width:240px">
-      <div class="msg" id="message"></div>
-      <div class="field" style="margin-top:8px"><label for="token">Console token</label><input id="token" type="password" placeholder="required after setup" autocomplete="off"></div>
+    <div class="authBox" id="authBox">
+      <div class="authState" id="authState">Auth: checking</div>
+      <div class="authControls">
+        <input class="compactInput" id="unlockSecret" type="password" autocomplete="off" placeholder="admin key">
+        <label class="check" id="rememberKeyLabel"><input id="rememberKey" type="checkbox"> Remember</label>
+        <button class="action primary" type="button" id="unlockButton">Unlock</button>
+        <button class="action" type="button" id="lockButton" hidden>Lock</button>
+      </div>
     </div>
   </div>
+  <div class="msg" id="message"></div>
 
   <nav class="tabs">
     <button class="tab active" data-tab="status">Status</button>
@@ -52,7 +58,15 @@
           <div class="field"><label for="target_host">TCP Target Host/IP</label><input id="target_host" name="target_host" autocomplete="off"></div>
           <div class="field"><label for="target_port">TCP Target Port</label><input id="target_port" name="target_port" type="number" min="1" max="65535"></div>
         </div>
-        <div class="field"><label for="admin_secret">Console Secret</label><input id="admin_secret" name="admin_secret" type="password" placeholder="min 8 characters; leave blank to keep current"></div>
+        <input id="admin_secret" name="admin_secret" type="hidden">
+        <div class="keyPanel" id="setupKeyPanel" hidden>
+          <div class="subhead">Generated admin key</div>
+          <p>Save this key now. It unlocks settings after setup and is not shown by the device again.</p>
+          <code id="setupKeyValue"></code>
+          <div class="actions">
+            <button class="action" type="button" id="copySetupKeyButton">Copy key</button>
+          </div>
+        </div>
         <div class="actions"><button class="action primary" type="submit">Save</button></div>
       </form>
     </div>
@@ -73,6 +87,24 @@
         <div class="actions">
           <button class="action primary" type="submit">Save</button>
           <button class="action danger" type="button" id="resetButton">Clear Config</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2 class="phead">Admin Key</h2>
+      <form id="adminKeyForm">
+        <p class="hint">Generate a new key, store it somewhere safe, then save it. The current key is required to replace it.</p>
+        <input id="replacement_admin_secret" name="admin_secret" type="hidden">
+        <div class="keyPanel" id="replacementKeyPanel" hidden>
+          <div class="subhead">New admin key</div>
+          <code id="replacementKeyValue"></code>
+        </div>
+        <label class="check"><input id="rememberReplacementKey" type="checkbox"> Remember this browser</label>
+        <div class="actions">
+          <button class="action" type="button" id="generateReplacementKeyButton">Generate new key</button>
+          <button class="action" type="button" id="copyReplacementKeyButton" disabled>Copy key</button>
+          <button class="action primary" type="submit">Save new key</button>
         </div>
       </form>
     </div>

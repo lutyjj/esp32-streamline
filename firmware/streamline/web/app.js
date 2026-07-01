@@ -1,7 +1,16 @@
 'use strict';
 
+const ADMIN_KEY_STORAGE = 'streamline_admin_key';
+const LEGACY_TOKEN_STORAGE = 'streamline_token';
+const UNLOCK_UNTIL_STORAGE = 'streamline_unlock_until';
+const UNLOCK_WINDOW_MS = 15 * 60 * 1000;
+
 const $ = (id) => document.getElementById(id);
 const msg = $('message');
+
+let currentStatus = null;
+let generatedSetupKey = '';
+let replacementKey = '';
 
 function setMsg(text, cls = '') {
   msg.textContent = text;
@@ -29,14 +38,76 @@ function setMetricClass(el, good) {
   el.classList.toggle('bad', !good);
 }
 
-function token() {
-  return localStorage.getItem('streamline_token') || '';
+function storedAdminKey() {
+  return sessionStorage.getItem(ADMIN_KEY_STORAGE) ||
+    localStorage.getItem(ADMIN_KEY_STORAGE) ||
+    localStorage.getItem(LEGACY_TOKEN_STORAGE) ||
+    '';
+}
+
+function rememberAdminKey(key, remember) {
+  sessionStorage.setItem(ADMIN_KEY_STORAGE, key);
+  if (remember) {
+    localStorage.setItem(ADMIN_KEY_STORAGE, key);
+  } else {
+    localStorage.removeItem(ADMIN_KEY_STORAGE);
+    localStorage.removeItem(LEGACY_TOKEN_STORAGE);
+  }
+}
+
+function unlockUntil() {
+  return Number(sessionStorage.getItem(UNLOCK_UNTIL_STORAGE) || '0');
+}
+
+function isUnlocked() {
+  return Boolean(storedAdminKey()) && unlockUntil() > Date.now();
+}
+
+function unlockSettings(key, remember) {
+  rememberAdminKey(key, remember);
+  sessionStorage.setItem(UNLOCK_UNTIL_STORAGE, String(Date.now() + UNLOCK_WINDOW_MS));
+  updateAuthUi();
+  setProtectedControls();
+}
+
+function lockSettings(showMessage = true) {
+  sessionStorage.removeItem(UNLOCK_UNTIL_STORAGE);
+  updateAuthUi();
+  setProtectedControls();
+  if (showMessage) setMsg('settings locked', 'ok');
+}
+
+function generateAdminKey() {
+  if (!window.crypto || !window.crypto.getRandomValues) {
+    throw new Error('secure random generation is unavailable in this browser');
+  }
+  const bytes = new Uint8Array(24);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function copySecret(value) {
+  if (!value) return;
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const scratch = document.createElement('textarea');
+  scratch.value = value;
+  scratch.setAttribute('readonly', '');
+  scratch.style.position = 'fixed';
+  scratch.style.opacity = '0';
+  document.body.appendChild(scratch);
+  scratch.select();
+  document.execCommand('copy');
+  scratch.remove();
 }
 
 async function api(path, opts = {}) {
+  const method = (opts.method || 'GET').toUpperCase();
   const headers = Object.assign({}, opts.headers);
-  const t = token();
-  if (t) headers['Authorization'] = 'Bearer ' + t;
+  const key = storedAdminKey();
+  if (method !== 'GET' && key && isUnlocked()) headers['Authorization'] = 'Bearer ' + key;
   const r = await fetch(path, Object.assign({}, opts, { headers }));
   const text = await r.text();
   let data = {};
@@ -45,12 +116,16 @@ async function api(path, opts = {}) {
   } catch (e) {
     data = { message: text };
   }
-  if (r.status === 401) throw new Error('unauthorized — set the console token');
+  if (r.status === 401) {
+    lockSettings(false);
+    throw new Error('unauthorized — unlock settings with the admin key');
+  }
   if (!r.ok) throw new Error(data.error || text || r.status);
   return data;
 }
 
 function applyStatus(s) {
+  currentStatus = s;
   $('subtitle').textContent =
     'v' + s.firmware_version + ' / ' + s.audio.sample_rate + ' Hz / ' +
     s.audio.channels + ' ch / ' + s.audio.bits_per_sample + ' bit';
@@ -83,8 +158,9 @@ function applyStatus(s) {
   ]);
   $('apiDump').textContent = JSON.stringify(s, null, 2);
   $('clip_threshold').value = s.metrics.clip_threshold_abs;
-  setConfigWritable(s.configuration_writable);
   applyOta(s.firmware_version, s.ota);
+  updateAuthUi();
+  setProtectedControls();
 }
 
 // --- Firmware update -------------------------------------------------------
@@ -157,7 +233,7 @@ function applyOta(current, o) {
   }
 
   // Append a line to the activity log whenever the phase advances. Transient
-  // sub-states (clock sync, header read) share a phase, so this stays quiet.
+  // sub-states share a phase, so this stays quiet.
   if (o.phase !== 'idle' && o.phase !== otaLoggedPhase) {
     otaLoggedPhase = o.phase;
     let line = prettyPhase(o.phase);
@@ -168,11 +244,83 @@ function applyOta(current, o) {
   }
 }
 
-function setConfigWritable(writable) {
-  document.querySelectorAll('#setupForm input,#setupForm button').forEach((el) => {
-    el.disabled = !writable;
-    el.title = writable ? '' : 'Wi-Fi and target are writable only in setup mode';
+function setDisabled(selector, disabled) {
+  document.querySelectorAll(selector).forEach((el) => {
+    el.disabled = disabled;
+    el.title = disabled ? 'Unlock settings with the admin key' : '';
   });
+}
+
+function settingsWritable() {
+  if (!currentStatus) return false;
+  if (currentStatus.configuration_writable === false) return false;
+  return !currentStatus.auth_required || isUnlocked();
+}
+
+function setProtectedControls() {
+  const writable = settingsWritable();
+  setDisabled('#setupForm input:not([type="hidden"]),#setupForm button,#audioForm input,#audioForm select,#audioForm button,#resetButton,#checkButton,#installButton', !writable);
+  setDisabled('#adminKeyForm input,#adminKeyForm button', !(currentStatus && currentStatus.auth_required && isUnlocked()));
+  $('copyReplacementKeyButton').disabled = !replacementKey || !(currentStatus && currentStatus.auth_required && isUnlocked());
+}
+
+function ensureSetupKey() {
+  if (!generatedSetupKey) generatedSetupKey = generateAdminKey();
+  $('admin_secret').value = generatedSetupKey;
+  $('setupKeyValue').textContent = generatedSetupKey;
+  $('setupKeyPanel').hidden = false;
+}
+
+function clearSetupKey() {
+  generatedSetupKey = '';
+  $('admin_secret').value = '';
+  $('setupKeyValue').textContent = '';
+  $('setupKeyPanel').hidden = true;
+}
+
+function updateAuthUi() {
+  const state = $('authState');
+  if (!currentStatus) {
+    state.textContent = 'Auth: checking';
+    state.className = 'authState';
+    $('unlockSecret').hidden = true;
+    $('rememberKeyLabel').hidden = true;
+    $('unlockButton').hidden = true;
+    $('lockButton').hidden = true;
+    return;
+  }
+
+  if (!currentStatus.auth_required) {
+    ensureSetupKey();
+    state.textContent = 'Auth: setup mode';
+    state.className = 'authState unlocked';
+    $('unlockSecret').hidden = true;
+    $('rememberKeyLabel').hidden = true;
+    $('unlockButton').hidden = true;
+    $('lockButton').hidden = true;
+    return;
+  }
+
+  clearSetupKey();
+  if (isUnlocked()) {
+    const until = new Date(unlockUntil()).toLocaleTimeString();
+    state.textContent = 'Auth: unlocked until ' + until;
+    state.className = 'authState unlocked';
+    $('unlockSecret').hidden = true;
+    $('rememberKeyLabel').hidden = true;
+    $('unlockButton').hidden = true;
+    $('lockButton').hidden = false;
+  } else {
+    const key = storedAdminKey();
+    state.textContent = key ? 'Auth: locked, key saved' : 'Auth: locked';
+    state.className = 'authState locked';
+    $('unlockSecret').hidden = false;
+    $('unlockSecret').value = key;
+    $('rememberKeyLabel').hidden = false;
+    $('rememberKey').checked = Boolean(localStorage.getItem(ADMIN_KEY_STORAGE));
+    $('unlockButton').hidden = false;
+    $('lockButton').hidden = true;
+  }
 }
 
 async function refresh() {
@@ -202,6 +350,7 @@ function validateSetup() {
   if (host.includes(':') || host.includes('/')) {
     throw new Error('TCP target host must not include port, scheme, or path');
   }
+  if (currentStatus && !currentStatus.auth_required) ensureSetupKey();
 }
 
 document.querySelectorAll('.tab').forEach((b) =>
@@ -212,17 +361,72 @@ document.querySelectorAll('.tab').forEach((b) =>
   })
 );
 
+$('unlockButton').addEventListener('click', () => {
+  const key = $('unlockSecret').value.trim();
+  if (key.length < 8) {
+    setMsg('admin key must be at least 8 characters', 'err');
+    return;
+  }
+  unlockSettings(key, $('rememberKey').checked);
+  setMsg('');
+});
+
+$('lockButton').addEventListener('click', () => lockSettings(false));
+
+$('copySetupKeyButton').addEventListener('click', async () => {
+  try {
+    await copySecret(generatedSetupKey);
+    setMsg('admin key copied', 'ok');
+  } catch (err) {
+    setMsg(err.message, 'err');
+  }
+});
+
+$('generateReplacementKeyButton').addEventListener('click', () => {
+  try {
+    replacementKey = generateAdminKey();
+    $('replacement_admin_secret').value = replacementKey;
+    $('replacementKeyValue').textContent = replacementKey;
+    $('replacementKeyPanel').hidden = false;
+    setProtectedControls();
+  } catch (err) {
+    setMsg(err.message, 'err');
+  }
+});
+
+$('copyReplacementKeyButton').addEventListener('click', async () => {
+  try {
+    await copySecret(replacementKey);
+    setMsg('new admin key copied', 'ok');
+  } catch (err) {
+    setMsg(err.message, 'err');
+  }
+});
+
 $('setupForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
     validateSetup();
     await api('/api/setup', { method: 'POST', body: formBody(e.target) });
-    const s = $('admin_secret').value.trim();
-    if (s) {
-      localStorage.setItem('streamline_token', s);
-      tokenInput.value = s;
-    }
     setMsg('setup saved; rebooting', 'ok');
+  } catch (err) {
+    setMsg(err.message, 'err');
+  }
+});
+
+$('adminKeyForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    if (!isUnlocked()) throw new Error('unlock settings before replacing the admin key');
+    if (!replacementKey) {
+      replacementKey = generateAdminKey();
+      $('replacement_admin_secret').value = replacementKey;
+      $('replacementKeyValue').textContent = replacementKey;
+      $('replacementKeyPanel').hidden = false;
+    }
+    await api('/api/admin-key', { method: 'POST', body: formBody(e.target) });
+    unlockSettings(replacementKey, $('rememberReplacementKey').checked);
+    setMsg('admin key saved', 'ok');
   } catch (err) {
     setMsg(err.message, 'err');
   }
@@ -268,11 +472,5 @@ $('installButton').addEventListener('click', async () => {
   }
 });
 
-const tokenInput = $('token');
-tokenInput.value = token();
-tokenInput.addEventListener('change', () =>
-  localStorage.setItem('streamline_token', tokenInput.value.trim())
-);
-
-loadConfig().then(refresh).catch((e) => setMsg(e.message, 'err'));
+Promise.all([loadConfig(), refresh()]).catch((e) => setMsg(e.message, 'err'));
 setInterval(refresh, 1500);

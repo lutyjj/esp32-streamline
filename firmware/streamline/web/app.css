@@ -20,7 +20,10 @@ body {
   font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
 }
 .wrap { max-width: 1120px; margin: 0 auto; padding: 20px; }
-.top { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+.top {
+  display: flex; gap: 16px; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 10px;
+}
 h1 { font-size: 20px; line-height: 1.1; margin: 0 0 6px; }
 .sub { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 
@@ -71,9 +74,42 @@ button.action.primary { background: #153a5c; border-color: #245b8f; }
 button.action:disabled { opacity: .5; cursor: default; }
 .danger { background: #3a1d1d !important; border-color: #733030 !important; }
 
-.msg { min-height: 20px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.msg {
+  min-height: 20px; margin-bottom: 8px; color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+}
 .ok { color: var(--good); }
 .err { color: var(--bad); }
+.hint { margin: 0; color: var(--muted); }
+
+.authBox {
+  display: grid; gap: 8px; justify-items: start;
+  min-width: min(100%, 430px);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 8px;
+}
+.authState { color: var(--muted); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+.authState.unlocked { color: var(--good); }
+.authState.locked { color: var(--warn); }
+.authControls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.compactInput { width: 220px; padding: 8px 10px; }
+.check {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--muted); font-weight: 500;
+}
+.check[hidden] { display: none; }
+.check input { width: auto; }
+
+.keyPanel {
+  display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: #0c0e11; padding: 12px;
+}
+.keyPanel[hidden] { display: none; }
+.keyPanel p { margin: 0; color: var(--muted); }
+.keyPanel code {
+  display: block; padding: 10px; border-radius: 6px; background: var(--panel2);
+  color: var(--accent); overflow-wrap: anywhere; user-select: all;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 
 /* Firmware-update activity log: an append-only record of a check or install. */
 .log {
@@ -96,11 +132,13 @@ button.action:disabled { opacity: .5; cursor: default; }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cols, .row { grid-template-columns: 1fr; }
   .kv { grid-template-columns: 120px minmax(0, 1fr); }
-  .top { display: block; }
+  .top { display: grid; }
 }
 @media (max-width: 480px) {
   .wrap { padding: 14px; }
   .grid { grid-template-columns: 1fr; }
   .tabs { overflow: auto; }
   .tab { white-space: nowrap; }
+  .authBox { min-width: 0; }
+  .compactInput { width: 100%; }
 }

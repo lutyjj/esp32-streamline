@@ -5,7 +5,7 @@ ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It capt
 ## Features
 
 - **Dumb Node Architecture**: The ESP32 stays simple—capturing and moving packets. All encoding, buffering, and syncing lives on the bridge.
-- **Zero-config commissioning**: Starts an `esp32-streamline-XXXX` setup AP when unconfigured; set Wi-Fi, stream target, and audio from a small web console and tune levels live while streaming. A per-device console secret set at commissioning gates all config writes; reads stay open. Traffic is plain HTTP, so keep the device on a trusted LAN — see [Security Notes](docs/security.md).
+- **Zero-config commissioning**: Starts an `esp32-streamline-XXXX` setup AP when unconfigured; set Wi-Fi, stream target, and audio from a small web console and tune levels live while streaming. A per-device admin key generated at commissioning gates all config writes; reads stay open. Traffic is plain HTTP, so keep the device on a trusted LAN — see [Security Notes](docs/security.md).
 - **Easily Self-Hosted Bridge**: Includes Python scripts and Docker Compose files to bridge the TCP PCM stream into a live HTTP WAV stream.
 - **Bridge Playout Buffer**: The bridge buffers the stream before exposing the WAV output, smoothing timing jitter and concealing any gaps around disconnects.
 - **Over-the-Air Updates**: One console button pulls the latest GitHub release over HTTPS, verifies its SHA-256, and flashes it to a second app slot with automatic rollback if the new image fails to boot — see [OTA Updates](docs/ota.md).
@@ -77,19 +77,22 @@ The HTTP bridge defaults to a 1 second playout buffer. It smooths timing jitter 
 ### 3. Configuration
 
 If no config is saved, the device will host an open setup network named `esp32-streamline-XXXX`.
-1. Connect to the network and open `http://192.168.4.1/`.
+1. Connect to the network and open `http://192.168.71.1/`.
 2. Enter your home Wi-Fi credentials.
 3. Set the **TCP Target Host** to the IP of your bridge server.
-4. Set a **Console Secret** (minimum 8 characters) — you'll need it to change
-   settings later. Save it; the console keeps it as your token automatically.
+4. Save the generated **Admin Key** shown by the console. The key is required
+   to change settings later and is not shown by the device again.
 5. Save and let the device reboot onto your network.
 
 Once it is on your network, open the device's web console at its station IP and
-enter the console token to change Wi-Fi, target, or audio settings at any time;
-each save reboots to apply. Reads (status) stay open; writes require the token.
+unlock settings with the admin key to change Wi-Fi, target, audio, OTA, or reset
+settings; each save reboots to apply where needed. Reads (status) stay open; writes require the key.
+Browser storage is scoped to the setup AP address and the station IP separately:
+copy the generated key during setup, then remember it from the station console if
+you want the browser to keep it.
 Resetting configuration returns the device to the setup AP. Traffic is plain HTTP,
 so keep the device on a trusted LAN (see [Security Notes](docs/security.md)). If you
-lose the secret, re-commission by reflashing.
+lose the key, re-commission by reflashing.
 
 ### 4. Updating
 

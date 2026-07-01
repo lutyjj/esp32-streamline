@@ -11,8 +11,8 @@ The ESP32 Audio Kit firmware: Rust on ESP-IDF v5.5.3.
 - capture task: core 1, priority 3; TCP task: core 1, priority 2
 - bounded TCP connect/send via `std::net` (`TCP_NODELAY`, 250 ms timeouts)
 - NVS-backed configuration and a setup AP at `esp32-streamline-XXXX`
-- HTTP config/status API: open reads, writes gated by a per-device console secret
-  (bearer token) set at commissioning (trusted LAN; see `docs/security.md`)
+- HTTP config/status API: open reads, writes gated by a per-device admin key
+  (bearer token) generated at commissioning (trusted LAN; see `docs/security.md`)
 
 The embedded web UI lives in `web/index.html`. The application core is split
 between typed configuration/protocol modules, ESP-IDF adapters, and the task

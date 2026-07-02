@@ -18,8 +18,10 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.metadata import PackageNotFoundError, version
 from typing import NoReturn
+from urllib.parse import parse_qs, urlsplit
 
 from streamline_bridge.protocol import DEFAULT_FORMAT, DEFAULT_RATE, HEADER, PcmFormat, parse_header
+from streamline_bridge.sources import Source, SourceRegistry, SourceSelectionError
 
 
 def bridge_version() -> str:
@@ -38,6 +40,7 @@ DEFAULT_MAX_REPEAT_CONCEAL_PACKETS = 3
 DEFAULT_MAX_OUTAGE_SILENCE_SECONDS = 5.0
 DEFAULT_CLIENT_BUFFER_CHUNKS = 2048
 DEFAULT_SOURCE_IDLE_TIMEOUT_SECONDS = 5.0
+DEFAULT_MAX_SOURCES = 8
 HTTP_MAX_BATCH_CHUNKS = 64
 
 
@@ -368,6 +371,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SOURCE_IDLE_TIMEOUT_SECONDS,
         help="drop an inactive TCP producer after this many seconds",
     )
+    parser.add_argument(
+        "--max-sources",
+        type=int,
+        default=DEFAULT_MAX_SOURCES,
+        help="maximum number of producer pipelines to keep",
+    )
     return parser.parse_args()
 
 
@@ -382,6 +391,8 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
         raise SystemExit("--max-outage-silence-seconds must be greater than 0")
     if args.source_idle_timeout_seconds <= 0:
         raise SystemExit("--source-idle-timeout-seconds must be greater than 0")
+    if args.max_sources < 1:
+        raise SystemExit("--max-sources must be at least 1")
     try:
         args.source_allow = frozenset(
             str(ipaddress.IPv4Address(source.strip()))
@@ -391,6 +402,8 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
         )
     except ipaddress.AddressValueError as exc:
         raise SystemExit(f"--source-allow must be an IPv4 address: {exc}") from exc
+    if len(args.source_allow) > args.max_sources:
+        raise SystemExit("--max-sources must be at least the number of allowed sources")
     return args
 
 
@@ -447,56 +460,14 @@ def recv_exact(conn: socket.socket, size: int) -> bytes | None:
     return b"".join(chunks)
 
 
-class TcpSourceGate:
-    """Own the one TCP producer allowed to feed an AudioHub."""
-
-    def __init__(self, hub: AudioHub) -> None:
-        self._hub = hub
-        self._lock = threading.Lock()
-        self._connection: socket.socket | None = None
-        self._generation = 0
-
-    def replace(self, conn: socket.socket) -> int:
-        """Make conn the active source and close any replaced source socket."""
-        with self._lock:
-            previous = self._connection
-            self._generation += 1
-            generation = self._generation
-            self._connection = conn
-            self._hub.reset_source_session()
-
-        if previous is not None:
-            with contextlib.suppress(OSError):
-                previous.shutdown(socket.SHUT_RDWR)
-            with contextlib.suppress(OSError):
-                previous.close()
-        return generation
-
-    def ingest(self, generation: int, seq: int, payload: bytes) -> bool:
-        """Ingest only if this connection is still the active source."""
-        with self._lock:
-            if generation != self._generation:
-                return False
-            self._hub.ingest(seq, payload)
-            return True
-
-    def is_active(self, generation: int) -> bool:
-        with self._lock:
-            return generation == self._generation
-
-    def release(self, generation: int, conn: socket.socket) -> None:
-        with self._lock:
-            if generation == self._generation and conn is self._connection:
-                self._connection = None
-
-
 def tcp_client_loop(
-    hub: AudioHub,
-    source_gate: TcpSourceGate,
+    source: Source[AudioHub],
     generation: int,
     conn: socket.socket,
     addr: tuple[str, int],
 ) -> None:
+    hub = source.hub
+    source_gate = source.gate
     with conn:
         with hub._lock:
             hub.stats.tcp_connections += 1
@@ -528,48 +499,48 @@ def tcp_client_loop(
 
 
 def tcp_loop(
-    hub: AudioHub,
+    sources: SourceRegistry[AudioHub],
     bind: str,
     port: int,
     source_idle_timeout_seconds: float,
-    source_allowlist: frozenset[str],
 ) -> NoReturn:
-    source_gate = TcpSourceGate(hub)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((bind, port))
-    sock.listen(1)
+    sock.listen()
     print(f"listening for ESP32 TCP on {bind}:{port}", flush=True)
 
     while True:
         conn, addr = sock.accept()
-        if source_allowlist and addr[0] not in source_allowlist:
+        source = sources.acquire(addr[0])
+        if source is None:
             print(f"rejected TCP source {addr[0]}:{addr[1]}", flush=True)
             conn.close()
             continue
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         conn.settimeout(source_idle_timeout_seconds)
-        generation = source_gate.replace(conn)
+        generation = source.gate.replace(conn)
         threading.Thread(
             target=tcp_client_loop,
-            args=(hub, source_gate, generation, conn, addr),
+            args=(source, generation, conn, addr),
             daemon=True,
         ).start()
 
 
-def make_handler(hub: AudioHub) -> type[BaseHTTPRequestHandler]:
+def make_handler(sources: SourceRegistry[AudioHub]) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
         def do_GET(self) -> None:
-            if self.path == "/" or self.path == "/status":
-                self._send_json(hub.snapshot())
+            url = urlsplit(self.path)
+            if url.path == "/" or url.path == "/status":
+                self._send_json({"bridge_version": BRIDGE_VERSION, "sources": sources.snapshot()})
                 return
-            if self.path == "/health":
+            if url.path == "/health":
                 self._send_text("ok\n")
                 return
-            if self.path == "/streamline.wav":
-                self._stream_wav()
+            if url.path == "/streamline.wav":
+                self._stream_wav(url.query)
                 return
             self.send_error(HTTPStatus.NOT_FOUND, "not found")
 
@@ -594,8 +565,16 @@ def make_handler(hub: AudioHub) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
-        def _stream_wav(self) -> None:
-            stream = hub.register(self.client_address[0], self.path, self.connection)
+        def _stream_wav(self, query: str) -> None:
+            params = parse_qs(query, keep_blank_values=True)
+            requested = params.get("source", [None])[0]
+            try:
+                source = sources.select(requested)
+            except SourceSelectionError as exc:
+                self.send_error(exc.status, exc.message)
+                return
+
+            stream = source.hub.register(self.client_address[0], self.path, self.connection)
             try:
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "audio/wav")
@@ -612,11 +591,11 @@ def make_handler(hub: AudioHub) -> type[BaseHTTPRequestHandler]:
                     body = b"".join(chunks)
                     self.wfile.write(body)
                     self.wfile.flush()
-                    hub.record_client_write(stream.stats.id, len(body), len(chunks))
+                    source.hub.record_client_write(stream.stats.id, len(body), len(chunks))
             except (BrokenPipeError, ConnectionResetError):
                 pass
             finally:
-                hub.unregister(stream.stats.id)
+                source.hub.unregister(stream.stats.id)
 
     return Handler
 
@@ -640,24 +619,27 @@ def collect_http_batch(client_queue: queue.Queue[bytes | None]) -> list[bytes] |
 
 def main() -> int:
     args = validate_args(parse_args())
-    hub = AudioHub(
-        max_client_chunks=args.client_buffer_chunks,
-        playout_buffer_seconds=args.playout_buffer_seconds,
-        max_repeat_conceal_packets=args.max_repeat_conceal_packets,
-        max_outage_silence_seconds=args.max_outage_silence_seconds,
-    )
+
+    def make_hub() -> AudioHub:
+        hub = AudioHub(
+            max_client_chunks=args.client_buffer_chunks,
+            playout_buffer_seconds=args.playout_buffer_seconds,
+            max_repeat_conceal_packets=args.max_repeat_conceal_packets,
+            max_outage_silence_seconds=args.max_outage_silence_seconds,
+        )
+        threading.Thread(target=hub.playout_loop, daemon=True).start()
+        return hub
+
+    sources = SourceRegistry(make_hub, max_sources=args.max_sources, allowed=args.source_allow)
 
     tcp_thread = threading.Thread(
         target=tcp_loop,
-        args=(hub, args.tcp_bind, args.tcp_port, args.source_idle_timeout_seconds, args.source_allow),
+        args=(sources, args.tcp_bind, args.tcp_port, args.source_idle_timeout_seconds),
         daemon=True,
     )
     tcp_thread.start()
 
-    playout_thread = threading.Thread(target=hub.playout_loop, daemon=True)
-    playout_thread.start()
-
-    server = ThreadingHTTPServer((args.http_bind, args.http_port), make_handler(hub))
+    server = ThreadingHTTPServer((args.http_bind, args.http_port), make_handler(sources))
     print(f"serving HTTP WAV on http://{args.http_bind}:{args.http_port}/streamline.wav", flush=True)
 
     try:

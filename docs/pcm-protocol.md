@@ -65,4 +65,4 @@ dropping time from the stream:
   re-buffer
 
 The `/status` endpoint reports packet, loss, concealment, underrun, late,
-reordered, duplicate, and client queue drop counters.
+reordered, duplicate, and client queue drop counters for each source.

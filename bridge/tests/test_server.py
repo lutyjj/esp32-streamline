@@ -5,7 +5,8 @@ import socket
 import unittest
 
 from streamline_bridge.protocol import DEFAULT_FORMAT
-from streamline_bridge.server import AudioHub, TcpSourceGate, validate_args, wav_header
+from streamline_bridge.server import AudioHub, validate_args, wav_header
+from streamline_bridge.sources import SourceRegistry, SourceSelectionError, TcpSourceGate
 
 
 def make_hub() -> AudioHub:
@@ -39,6 +40,40 @@ class TcpSourceGateTests(unittest.TestCase):
             new_source.close()
 
 
+class SourceRegistryTests(unittest.TestCase):
+    def test_bare_stream_creates_pending_source_that_first_producer_adopts(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=2)
+
+        pending = registry.select(None)
+        acquired = registry.acquire("192.0.2.10")
+
+        assert acquired is not None
+        self.assertIs(acquired.hub, pending.hub)
+        self.assertEqual(registry.snapshot().keys(), {"192.0.2.10"})
+
+    def test_bare_stream_requires_source_when_several_producers_exist(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=2)
+
+        self.assertIsNotNone(registry.acquire("192.0.2.10"))
+        self.assertIsNotNone(registry.acquire("192.0.2.11"))
+
+        with self.assertRaises(SourceSelectionError) as raised:
+            registry.select(None)
+        self.assertEqual(raised.exception.status, 409)
+
+    def test_explicit_stream_creates_source_before_producer_connects(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=1)
+
+        source = registry.select("192.0.2.10")
+
+        self.assertIs(registry.acquire("192.0.2.10"), source)
+
+    def test_allowlist_rejects_unlisted_tcp_producer(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=1, allowed=frozenset({"192.0.2.10"}))
+
+        self.assertIsNone(registry.acquire("192.0.2.11"))
+
+
 class WavHeaderTests(unittest.TestCase):
     def test_wav_header_uses_the_declared_pcm_format(self) -> None:
         header = wav_header()
@@ -55,6 +90,7 @@ class ArgumentTests(unittest.TestCase):
             max_repeat_conceal_packets=3,
             max_outage_silence_seconds=5.0,
             source_idle_timeout_seconds=5.0,
+            max_sources=8,
             source_allow=["192.0.2.10, 198.51.100.20"],
         )
 
@@ -67,7 +103,22 @@ class ArgumentTests(unittest.TestCase):
             max_repeat_conceal_packets=3,
             max_outage_silence_seconds=5.0,
             source_idle_timeout_seconds=5.0,
+            max_sources=8,
             source_allow=["bridge.local"],
+        )
+
+        with self.assertRaises(SystemExit):
+            validate_args(args)
+
+    def test_rejects_allowlist_larger_than_max_sources(self) -> None:
+        args = argparse.Namespace(
+            client_buffer_chunks=4,
+            playout_buffer_seconds=1.0,
+            max_repeat_conceal_packets=3,
+            max_outage_silence_seconds=5.0,
+            source_idle_timeout_seconds=5.0,
+            max_sources=1,
+            source_allow=["192.0.2.10, 198.51.100.20"],
         )
 
         with self.assertRaises(SystemExit):

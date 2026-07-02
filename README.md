@@ -68,8 +68,10 @@ services:
 ```
 
 The stream goes live at `http://<bridge-host>:8088/streamline.wav` — add it to
-Music Assistant as a radio/URL stream. `/status` serves JSON stats.
-`make bridge-run BRIDGE_ARGS='--help'` lists the tuning flags.
+Music Assistant as a radio/URL stream. With several ESP32 sources, select one
+with `http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>`. `/status`
+serves per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the
+tuning flags.
 
 ### 3. Configure the device
 

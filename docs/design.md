@@ -67,9 +67,10 @@ ESP32 TCP PCM -> bridge -> http://host:8088/streamline.wav
 It exposes:
 
 ```text
-/streamline.wav  live HTTP WAV stream
-/status       JSON bridge stats
-/health       health check
+/streamline.wav              live HTTP WAV stream
+/streamline.wav?source=<ip>  live HTTP WAV stream from one ESP32 source
+/status                      per-source JSON bridge stats
+/health                      health check
 ```
 
 Run it:
@@ -78,10 +79,12 @@ Run it:
 make bridge-up
 ```
 
-Set the ESP32 TCP target to the bridge host IP and port `39000`. For Music
-Assistant, add `http://<bridge-host>:8088/streamline.wav` as a URL/radio stream. If
-Music Assistant proves unreliable with live WAV, keep this bridge and add
-Liquidsoap/Icecast after it to publish FLAC/MP3/Opus.
+Set each ESP32 TCP target to the bridge host IP and port `39000`. For Music
+Assistant, add `http://<bridge-host>:8088/streamline.wav` as a URL/radio stream
+when one ESP32 feeds the bridge, or
+`http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>` for a specific
+source. If Music Assistant proves unreliable with live WAV, keep this bridge and
+add Liquidsoap/Icecast after it to publish FLAC/MP3/Opus.
 
 ## Codec
 

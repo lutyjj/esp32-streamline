@@ -1,11 +1,12 @@
-include ../mk/container.mk
+include ../mk/common.mk
 
 DEV_IMAGE := esp32-streamline-bridge-dev
-IMAGE ?= esp32-streamline-bridge
-VERSION ?= $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
+# The release flow injects the published name as BRIDGE_IMAGE; local builds
+# fall back to the plain name. `:=` keeps stray IMAGE environment variables out.
+IMAGE := $(or $(BRIDGE_IMAGE),esp32-streamline-bridge)
+VERSION ?= $(call toml_version,pyproject.toml)
 BRIDGE_ARGS ?=
 BRIDGE_PORTS ?= -p 39000:39000 -p 8088:8088
-PYTHON_CACHE_VOLUME ?= esp32-streamline-python-cache
 
 # Run a check in the dev image with the source mounted and the shared ruff/mypy
 # cache volume attached.

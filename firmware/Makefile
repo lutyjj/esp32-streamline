@@ -1,4 +1,4 @@
-include ../mk/container.mk
+include ../mk/common.mk
 
 IMAGE := esp32-streamline-firmware
 SRC := streamline
@@ -19,6 +19,11 @@ CONTAINER_RUN := $(CONTAINER) run $(CONTAINER_FLAGS) $(IMAGE)
 
 CAPTURE_SECS ?= 20
 
+# Bounded serial capture helper; lives with the other dev tools and is
+# stdlib-only so the system python3 can run it (the serial port is a host
+# resource containers cannot reach).
+CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
+
 .PHONY: image format lint build test flash monitor capture clean artifacts
 
 image:
@@ -27,6 +32,9 @@ image:
 format: image
 	$(CONTAINER_RUN) cargo fmt --all
 
+# clippy runs `--lib` on the host target: the crate core is host-buildable while
+# the `cfg(espidf)` adapters and binary only compile in the cross build, which
+# `build` exercises with warnings intact.
 lint: image
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --lib -- -D warnings
@@ -53,7 +61,7 @@ monitor:
 # monitor flags through CAPTURE_ARGS.
 capture:
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	python3 scripts/capture.py --seconds $(CAPTURE_SECS) --port $(PORT) --chip esp32 $(if $(wildcard $(SRC)/$(ELF)),--elf $(SRC)/$(ELF),) $(CAPTURE_ARGS)
+	python3 $(CAPTURE_SCRIPT) --seconds $(CAPTURE_SECS) --port $(PORT) --chip esp32 $(if $(wildcard $(SRC)/$(ELF)),--elf $(SRC)/$(ELF),) $(CAPTURE_ARGS)
 
 clean: image
 	$(CONTAINER_RUN) cargo clean

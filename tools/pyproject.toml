@@ -3,14 +3,19 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "streamline-bridge"
-version = "0.3.1"
-description = "ESP32 StreamLine TCP PCM to HTTP WAV bridge"
+name = "streamline-tools"
+# Internal developer tooling: never released, not covered by version-check.
+version = "0.1.0"
+description = "ESP32 StreamLine developer tools"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
+dependencies = [
+  "numpy==2.2.6",
+]
 
 [project.scripts]
-streamline-bridge = "streamline_bridge.server:main"
+streamline-analyze = "streamline_tools.analyze_capture:main"
+streamline-capture = "streamline_tools.serial_capture:main"
 
 [project.optional-dependencies]
 dev = [
@@ -29,5 +34,5 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 warn_unreachable = true
-files = ["src/streamline_bridge", "tests"]
+files = ["src/streamline_tools"]
 mypy_path = ["src"]

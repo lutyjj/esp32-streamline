@@ -1,3 +1,4 @@
+# Dev/check image: the project plus its pinned dev tools (ruff, mypy).
 FROM python:3.12-slim
 
 ENV PIP_NO_CACHE_DIR=1 \

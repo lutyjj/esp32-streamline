@@ -13,7 +13,7 @@ place, and the standing items we track or have accepted.
 | Surface | State | Risk |
 |---|---|---|
 | HTTP writes (`:80`) | Admin-key gated once provisioned | No key, no control (config, target, reset) |
-| HTTP reads (`:80`) | Open; never returns secrets | Status readable, no control |
+| HTTP reads (`:80`) | Open; never returns secrets | Status and metrics readable, no control |
 | Setup AP | Open; writes open only until an admin key is set | Brief window at first commissioning |
 | OTA update (`/api/ota/update`) | Admin-key gated; HTTPS to GitHub, SHA-256 verified, auto-rollback | Owner-only; authenticity rests on TLS to GitHub, not a signing key |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; image pinned by the admin-supplied SHA-256 | Owner-only; the digest is the root of trust, so the URL may be plain HTTP |

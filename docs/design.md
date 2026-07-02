@@ -120,4 +120,6 @@ input:       ES8388 line input 1 or 2 (NVS configured)
 gain:        0-100 (NVS configured)
 ```
 
-The streaming task exports queue and transport counters via `/api/status`.
+The firmware exports read-only runtime state as JSON at `/api/status` and as
+Prometheus text at `/api/metrics`. Both endpoints read the same in-memory
+streaming counters.

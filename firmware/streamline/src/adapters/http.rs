@@ -16,12 +16,17 @@ use serde::Serialize;
 use crate::{
     adapters::{
         nvs::ConfigStore,
-        ota::{self, OtaProgress, OtaSnapshot},
+        ota::{self, OtaProgress},
         wifi,
     },
     config::{AudioSettings, InputLine, RuntimeConfig},
     levels::CLIP_THRESHOLD_ABS,
+    metrics::render_prometheus,
     runtime::StreamStatus,
+    telemetry::{
+        AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry, StreamTelemetry, TargetTelemetry,
+        TelemetrySnapshot, WifiTelemetry,
+    },
     update,
 };
 
@@ -29,6 +34,7 @@ const INDEX: &str = include_str!("../../web/index.html");
 const APP_CSS: &str = include_str!("../../web/app.css");
 const APP_JS: &str = include_str!("../../web/app.js");
 const MAX_REQUEST_BYTES: usize = 512;
+const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
@@ -66,6 +72,16 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             200,
             "application/json",
             &status_json(&state_for_status),
+        )
+    })?;
+
+    let state_for_metrics = Arc::clone(&state);
+    server.fn_handler("/api/metrics", Method::Get, move |request| {
+        respond(
+            request,
+            200,
+            PROMETHEUS_CONTENT_TYPE,
+            &metrics_text(&state_for_metrics),
         )
     })?;
 
@@ -497,26 +513,26 @@ struct StatusResponse<'a> {
     target: TargetStatus<'a>,
     audio: AudioStatus,
     metrics: MetricsStatus,
-    diagnostics: DiagnosticsStatus,
-    ota: OtaSnapshot,
+    diagnostics: DiagnosticsStatus<'a>,
+    ota: OtaStatus<'a>,
 }
 
 /// Post-mortem evidence for boots the user did not watch: why the device is
 /// (or last was) in setup-AP mode, how the last OTA attempt ended, and what
 /// kind of reset produced this boot.
 #[derive(Serialize)]
-struct DiagnosticsStatus {
-    reset_reason: &'static str,
-    last_fallback: String,
-    last_ota: String,
+struct DiagnosticsStatus<'a> {
+    reset_reason: &'a str,
+    last_fallback: &'a str,
+    last_ota: &'a str,
 }
 
 #[derive(Serialize)]
 struct WifiStatus<'a> {
     ssid: &'a str,
     status: &'a str,
-    sta_ip: String,
-    ap_ip: String,
+    sta_ip: &'a str,
+    ap_ip: &'a str,
     rssi: i32,
 }
 
@@ -540,21 +556,31 @@ struct AudioStatus {
 #[derive(Serialize)]
 struct MetricsStatus {
     sequence: u32,
-    packets: u32,
-    bytes: u32,
-    read_errors: u32,
-    short_reads: u32,
+    packets: u64,
+    bytes: u64,
+    read_errors: u64,
+    short_reads: u64,
     queue_depth: u32,
-    queue_drops_total: u32,
-    network_errors_total: u32,
-    reconnects_total: u32,
+    queue_drops_total: u64,
+    network_errors_total: u64,
+    reconnects_total: u64,
     clip_threshold_abs: u16,
     peak_abs_left: u32,
     peak_abs_right: u32,
     rms_left: u32,
     rms_right: u32,
-    clipped_samples_total: u32,
+    clipped_samples_total: u64,
     playing: bool,
+}
+
+#[derive(Serialize)]
+struct OtaStatus<'a> {
+    phase: &'a str,
+    bytes_written: u32,
+    bytes_total: u32,
+    latest_version: &'a str,
+    message: &'a str,
+    busy: bool,
 }
 
 fn config_json(state: &ApiState) -> String {
@@ -571,6 +597,15 @@ fn config_json(state: &ApiState) -> String {
 }
 
 fn status_json(state: &ApiState) -> String {
+    let snapshot = telemetry_snapshot(state);
+    serialize(&StatusResponse::from(&snapshot))
+}
+
+fn metrics_text(state: &ApiState) -> String {
+    render_prometheus(&telemetry_snapshot(state))
+}
+
+fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
     let (last_fallback, last_ota) = match state.store.lock() {
         Ok(store) => (store.last_fallback(), store.last_ota()),
         Err(_) => (String::new(), String::new()),
@@ -585,43 +620,33 @@ fn status_json(state: &ApiState) -> String {
         Mode::SetupAp => ("setup-ap", "ap"),
         Mode::Streaming => ("streaming", "connected"),
     };
-    serialize(&StatusResponse {
+    let ota = state.ota.snapshot();
+    TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
         mode,
         config_source: "nvs",
         web_server: true,
         configuration_writable: true,
         auth_required: !config.admin_secret.is_empty(),
-        wifi: WifiStatus {
-            ssid: &config.ssid,
+        wifi: WifiTelemetry {
+            ssid: config.ssid.clone(),
             status: wifi_status,
             sta_ip: wifi::station_ip().unwrap_or_default(),
             ap_ip: wifi::access_point_ip().unwrap_or_default(),
-            rssi: wifi::rssi().unwrap_or(0),
+            rssi_dbm: wifi::rssi().unwrap_or(0),
         },
-        target: TargetStatus {
-            target_host: &config.target_host,
-            target_port: config.target_port,
+        target: TargetTelemetry {
+            host: config.target_host.clone(),
+            port: config.target_port,
             transport: "tcp",
         },
-        audio: AudioStatus {
+        audio: AudioTelemetry {
             input_line: line(config.audio.input_line),
             input_gain: config.audio.input_gain,
-            adc_atten_db: config.audio.adc_attenuation_db,
-            sample_rate: 48_000,
+            adc_attenuation_db: config.audio.adc_attenuation_db,
+            sample_rate_hz: 48_000,
             channels: 2,
             bits_per_sample: 16,
-        },
-        metrics: MetricsStatus {
-            sequence: metrics.sequence,
-            packets: metrics.packets,
-            bytes: metrics.bytes,
-            read_errors: metrics.read_errors,
-            short_reads: metrics.short_reads,
-            queue_depth: metrics.queue_depth,
-            queue_drops_total: metrics.queue_drops,
-            network_errors_total: metrics.network_errors,
-            reconnects_total: metrics.reconnects,
             clip_threshold_abs: CLIP_THRESHOLD_ABS,
             peak_abs_left: metrics.peak_left,
             peak_abs_right: metrics.peak_right,
@@ -630,13 +655,31 @@ fn status_json(state: &ApiState) -> String {
             clipped_samples_total: metrics.clipped_total,
             playing: metrics.playing,
         },
-        diagnostics: DiagnosticsStatus {
+        stream: StreamTelemetry {
+            sequence: metrics.sequence,
+            packets_total: metrics.packets,
+            bytes_total: metrics.bytes,
+            read_errors_total: metrics.read_errors,
+            short_reads_total: metrics.short_reads,
+            queue_depth: metrics.queue_depth,
+            queue_drops_total: metrics.queue_drops,
+            network_errors_total: metrics.network_errors,
+            reconnects_total: metrics.reconnects,
+        },
+        diagnostics: DiagnosticsTelemetry {
             reset_reason: reset_reason(),
             last_fallback,
             last_ota,
         },
-        ota: state.ota.snapshot(),
-    })
+        ota: OtaTelemetry {
+            phase: ota.phase,
+            bytes_written: ota.bytes_written,
+            bytes_total: ota.bytes_total,
+            latest_version: ota.latest_version,
+            message: ota.message,
+            busy: ota.busy,
+        },
+    }
 }
 
 /// What kind of reset produced this boot; `panic` or a watchdog value on a
@@ -655,6 +698,70 @@ fn reset_reason() -> &'static str {
         sys::esp_reset_reason_t_ESP_RST_BROWNOUT => "brownout",
         sys::esp_reset_reason_t_ESP_RST_SDIO => "sdio",
         _ => "unknown",
+    }
+}
+
+impl<'a> From<&'a TelemetrySnapshot> for StatusResponse<'a> {
+    fn from(snapshot: &'a TelemetrySnapshot) -> Self {
+        Self {
+            firmware_version: snapshot.firmware_version,
+            mode: snapshot.mode,
+            config_source: snapshot.config_source,
+            web_server: snapshot.web_server,
+            configuration_writable: snapshot.configuration_writable,
+            auth_required: snapshot.auth_required,
+            wifi: WifiStatus {
+                ssid: &snapshot.wifi.ssid,
+                status: snapshot.wifi.status,
+                sta_ip: &snapshot.wifi.sta_ip,
+                ap_ip: &snapshot.wifi.ap_ip,
+                rssi: snapshot.wifi.rssi_dbm,
+            },
+            target: TargetStatus {
+                target_host: &snapshot.target.host,
+                target_port: snapshot.target.port,
+                transport: snapshot.target.transport,
+            },
+            audio: AudioStatus {
+                input_line: snapshot.audio.input_line,
+                input_gain: snapshot.audio.input_gain,
+                adc_atten_db: snapshot.audio.adc_attenuation_db,
+                sample_rate: snapshot.audio.sample_rate_hz,
+                channels: snapshot.audio.channels,
+                bits_per_sample: snapshot.audio.bits_per_sample,
+            },
+            metrics: MetricsStatus {
+                sequence: snapshot.stream.sequence,
+                packets: snapshot.stream.packets_total,
+                bytes: snapshot.stream.bytes_total,
+                read_errors: snapshot.stream.read_errors_total,
+                short_reads: snapshot.stream.short_reads_total,
+                queue_depth: snapshot.stream.queue_depth,
+                queue_drops_total: snapshot.stream.queue_drops_total,
+                network_errors_total: snapshot.stream.network_errors_total,
+                reconnects_total: snapshot.stream.reconnects_total,
+                clip_threshold_abs: snapshot.audio.clip_threshold_abs,
+                peak_abs_left: snapshot.audio.peak_abs_left,
+                peak_abs_right: snapshot.audio.peak_abs_right,
+                rms_left: snapshot.audio.rms_left,
+                rms_right: snapshot.audio.rms_right,
+                clipped_samples_total: snapshot.audio.clipped_samples_total,
+                playing: snapshot.audio.playing,
+            },
+            diagnostics: DiagnosticsStatus {
+                reset_reason: snapshot.diagnostics.reset_reason,
+                last_fallback: &snapshot.diagnostics.last_fallback,
+                last_ota: &snapshot.diagnostics.last_ota,
+            },
+            ota: OtaStatus {
+                phase: snapshot.ota.phase,
+                bytes_written: snapshot.ota.bytes_written,
+                bytes_total: snapshot.ota.bytes_total,
+                latest_version: &snapshot.ota.latest_version,
+                message: &snapshot.ota.message,
+                busy: snapshot.ota.busy,
+            },
+        }
     }
 }
 

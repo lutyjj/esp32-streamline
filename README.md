@@ -83,6 +83,8 @@ tuning flags.
 
 Open the console at the device's station IP to tune audio, change settings, or
 reset the device. **Clear Config** returns it to the setup AP.
+For monitoring, scrape `http://<esp32-ip>/api/metrics`; JSON diagnostics live at
+`/api/status`.
 
 ### 4. Update
 

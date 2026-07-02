@@ -7,10 +7,14 @@
 //! concerns from leaking into application logic.
 
 pub mod config;
+#[cfg(any(test, target_os = "espidf"))]
+mod counter;
 pub mod levels;
+pub mod metrics;
 pub mod packet;
 pub mod play;
 pub mod protocol;
+pub mod telemetry;
 pub mod update;
 
 #[cfg(target_os = "espidf")]

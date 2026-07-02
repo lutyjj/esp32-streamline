@@ -47,7 +47,7 @@ jobs:
         run: make release VERSION=${{ steps.version.outputs.value }} BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

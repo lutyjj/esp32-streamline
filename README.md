@@ -2,57 +2,59 @@
 
 [![CI](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml/badge.svg)](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml)
 
-ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It captures analog audio (like from a vinyl record player or CD deck), packetizes the raw PCM and sends it over a persistent TCP/Wi-Fi connection to a self-hosted bridge for ingestion into systems like Snapcast, Icecast, or Music Assistant.
+ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It
+captures analog audio — a turntable, a CD deck — and streams the raw PCM over
+TCP/Wi-Fi to a self-hosted bridge. The bridge publishes a live HTTP WAV stream
+for Snapcast, Icecast, or Music Assistant.
 
 ## Features
 
-- **Dumb Node Architecture**: The ESP32 stays simple—capturing and moving packets. All encoding, buffering, and syncing lives on the bridge.
-- **Zero-config commissioning**: Starts an `esp32-streamline-XXXX` setup AP when unconfigured; set Wi-Fi, stream target, and audio from a small web console and tune levels live while streaming. A per-device admin key generated at commissioning gates all config writes; reads stay open. Traffic is plain HTTP, so keep the device on a trusted LAN — see [Security Notes](docs/security.md).
-- **Easily Self-Hosted Bridge**: Includes Python scripts and Docker Compose files to bridge the TCP PCM stream into a live HTTP WAV stream.
-- **Bridge Playout Buffer**: The bridge buffers the stream before exposing the WAV output, smoothing timing jitter and concealing any gaps around disconnects.
-- **Over-the-Air Updates**: One console button pulls the latest GitHub release over HTTPS, verifies its SHA-256, and flashes it to a second app slot with automatic rollback if the new image fails to boot — see [OTA Updates](docs/ota.md).
+- **Dumb node architecture** — the ESP32 captures and moves packets. Encoding,
+  buffering, and syncing live on the bridge. See [design notes](docs/design.md).
+- **Zero-config commissioning** — an unconfigured device opens a setup AP. A
+  small web console sets Wi-Fi, stream target, and audio levels. A per-device
+  admin key gates every write; reads stay open.
+- **Signal-gated streaming** — the device streams while the input plays and
+  pauses on sustained silence, so an idle input costs no bandwidth.
+- **Self-hosted bridge** — one Docker container turns the TCP PCM stream into
+  a live HTTP WAV stream. A ~1 s playout buffer smooths Wi-Fi jitter and
+  conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
+- **Verified OTA updates** — one console button pulls the latest GitHub
+  release over HTTPS, verifies its SHA-256, and rolls back automatically if
+  the new image fails to boot. See [OTA updates](docs/ota.md).
+
+The device speaks plain HTTP on a trusted LAN. Read the
+[security notes](docs/security.md) before exposing any port.
 
 ## Hardware
 
-Developed and tested on:
-- **Board**: Ai-Thinker ESP32-A1S / ESP32 Audio Kit v2.2 class board
-- **Codec**: ES8388 (detected at I2C address `0x10`)
+- **Board**: Ai-Thinker ESP32-A1S / ESP32 Audio Kit v2.2 class
+- **Codec**: ES8388 (I2C address `0x10`)
 - **Flash**: 8 MB
 
-## Architecture
+## Quick start
 
-```text
-vinyl/CD switch
-  -> ESP32 Audio Kit line input
-  -> codec ADC over I2S
-  -> ESP32 packetizes PCM over TCP/Wi-Fi
-  -> HTTP WAV bridge
-  -> live HTTP WAV stream (/streamline.wav)
-  -> Music Assistant / players
+### 1. Flash the firmware
+
+**Browser** — open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/)
+in desktop Chrome or Edge, connect the board over USB, and click
+**Connect & Install**.
+
+**Terminal** — download the latest `streamline-X.Y.Z-full.bin` from
+[Releases](../../releases), then flash it with
+[esptool](https://docs.espressif.com/projects/esptool/) (`pip install esptool`):
+
+```sh
+esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 streamline-X.Y.Z-full.bin
 ```
 
-## Quick Start
+Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 
-### 1. Flash the Firmware
+### 2. Run the bridge
 
-**Easiest — flash from your browser:** open the
-[WebFlasher](https://lutyjj.github.io/esp32-streamline/) in desktop Chrome or
-Edge, plug the ESP32 Audio Kit in over USB, and click **Connect & Install**. It
-installs the latest release with no toolchain required.
+Create `docker-compose.yml` on your server and start it with
+`docker compose up -d`:
 
-**Manual — via `esptool`:**
-
-1. Download the latest `streamline-X.Y.Z-full.bin` from [Releases](../../releases).
-2. Flash it to your ESP32 Audio Kit using `esptool.py` (install via `pip install esptool`):
-   ```sh
-   esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 streamline-X.Y.Z-full.bin
-   ```
-   *(Adjust `-p` to your serial port, e.g., `/dev/cu.usbserial-0001` on macOS or `COM3` on Windows)*
-
-### 2. Run the HTTP Bridge
-
-**Via Docker Compose:**
-Create a `docker-compose.yml` file on your server:
 ```yaml
 services:
   streamline-http:
@@ -61,151 +63,74 @@ services:
     ports:
       - "39000:39000/tcp"
       - "8088:8088/tcp"
-    environment:
-      # Optional: Restrict bridge input to your ESP32's IP
-      # STREAMLINE_SOURCE_ALLOW: 192.168.1.100
-```
-Then start it: `docker compose up -d`
-
-**Via direct Docker command:**
-```sh
-docker run -d --restart unless-stopped -p 39000:39000 -p 8088:8088 ghcr.io/lutyjj/esp32-streamline-bridge:latest
+    # environment:
+    #   STREAMLINE_SOURCE_ALLOW: 192.168.1.100  # accept PCM only from your ESP32
 ```
 
-Your audio will now be available as a live WAV stream at `http://<bridge-host>:8088/streamline.wav`. You can add this URL directly to Music Assistant as a radio/web stream. Status is exposed as JSON at `http://<bridge-host>:8088/status`.
+The stream goes live at `http://<bridge-host>:8088/streamline.wav` — add it to
+Music Assistant as a radio/URL stream. `/status` serves JSON stats.
+`make bridge-run BRIDGE_ARGS='--help'` lists the tuning flags.
 
-The HTTP bridge defaults to a 1 second playout buffer. It smooths timing jitter from the TCP stream and keeps the audio timeline stable by concealing missing packets instead of skipping over them.
+### 3. Configure the device
 
-### 3. Configuration
+1. Join the `esp32-streamline-XXXX` Wi-Fi network and open `http://192.168.71.1/`.
+2. Enter your Wi-Fi credentials and set **TCP Target Host** to the bridge IP.
+3. **Save the generated admin key.** The device never shows it again. The key
+   unlocks every later settings change; lose it and you must reflash.
+4. Save. The device reboots onto your network.
 
-If no config is saved, the device will host an open setup network named `esp32-streamline-XXXX`.
-1. Connect to the network and open `http://192.168.71.1/`.
-2. Enter your home Wi-Fi credentials.
-3. Set the **TCP Target Host** to the IP of your bridge server.
-4. Save the generated **Admin Key** shown by the console. The key is required
-   to change settings later and is not shown by the device again.
-5. Save and let the device reboot onto your network.
+Open the console at the device's station IP to tune audio, change settings, or
+reset the device. **Clear Config** returns it to the setup AP.
 
-Once it is on your network, open the device's web console at its station IP and
-unlock settings with the admin key to change Wi-Fi, target, audio, OTA, or reset
-settings; each save reboots to apply where needed. Reads (status) stay open; writes require the key.
-Browser storage is scoped to the setup AP address and the station IP separately:
-copy the generated key during setup, then remember it from the station console if
-you want the browser to keep it.
-Resetting configuration returns the device to the setup AP. Traffic is plain HTTP,
-so keep the device on a trusted LAN (see [Security Notes](docs/security.md)). If you
-lose the key, re-commission by reflashing.
+### 4. Update
 
-### 4. Updating
+Console → **Advanced** → **Check for updates**. [OTA updates](docs/ota.md)
+covers the flow, rollback, and the one-time serial reflash that pre-OTA
+devices need.
 
-Open the console's **Advanced** tab and click **Check & update firmware**. The
-device pulls the latest GitHub release over HTTPS, verifies it, and reboots into
-it; a failed image rolls back automatically. Devices flashed before OTA support
-must be re-flashed once over serial with a `-full.bin` to gain the two-slot
-layout — see [OTA Updates](docs/ota.md).
+## Development
 
-## Advanced Usage & Development
-
-### Building from Source
-
-The Rust/ESP-IDF firmware is built in Docker. Flashing is host-side because
-Docker Desktop does not reliably expose macOS serial devices.
-
-1. **Build the firmware:**
-   ```sh
-   make firmware-build
-   ```
-
-2. **Flash to the board:**
-   *Flashing runs on the host — Docker Desktop on macOS does not reliably expose `/dev/cu.*` serial devices — so install `espflash` once:*
-   ```sh
-   cargo install espflash
-   make firmware-flash
-   ```
-   *If you are on Linux or Windows, override the default macOS port:*
-   ```sh
-   make firmware-flash PORT=/dev/ttyUSB0  # Linux
-   make firmware-flash PORT=COM3          # Windows
-   ```
-
-3. **Monitor serial output:**
-   ```sh
-   make firmware-monitor PORT=/dev/ttyUSB0
-   ```
-   `firmware-monitor` is interactive. For a bounded, non-interactive capture
-   that returns on its own (CI, scripts, a quick look), use `firmware-capture`:
-   ```sh
-   make firmware-capture CAPTURE_SECS=30 PORT=/dev/ttyUSB0
-   ```
-
-Release artifacts contain an `espflash`-compatible merged image plus the ELF.
-
-### Running the Bridge from Source
-
-Run the HTTP bridge on your server or host machine to receive the TCP stream and expose it as an HTTP stream.
-
-**Via Docker Compose:**
-```sh
-make bridge-up
-```
-
-**Direct Docker image:**
-```sh
-make bridge-run
-```
-
-Useful bridge options:
+Everything builds and checks in containers — install only Docker (or Podman)
+and `make`. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and the PR flow;
+[AGENTS.md](AGENTS.md) states the engineering rules.
 
 ```sh
-make bridge-run BRIDGE_ARGS='\
-  --source-allow 192.0.2.10 \
-  --playout-buffer-seconds 1.0 \
-  --client-buffer-chunks 2048 \
-  --max-repeat-conceal-packets 3 \
-  --max-outage-silence-seconds 5.0 \
-  --source-idle-timeout-seconds 5.0'
+make help                                 # all targets
+make lint && make test                    # what CI runs
+make firmware-build                       # cross-compile the firmware
+make firmware-flash PORT=/dev/ttyUSB0     # flash from the host
+make firmware-monitor PORT=/dev/ttyUSB0   # interactive serial monitor
+make firmware-capture CAPTURE_SECS=30     # bounded serial capture for scripts
+make bridge-up                            # run the bridge from source
 ```
 
-`--source-allow` is optional but recommended: provide the ESP32's IPv4 address
-(repeat the argument or use a comma-separated list for multiple sources). The same
-setting is available to Docker Compose as `STREAMLINE_SOURCE_ALLOW`.
+Flashing runs on the host because Docker Desktop on macOS cannot reliably
+expose serial devices. Install the tool once: `cargo install espflash`.
 
-Read [Security Notes](docs/security.md) before exposing either bridge port outside
-your trusted LAN.
-
-### Checks
-
-Every check runs in a container — no local toolchain needed. `lint` covers Rust
-(rustfmt, clippy) and Python (ruff, mypy strict) across all components; `test`
-runs the bridge and firmware test suites plus a full firmware release build:
-
-```sh
-make format
-make lint
-make test
-```
+Docs: [design](docs/design.md) ·
+[PCM protocol](docs/pcm-protocol.md) ·
+[TCP transport](docs/tcp-transport.md) ·
+[OTA](docs/ota.md) ·
+[security](docs/security.md)
 
 ### Releases
 
 Releases are tag-based. Set the same version in `bridge/pyproject.toml` and
-`firmware/streamline/Cargo.toml`, build the local release deliverables, then
-create the matching tag through the normal pull-request workflow:
+`firmware/streamline/Cargo.toml` through the normal PR flow, then:
 
 ```sh
-make release VERSION=0.1.1
-git tag v0.1.1
-git push github v0.1.1
+make release VERSION=0.4.0   # validates and builds deliverables; publishes nothing
+git tag v0.4.0
+git push github v0.4.0       # the tag workflow publishes to GitHub and GHCR
 ```
-
-`make release` runs the checks, writes firmware binaries and checksums to
-`dist/firmware`, and builds the versioned bridge image. It does not publish.
-The tag workflow publishes those deliverables to GitHub and GHCR.
 
 ## Scope
 
-ESP32 StreamLine is an audio ingestion source, not a network renderer. It focuses
-on reliable analog capture and transport; playback, encoding, and multiroom
-synchronization belong to the software consuming the published stream.
+StreamLine is an audio ingestion source, not a network renderer. It captures
+and transports; playback, encoding, and multiroom sync belong to the software
+consuming the stream.
 
 ## AI usage
-AI usage and contributions are more than welcome. This project was created with heavy usage of AI.
+
+AI contributions are welcome — this project is built with heavy AI usage.
+Agents: follow [AGENTS.md](AGENTS.md).

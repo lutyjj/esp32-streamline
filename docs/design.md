@@ -22,26 +22,16 @@ The bridge host should:
 
 ## Protocol Choice
 
-The device sends raw PCM with a small fixed header. The wire format is transport-
-agnostic (see `docs/pcm-protocol.md`); the transport is a persistent TCP connection
-using the Rust standard library (`std::net`) over lwIP. TCP gives ordered,
-recoverable delivery, and a split capture/network task design keeps a network
-stall from blocking I2S capture. See `docs/tcp-transport.md` for the
-runtime contract.
+The device sends raw PCM with a small fixed header. The wire format is
+transport-agnostic — [pcm-protocol.md](pcm-protocol.md) defines it — and the
+transport is a persistent TCP connection (Rust `std::net` over lwIP). TCP
+gives ordered, recoverable delivery, and the split capture/network task design
+keeps a network stall from blocking I2S capture.
+[tcp-transport.md](tcp-transport.md) states the runtime contract.
 
-Format:
-
-```text
-sample rate: 48000 Hz
-channels:    2
-sample size: 16-bit signed little-endian
-payload:     interleaved stereo PCM
-transport:   TCP (raw lwIP sockets)
-```
-
-At 48 kHz stereo 16-bit, raw payload bitrate is about 1.536 Mbit/s before header/
-TCP/IP/Wi-Fi overhead. That is comfortable for a local Wi-Fi network and much
-simpler than encoding on the ESP32.
+At 48 kHz stereo 16-bit, the raw payload bitrate is about 1.536 Mbit/s before
+header/TCP/IP/Wi-Fi overhead. That is comfortable for a local Wi-Fi network
+and much simpler than encoding on the ESP32.
 
 ## Server Integration Options
 

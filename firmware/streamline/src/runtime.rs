@@ -18,8 +18,9 @@ use crate::{
         i2s::Capture,
         tcp::{TargetAddress, TcpClient},
     },
-    levels::{LevelStats, SILENCE_RMS_THRESHOLD},
+    levels::LevelStats,
     packet::AudioPacket,
+    play::PlayDetector,
     protocol::PAYLOAD_BYTES,
 };
 
@@ -45,7 +46,6 @@ pub struct StreamStatus {
     rms_left: AtomicU32,
     rms_right: AtomicU32,
     clipped_total: AtomicU32,
-    silence_packets: AtomicU32,
     playing: AtomicBool,
 }
 
@@ -82,24 +82,6 @@ impl StreamStatus {
         if levels.clipped > 0 {
             self.clipped_total
                 .fetch_add(levels.clipped, Ordering::Relaxed);
-        }
-        // Silence detection: both channels must be below threshold. Only the
-        // capture task writes silence_packets, so load-then-store is race-free.
-        // The counter saturates at the window so resume latency stays bounded
-        // regardless of how long the input was idle.
-        let is_silent =
-            levels.rms_left < SILENCE_RMS_THRESHOLD && levels.rms_right < SILENCE_RMS_THRESHOLD;
-        let count = self.silence_packets.load(Ordering::Relaxed);
-        let silence_count = if is_silent {
-            count.saturating_add(1).min(SILENCE_DETECTION_WINDOW)
-        } else {
-            count.saturating_sub(SILENCE_HYSTERESIS)
-        };
-        self.silence_packets.store(silence_count, Ordering::Relaxed);
-        if silence_count >= SILENCE_DETECTION_WINDOW {
-            self.playing.store(false, Ordering::Relaxed);
-        } else if silence_count == 0 {
-            self.playing.store(true, Ordering::Relaxed);
         }
     }
 }
@@ -183,6 +165,11 @@ pub fn start(capture: Capture, target: TargetAddress) -> Result<Arc<StreamStatus
 
 fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<StreamStatus>) -> ! {
     let mut pcm = [0_u8; PAYLOAD_BYTES];
+    // The capture task owns play detection: only packets captured while the
+    // input carries signal are enqueued, so the network task simply drains the
+    // queue and an idle input costs no bandwidth. Sequence numbers keep
+    // counting while idle — the gap tells the bridge how much time passed.
+    let mut detector = PlayDetector::new();
     loop {
         let bytes = match capture.read(&mut pcm) {
             Ok(bytes) => bytes,
@@ -200,8 +187,14 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
         if bytes != PAYLOAD_BYTES {
             status.short_reads.fetch_add(1, Ordering::Relaxed);
         }
-        status.record_levels(LevelStats::analyze(&pcm[..bytes]));
+        let levels = LevelStats::analyze(&pcm[..bytes]);
+        status.record_levels(levels);
+        let playing = detector.update(levels);
+        status.playing.store(playing, Ordering::Relaxed);
         let sequence = status.sequence.fetch_add(1, Ordering::Relaxed);
+        if !playing {
+            continue;
+        }
         let Some(packet) = AudioPacket::from_pcm(sequence, &pcm[..bytes]) else {
             status.short_reads.fetch_add(1, Ordering::Relaxed);
             continue;
@@ -214,15 +207,8 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
     }
 }
 
-const SILENCE_DETECTION_WINDOW: u32 = 5;
-const SILENCE_HYSTERESIS: u32 = 2;
-
 fn network_loop(mut tcp: TcpClient, queue: Arc<PacketQueue>, status: Arc<StreamStatus>) -> ! {
     loop {
-        if !status.playing.load(Ordering::Relaxed) {
-            FreeRtos::delay_ms(100);
-            continue;
-        }
         let (packet, depth) = queue.pop();
         status.queue_depth.store(depth as u32, Ordering::Relaxed);
         loop {

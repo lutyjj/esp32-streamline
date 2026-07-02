@@ -9,6 +9,7 @@
 pub mod config;
 pub mod levels;
 pub mod packet;
+pub mod play;
 pub mod protocol;
 pub mod update;
 

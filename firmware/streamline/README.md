@@ -7,6 +7,8 @@ The ESP32 Audio Kit firmware: Rust on ESP-IDF v5.5.3.
 - ES8388 ADC at I2C `0x10` (SDA GPIO33, SCL GPIO32)
 - I2S RX at 48 kHz, 16-bit stereo (MCLK GPIO0, BCLK GPIO27, LRCLK GPIO25, DIN GPIO35)
 - byte-exact `ELI1` TCP packets, 256 frames / 1,024 PCM bytes
+- signal-gated streaming: packets flow only while the input plays, decided
+  with amplitude + time hysteresis (`src/play.rs`) so noise never toggles it
 - bounded 32-packet drop-oldest queue
 - capture task: core 1, priority 3; TCP task: core 1, priority 2
 - bounded TCP connect/send via `std::net` (`TCP_NODELAY`, 250 ms timeouts)

@@ -7,10 +7,6 @@
 /// Just below full scale to catch hard limiting without flagging normal peaks.
 pub const CLIP_THRESHOLD_ABS: u16 = 32_760;
 
-/// RMS threshold (both channels must be below) for silence detection.
-/// Well above open-input noise floor (~8-9) but below quiet passages of music.
-pub const SILENCE_RMS_THRESHOLD: u16 = 50;
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct LevelStats {
     pub peak_left: u16,

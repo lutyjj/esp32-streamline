@@ -17,4 +17,7 @@ USER streamline
 EXPOSE 39000/tcp
 EXPOSE 8088/tcp
 
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
+    CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=2)"]
+
 ENTRYPOINT ["streamline-bridge"]

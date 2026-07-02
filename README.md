@@ -1,5 +1,7 @@
 # ESP32 StreamLine
 
+[![CI](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml/badge.svg)](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml)
+
 ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It captures analog audio (like from a vinyl record player or CD deck), packetizes the raw PCM and sends it over a persistent TCP/Wi-Fi connection to a self-hosted bridge for ingestion into systems like Snapcast, Icecast, or Music Assistant.
 
 ## Features

@@ -1,28 +1,61 @@
-# Weekly dependency PRs for every ecosystem in the repository. Version pins are
-# deliberate (reproducible builds); this is what refreshes them.
+# Weekly dependency PRs for every ecosystem in the repository, grouped by the
+# component that owns the build contract.
 version: 2
+
+multi-ecosystem-groups:
+  bridge:
+    schedule:
+      interval: weekly
+  firmware:
+    schedule:
+      interval: weekly
+  tools:
+    schedule:
+      interval: weekly
+
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: cargo
     directory: /firmware/streamline
-    schedule:
-      interval: weekly
+    patterns:
+      - "*"
+    multi-ecosystem-group: firmware
 
   - package-ecosystem: pip
-    directories:
-      - /bridge
-      - /tools
-    schedule:
-      interval: weekly
+    directory: /bridge
+    patterns:
+      - "*"
+    multi-ecosystem-group: bridge
 
   - package-ecosystem: docker
-    directories:
-      - /bridge
-      - /firmware/streamline
-      - /tools
-    schedule:
-      interval: weekly
+    directory: /bridge
+    patterns:
+      - "*"
+    multi-ecosystem-group: bridge
+
+  - package-ecosystem: docker
+    directory: /firmware/streamline
+    patterns:
+      - "*"
+    multi-ecosystem-group: firmware
+
+  - package-ecosystem: pip
+    directory: /tools
+    patterns:
+      - "*"
+    multi-ecosystem-group: tools
+
+  - package-ecosystem: docker
+    directory: /tools
+    patterns:
+      - "*"
+    multi-ecosystem-group: tools

@@ -10,7 +10,7 @@ description = "ESP32 StreamLine developer tools"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
-  "numpy==2.2.6",
+  "numpy>=2.2.6,<3",
 ]
 
 [project.scripts]

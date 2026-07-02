@@ -26,7 +26,7 @@ The device sends raw PCM with a small fixed header. The wire format is transport
 agnostic (see `docs/pcm-protocol.md`); the transport is a persistent TCP connection
 using the Rust standard library (`std::net`) over lwIP. TCP gives ordered,
 recoverable delivery, and a split capture/network task design keeps a network
-stall from blocking I2S capture. See `docs/tcp-idf-transport-plan.md` for the
+stall from blocking I2S capture. See `docs/tcp-transport.md` for the
 runtime contract.
 
 Format:
@@ -62,11 +62,9 @@ Music Assistant is controlling Snapcast clients.
 
 ### Sendspin
 
-Sendspin is the native Music Assistant playback protocol for clients/players. It is
-not the right first target for this line-in bridge, because our ESP32 is producing
-audio that needs to enter the media system, not a player waiting for Music Assistant
-to send it audio. A Sendspin implementation could be useful later for output devices,
-but the line-in path should publish a stream URL or feed Snapcast/Icecast.
+Out of scope. Sendspin is Music Assistant's playback protocol for output devices;
+this device produces audio entering the media system, so it publishes a stream URL
+or feeds Snapcast/Icecast instead.
 
 ## HTTP WAV Bridge
 
@@ -84,13 +82,7 @@ It exposes:
 /health       health check
 ```
 
-Run directly:
-
-```sh
-make bridge-up
-```
-
-Run with Docker:
+Run it:
 
 ```sh
 make bridge-up

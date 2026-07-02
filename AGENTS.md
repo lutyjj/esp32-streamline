@@ -40,12 +40,26 @@ isolate what changes — URLs, transports, sinks, clocks — behind a narrow
 interface so it can be swapped or faked in a test. Abstract when it removes
 duplication or unlocks a test, not before.
 
-## Build flows live in Makefiles
+## Components share one build contract
 
-To understand the layout, run `tree` (or `git ls-files`). The root `Makefile`
-is the public cross-project interface; each component Makefile owns its local
-build, lint, test, and image flows. Prefer these targets over ad-hoc
-docker/pio invocations.
+Each component (`bridge/`, `firmware/`, `tools/`, `webflasher/`) is
+self-contained: it owns its Makefile, container image, dependency pins, and
+tool config. All component Makefiles expose the same verbs where they apply —
+`format`, `lint`, `test`, `image` — and include `mk/common.mk` for
+cross-cutting values. The root `Makefile` is the public interface:
+`make <component>-<verb>` forwards to the component; `make lint | test | check
+| format` fan out across all of them. Prefer these targets over ad-hoc docker
+invocations. When adding a component: give it a Makefile with the standard
+verbs, a `<name>-check` aggregate in the root Makefile, and a filter entry in
+`.github/workflows/ci.yml`.
+
+## Strict Python, pinned per component
+
+Every Python project pins ruff and mypy in its own `pyproject.toml` dev extras
+and installs them in its own image — self-containment beats sharing a base
+image. Dependabot refreshes the pins. Typing is strict everywhere:
+`strict = true` covers all Python, tests included. Host-side Python lives in
+`tools/`, never as loose scripts.
 
 ## A change is ready only when it is clean
 
@@ -55,7 +69,9 @@ formatting/lint. Run `make lint && make test`; CI runs the same.
 ## Run in Docker, do not pollute the host
 
 Do not pollute the host environment. Run things in Docker whenever possible —
-the `Makefile` already does this for build, lint, and test.
+the `Makefile` already does this for build, lint, and test. The only host-side
+tools are `espflash` and the serial port, which containers cannot reach on
+macOS.
 
 ## Use branches and pull requests
 
@@ -68,9 +84,9 @@ Use **Conventional Commits** (`feat:`, `fix:`, `ci:`, `docs:`, `refactor:`, …)
 
 ## Do not commit generated or local-only files
 
-Do not commit generated or local-only files (`generated_web_ui.h`,
-`local_config.h`, `.pio/`, `.platformio-home/`, `__pycache__/`). See
-`.gitignore`. Extend it if needed.
+Build outputs (`dist/`, `firmware/streamline/target/`, `.embuild/`), captures
+(`captures/`, `analysis-data/`), site-bundled binaries (`webflasher/*.bin`), and
+secrets (`.env`) stay out of git. See `.gitignore`; extend it if needed.
 
 ## Releases are tag-based
 

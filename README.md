@@ -115,7 +115,7 @@ Docker Desktop does not reliably expose macOS serial devices.
    ```
 
 2. **Flash to the board:**
-   *Note: Docker Desktop on macOS does not reliably expose `/dev/cu.*` serial devices, so flashing requires `esptool` installed on your host.*
+   *Flashing runs on the host — Docker Desktop on macOS does not reliably expose `/dev/cu.*` serial devices — so install `espflash` once:*
    ```sh
    cargo install espflash
    make firmware-flash
@@ -173,8 +173,9 @@ your trusted LAN.
 
 ### Checks
 
-Format the repository, run all static checks, and run the bridge tests plus every
-firmware build without installing a local toolchain:
+Every check runs in a container — no local toolchain needed. `lint` covers Rust
+(rustfmt, clippy) and Python (ruff, mypy strict) across all components; `test`
+runs the bridge and firmware test suites plus a full firmware release build:
 
 ```sh
 make format
@@ -184,9 +185,9 @@ make test
 
 ### Releases
 
-Releases are tag-based. Set the version in `bridge/pyproject.toml`, build the
-local release deliverables, then create the matching tag through the normal
-pull-request workflow:
+Releases are tag-based. Set the same version in `bridge/pyproject.toml` and
+`firmware/streamline/Cargo.toml`, build the local release deliverables, then
+create the matching tag through the normal pull-request workflow:
 
 ```sh
 make release VERSION=0.1.1

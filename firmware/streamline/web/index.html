@@ -41,7 +41,7 @@
       <div class="panel metric"><div class="label">RSSI</div><div class="value" id="rssi">--</div></div>
       <div class="panel metric"><div class="label">Sequence</div><div class="value" id="sequence">--</div></div>
     </div>
-    <div class="cols" style="margin-top:12px">
+    <div class="cols spaced">
       <div class="panel"><div class="kv" id="runtimeKv"></div></div>
       <div class="panel"><div class="kv" id="audioKv"></div></div>
     </div>
@@ -115,7 +115,7 @@
         <div>
           <div class="subhead">Current state</div>
           <div class="kv" id="otaKv"></div>
-          <div class="actions" style="margin-top:14px">
+          <div class="actions spaced">
             <button class="action" type="button" id="checkButton">Check for updates</button>
             <button class="action primary" type="button" id="installButton" hidden>Install update</button>
           </div>
@@ -132,6 +132,6 @@
     <div class="api" id="apiDump">{}</div>
   </section>
 </main>
-<script src="/app.js"></script>
+<script src="/app.js" type="module"></script>
 </body>
 </html>

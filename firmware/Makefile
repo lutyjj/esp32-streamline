@@ -24,6 +24,11 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
+# Lint/format for the embedded web console (streamline/web). Biome is a single
+# pinned binary image; config lives in streamline/web/biome.json.
+BIOME_IMAGE := ghcr.io/biomejs/biome:2.3.4
+BIOME_RUN := $(CONTAINER) run --rm -v "$(CURDIR)/$(SRC)/web:/workspace" -w /workspace $(BIOME_IMAGE)
+
 .PHONY: image format lint build test flash monitor capture clean artifacts
 
 image:
@@ -31,6 +36,7 @@ image:
 
 format: image
 	$(CONTAINER_RUN) cargo fmt --all
+	$(BIOME_RUN) check --write .
 
 # clippy runs `--lib` on the host target: the crate core is host-buildable while
 # the `cfg(espidf)` adapters and binary only compile in the cross build, which
@@ -38,6 +44,7 @@ format: image
 lint: image
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --lib -- -D warnings
+	$(BIOME_RUN) check .
 
 build: image
 	$(CONTAINER_RUN) cargo build --release --target $(TARGET)

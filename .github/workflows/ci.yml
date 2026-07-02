@@ -26,7 +26,7 @@ jobs:
       components: ${{ steps.matrix.outputs.components }}
       firmware: ${{ steps.filter.outputs.firmware }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -68,7 +68,7 @@ jobs:
       matrix:
         component: ${{ fromJSON(needs.changes.outputs.components) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: make ${{ matrix.component }}-check
 
   firmware:
@@ -77,7 +77,7 @@ jobs:
     if: ${{ needs.changes.outputs.firmware == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # esp-idf-sys compiles the whole ESP-IDF into .embuild (~4 GB); it only
       # changes when the toolchain or esp-idf-sys version does, so it gets a

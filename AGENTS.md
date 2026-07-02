@@ -37,6 +37,16 @@ trait it owns and implement that trait in the adapter — never call a concrete
 driver from the core. `update::install_verified` and its adapter in
 `adapters/ota.rs` are the pattern to copy.
 
+## Write meaningful unit tests
+
+Unit tests are design pressure, not coverage accounting. Test behavior at the
+smallest useful unit, with hardware, sockets, clocks, and files replaced by
+fakes or narrow interfaces. A useful unit test proves a contract, edge case, or
+failure mode that can break independently; it does not just execute lines,
+mirror implementation details, or exist to raise a coverage number. If logic
+cannot be unit tested without a real device or service, move that logic inward
+until it has a testable boundary.
+
 ## One module, one job
 
 Each module does its own thing. Transport, parsing, orchestration, and

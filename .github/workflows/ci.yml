@@ -35,12 +35,16 @@ jobs:
             shared: &shared
               - '.github/workflows/ci.yml'
               - 'Makefile'
+              - 'mk/**'
             bridge:
               - *shared
               - 'bridge/**'
-            analysis:
+            tools:
               - *shared
-              - 'tools/analysis/**'
+              - 'tools/**'
+            webflasher:
+              - *shared
+              - 'webflasher/**'
             firmware:
               - *shared
               - 'firmware/**'

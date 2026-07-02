@@ -24,14 +24,27 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          test "$version" = "$(sed -n 's/^version = "\([^"]*\)"/\1/p' bridge/pyproject.toml)"
-          test "$version" = "$(sed -n 's/^version = "\([^"]*\)"/\1/p' firmware/streamline/Cargo.toml)"
+          make version-check VERSION="$version"
           printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
+      # Restore-only: CI owns these caches (see ci.yml); reusing them turns the
+      # cold ESP-IDF + cargo build into an incremental one.
+      - name: Restore ESP-IDF build (.embuild)
+        uses: actions/cache/restore@v4
+        with:
+          path: firmware/streamline/.embuild
+          key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
+
+      - name: Restore cargo target
+        uses: actions/cache/restore@v4
+        with:
+          path: firmware/streamline/target
+          key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-
+
       - name: Build release deliverables
-        env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
-        run: make release VERSION=${{ steps.version.outputs.value }} BRIDGE_IMAGE="$IMAGE"
+        run: make release VERSION=${{ steps.version.outputs.value }} BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -40,14 +53,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and publish bridge image
+      - name: Publish bridge image
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
+          BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          docker tag "$IMAGE:$VERSION" "$IMAGE:latest"
-          docker push "$IMAGE:$VERSION"
-          docker push "$IMAGE:latest"
+          docker tag "$BRIDGE_IMAGE:$VERSION" "$BRIDGE_IMAGE:latest"
+          docker push "$BRIDGE_IMAGE:$VERSION"
+          docker push "$BRIDGE_IMAGE:latest"
 
       - name: Create GitHub release
         env:

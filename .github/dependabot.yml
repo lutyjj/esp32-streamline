@@ -1,0 +1,28 @@
+# Weekly dependency PRs for every ecosystem in the repository. Version pins are
+# deliberate (reproducible builds); this is what refreshes them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: cargo
+    directory: /firmware/streamline
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directories:
+      - /bridge
+      - /tools
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directories:
+      - /bridge
+      - /firmware/streamline
+      - /tools
+    schedule:
+      interval: weekly

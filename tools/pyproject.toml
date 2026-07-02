@@ -19,7 +19,7 @@ streamline-capture = "streamline_tools.serial_capture:main"
 
 [project.optional-dependencies]
 dev = [
-  "mypy==1.16.1",
+  "mypy==2.1.0",
   "ruff==0.12.1",
 ]
 

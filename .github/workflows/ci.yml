@@ -27,7 +27,7 @@ jobs:
       firmware: ${{ steps.filter.outputs.firmware }}
     steps:
       - uses: actions/checkout@v5
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           # A change to the shared build entrypoints re-runs every component.

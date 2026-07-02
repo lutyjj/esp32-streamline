@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="ESP32 StreamLine bridge"

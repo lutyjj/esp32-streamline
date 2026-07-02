@@ -30,13 +30,13 @@ jobs:
       # Restore-only: CI owns these caches (see ci.yml); reusing them turns the
       # cold ESP-IDF + cargo build into an incremental one.
       - name: Restore ESP-IDF build (.embuild)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: firmware/streamline/.embuild
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
       - name: Restore cargo target
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: firmware/streamline/target
           key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}

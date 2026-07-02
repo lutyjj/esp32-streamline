@@ -87,7 +87,7 @@ jobs:
       # ~6 min cold build into ~1-2 min. Bump the v1 prefix to invalidate keys.
       - name: Restore ESP-IDF build (.embuild)
         id: embuild
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: firmware/streamline/.embuild
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
@@ -96,7 +96,7 @@ jobs:
       # newest snapshot for this lockfile via restore-keys, then save a fresh one
       # under a run-unique key so cargo stays warm build-to-build.
       - name: Restore cargo target
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: firmware/streamline/target
           key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}
@@ -115,14 +115,14 @@ jobs:
 
       - name: Save ESP-IDF build (.embuild)
         if: ${{ success() && steps.embuild.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: firmware/streamline/.embuild
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
       - name: Save cargo target
         if: ${{ success() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: firmware/streamline/target
           key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}

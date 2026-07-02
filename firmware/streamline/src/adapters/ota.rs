@@ -142,17 +142,30 @@ impl OtaProgress {
     }
 
     /// Reserve the worker: returns `false` if an update is already running.
+    /// Compare-and-swap on the phase makes the reservation atomic, so two
+    /// concurrent trigger requests can never both start a worker.
     fn begin(&self) -> bool {
-        let busy = matches!(
-            Phase::from_u8(self.phase.load(Ordering::Relaxed)),
-            Phase::Checking | Phase::Downloading | Phase::Verifying
-        );
-        if busy {
-            return false;
+        let mut current = self.phase.load(Ordering::Relaxed);
+        loop {
+            let busy = matches!(
+                Phase::from_u8(current),
+                Phase::Checking | Phase::Downloading | Phase::Verifying
+            );
+            if busy {
+                return false;
+            }
+            match self.phase.compare_exchange(
+                current,
+                Phase::Checking as u8,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
         }
         self.written.store(0, Ordering::Relaxed);
         self.total.store(0, Ordering::Relaxed);
-        self.set_phase(Phase::Checking);
         self.set_message("");
         true
     }

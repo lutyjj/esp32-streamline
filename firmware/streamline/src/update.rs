@@ -32,7 +32,9 @@ pub struct OtaRelease {
 /// digest is malformed.
 pub fn parse_release(sums: &str) -> Option<OtaRelease> {
     for line in sums.lines() {
-        let (digest, name) = line.split_once("  ").or_else(|| line.split_once(' '))?;
+        let Some((digest, name)) = line.split_once("  ").or_else(|| line.split_once(' ')) else {
+            continue;
+        };
         let digest = digest.trim();
         let filename = name.trim();
         if !filename.ends_with(OTA_ASSET_SUFFIX) {
@@ -312,6 +314,12 @@ mod tests {
     fn rejects_a_malformed_digest() {
         let sums = "notahash  streamline-0.2.2-ota.bin\n";
         assert_eq!(parse_release(sums), None);
+    }
+
+    #[test]
+    fn skips_lines_without_a_digest_and_filename() {
+        let sums = format!("unrelated-noise\n{SUMS}");
+        assert_eq!(parse_release(&sums), parse_release(SUMS));
     }
 
     #[test]

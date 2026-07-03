@@ -40,7 +40,7 @@ pub fn parse_release(sums: &str) -> Option<OtaRelease> {
         if !filename.ends_with(OTA_ASSET_SUFFIX) {
             continue;
         }
-        if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if !is_sha256_hex(digest) {
             return None;
         }
         let version = version_from_filename(filename)?;
@@ -83,6 +83,59 @@ fn parse_semver(version: &str) -> Option<(u32, u32, u32)> {
         return None;
     }
     Some((major, minor, patch))
+}
+
+fn is_sha256_hex(digest: &str) -> bool {
+    digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// A user-supplied image to install as-is: an exact URL and the SHA-256 that
+/// pins its content. Used for development installs without USB access. The
+/// digest — not the transport — is the root of trust, so a plain-HTTP LAN URL
+/// is acceptable; the device refuses any payload whose hash differs.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CustomImage {
+    pub url: String,
+    pub sha256: String,
+}
+
+impl CustomImage {
+    /// Whether downloading this image needs TLS (and therefore a synced clock
+    /// for certificate validation).
+    pub fn needs_tls(&self) -> bool {
+        self.url.starts_with("https://")
+    }
+}
+
+/// Interpret the optional `url`/`sha256` fields of an update request.
+///
+/// Both absent (or blank) selects the latest-release flow (`Ok(None)`); both
+/// present selects a pinned custom image. One without the other is an error,
+/// as is a non-HTTP URL or a malformed digest.
+pub fn custom_image_from_form(
+    url: Option<&str>,
+    sha256: Option<&str>,
+) -> Result<Option<CustomImage>, String> {
+    let url = url.map(str::trim).filter(|value| !value.is_empty());
+    let sha256 = sha256.map(str::trim).filter(|value| !value.is_empty());
+    match (url, sha256) {
+        (None, None) => Ok(None),
+        (Some(url), Some(sha256)) => custom_image(url, sha256).map(Some),
+        _ => Err("url and sha256 must be provided together".to_owned()),
+    }
+}
+
+fn custom_image(url: &str, sha256: &str) -> Result<CustomImage, String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("url must start with http:// or https://".to_owned());
+    }
+    if !is_sha256_hex(sha256) {
+        return Err("sha256 must be 64 hex characters".to_owned());
+    }
+    Ok(CustomImage {
+        url: url.to_owned(),
+        sha256: sha256.to_ascii_lowercase(),
+    })
 }
 
 /// Bytes pulled in one read; large enough to keep flash writes efficient without
@@ -178,8 +231,8 @@ pub fn hex_lower(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        install_verified, is_newer, parse_release, ImageSink, ImageSource, InstallError,
-        InstallProgress, OtaRelease,
+        custom_image_from_form, install_verified, is_newer, parse_release, CustomImage, ImageSink,
+        ImageSource, InstallError, InstallProgress, OtaRelease,
     };
 
     /// SHA-256 of `b"hello"`, the reference vector the pipeline tests verify against.
@@ -334,5 +387,67 @@ mod tests {
     #[test]
     fn an_unversioned_build_always_sees_an_update() {
         assert!(is_newer("dev", "0.2.2"));
+    }
+
+    #[test]
+    fn absent_or_blank_custom_fields_select_the_release_flow() {
+        assert_eq!(custom_image_from_form(None, None), Ok(None));
+        // Browsers submit empty inputs; blank must mean absent.
+        assert_eq!(custom_image_from_form(Some("  "), Some("")), Ok(None));
+    }
+
+    #[test]
+    fn a_pinned_custom_image_is_accepted_with_a_normalized_digest() {
+        let digest_upper = HELLO_SHA256.to_ascii_uppercase();
+        assert_eq!(
+            custom_image_from_form(
+                Some(" http://bench.local:8000/streamline-dev-ota.bin "),
+                Some(&digest_upper)
+            ),
+            Ok(Some(CustomImage {
+                url: "http://bench.local:8000/streamline-dev-ota.bin".to_owned(),
+                sha256: HELLO_SHA256.to_owned(),
+            }))
+        );
+    }
+
+    #[test]
+    fn a_url_without_a_digest_is_rejected_and_vice_versa() {
+        assert!(custom_image_from_form(Some("http://bench.local/a.bin"), None).is_err());
+        assert!(custom_image_from_form(None, Some(HELLO_SHA256)).is_err());
+    }
+
+    #[test]
+    fn non_http_urls_are_rejected() {
+        for url in [
+            "ftp://bench.local/a.bin",
+            "file:///a.bin",
+            "bench.local/a.bin",
+        ] {
+            assert!(custom_image_from_form(Some(url), Some(HELLO_SHA256)).is_err());
+        }
+    }
+
+    #[test]
+    fn malformed_digests_are_rejected() {
+        for digest in [
+            "notahash",
+            &HELLO_SHA256[..63],
+            &format!("{}x", &HELLO_SHA256[..63]),
+        ] {
+            assert!(
+                custom_image_from_form(Some("http://bench.local/a.bin"), Some(digest)).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn only_https_images_need_tls() {
+        let image = |url: &str| CustomImage {
+            url: url.to_owned(),
+            sha256: HELLO_SHA256.to_owned(),
+        };
+        assert!(image("https://bench.local/a.bin").needs_tls());
+        assert!(!image("http://bench.local/a.bin").needs_tls());
     }
 }

@@ -37,6 +37,24 @@ background worker and require the admin-key bearer token.
 5. Progress and result surface in `/api/status` under `ota`, which the console
    polls.
 
+## Custom image installs (development)
+
+`POST /api/ota/update` with form fields `url` and `sha256` installs that exact
+image instead of the latest release — no USB access needed to test a build:
+
+1. `make firmware-artifacts` (produces `dist/firmware/streamline-dev-ota.bin`
+   and `SHA256SUMS`).
+2. Serve it on the LAN: `cd dist/firmware && python3 -m http.server 8000`.
+3. In the console's **Firmware Update → Custom image** form, enter
+   `http://<your-host>:8000/streamline-dev-ota.bin` and the digest from
+   `SHA256SUMS`, then **Install from URL**.
+
+The admin-supplied SHA-256 — not the transport — is the root of trust: the
+device rejects any payload whose digest differs, so a plain-HTTP LAN URL is
+acceptable (and skips the clock sync that only TLS needs, so an offline bench
+works). Custom installs skip the version comparison — a `dev` build can replace
+any release — and keep the rollback net below.
+
 ## Safety: rollback
 
 `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` boots a freshly flashed slot in

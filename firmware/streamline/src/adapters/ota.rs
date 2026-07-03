@@ -31,7 +31,7 @@ use serde::Serialize;
 
 use crate::{
     adapters::{nvs::ConfigStore, time},
-    update::{self, ImageSink, ImageSource, InstallProgress, OtaRelease},
+    update::{self, CustomImage, ImageSink, ImageSource, InstallProgress, OtaRelease},
 };
 
 /// GitHub repository that publishes releases. The `latest/download/` path always
@@ -212,13 +212,22 @@ pub fn mark_current_valid() {
     }
 }
 
+/// Where an install pulls its image from.
+pub enum Source {
+    /// The newest published GitHub release; refused unless strictly newer than
+    /// the running firmware.
+    LatestRelease,
+    /// An exact URL pinned by its digest; installs regardless of version, so a
+    /// development build can replace any release. See [`CustomImage`].
+    Custom(CustomImage),
+}
+
 /// Whether a worker should stop after checking or go on to install.
-#[derive(Clone, Copy)]
 enum Action {
     /// Report whether a newer release exists, then stop.
     Check,
-    /// Check and, if newer, download, verify, and reboot into it.
-    Install,
+    /// Download the image from `Source`, verify, and reboot into it.
+    Install(Source),
 }
 
 /// Check GitHub for a newer release without installing anything. The HTTP
@@ -228,12 +237,16 @@ pub fn spawn_check(progress: Arc<OtaProgress>) -> Result<()> {
     spawn(progress, Action::Check, None)
 }
 
-/// Kick off a check-and-install on a worker thread. The HTTP handler returns
+/// Kick off an install on a worker thread. The HTTP handler returns
 /// immediately; callers poll [`OtaProgress::snapshot`] for status. A successful
 /// install reboots the device into the new slot; the outcome is persisted in
 /// `store` so it survives the reboot (and a possible rollback).
-pub fn spawn_update(progress: Arc<OtaProgress>, store: Arc<Mutex<ConfigStore>>) -> Result<()> {
-    spawn(progress, Action::Install, Some(store))
+pub fn spawn_update(
+    progress: Arc<OtaProgress>,
+    store: Arc<Mutex<ConfigStore>>,
+    source: Source,
+) -> Result<()> {
+    spawn(progress, Action::Install(source), Some(store))
 }
 
 fn spawn(
@@ -266,10 +279,22 @@ fn spawn(
 }
 
 fn run(progress: &OtaProgress, action: Action, store: Option<&Mutex<ConfigStore>>) {
+    if let Action::Install(Source::Custom(image)) = &action {
+        // A custom image is digest-pinned and version-agnostic, so no release
+        // check. Clock sync exists only for TLS certificate validation; a
+        // plain-HTTP image skips it so an offline dev bench can still install.
+        if image.needs_tls() {
+            if let Err(error) = sync_clock(progress) {
+                return progress.fail(error);
+            }
+        }
+        let what = format!("custom image {}", image.url);
+        return install_and_reboot(&image.url, &image.sha256, &what, progress, store);
+    }
+
     let current = env!("CARGO_PKG_VERSION");
-    progress.set_message("synchronizing clock");
-    if let Err(error) = time::wait_for_sync() {
-        return progress.fail(format!("time synchronization failed: {error:#}"));
+    if let Err(error) = sync_clock(progress) {
+        return progress.fail(error);
     }
     progress.set_message("checking latest release");
     let release = match check() {
@@ -290,20 +315,40 @@ fn run(progress: &OtaProgress, action: Action, store: Option<&Mutex<ConfigStore>
         return;
     }
 
+    install_and_reboot(
+        &download_url(&release.filename),
+        &release.sha256,
+        &release.version,
+        progress,
+        store,
+    );
+}
+
+fn sync_clock(progress: &OtaProgress) -> Result<(), String> {
+    progress.set_message("synchronizing clock");
+    time::wait_for_sync().map_err(|error| format!("time synchronization failed: {error:#}"))
+}
+
+/// Download, verify, and boot into the image at `url`; `what` names it in
+/// progress messages and persisted notes ("0.3.3", "custom image http://…").
+fn install_and_reboot(
+    url: &str,
+    sha256: &str,
+    what: &str,
+    progress: &OtaProgress,
+    store: Option<&Mutex<ConfigStore>>,
+) {
     progress.set_phase(Phase::Downloading);
     // Written before the download so a crash mid-install still leaves evidence;
     // overwritten by the final outcome below.
-    note_outcome(
-        store,
-        &format!("installing {} (did not finish)", release.version),
-    );
-    if let Err(error) = install(&release, progress) {
-        let message = format!("install {} failed: {error:#}", release.version);
+    note_outcome(store, &format!("installing {what} (did not finish)"));
+    if let Err(error) = install(url, sha256, progress) {
+        let message = format!("install {what} failed: {error:#}");
         note_outcome(store, &message);
         return progress.fail(message);
     }
 
-    let message = format!("installed {}; rebooting", release.version);
+    let message = format!("installed {what}; rebooting");
     note_outcome(store, &message);
     progress.set_phase(Phase::Installed);
     progress.set_message(&message);
@@ -384,13 +429,12 @@ fn check() -> Result<OtaRelease> {
 /// before committing the boot pointer.
 ///
 /// The verifying-download logic lives in [`update::install_verified`]; this only
-/// wires the HTTPS response and the flash slot into it and commits or discards
+/// wires the HTTP response and the flash slot into it and commits or discards
 /// the slot on the outcome.
-fn install(release: &OtaRelease, progress: &OtaProgress) -> Result<()> {
-    let url = download_url(&release.filename);
+fn install(url: &str, sha256: &str, progress: &OtaProgress) -> Result<()> {
     let mut client = client()?;
     let mut response = client
-        .get(&url)
+        .get(url)
         .and_then(|request| request.submit())
         .map_err(|error| anyhow!("{error:?}"))?;
     let status = response.status();
@@ -407,7 +451,7 @@ fn install(release: &OtaRelease, progress: &OtaProgress) -> Result<()> {
         let mut source = ResponseSource(&mut response);
         let mut sink = SlotSink(&mut slot);
         let mut reporter = Reporter { progress, total };
-        update::install_verified(&mut source, &mut sink, &release.sha256, &mut reporter)
+        update::install_verified(&mut source, &mut sink, sha256, &mut reporter)
     };
     match outcome {
         Ok(()) => slot.complete().context("cannot finalize OTA image"),

@@ -375,7 +375,7 @@ function settingsWritable() {
 function setProtectedControls() {
   const writable = settingsWritable();
   setDisabled(
-    '#setupForm input:not([type="hidden"]),#setupForm button,#audioForm input,#audioForm select,#audioForm button,#resetButton,#checkButton,#installButton',
+    '#setupForm input:not([type="hidden"]),#setupForm button,#audioForm input,#audioForm select,#audioForm button,#resetButton,#checkButton,#installButton,#customOtaForm input,#customOtaForm button',
     !writable,
   );
   const keyManageable = Boolean(state.status?.auth_required && isUnlocked());
@@ -617,6 +617,16 @@ onClick('installButton', async () => {
   } catch (err) {
     logOta(err.message, 'err');
   }
+});
+
+$('customOtaForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const url = $('ota_url').value.trim();
+  if (!confirm(`Install the image at ${url} and reboot the device?`)) return;
+  beginOtaSession(`Installing custom image from ${url}…`);
+  api('/api/ota/update', { method: 'POST', body: formBody(e.target) }).catch((err) =>
+    logOta(err.message, 'err'),
+  );
 });
 
 // Reflect whether a key is persisted; the checkbox is user-owned from here on.

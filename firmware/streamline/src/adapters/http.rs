@@ -22,6 +22,7 @@ use crate::{
     config::{AudioSettings, InputLine, RuntimeConfig},
     levels::CLIP_THRESHOLD_ABS,
     runtime::StreamStatus,
+    update,
 };
 
 const INDEX: &str = include_str!("../../web/index.html");
@@ -185,22 +186,41 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         ota_accepted(request, ota::spawn_check(Arc::clone(&state_for_check.ota)))
     })?;
 
-    // Pull the latest GitHub release and flash it to the inactive OTA slot. The
-    // work runs on a background task; clients poll `/api/status` (the `ota` field)
-    // for progress, and the device reboots into the new image on success.
+    // Flash an image to the inactive OTA slot. An empty body pulls the latest
+    // GitHub release; `url` + `sha256` form fields install that exact pinned
+    // image instead (development installs, see docs/ota.md). The work runs on a
+    // background task; clients poll `/api/status` (the `ota` field) for
+    // progress, and the device reboots into the new image on success.
     let state_for_ota = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/ota/update", Method::Post, move |request| {
-        if !authorized(&request, &state_for_ota) {
-            return unauthorized(request);
-        }
-        ota_accepted(
-            request,
-            ota::spawn_update(
-                Arc::clone(&state_for_ota.ota),
-                Arc::clone(&state_for_ota.store),
-            ),
-        )
-    })?;
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/ota/update",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_ota) {
+                return unauthorized(request);
+            }
+            let form = match form(&mut request) {
+                Ok(form) => form,
+                Err(error) => return bad_request(request, error),
+            };
+            let source = match update::custom_image_from_form(
+                form.get("url").map(String::as_str),
+                form.get("sha256").map(String::as_str),
+            ) {
+                Ok(None) => ota::Source::LatestRelease,
+                Ok(Some(image)) => ota::Source::Custom(image),
+                Err(error) => return bad_request(request, anyhow!(error)),
+            };
+            ota_accepted(
+                request,
+                ota::spawn_update(
+                    Arc::clone(&state_for_ota.ota),
+                    Arc::clone(&state_for_ota.store),
+                    source,
+                ),
+            )
+        },
+    )?;
 
     // Verify an admin key without changing anything, so the console can reject
     // a wrong key at unlock time instead of on the first settings write.

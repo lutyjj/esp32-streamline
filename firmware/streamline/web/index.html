@@ -126,6 +126,15 @@
           <div class="log" id="otaLog"><span class="dim">No update activity yet. Check pulls the latest release from GitHub; Install flashes it and reboots.</span></div>
         </div>
       </div>
+      <form id="customOtaForm">
+        <div class="subhead">Custom image</div>
+        <p class="hint">Install an exact development image over the air: build with <code>make firmware-artifacts</code>, serve <code>dist/firmware/</code> on your LAN, and copy the digest from <code>SHA256SUMS</code>. The digest pins the image; a mismatch is rejected and a bad image rolls back.</p>
+        <div class="row">
+          <div class="field"><label for="ota_url">Image URL</label><input id="ota_url" name="url" autocomplete="off" placeholder="http://host:8000/streamline-dev-ota.bin"></div>
+          <div class="field"><label for="ota_sha256">SHA-256</label><input id="ota_sha256" name="sha256" autocomplete="off" placeholder="64 hex characters"></div>
+        </div>
+        <div class="actions"><button class="action" type="submit">Install from URL</button></div>
+      </form>
     </div>
   </section>
 

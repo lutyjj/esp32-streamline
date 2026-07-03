@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import socket
 import unittest
+from http import HTTPStatus
 
 from streamline_bridge.protocol import DEFAULT_FORMAT
 from streamline_bridge.server import AudioHub, validate_args, wav_header
-from streamline_bridge.sources import SourceRegistry, SourceSelectionError, TcpSourceGate
+from streamline_bridge.sources import SourceAdmissionError, SourceRegistry, SourceSelectionError, TcpSourceGate
 
 
 def make_hub() -> AudioHub:
@@ -47,22 +48,44 @@ class SourceRegistryTests(unittest.TestCase):
         pending = registry.select(None)
         acquired = registry.acquire("192.0.2.10")
 
-        assert acquired is not None
         self.assertIs(acquired.hub, pending.hub)
         self.assertEqual(registry.snapshot().keys(), {"192.0.2.10"})
+
+    def test_reconnecting_producer_keeps_its_pipeline(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=2)
+
+        first = registry.acquire("192.0.2.10")
+        again = registry.acquire("192.0.2.10")
+
+        self.assertIs(again, first)
 
     def test_bare_stream_requires_source_when_several_producers_exist(self) -> None:
         registry = SourceRegistry(make_hub, max_sources=2)
 
-        self.assertIsNotNone(registry.acquire("192.0.2.10"))
-        self.assertIsNotNone(registry.acquire("192.0.2.11"))
+        registry.acquire("192.0.2.10")
+        registry.acquire("192.0.2.11")
 
         with self.assertRaises(SourceSelectionError) as raised:
             registry.select(None)
-        self.assertEqual(raised.exception.status, 409)
+        self.assertEqual(raised.exception.status, HTTPStatus.CONFLICT)
 
-    def test_explicit_stream_creates_source_before_producer_connects(self) -> None:
-        registry = SourceRegistry(make_hub, max_sources=1)
+    def test_explicit_stream_never_creates_a_source(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=2)
+
+        with self.assertRaises(SourceSelectionError) as raised:
+            registry.select("192.0.2.10")
+        self.assertEqual(raised.exception.status, HTTPStatus.NOT_FOUND)
+        self.assertEqual(registry.snapshot(), {})
+
+    def test_explicit_stream_rejects_a_malformed_source(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=2)
+
+        with self.assertRaises(SourceSelectionError) as raised:
+            registry.select("bridge.local")
+        self.assertEqual(raised.exception.status, HTTPStatus.BAD_REQUEST)
+
+    def test_allowlist_precreates_sources_for_explicit_streams(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=1, allowed=frozenset({"192.0.2.10"}))
 
         source = registry.select("192.0.2.10")
 
@@ -71,7 +94,16 @@ class SourceRegistryTests(unittest.TestCase):
     def test_allowlist_rejects_unlisted_tcp_producer(self) -> None:
         registry = SourceRegistry(make_hub, max_sources=1, allowed=frozenset({"192.0.2.10"}))
 
-        self.assertIsNone(registry.acquire("192.0.2.11"))
+        with self.assertRaises(SourceAdmissionError):
+            registry.acquire("192.0.2.11")
+
+    def test_producer_over_the_source_limit_is_rejected(self) -> None:
+        registry = SourceRegistry(make_hub, max_sources=1)
+
+        registry.acquire("192.0.2.10")
+
+        with self.assertRaises(SourceAdmissionError):
+            registry.acquire("192.0.2.11")
 
 
 class WavHeaderTests(unittest.TestCase):

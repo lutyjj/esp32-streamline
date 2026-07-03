@@ -14,6 +14,7 @@ import socket
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Protocol
 
 
@@ -85,10 +86,14 @@ class Source[H: AudioPipeline]:
 class SourceSelectionError(Exception):
     """A stream request that cannot resolve to a source, with its HTTP status."""
 
-    def __init__(self, status: int, message: str) -> None:
+    def __init__(self, status: HTTPStatus, message: str) -> None:
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+class SourceAdmissionError(Exception):
+    """A TCP producer the registry refuses to admit; the message says why."""
 
 
 # A pipeline created for a bare stream request before any producer connected.
@@ -127,15 +132,15 @@ class SourceRegistry[H: AudioPipeline]:
         hub = self._hub_factory()
         return Source(key=key, hub=hub, gate=TcpSourceGate(hub))
 
-    def acquire(self, ip: str) -> Source[H] | None:
-        """Return the pipeline for a producer address, or None at capacity.
+    def acquire(self, ip: str) -> Source[H]:
+        """Return the pipeline for a producer address, or raise SourceAdmissionError.
 
         A known address keeps its pipeline across reconnects. A new address
         adopts the pending pipeline if one is waiting, otherwise gets a fresh
         one.
         """
         if self._allowed and ip not in self._allowed:
-            return None
+            raise SourceAdmissionError(f"{ip} is not in --source-allow")
         with self._lock:
             existing = self._sources.get(ip)
             if existing is not None:
@@ -146,7 +151,7 @@ class SourceRegistry[H: AudioPipeline]:
                 self._sources[ip] = adopted
                 return adopted
             if len(self._sources) >= self._max_sources:
-                return None
+                raise SourceAdmissionError(f"source limit reached (--max-sources={self._max_sources})")
             source = self._create(ip)
             self._sources[ip] = source
             return source
@@ -154,10 +159,12 @@ class SourceRegistry[H: AudioPipeline]:
     def select(self, requested: str | None) -> Source[H]:
         """Resolve a stream request to a source, or raise SourceSelectionError.
 
-        An explicit ``requested`` address gets its pipeline, created on demand
-        so the stream URL works before the device connects. A bare request
-        resolves to the only source, or to a pending pipeline when none exist
-        yet; with several sources it demands an explicit choice.
+        An explicit ``requested`` address gets its pipeline only if it already
+        exists — created by a producer connection or the allowlist. HTTP
+        clients never create per-address pipelines, so they cannot fill the
+        registry and starve real devices. A bare request resolves to the only
+        source, or to a pending pipeline when none exist yet; with several
+        sources it demands an explicit choice.
         """
         with self._lock:
             if requested is not None:
@@ -170,25 +177,23 @@ class SourceRegistry[H: AudioPipeline]:
                 return next(iter(self._sources.values()))
             available = ", ".join(sorted(self._sources))
             raise SourceSelectionError(
-                409,
+                HTTPStatus.CONFLICT,
                 f"multiple sources; request /streamline.wav?source=<ip> (available: {available})",
             )
 
     def _select_explicit(self, requested: str) -> Source[H]:
+        """Look up an explicit source address; the caller holds the lock."""
         try:
             ip = str(ipaddress.IPv4Address(requested))
         except ipaddress.AddressValueError:
-            raise SourceSelectionError(400, "source must be an IPv4 address") from None
-        if self._allowed and ip not in self._allowed:
-            raise SourceSelectionError(404, f"unknown source {ip}")
+            raise SourceSelectionError(HTTPStatus.BAD_REQUEST, "source must be an IPv4 address") from None
         existing = self._sources.get(ip)
-        if existing is not None:
-            return existing
-        if len(self._sources) >= self._max_sources:
-            raise SourceSelectionError(503, "source limit reached")
-        source = self._create(ip)
-        self._sources[ip] = source
-        return source
+        if existing is None:
+            raise SourceSelectionError(
+                HTTPStatus.NOT_FOUND,
+                f"unknown source {ip}; connect the device or list it in --source-allow",
+            )
+        return existing
 
     def snapshot(self) -> dict[str, object]:
         """Per-source pipeline snapshots, keyed by producer address."""

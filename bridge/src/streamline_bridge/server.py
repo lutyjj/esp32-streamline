@@ -21,7 +21,7 @@ from typing import NoReturn
 from urllib.parse import parse_qs, urlsplit
 
 from streamline_bridge.protocol import DEFAULT_FORMAT, DEFAULT_RATE, HEADER, PcmFormat, parse_header
-from streamline_bridge.sources import Source, SourceRegistry, SourceSelectionError
+from streamline_bridge.sources import Source, SourceAdmissionError, SourceRegistry, SourceSelectionError
 
 
 def bridge_version() -> str:
@@ -177,8 +177,19 @@ class AudioHub:
             data["buffered_packets"] = len(self._packets)
             data["client_streams"] = [asdict(stream.stats) for stream in self._clients.values()]
         data["uptime_seconds"] = time.time() - float(data["started_at"])
-        data["bridge_version"] = BRIDGE_VERSION
         return data
+
+    def note_tcp_connect(self) -> None:
+        with self._lock:
+            self.stats.tcp_connections += 1
+
+    def note_tcp_disconnect(self) -> None:
+        with self._lock:
+            self.stats.tcp_disconnects += 1
+
+    def note_tcp_error(self) -> None:
+        with self._lock:
+            self.stats.tcp_errors += 1
 
     def record_client_write(self, client_id: int, byte_count: int, chunk_count: int) -> None:
         with self._lock:
@@ -469,8 +480,7 @@ def tcp_client_loop(
     hub = source.hub
     source_gate = source.gate
     with conn:
-        with hub._lock:
-            hub.stats.tcp_connections += 1
+        hub.note_tcp_connect()
         try:
             while True:
                 header = recv_exact(conn, HEADER.size)
@@ -489,13 +499,11 @@ def tcp_client_loop(
                     return
         except (OSError, ValueError) as exc:
             if source_gate.is_active(generation):
-                with hub._lock:
-                    hub.stats.tcp_errors += 1
+                hub.note_tcp_error()
                 print(f"tcp drop from {addr[0]}:{addr[1]}: {exc}", flush=True)
         finally:
             source_gate.release(generation, conn)
-            with hub._lock:
-                hub.stats.tcp_disconnects += 1
+            hub.note_tcp_disconnect()
 
 
 def tcp_loop(
@@ -512,9 +520,10 @@ def tcp_loop(
 
     while True:
         conn, addr = sock.accept()
-        source = sources.acquire(addr[0])
-        if source is None:
-            print(f"rejected TCP source {addr[0]}:{addr[1]}", flush=True)
+        try:
+            source = sources.acquire(addr[0])
+        except SourceAdmissionError as exc:
+            print(f"rejected TCP source {addr[0]}:{addr[1]}: {exc}", flush=True)
             conn.close()
             continue
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -542,14 +551,14 @@ def make_handler(sources: SourceRegistry[AudioHub]) -> type[BaseHTTPRequestHandl
             if url.path == "/streamline.wav":
                 self._stream_wav(url.query)
                 return
-            self.send_error(HTTPStatus.NOT_FOUND, "not found")
+            self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
         def log_message(self, fmt: str, *args: object) -> None:
             print(f"{self.address_string()} - {fmt % args}", flush=True)
 
-        def _send_json(self, data: dict[str, object]) -> None:
+        def _send_json(self, data: dict[str, object], status: HTTPStatus = HTTPStatus.OK) -> None:
             body = json.dumps(data, sort_keys=True).encode() + b"\n"
-            self.send_response(HTTPStatus.OK)
+            self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
@@ -566,12 +575,12 @@ def make_handler(sources: SourceRegistry[AudioHub]) -> type[BaseHTTPRequestHandl
             self.wfile.write(body)
 
         def _stream_wav(self, query: str) -> None:
-            params = parse_qs(query, keep_blank_values=True)
+            params = parse_qs(query)
             requested = params.get("source", [None])[0]
             try:
                 source = sources.select(requested)
             except SourceSelectionError as exc:
-                self.send_error(exc.status, exc.message)
+                self._send_json({"error": exc.message}, exc.status)
                 return
 
             stream = source.hub.register(self.client_address[0], self.path, self.connection)

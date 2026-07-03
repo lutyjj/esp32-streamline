@@ -381,6 +381,7 @@ function setProtectedControls() {
   const keyManageable = Boolean(state.status?.auth_required && isUnlocked());
   setDisabled('#adminKeyForm input,#adminKeyForm button', !keyManageable);
   $('copyReplacementKeyButton').disabled = !state.replacementKey || !keyManageable;
+  setWifiPasswordControls();
 }
 
 function ensureSetupKey() {
@@ -497,6 +498,8 @@ async function loadConfig() {
   $('input_line').value = c.input_line;
   $('input_gain').value = c.input_gain;
   $('adc_atten_db').value = c.adc_atten_db;
+  $('password').value = '';
+  setWifiPasswordControls();
 }
 
 function validateSetup() {
@@ -504,7 +507,21 @@ function validateSetup() {
   if (host.includes(':') || host.includes('/')) {
     throw new Error('TCP target host must not include port, scheme, or path');
   }
+  if (!$('changeWifiPassword').checked && state.status?.auth_required) {
+    $('password').value = '';
+  }
   if (state.status && !state.status.auth_required) ensureSetupKey();
+}
+
+function setWifiPasswordControls() {
+  const firstSetup = state.status?.auth_required === false;
+  const canEdit = settingsWritable();
+  const changing = firstSetup || $('changeWifiPassword').checked;
+  $('changeWifiPasswordLabel').hidden = firstSetup;
+  $('changeWifiPassword').disabled = !canEdit || firstSetup;
+  $('password').disabled = !canEdit || !changing;
+  $('password').autocomplete = firstSetup ? 'new-password' : 'off';
+  if (!changing) $('password').value = '';
 }
 
 /** Wire an async handler and surface its failure in the message line. */
@@ -577,6 +594,8 @@ onClick('copyReplacementKeyButton', async () => {
 onSubmit('setupForm', '/api/setup', 'setup saved; rebooting', validateSetup);
 
 onSubmit('audioForm', '/api/audio', 'audio saved; rebooting');
+
+$('changeWifiPassword').addEventListener('change', setWifiPasswordControls);
 
 $('adminKeyForm').addEventListener('submit', (e) => {
   e.preventDefault();

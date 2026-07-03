@@ -53,7 +53,11 @@
       <form id="setupForm">
         <div class="row">
           <div class="field"><label for="ssid">Wi-Fi SSID</label><input id="ssid" name="ssid" autocomplete="off"></div>
-          <div class="field"><label for="password">Wi-Fi Password</label><input id="password" name="password" type="password" placeholder="unchanged if blank"></div>
+          <div class="field">
+            <label for="password">Wi-Fi Password</label>
+            <input id="password" name="password" type="password" autocomplete="new-password" placeholder="unchanged if blank">
+            <label class="check" id="changeWifiPasswordLabel"><input id="changeWifiPassword" type="checkbox"> Change password</label>
+          </div>
         </div>
         <div class="row">
           <div class="field"><label for="target_host">TCP Target Host/IP</label><input id="target_host" name="target_host" autocomplete="off"></div>

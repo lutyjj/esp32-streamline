@@ -45,6 +45,19 @@ only after it reaches a healthy streaming state; an image that crashes or fails
 to connect never confirms itself and the bootloader reverts to the previous slot
 on the next reset. A bad update cannot brick the device.
 
+## Post-mortem diagnostics
+
+`/api/status` reports a `diagnostics` block that survives reboots:
+
+- `last_ota` — how the last install attempt ended, tagged with the version that
+  ran it. After a rollback the running version contradicts this note, which is
+  the tell.
+- `last_fallback` — why the device last fell back to the setup AP.
+- `reset_reason` — what produced this boot: `power-on`, `software` (OTA or
+  config reboot), `panic`, or a watchdog.
+
+The console shows all three on the Status tab.
+
 ## Security
 
 | Control | Effect |

@@ -15,6 +15,10 @@ const KEY_ADMIN_SECRET: &str = "admin_secret";
 const KEY_INPUT_LINE: &str = "input_line";
 const KEY_INPUT_GAIN: &str = "input_gain";
 const KEY_ADC_ATTENUATION: &str = "adc_attenuation";
+const KEY_LAST_FALLBACK: &str = "last_fallback";
+const KEY_LAST_OTA: &str = "last_ota";
+/// Diagnostic notes are trimmed to fit the 256-byte read buffer.
+const MAX_NOTE_BYTES: usize = 240;
 
 /// Owns the NVS namespace and keeps the partition alive for the lifetime of
 /// all reads and writes. The namespace is versioned so future migrations have
@@ -94,10 +98,47 @@ impl ConfigStore {
             KEY_INPUT_LINE,
             KEY_INPUT_GAIN,
             KEY_ADC_ATTENUATION,
+            KEY_LAST_FALLBACK,
+            KEY_LAST_OTA,
         ] {
             self.nvs.remove(key)?;
         }
         Ok(())
+    }
+
+    /// Record why this boot fell back to the setup AP. Persisted so the
+    /// evidence survives the reboot (or OTA rollback) that usually follows.
+    pub fn save_last_fallback(&self, reason: &str) -> Result<()> {
+        self.nvs
+            .set_str(KEY_LAST_FALLBACK, truncate_utf8(reason, MAX_NOTE_BYTES))?;
+        Ok(())
+    }
+
+    /// Record how the last OTA install attempt ended.
+    pub fn save_last_ota(&self, outcome: &str) -> Result<()> {
+        self.nvs
+            .set_str(KEY_LAST_OTA, truncate_utf8(outcome, MAX_NOTE_BYTES))?;
+        Ok(())
+    }
+
+    pub fn last_fallback(&self) -> String {
+        self.note(KEY_LAST_FALLBACK)
+    }
+
+    pub fn last_ota(&self) -> String {
+        self.note(KEY_LAST_OTA)
+    }
+
+    /// Diagnostic notes are best-effort: a missing or unreadable note must not
+    /// take the status endpoint down, so read errors collapse to empty.
+    fn note(&self, key: &str) -> String {
+        let mut buffer = [0_u8; 256];
+        self.nvs
+            .get_str(key, &mut buffer)
+            .ok()
+            .flatten()
+            .map(str::to_owned)
+            .unwrap_or_default()
     }
 
     fn required_string(&self, key: &str) -> Result<String> {
@@ -125,4 +166,16 @@ impl ConfigStore {
 
 fn config_error(error: ConfigError) -> anyhow::Error {
     anyhow::anyhow!("invalid stored configuration: {error:?}")
+}
+
+/// Truncate to at most `max` bytes without splitting a UTF-8 character.
+fn truncate_utf8(value: &str, max: usize) -> &str {
+    if value.len() <= max {
+        return value;
+    }
+    let mut end = max;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    &value[..end]
 }

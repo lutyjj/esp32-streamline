@@ -58,12 +58,16 @@ fn main() -> Result<()> {
                     (Mode::Streaming, config, Some(stream))
                 }
                 Err(error) => {
-                    log::warn!("TCP target resolution failed; opening setup AP: {error:#}");
+                    let reason = format!("TCP target resolution failed: {error:#}");
+                    log::warn!("{reason}; opening setup AP");
+                    note_fallback(&store, &reason);
                     start_setup(&mut wifi, &suffix)?
                 }
             },
             Err(error) => {
-                log::warn!("Wi-Fi station connection failed; opening setup AP: {error:#}");
+                let reason = format!("Wi-Fi station connection failed: {error:#}");
+                log::warn!("{reason}; opening setup AP");
+                note_fallback(&store, &reason);
                 start_setup(&mut wifi, &suffix)?
             }
         },
@@ -91,6 +95,21 @@ fn main() -> Result<()> {
     let _server = http::start(state)?;
     loop {
         FreeRtos::delay_ms(1_000);
+    }
+}
+
+/// Persist why this boot fell back to the setup AP, tagged with the running
+/// version so a post-rollback reading still tells which image failed.
+/// Best-effort: diagnostics must never take the boot down.
+fn note_fallback(store: &Arc<Mutex<ConfigStore>>, reason: &str) {
+    let note = format!("v{}: {reason}", env!("CARGO_PKG_VERSION"));
+    match store.lock() {
+        Ok(guard) => {
+            if let Err(error) = guard.save_last_fallback(&note) {
+                log::warn!("could not persist fallback reason: {error:#}");
+            }
+        }
+        Err(_) => log::warn!("could not persist fallback reason: store lock poisoned"),
     }
 }
 

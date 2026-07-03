@@ -8,7 +8,7 @@ use embedded_svc::wifi::{
 };
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
-    hal::modem::Modem,
+    hal::{delay::FreeRtos, modem::Modem},
     nvs::EspDefaultNvsPartition,
     sys::{
         esp_netif_get_handle_from_ifkey, esp_netif_get_ip_info, esp_netif_ip_info_t,
@@ -32,6 +32,13 @@ pub fn create<'d>(
     )?)
 }
 
+/// Transient association or DHCP failures are common right after a reboot (the
+/// access point still holds state for this MAC), and a setup-AP fallback on a
+/// freshly installed OTA image triggers rollback — so one flaky attempt must
+/// not decide the boot.
+const CONNECT_ATTEMPTS: u32 = 3;
+const CONNECT_RETRY_DELAY_MS: u32 = 2_000;
+
 pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) -> Result<()> {
     let station = Configuration::Client(ClientConfiguration {
         ssid: config.ssid.as_str().try_into()?,
@@ -44,9 +51,24 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
 
     wifi.set_configuration(&station)?;
     wifi.start()?;
-    wifi.connect()?;
-    wifi.wait_netif_up()?;
-    Ok(())
+
+    let mut attempt = 1;
+    loop {
+        match wifi.connect().and_then(|()| wifi.wait_netif_up()) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < CONNECT_ATTEMPTS => {
+                log::warn!("Wi-Fi connect attempt {attempt}/{CONNECT_ATTEMPTS} failed: {error}");
+                let _ = wifi.disconnect();
+                FreeRtos::delay_ms(CONNECT_RETRY_DELAY_MS);
+                attempt += 1;
+            }
+            Err(error) => {
+                return Err(anyhow::anyhow!(error).context(format!(
+                    "Wi-Fi connect failed after {CONNECT_ATTEMPTS} attempts"
+                )))
+            }
+        }
+    }
 }
 
 /// Start the physical-presence setup network. It is deliberately open because

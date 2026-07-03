@@ -24,6 +24,7 @@
  * @property {{ sequence: number, playing: boolean, clip_threshold_abs: number,
  *              peak_abs_left: number, peak_abs_right: number, rms_left: number, rms_right: number,
  *              clipped_samples_total: number }} metrics
+ * @property {{ reset_reason: string, last_fallback: string, last_ota: string }} diagnostics
  * @property {OtaSnapshot} ota
  */
 
@@ -60,6 +61,10 @@ const state = {
   otaLoggedPhase: /** @type {string | null} */ (null),
   /** Latest release version reported by the last OTA check. */
   otaLatest: '',
+  /** True after the device went offline mid-install: it is expected to reboot. */
+  otaAwaitingReboot: false,
+  /** Failed polls while awaiting the reboot, to warn when it takes too long. */
+  otaOfflinePolls: 0,
   /** Guards the status poll against overlapping slow requests. */
   refreshing: false,
 };
@@ -135,6 +140,26 @@ function unlockUntil() {
 
 function isUnlocked() {
   return Boolean(storedAdminKey()) && unlockUntil() > Date.now();
+}
+
+function forgetAdminKey() {
+  sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+  localStorage.removeItem(ADMIN_KEY_STORAGE);
+  localStorage.removeItem(LEGACY_TOKEN_STORAGE);
+  sessionStorage.removeItem(UNLOCK_UNTIL_STORAGE);
+  updateAuthUi();
+  setProtectedControls();
+}
+
+/** Ask the device whether it accepts `key`; throws when it cannot answer. */
+async function verifyAdminKey(key) {
+  const r = await fetch('/api/unlock', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  if (r.status === 401) return false;
+  if (!r.ok) throw new Error(`unlock failed: HTTP ${r.status}`);
+  return true;
 }
 
 function unlockSettings(key, remember) {
@@ -227,13 +252,18 @@ function applyStatus(s) {
   $('sequence').textContent = s.metrics.sequence;
   setMetricClass($('clipMetric'), s.metrics.clipped_samples_total === 0);
   setMetricClass($('modeMetric'), s.mode === 'streaming');
-  kv($('runtimeKv'), [
+  const runtimeRows = [
     ['Config', s.config_source],
     ['SSID', s.wifi.ssid],
     ['Wi-Fi Status', s.wifi.status],
     ['AP IP', s.wifi.ap_ip],
     ['Clip Total', s.metrics.clipped_samples_total],
-  ]);
+    ['Reset Reason', s.diagnostics?.reset_reason || '—'],
+  ];
+  if (s.diagnostics?.last_fallback)
+    runtimeRows.push(['Last AP Fallback', s.diagnostics.last_fallback]);
+  if (s.diagnostics?.last_ota) runtimeRows.push(['Last OTA', s.diagnostics.last_ota]);
+  kv($('runtimeKv'), runtimeRows);
   kv($('audioKv'), [
     ['Input Line', s.audio.input_line],
     ['Input Gain', s.audio.input_gain],
@@ -380,6 +410,7 @@ function updateAuthUi() {
     $('unlockSecret').hidden = !visible;
     $('rememberKeyLabel').hidden = !visible;
     $('unlockButton').hidden = !visible;
+    if (!visible) $('forgetKeyButton').hidden = true;
   };
 
   if (!state.status) {
@@ -407,25 +438,51 @@ function updateAuthUi() {
     show(false);
     $('lockButton').hidden = false;
   } else {
+    // Never write the saved key into the input: the field belongs to the user
+    // (this runs on every status poll and would clobber what they type).
     const key = storedAdminKey();
     authState.textContent = key ? 'Auth: locked, key saved' : 'Auth: locked';
     authState.className = 'authState locked';
     show(true);
-    $('unlockSecret').value = key;
-    $('rememberKey').checked = Boolean(localStorage.getItem(ADMIN_KEY_STORAGE));
+    $('unlockSecret').placeholder = key ? 'saved key used if empty' : 'admin key';
+    $('forgetKeyButton').hidden = !key;
     $('lockButton').hidden = true;
   }
 }
 
 // --- Polling and form wiring -------------------------------------------------------
 
+/** Phases during which losing the device most likely means it is rebooting. */
+const OTA_REBOOT_PHASES = ['downloading', 'verifying', 'installed'];
+/** Failed polls (~1.5 s each) before warning that the reboot is overdue. */
+const OTA_OFFLINE_WARN_POLLS = 40;
+
 async function refresh() {
   if (state.refreshing) return;
   state.refreshing = true;
   try {
     applyStatus(await api('/api/status'));
+    if (state.otaAwaitingReboot) {
+      state.otaAwaitingReboot = false;
+      state.otaLoggedPhase = null;
+      logOta(`device is back online — running v${state.status.firmware_version}`, 'ok');
+    }
   } catch (e) {
-    setMsg(e.message, 'err');
+    if (state.otaAwaitingReboot) {
+      state.otaOfflinePolls += 1;
+      if (state.otaOfflinePolls === OTA_OFFLINE_WARN_POLLS) {
+        logOta(
+          'still offline after a minute — the device may have fallen back to its setup AP; check your Wi-Fi list for esp32-streamline-…',
+          'err',
+        );
+      }
+    } else if (OTA_REBOOT_PHASES.includes(state.otaLoggedPhase)) {
+      state.otaAwaitingReboot = true;
+      state.otaOfflinePolls = 0;
+      logOta('device went offline — rebooting; waiting for it to come back…');
+    } else {
+      setMsg(e.message, 'err');
+    }
   } finally {
     state.refreshing = false;
   }
@@ -479,11 +536,25 @@ for (const b of document.querySelectorAll('.tab')) {
   });
 }
 
-onClick('unlockButton', () => {
-  const key = $('unlockSecret').value.trim();
-  if (key.length < 8) throw new Error('admin key must be at least 8 characters');
+onClick('unlockButton', async () => {
+  const typed = $('unlockSecret').value.trim();
+  const key = typed || storedAdminKey();
+  if (!key) throw new Error('enter the admin key');
+  if (!(await verifyAdminKey(key))) {
+    if (!typed) {
+      forgetAdminKey();
+      throw new Error('saved admin key was rejected and forgotten — enter the current key');
+    }
+    throw new Error('admin key rejected');
+  }
+  $('unlockSecret').value = '';
   unlockSettings(key, $('rememberKey').checked);
-  setMsg('');
+  setMsg('settings unlocked', 'ok');
+});
+
+onClick('forgetKeyButton', () => {
+  forgetAdminKey();
+  setMsg('saved admin key forgotten', 'ok');
 });
 
 $('lockButton').addEventListener('click', () => lockSettings(false));
@@ -547,6 +618,9 @@ onClick('installButton', async () => {
     logOta(err.message, 'err');
   }
 });
+
+// Reflect whether a key is persisted; the checkbox is user-owned from here on.
+$('rememberKey').checked = Boolean(localStorage.getItem(ADMIN_KEY_STORAGE));
 
 Promise.all([loadConfig(), refresh()]).catch((e) => setMsg(e.message, 'err'));
 setInterval(refresh, 1500);

@@ -193,7 +193,23 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         if !authorized(&request, &state_for_ota) {
             return unauthorized(request);
         }
-        ota_accepted(request, ota::spawn_update(Arc::clone(&state_for_ota.ota)))
+        ota_accepted(
+            request,
+            ota::spawn_update(
+                Arc::clone(&state_for_ota.ota),
+                Arc::clone(&state_for_ota.store),
+            ),
+        )
+    })?;
+
+    // Verify an admin key without changing anything, so the console can reject
+    // a wrong key at unlock time instead of on the first settings write.
+    let state_for_unlock = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>("/api/unlock", Method::Post, move |request| {
+        if !authorized(&request, &state_for_unlock) {
+            return unauthorized(request);
+        }
+        respond(request, 200, "application/json", r#"{"ok":true}"#)
     })?;
 
     server.fn_handler::<anyhow::Error, _>("/api/reset", Method::Post, move |request| {
@@ -461,7 +477,18 @@ struct StatusResponse<'a> {
     target: TargetStatus<'a>,
     audio: AudioStatus,
     metrics: MetricsStatus,
+    diagnostics: DiagnosticsStatus,
     ota: OtaSnapshot,
+}
+
+/// Post-mortem evidence for boots the user did not watch: why the device is
+/// (or last was) in setup-AP mode, how the last OTA attempt ended, and what
+/// kind of reset produced this boot.
+#[derive(Serialize)]
+struct DiagnosticsStatus {
+    reset_reason: &'static str,
+    last_fallback: String,
+    last_ota: String,
 }
 
 #[derive(Serialize)]
@@ -524,6 +551,10 @@ fn config_json(state: &ApiState) -> String {
 }
 
 fn status_json(state: &ApiState) -> String {
+    let (last_fallback, last_ota) = match state.store.lock() {
+        Ok(store) => (store.last_fallback(), store.last_ota()),
+        Err(_) => (String::new(), String::new()),
+    };
     let config = state.config.lock().expect("configuration lock poisoned");
     let metrics = state
         .stream
@@ -579,8 +610,32 @@ fn status_json(state: &ApiState) -> String {
             clipped_samples_total: metrics.clipped_total,
             playing: metrics.playing,
         },
+        diagnostics: DiagnosticsStatus {
+            reset_reason: reset_reason(),
+            last_fallback,
+            last_ota,
+        },
         ota: state.ota.snapshot(),
     })
+}
+
+/// What kind of reset produced this boot; `panic` or a watchdog value on a
+/// crash, `power-on` on a power cycle, `software` after an OTA or config reboot.
+fn reset_reason() -> &'static str {
+    use esp_idf_svc::sys;
+    match unsafe { sys::esp_reset_reason() } {
+        sys::esp_reset_reason_t_ESP_RST_POWERON => "power-on",
+        sys::esp_reset_reason_t_ESP_RST_EXT => "external-pin",
+        sys::esp_reset_reason_t_ESP_RST_SW => "software",
+        sys::esp_reset_reason_t_ESP_RST_PANIC => "panic",
+        sys::esp_reset_reason_t_ESP_RST_INT_WDT => "interrupt-watchdog",
+        sys::esp_reset_reason_t_ESP_RST_TASK_WDT => "task-watchdog",
+        sys::esp_reset_reason_t_ESP_RST_WDT => "watchdog",
+        sys::esp_reset_reason_t_ESP_RST_DEEPSLEEP => "deep-sleep-wake",
+        sys::esp_reset_reason_t_ESP_RST_BROWNOUT => "brownout",
+        sys::esp_reset_reason_t_ESP_RST_SDIO => "sdio",
+        _ => "unknown",
+    }
 }
 
 /// Serialize an owned response built entirely from primitives and `&str`, which

@@ -30,7 +30,7 @@ use esp_idf_svc::{
 use serde::Serialize;
 
 use crate::{
-    adapters::time,
+    adapters::{nvs::ConfigStore, time},
     update::{self, ImageSink, ImageSource, InstallProgress, OtaRelease},
 };
 
@@ -225,17 +225,22 @@ enum Action {
 /// handler returns immediately; callers poll [`OtaProgress::snapshot`] for the
 /// result (`up-to-date` or `update-available`).
 pub fn spawn_check(progress: Arc<OtaProgress>) -> Result<()> {
-    spawn(progress, Action::Check)
+    spawn(progress, Action::Check, None)
 }
 
 /// Kick off a check-and-install on a worker thread. The HTTP handler returns
 /// immediately; callers poll [`OtaProgress::snapshot`] for status. A successful
-/// install reboots the device into the new slot.
-pub fn spawn_update(progress: Arc<OtaProgress>) -> Result<()> {
-    spawn(progress, Action::Install)
+/// install reboots the device into the new slot; the outcome is persisted in
+/// `store` so it survives the reboot (and a possible rollback).
+pub fn spawn_update(progress: Arc<OtaProgress>, store: Arc<Mutex<ConfigStore>>) -> Result<()> {
+    spawn(progress, Action::Install, Some(store))
 }
 
-fn spawn(progress: Arc<OtaProgress>, action: Action) -> Result<()> {
+fn spawn(
+    progress: Arc<OtaProgress>,
+    action: Action,
+    store: Option<Arc<Mutex<ConfigStore>>>,
+) -> Result<()> {
     if !progress.begin() {
         bail!("an update is already in progress");
     }
@@ -250,7 +255,7 @@ fn spawn(progress: Arc<OtaProgress>, action: Action) -> Result<()> {
 
     let spawned = thread::Builder::new()
         .stack_size(WORKER_STACK_BYTES)
-        .spawn(move || run(&progress, action))
+        .spawn(move || run(&progress, action, store.as_deref()))
         .context("cannot spawn OTA task");
 
     ThreadSpawnConfiguration::default()
@@ -260,7 +265,7 @@ fn spawn(progress: Arc<OtaProgress>, action: Action) -> Result<()> {
     spawned.map(drop)
 }
 
-fn run(progress: &OtaProgress, action: Action) {
+fn run(progress: &OtaProgress, action: Action, store: Option<&Mutex<ConfigStore>>) {
     let current = env!("CARGO_PKG_VERSION");
     progress.set_message("synchronizing clock");
     if let Err(error) = time::wait_for_sync() {
@@ -286,16 +291,44 @@ fn run(progress: &OtaProgress, action: Action) {
     }
 
     progress.set_phase(Phase::Downloading);
+    // Written before the download so a crash mid-install still leaves evidence;
+    // overwritten by the final outcome below.
+    note_outcome(
+        store,
+        &format!("installing {} (did not finish)", release.version),
+    );
     if let Err(error) = install(&release, progress) {
-        return progress.fail(format!("install failed: {error:#}"));
+        let message = format!("install {} failed: {error:#}", release.version);
+        note_outcome(store, &message);
+        return progress.fail(message);
     }
 
+    let message = format!("installed {}; rebooting", release.version);
+    note_outcome(store, &message);
     progress.set_phase(Phase::Installed);
-    progress.set_message(&format!("installed {}; rebooting", release.version));
-    log::info!("OTA installed {}; rebooting", release.version);
-    // Let the HTTP status poll observe the final state before the reboot.
-    esp_idf_svc::hal::delay::FreeRtos::delay_ms(1_000);
+    progress.set_message(&message);
+    log::info!("OTA {message}");
+    // Let the console's status poll (1.5 s interval) observe the final state
+    // before the reboot; a shorter window can fall between two polls.
+    esp_idf_svc::hal::delay::FreeRtos::delay_ms(3_000);
     unsafe { esp_idf_svc::sys::esp_restart() };
+}
+
+/// Persist the install outcome, tagged with the version that ran the install,
+/// so `/api/status` can still explain what happened after the reboot — and
+/// after a rollback, when the running version contradicts the note.
+/// Best-effort: diagnostics must never fail an update.
+fn note_outcome(store: Option<&Mutex<ConfigStore>>, outcome: &str) {
+    let Some(store) = store else { return };
+    let note = format!("v{}: {outcome}", env!("CARGO_PKG_VERSION"));
+    match store.lock() {
+        Ok(guard) => {
+            if let Err(error) = guard.save_last_ota(&note) {
+                log::warn!("could not persist OTA outcome: {error:#}");
+            }
+        }
+        Err(_) => log::warn!("could not persist OTA outcome: store lock poisoned"),
+    }
 }
 
 fn client() -> Result<Client<EspHttpConnection>> {

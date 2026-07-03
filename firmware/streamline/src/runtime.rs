@@ -18,6 +18,7 @@ use crate::{
         i2s::Capture,
         tcp::{TargetAddress, TcpClient},
     },
+    counter::Counter64,
     levels::LevelStats,
     packet::AudioPacket,
     play::PlayDetector,
@@ -33,19 +34,19 @@ const NETWORK_PRIORITY: u8 = 2;
 #[derive(Default)]
 pub struct StreamStatus {
     sequence: AtomicU32,
-    packets: AtomicU32,
-    bytes: AtomicU32,
-    read_errors: AtomicU32,
-    short_reads: AtomicU32,
-    queue_drops: AtomicU32,
-    network_errors: AtomicU32,
-    reconnects: AtomicU32,
+    packets: Counter64,
+    bytes: Counter64,
+    read_errors: Counter64,
+    short_reads: Counter64,
+    queue_drops: Counter64,
+    network_errors: Counter64,
+    reconnects: Counter64,
     queue_depth: AtomicU32,
     peak_left: AtomicU32,
     peak_right: AtomicU32,
     rms_left: AtomicU32,
     rms_right: AtomicU32,
-    clipped_total: AtomicU32,
+    clipped_total: Counter64,
     playing: AtomicBool,
 }
 
@@ -53,19 +54,19 @@ impl StreamStatus {
     pub fn snapshot(&self) -> StreamSnapshot {
         StreamSnapshot {
             sequence: self.sequence.load(Ordering::Relaxed),
-            packets: self.packets.load(Ordering::Relaxed),
-            bytes: self.bytes.load(Ordering::Relaxed),
-            read_errors: self.read_errors.load(Ordering::Relaxed),
-            short_reads: self.short_reads.load(Ordering::Relaxed),
-            queue_drops: self.queue_drops.load(Ordering::Relaxed),
-            network_errors: self.network_errors.load(Ordering::Relaxed),
-            reconnects: self.reconnects.load(Ordering::Relaxed),
+            packets: self.packets.load(),
+            bytes: self.bytes.load(),
+            read_errors: self.read_errors.load(),
+            short_reads: self.short_reads.load(),
+            queue_drops: self.queue_drops.load(),
+            network_errors: self.network_errors.load(),
+            reconnects: self.reconnects.load(),
             queue_depth: self.queue_depth.load(Ordering::Relaxed),
             peak_left: self.peak_left.load(Ordering::Relaxed),
             peak_right: self.peak_right.load(Ordering::Relaxed),
             rms_left: self.rms_left.load(Ordering::Relaxed),
             rms_right: self.rms_right.load(Ordering::Relaxed),
-            clipped_total: self.clipped_total.load(Ordering::Relaxed),
+            clipped_total: self.clipped_total.load(),
             playing: self.playing.load(Ordering::Relaxed),
         }
     }
@@ -80,8 +81,7 @@ impl StreamStatus {
         self.rms_right
             .store(u32::from(levels.rms_right), Ordering::Relaxed);
         if levels.clipped > 0 {
-            self.clipped_total
-                .fetch_add(levels.clipped, Ordering::Relaxed);
+            self.clipped_total.add(levels.clipped);
         }
     }
 }
@@ -89,19 +89,19 @@ impl StreamStatus {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct StreamSnapshot {
     pub sequence: u32,
-    pub packets: u32,
-    pub bytes: u32,
-    pub read_errors: u32,
-    pub short_reads: u32,
-    pub queue_drops: u32,
-    pub network_errors: u32,
-    pub reconnects: u32,
+    pub packets: u64,
+    pub bytes: u64,
+    pub read_errors: u64,
+    pub short_reads: u64,
+    pub queue_drops: u64,
+    pub network_errors: u64,
+    pub reconnects: u64,
     pub queue_depth: u32,
     pub peak_left: u32,
     pub peak_right: u32,
     pub rms_left: u32,
     pub rms_right: u32,
-    pub clipped_total: u32,
+    pub clipped_total: u64,
     pub playing: bool,
 }
 
@@ -174,18 +174,18 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
         let bytes = match capture.read(&mut pcm) {
             Ok(bytes) => bytes,
             Err(error) => {
-                status.read_errors.fetch_add(1, Ordering::Relaxed);
+                status.read_errors.add(1);
                 log::error!("I2S read failed: {error:#}");
                 FreeRtos::delay_ms(100);
                 continue;
             }
         };
         if bytes == 0 || bytes % 4 != 0 {
-            status.short_reads.fetch_add(1, Ordering::Relaxed);
+            status.short_reads.add(1);
             continue;
         }
         if bytes != PAYLOAD_BYTES {
-            status.short_reads.fetch_add(1, Ordering::Relaxed);
+            status.short_reads.add(1);
         }
         let levels = LevelStats::analyze(&pcm[..bytes]);
         status.record_levels(levels);
@@ -196,12 +196,12 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
             continue;
         }
         let Some(packet) = AudioPacket::from_pcm(sequence, &pcm[..bytes]) else {
-            status.short_reads.fetch_add(1, Ordering::Relaxed);
+            status.short_reads.add(1);
             continue;
         };
         let (dropped, depth) = queue.push_drop_oldest(packet);
         if dropped {
-            status.queue_drops.fetch_add(1, Ordering::Relaxed);
+            status.queue_drops.add(1);
         }
         status.queue_depth.store(depth as u32, Ordering::Relaxed);
     }
@@ -214,17 +214,15 @@ fn network_loop(mut tcp: TcpClient, queue: Arc<PacketQueue>, status: Arc<StreamS
         loop {
             match tcp.send_all(packet.as_bytes()) {
                 Ok(reconnected) => {
-                    if reconnected && status.packets.load(Ordering::Relaxed) > 0 {
-                        status.reconnects.fetch_add(1, Ordering::Relaxed);
+                    if reconnected && status.packets.load() > 0 {
+                        status.reconnects.add(1);
                     }
-                    status.packets.fetch_add(1, Ordering::Relaxed);
-                    status
-                        .bytes
-                        .fetch_add(packet.payload_bytes() as u32, Ordering::Relaxed);
+                    status.packets.add(1);
+                    status.bytes.add(packet.payload_bytes() as u32);
                     break;
                 }
                 Err(error) => {
-                    status.network_errors.fetch_add(1, Ordering::Relaxed);
+                    status.network_errors.add(1);
                     log::warn!("TCP stream error: {error:#}");
                     FreeRtos::delay_ms(250);
                 }

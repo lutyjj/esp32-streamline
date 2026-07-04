@@ -338,7 +338,7 @@ function applyStatus(s) {
   $('apiDump').textContent = JSON.stringify(s, null, 2);
 
   state.lastPackets = s.metrics.packets;
-  if (first && s.mode === 'setup-ap') showView('network');
+  if (first && s.mode === 'setup-ap') openOnboarding();
 }
 
 /** @param {DeviceStatus} s */
@@ -1076,6 +1076,113 @@ $('wizNext').addEventListener('click', () => {
   if (wiz.step === 1) wzShow(2);
   else if (wiz.step === 2) wzShow(wiz.idleOk ? 3 : 2);
   else if (wiz.step === 4) closeWizard(false);
+});
+
+// --- First-run onboarding: Wi-Fi · admin key · joining -------------------------
+
+let obStep = 0;
+
+function openOnboarding() {
+  if (state.status?.mode !== 'setup-ap') return;
+  ensureSetupKey();
+  obStep = 0;
+  $('onboard').hidden = false;
+  obShow(1);
+}
+
+function closeOnboarding() {
+  $('onboard').hidden = true;
+  obStep = 0;
+  showView('network');
+}
+
+function obShow(step) {
+  obStep = step;
+  for (let i = 1; i <= 3; i += 1) $(`obStep${i}`).hidden = i !== step;
+  const dots = $('obDots').children;
+  for (let i = 0; i < dots.length; i += 1) dots[i].classList.toggle('on', i < step);
+  const next = $('obNext');
+  next.classList.remove('busy');
+  next.hidden = false;
+  next.disabled = false;
+  $('obCancel').textContent = 'Cancel';
+  if (step === 1) {
+    next.textContent = 'Join network';
+  } else if (step === 2) {
+    $('obKeyValue').textContent = state.setupKey;
+    next.textContent = 'I saved my key \u2014 continue';
+  } else if (step === 3) {
+    next.hidden = true;
+    $('obCancel').textContent = 'Close';
+    obStartJoining();
+  }
+}
+
+async function obStartJoining() {
+  const ssid = $('ob_ssid').value.trim();
+  const hostname = state.status?.wifi?.hostname || 'streamline-xxxx.local';
+  $('obJoinTitle').textContent = `Joining ${ssid}\u2026`;
+  $('obAddress').textContent = `http://${hostname}/`;
+  $('obProg').style.width = '0';
+  $('obCountdown').textContent = 'Saving\u2026';
+
+  const body = new URLSearchParams({
+    ssid,
+    password: $('ob_password').value,
+    target_host: state.status?.target?.target_host || '',
+    target_port: String(state.status?.target?.target_port || 39000),
+    admin_secret: state.setupKey,
+  });
+
+  try {
+    await api('/api/settings/network', { method: 'POST', body });
+  } catch {
+    // The device reboots immediately; the fetch typically fails.
+  }
+
+  unlockSettings(state.setupKey, $('obRememberKey').checked);
+  beginRebootWait('the network settings');
+
+  let remaining = 10;
+  $('obCountdown').textContent = `Restarting \u2014 about ${remaining} s\u2026`;
+  const iv = setInterval(() => {
+    remaining -= 1;
+    const pct = Math.min(100, ((10 - remaining) / 10) * 100);
+    $('obProg').style.width = `${pct}%`;
+    if (remaining > 0) {
+      $('obCountdown').textContent = `Restarting \u2014 about ${remaining} s\u2026`;
+    } else {
+      clearInterval(iv);
+      $('obProg').style.width = '100%';
+      $('obCountdown').textContent =
+        'Done \u2014 reconnect to your own Wi-Fi and open the address above.';
+    }
+  }, 1000);
+}
+
+$('obCancel').addEventListener('click', closeOnboarding);
+$('obNext').addEventListener('click', () => {
+  if (obStep === 1) {
+    const ssid = $('ob_ssid').value.trim();
+    const pass = $('ob_password').value;
+    if (!ssid) {
+      toast('Enter your Wi-Fi network name', 'err');
+      return;
+    }
+    if (!pass) {
+      toast('Enter the Wi-Fi password', 'err');
+      return;
+    }
+    obShow(2);
+  } else if (obStep === 2) {
+    obShow(3);
+  }
+});
+$('obCopyKey').addEventListener('click', () => {
+  copySecret(state.setupKey).then(
+    () => toast('Admin key copied', 'ok'),
+    (err) => toast(err.message, 'err'),
+  );
 });
 
 $('nameForm').addEventListener('submit', (e) => {

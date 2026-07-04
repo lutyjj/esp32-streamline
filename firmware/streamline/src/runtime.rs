@@ -46,6 +46,7 @@ pub struct StreamStatus {
     peak_right: AtomicU32,
     rms_left: AtomicU32,
     rms_right: AtomicU32,
+    noise_floor: AtomicU32,
     clipped_total: Counter64,
     playing: AtomicBool,
 }
@@ -66,6 +67,7 @@ impl StreamStatus {
             peak_right: self.peak_right.load(Ordering::Relaxed),
             rms_left: self.rms_left.load(Ordering::Relaxed),
             rms_right: self.rms_right.load(Ordering::Relaxed),
+            noise_floor: self.noise_floor.load(Ordering::Relaxed),
             clipped_total: self.clipped_total.load(),
             playing: self.playing.load(Ordering::Relaxed),
         }
@@ -101,6 +103,7 @@ pub struct StreamSnapshot {
     pub peak_right: u32,
     pub rms_left: u32,
     pub rms_right: u32,
+    pub noise_floor: u32,
     pub clipped_total: u64,
     pub playing: bool,
 }
@@ -191,6 +194,9 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
         status.record_levels(levels);
         let playing = detector.update(levels);
         status.playing.store(playing, Ordering::Relaxed);
+        status
+            .noise_floor
+            .store(u32::from(detector.noise_floor()), Ordering::Relaxed);
         let sequence = status.sequence.fetch_add(1, Ordering::Relaxed);
         if !playing {
             continue;

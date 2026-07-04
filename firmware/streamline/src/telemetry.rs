@@ -45,6 +45,7 @@ pub struct AudioTelemetry {
     pub peak_abs_right: u32,
     pub rms_left: u32,
     pub rms_right: u32,
+    pub noise_floor: u32,
     pub clipped_samples_total: u64,
     pub playing: bool,
 }

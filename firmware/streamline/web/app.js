@@ -657,7 +657,7 @@ async function refresh() {
 
 async function loadConfig() {
   /** @type {DeviceConfig} */
-  const c = await api('/api/config');
+  const c = await api('/api/settings');
   $('device_name').value = c.device_name;
   $('ssid').value = c.ssid;
   $('target_host').value = c.target_host;
@@ -747,7 +747,7 @@ $('clipCalloutButton').addEventListener('click', () => showView('audio'));
 $('audioForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const button = e.target.querySelector('button[type="submit"]');
-  transact(button, () => api('/api/audio', { method: 'POST', body: formBody(e.target) }), {
+  transact(button, () => api('/api/settings/audio', { method: 'POST', body: formBody(e.target) }), {
     busyText: 'Applying…',
     okText: 'Applied — the meter shows the new levels',
     // In setup mode the codec is not running, so the device restarts instead.
@@ -758,7 +758,7 @@ $('audioForm').addEventListener('submit', (e) => {
 $('nameForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const button = e.target.querySelector('button[type="submit"]');
-  transact(button, () => api('/api/name', { method: 'POST', body: formBody(e.target) }), {
+  transact(button, () => api('/api/settings/name', { method: 'POST', body: formBody(e.target) }), {
     busyText: 'Saving…',
     okText: 'Saved',
   });
@@ -777,7 +777,7 @@ $('setupForm').addEventListener('submit', (e) => {
       }
       if (!firstSetup && !state.editingPassword) $('password').value = '';
       if (firstSetup) ensureSetupKey();
-      const data = await api('/api/setup', { method: 'POST', body: formBody(e.target) });
+      const data = await api('/api/settings/network', { method: 'POST', body: formBody(e.target) });
       if (firstSetup && state.setupKey) {
         // The device reboots onto the home network; keep the key so this
         // browser can unlock it there.
@@ -804,7 +804,7 @@ $('adminKeyForm').addEventListener('submit', (e) => {
     async () => {
       if (!isUnlocked()) throw new Error('unlock settings before replacing the admin key');
       if (!state.replacementKey) stageReplacementKey();
-      await api('/api/admin-key', { method: 'POST', body: formBody(e.target) });
+      await api('/api/settings/admin-key', { method: 'POST', body: formBody(e.target) });
       unlockSettings(state.replacementKey, $('rememberReplacementKey').checked);
       state.replacementKey = '';
       $('replacementKeyPanel').hidden = true;
@@ -833,7 +833,7 @@ $('factoryYes').addEventListener('click', () => {
   transact(
     button,
     async () => {
-      const data = await api('/api/reset', { method: 'POST' });
+      const data = await api('/api/factory-reset', { method: 'POST' });
       $('factoryConfirm').hidden = true;
       return data;
     },

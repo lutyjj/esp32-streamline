@@ -22,7 +22,8 @@
  * @property {string} config_source
  * @property {boolean} configuration_writable
  * @property {boolean} auth_required
- * @property {{ ssid: string, status: string, sta_ip: string, ap_ip: string, rssi: number }} wifi
+ * @property {{ hostname: string, ssid: string, status: string, sta_ip: string,
+ *              ap_ip: string, rssi: number }} wifi
  * @property {{ target_host: string, target_port: number }} target
  * @property {{ input_line: number, input_gain: number, adc_atten_db: number,
  *              sample_rate: number, channels: number, bits_per_sample: number }} audio
@@ -322,7 +323,8 @@ function applyStatus(s) {
   $('chipVersion').textContent = `v${s.firmware_version}`;
   $('chipFormat').textContent =
     `${s.audio.sample_rate / 1000} kHz / ${s.audio.bits_per_sample}-bit`;
-  $('chipAddr').textContent = s.mode === 'setup-ap' ? s.wifi.ap_ip : s.wifi.sta_ip;
+  $('chipAddr').textContent =
+    s.mode === 'setup-ap' ? s.wifi.ap_ip : s.wifi.hostname || s.wifi.sta_ip;
   $('deviceName').textContent = s.device_name;
   $('deviceName').hidden = !s.device_name;
   document.title = s.device_name ? `${s.device_name} — StreamLine` : 'StreamLine';
@@ -360,7 +362,7 @@ function renderHealth(s) {
   $('hWifi').textContent = s.wifi.ssid || '—';
   $('hWifiSub').textContent = setup
     ? `setup network at ${s.wifi.ap_ip}`
-    : `${s.wifi.rssi} dBm · ${s.wifi.sta_ip}`;
+    : `${s.wifi.rssi} dBm · ${s.wifi.hostname || s.wifi.sta_ip}`;
 
   const moving = state.lastPackets >= 0 && s.metrics.packets > state.lastPackets;
   $('hBridge').textContent = setup ? '—' : moving ? 'Sending' : playing ? 'Connecting' : 'Idle';
@@ -379,7 +381,7 @@ function renderHealth(s) {
 
   $('wifiLead').textContent = setup
     ? 'Not configured yet — join the device to your home network.'
-    : `Connected to ${s.wifi.ssid} · ${s.wifi.rssi} dBm`;
+    : `Connected to ${s.wifi.ssid} · ${s.wifi.rssi} dBm · ${s.wifi.sta_ip}`;
 }
 
 const PEAK_HOLD_MS = 2500;
@@ -1109,8 +1111,9 @@ $('setupForm').addEventListener('submit', (e) => {
     { busyText: 'Saving…', reboots: 'the network settings' },
   );
   if (firstSetup) {
+    const hostname = state.status?.wifi?.hostname || 'streamline-xxxx.local';
     toast(
-      `The setup network disappears now — reconnect to your own Wi-Fi, then open the device's new address (your router lists it as "streamline").`,
+      `The setup network disappears now — reconnect to your own Wi-Fi, then open http://${hostname}/.`,
       'wait',
       0,
     );

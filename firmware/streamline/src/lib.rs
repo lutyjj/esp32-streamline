@@ -9,6 +9,7 @@
 pub mod config;
 #[cfg(any(test, target_os = "espidf"))]
 mod counter;
+pub mod identity;
 pub mod levels;
 pub mod metrics;
 pub mod packet;

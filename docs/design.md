@@ -122,7 +122,7 @@ gain:        0-100 (NVS configured)
 
 The firmware exports read-only runtime state as JSON at `/api/status` and as
 Prometheus text at `/api/metrics`. Both endpoints read the same in-memory
-streaming counters.
+identity, network, and streaming counters.
 
 ## HTTP API Shape
 

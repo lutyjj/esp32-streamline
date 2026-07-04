@@ -16,6 +16,7 @@ use serde::Serialize;
 use crate::{
     adapters::{
         codec::CodecControl,
+        mdns::MdnsAdvertisement,
         nvs::ConfigStore,
         ota::{self, OtaProgress},
         wifi,
@@ -45,6 +46,7 @@ pub enum Mode {
 
 pub struct ApiState {
     pub mode: Mode,
+    pub hostname: String,
     pub config: Arc<Mutex<RuntimeConfig>>,
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
@@ -52,6 +54,7 @@ pub struct ApiState {
     /// without a reboot. Absent in setup-AP mode, where the codec is not
     /// running.
     pub codec: Option<Arc<Mutex<CodecControl<'static>>>>,
+    pub mdns: Option<Arc<Mutex<MdnsAdvertisement>>>,
     pub ota: Arc<OtaProgress>,
 }
 
@@ -220,7 +223,9 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     .get("name")
                     .map(|value| value.trim().to_owned())
                     .unwrap_or_default();
-                save(&state_for_name, next)
+                save(&state_for_name, next.clone())?;
+                refresh_mdns_name(&state_for_name, &next);
+                Ok(())
             })();
             match result {
                 Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
@@ -349,6 +354,20 @@ fn save(state: &ApiState, config: RuntimeConfig) -> Result<()> {
         .lock()
         .map_err(|_| anyhow!("configuration lock poisoned"))? = config;
     Ok(())
+}
+
+fn refresh_mdns_name(state: &ApiState, config: &RuntimeConfig) {
+    let Some(mdns) = &state.mdns else {
+        return;
+    };
+    match mdns.lock() {
+        Ok(mut advertisement) => {
+            if let Err(error) = advertisement.set_instance_name(config) {
+                log::warn!("could not refresh mDNS instance name: {error:#}");
+            }
+        }
+        Err(_) => log::warn!("could not refresh mDNS instance name: lock poisoned"),
+    }
 }
 
 fn reboot_response<C>(request: embedded_svc::http::server::Request<C>) -> Result<()>
@@ -604,6 +623,7 @@ struct DiagnosticsStatus<'a> {
 
 #[derive(Serialize)]
 struct WifiStatus<'a> {
+    hostname: &'a str,
     ssid: &'a str,
     status: &'a str,
     sta_ip: &'a str,
@@ -707,6 +727,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         configuration_writable: true,
         auth_required: !config.admin_secret.is_empty(),
         wifi: WifiTelemetry {
+            hostname: state.hostname.clone(),
             ssid: config.ssid.clone(),
             status: wifi_status,
             sta_ip: wifi::station_ip().unwrap_or_default(),
@@ -791,6 +812,7 @@ impl<'a> From<&'a TelemetrySnapshot> for StatusResponse<'a> {
             configuration_writable: snapshot.configuration_writable,
             auth_required: snapshot.auth_required,
             wifi: WifiStatus {
+                hostname: &snapshot.wifi.hostname,
                 ssid: &snapshot.wifi.ssid,
                 status: snapshot.wifi.status,
                 sta_ip: &snapshot.wifi.sta_ip,

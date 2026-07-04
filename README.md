@@ -79,11 +79,12 @@ tuning flags.
 2. Enter your Wi-Fi credentials and set **TCP Target Host** to the bridge IP.
 3. **Save the generated admin key.** The device never shows it again. The key
    unlocks every later settings change; lose it and you must reflash.
-4. Save. The device reboots onto your network.
+4. Save. The device reboots onto your network and advertises its console as
+   `http://streamline-xxxx.local/`.
 
-Open the console at the device's station IP to tune audio, change settings, or
-reset the device. **Clear Config** returns it to the setup AP.
-For monitoring, scrape `http://<esp32-ip>/api/metrics`; JSON diagnostics live at
+Open the console at its `.local` name to tune audio, change settings, or reset
+the device. Use the station IP if your network does not pass mDNS. For
+monitoring, scrape `http://<esp32-host>/api/metrics`; JSON diagnostics live at
 `/api/status`.
 
 ### 4. Update

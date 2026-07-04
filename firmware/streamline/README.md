@@ -18,6 +18,7 @@ architecture rules live in [AGENTS.md](../../AGENTS.md).
   [TCP transport contract](../../docs/tcp-transport.md)
 - bounded TCP connect/send via `std::net` (`TCP_NODELAY`, 250 ms timeouts)
 - NVS-backed configuration and a setup AP at `esp32-streamline-XXXX`
+- mDNS console advertisement at `streamline-xxxx.local` in station mode
 - HTTP config/status API: open reads; a per-device admin key gates writes —
   see the [security notes](../../docs/security.md)
 - embedded web console in `web/`, linted by Biome

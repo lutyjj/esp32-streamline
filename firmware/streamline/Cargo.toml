@@ -34,3 +34,6 @@ serde_json = "1"
 
 [build-dependencies]
 embuild = { version = "0.33", features = ["espidf"] }
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/mdns", version = "1.8.2" }

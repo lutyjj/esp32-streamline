@@ -53,19 +53,17 @@ export function NetworkTab() {
           // The device reboots onto the home network; keep the key so this
           // browser can unlock it there.
           unlockSettings(setupKey.value, rememberKey);
+          const hostname = s?.wifi?.hostname || 'streamline-xxxx.local';
+          toast(
+            `The setup network disappears now — reconnect to your own Wi-Fi, then open http://${hostname}/.`,
+            'wait',
+            0,
+          );
         }
         return data;
       },
       { busyText: 'Saving…', reboots: 'the network settings' },
     );
-    if (firstSetup) {
-      const hostname = s?.wifi?.hostname || 'streamline-xxxx.local';
-      toast(
-        `The setup network disappears now — reconnect to your own Wi-Fi, then open http://${hostname}/.`,
-        'wait',
-        0,
-      );
-    }
   }
 
   const moving = packetsMoving.value;

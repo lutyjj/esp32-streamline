@@ -17,6 +17,7 @@
 /**
  * @typedef {Object} DeviceStatus
  * @property {string} firmware_version
+ * @property {string} device_name friendly name; empty when unnamed
  * @property {string} mode "streaming" | "setup-ap"
  * @property {string} config_source
  * @property {boolean} configuration_writable
@@ -47,6 +48,7 @@
 
 /**
  * @typedef {Object} DeviceConfig
+ * @property {string} device_name
  * @property {string} ssid
  * @property {string} target_host
  * @property {number} target_port
@@ -313,6 +315,9 @@ function applyStatus(s) {
   $('chipFormat').textContent =
     `${s.audio.sample_rate / 1000} kHz / ${s.audio.bits_per_sample}-bit`;
   $('chipAddr').textContent = s.mode === 'setup-ap' ? s.wifi.ap_ip : s.wifi.sta_ip;
+  $('deviceName').textContent = s.device_name;
+  $('deviceName').hidden = !s.device_name;
+  document.title = s.device_name ? `${s.device_name} — StreamLine` : 'StreamLine';
 
   renderHealth(s);
   renderMeters(s);
@@ -653,6 +658,7 @@ async function refresh() {
 async function loadConfig() {
   /** @type {DeviceConfig} */
   const c = await api('/api/config');
+  $('device_name').value = c.device_name;
   $('ssid').value = c.ssid;
   $('target_host').value = c.target_host;
   $('target_port').value = c.target_port;
@@ -746,6 +752,15 @@ $('audioForm').addEventListener('submit', (e) => {
     okText: 'Applied — the meter shows the new levels',
     // In setup mode the codec is not running, so the device restarts instead.
     reboots: 'the audio settings',
+  });
+});
+
+$('nameForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const button = e.target.querySelector('button[type="submit"]');
+  transact(button, () => api('/api/name', { method: 'POST', body: formBody(e.target) }), {
+    busyText: 'Saving…',
+    okText: 'Saved',
   });
 });
 

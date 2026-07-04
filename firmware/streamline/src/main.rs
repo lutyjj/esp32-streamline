@@ -139,6 +139,7 @@ fn start_setup(wifi: &mut wifi::WifiController<'_>, suffix: &str) -> Result<Setu
             // No admin key yet: an unprovisioned device accepts setup writes over its
             // own AP so commissioning can establish one. See `http::authorized`.
             admin_secret: String::new(),
+            device_name: String::new(),
             // Safe line-in baseline: 0 dB PGA (no clipping) on line 2. Adjust per
             // board in setup mode.
             audio: AudioSettings {

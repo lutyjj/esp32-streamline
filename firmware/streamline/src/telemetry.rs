@@ -3,6 +3,8 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TelemetrySnapshot {
     pub firmware_version: &'static str,
+    /// Friendly device name; empty when unnamed.
+    pub device_name: String,
     pub mode: &'static str,
     pub config_source: &'static str,
     pub web_server: bool,

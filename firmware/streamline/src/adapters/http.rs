@@ -135,6 +135,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                 target_host: required(&form, "target_host")?.trim().to_owned(),
                 target_port: parse_u16(&form, "target_port")?,
                 admin_secret,
+                device_name: current.device_name,
                 audio: current.audio,
             };
             save(&state_for_setup, next)
@@ -186,6 +187,32 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         match result {
             Ok(true) => respond(request, 200, "application/json", r#"{"ok":true}"#),
             Ok(false) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
+
+    // The friendly device name only labels the console and browser tab, so it
+    // applies immediately — no reboot. Blank clears the name.
+    let state_for_name = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>("/api/name", Method::Post, move |mut request| {
+        if !authorized(&request, &state_for_name) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form = form(&mut request)?;
+            let mut next = state_for_name
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            next.device_name = form
+                .get("name")
+                .map(|value| value.trim().to_owned())
+                .unwrap_or_default();
+            save(&state_for_name, next)
+        })();
+        match result {
+            Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
             Err(error) => bad_request(request, error),
         }
     })?;
@@ -512,6 +539,7 @@ fn parse_u16(form: &BTreeMap<String, String>, key: &str) -> Result<u16> {
 
 #[derive(Serialize)]
 struct ConfigResponse<'a> {
+    device_name: &'a str,
     ssid: &'a str,
     target_host: &'a str,
     target_port: u16,
@@ -524,6 +552,7 @@ struct ConfigResponse<'a> {
 #[derive(Serialize)]
 struct StatusResponse<'a> {
     firmware_version: &'a str,
+    device_name: &'a str,
     mode: &'a str,
     config_source: &'a str,
     web_server: bool,
@@ -607,6 +636,7 @@ struct OtaStatus<'a> {
 fn config_json(state: &ApiState) -> String {
     let config = state.config.lock().expect("configuration lock poisoned");
     serialize(&ConfigResponse {
+        device_name: &config.device_name,
         ssid: &config.ssid,
         target_host: &config.target_host,
         target_port: config.target_port,
@@ -644,6 +674,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
     let ota = state.ota.snapshot();
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
+        device_name: config.device_name.clone(),
         mode,
         config_source: "nvs",
         web_server: true,
@@ -727,6 +758,7 @@ impl<'a> From<&'a TelemetrySnapshot> for StatusResponse<'a> {
     fn from(snapshot: &'a TelemetrySnapshot) -> Self {
         Self {
             firmware_version: snapshot.firmware_version,
+            device_name: &snapshot.device_name,
             mode: snapshot.mode,
             config_source: snapshot.config_source,
             web_server: snapshot.web_server,

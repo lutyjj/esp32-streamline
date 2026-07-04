@@ -28,21 +28,40 @@ pub trait Codec {
     /// at 48 kHz/16-bit stereo, with the selected input line, gain, and ADC
     /// attenuation.
     fn configure(bus: &mut I2cDriver<'_>, audio: AudioSettings) -> Result<()>;
+
+    /// Rewrite only the input controls — line, gain, attenuation — on a codec
+    /// that is already running, without a reset or capture interruption.
+    fn apply(bus: &mut I2cDriver<'_>, audio: AudioSettings) -> Result<()>;
 }
 
-/// Open the control bus and configure the board's codec.
+/// Open the control bus, configure the board's codec, and return a handle that
+/// can re-apply input settings while the device streams.
 pub fn configure<'d>(
     i2c: I2C0<'d>,
     sda: Gpio33<'d>,
     scl: Gpio32<'d>,
     audio: AudioSettings,
-) -> Result<()> {
+) -> Result<CodecControl<'d>> {
     let config = I2cConfig::new()
         .baudrate(Hertz(100_000))
         .sda_enable_pullup(true)
         .scl_enable_pullup(true);
     let mut bus = I2cDriver::new(i2c, sda, scl, &config)?;
-    Es8388::configure(&mut bus, audio)
+    Es8388::configure(&mut bus, audio)?;
+    Ok(CodecControl { bus })
+}
+
+/// Owns the codec's I2C control bus after boot so input settings can change
+/// without rebooting the device.
+pub struct CodecControl<'d> {
+    bus: I2cDriver<'d>,
+}
+
+impl CodecControl<'_> {
+    /// Apply new input settings to the running codec.
+    pub fn apply(&mut self, audio: AudioSettings) -> Result<()> {
+        Es8388::apply(&mut self.bus, audio)
+    }
 }
 
 /// ES8388 ADC at I2C `0x10` — the codec on the Ai-Thinker ESP32-A1S / Audio Kit.
@@ -110,6 +129,24 @@ impl Codec for Es8388 {
         }
         Ok(())
     }
+
+    fn apply(bus: &mut I2cDriver<'_>, audio: AudioSettings) -> Result<()> {
+        for (register, value) in input_controls(audio) {
+            bus.write(Self::I2C_ADDRESS, &[register, value], BLOCK)?;
+        }
+        Ok(())
+    }
+}
+
+/// The register writes for the user-adjustable input settings — the live
+/// subset of the full `configure` sequence.
+const fn input_controls(audio: AudioSettings) -> [(u8, u8); 4] {
+    [
+        (ADC_CONTROL1, input_gain_register(audio.input_gain)),
+        (ADC_CONTROL2, input_register(audio.input_line)),
+        (ADC_CONTROL8, attenuation_register(audio.adc_attenuation_db)),
+        (ADC_CONTROL9, attenuation_register(audio.adc_attenuation_db)),
+    ]
 }
 
 const fn input_register(line: InputLine) -> u8 {
@@ -132,8 +169,11 @@ const fn attenuation_register(db: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{attenuation_register, input_gain_register, input_register};
-    use crate::config::InputLine;
+    use super::{
+        attenuation_register, input_controls, input_gain_register, input_register, ADC_CONTROL1,
+        ADC_CONTROL2, ADC_CONTROL8, ADC_CONTROL9,
+    };
+    use crate::config::{AudioSettings, InputLine};
 
     #[test]
     fn maps_audio_controls_to_documented_register_values() {
@@ -142,5 +182,23 @@ mod tests {
         assert_eq!(input_gain_register(0), 0x00);
         assert_eq!(input_gain_register(100), 0x88);
         assert_eq!(attenuation_register(48), 96);
+    }
+
+    #[test]
+    fn live_apply_writes_exactly_the_input_control_registers() {
+        let audio = AudioSettings {
+            input_line: InputLine::Two,
+            input_gain: 0,
+            adc_attenuation_db: 9,
+        };
+        assert_eq!(
+            input_controls(audio),
+            [
+                (ADC_CONTROL1, 0x00),
+                (ADC_CONTROL2, 0x50),
+                (ADC_CONTROL8, 18),
+                (ADC_CONTROL9, 18),
+            ]
+        );
     }
 }

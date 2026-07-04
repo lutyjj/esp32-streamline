@@ -15,6 +15,7 @@ use serde::Serialize;
 
 use crate::{
     adapters::{
+        codec::CodecControl,
         nvs::ConfigStore,
         ota::{self, OtaProgress},
         wifi,
@@ -47,6 +48,10 @@ pub struct ApiState {
     pub config: Arc<Mutex<RuntimeConfig>>,
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
+    /// Live codec control, present while streaming so audio settings apply
+    /// without a reboot. Absent in setup-AP mode, where the codec is not
+    /// running.
+    pub codec: Option<Arc<Mutex<CodecControl<'static>>>>,
     pub ota: Arc<OtaProgress>,
 }
 
@@ -140,32 +145,47 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         }
     })?;
 
-    // Audio params take effect after the reboot re-applies the codec config.
+    // While streaming, audio params are written straight to the running codec
+    // and play detection re-baselines to the new input scale — no reboot. In
+    // setup-AP mode the codec is not running, so the settings are persisted
+    // and take effect when the device boots into streaming.
     let state_for_audio = Arc::clone(&state);
     server.fn_handler::<anyhow::Error, _>("/api/audio", Method::Post, move |mut request| {
         if !authorized(&request, &state_for_audio) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        // Ok(true) means the settings were applied live.
+        let result = (|| -> Result<bool> {
             let form = form(&mut request)?;
             let current = state_for_audio
                 .config
                 .lock()
                 .map_err(|_| anyhow!("configuration lock poisoned"))?
                 .clone();
-            let next = RuntimeConfig {
-                audio: AudioSettings {
-                    input_line: InputLine::try_from(parse_u8(&form, "line")?)
-                        .map_err(|_| anyhow!("line must be 1 or 2"))?,
-                    input_gain: parse_u8(&form, "gain")?,
-                    adc_attenuation_db: parse_u8(&form, "atten")?,
-                },
-                ..current
+            let audio = AudioSettings {
+                input_line: InputLine::try_from(parse_u8(&form, "line")?)
+                    .map_err(|_| anyhow!("line must be 1 or 2"))?,
+                input_gain: parse_u8(&form, "gain")?,
+                adc_attenuation_db: parse_u8(&form, "atten")?,
             };
-            save(&state_for_audio, next)
+            save(&state_for_audio, RuntimeConfig { audio, ..current })?;
+            let Some(codec) = &state_for_audio.codec else {
+                return Ok(false);
+            };
+            // The settings are already persisted: if the live write fails, a
+            // reboot re-applies them from storage.
+            codec
+                .lock()
+                .map_err(|_| anyhow!("codec lock poisoned"))?
+                .apply(audio)?;
+            if let Some(stream) = &state_for_audio.stream {
+                stream.request_relearn();
+            }
+            Ok(true)
         })();
         match result {
-            Ok(()) => reboot_response(request),
+            Ok(true) => respond(request, 200, "application/json", r#"{"ok":true}"#),
+            Ok(false) => reboot_response(request),
             Err(error) => bad_request(request, error),
         }
     })?;

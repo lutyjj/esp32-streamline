@@ -49,9 +49,17 @@ pub struct StreamStatus {
     noise_floor: AtomicU32,
     clipped_total: Counter64,
     playing: AtomicBool,
+    relearn: AtomicBool,
 }
 
 impl StreamStatus {
+    /// Ask the capture task to restart play detection from scratch. Called
+    /// after a live codec change: the idle estimate and thresholds are scaled
+    /// to the old input settings and must not gate the new signal.
+    pub fn request_relearn(&self) {
+        self.relearn.store(true, Ordering::Relaxed);
+    }
+
     pub fn snapshot(&self) -> StreamSnapshot {
         StreamSnapshot {
             sequence: self.sequence.load(Ordering::Relaxed),
@@ -174,6 +182,9 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
     // counting while idle — the gap tells the bridge how much time passed.
     let mut detector = PlayDetector::new();
     loop {
+        if status.relearn.swap(false, Ordering::Relaxed) {
+            detector = PlayDetector::new();
+        }
         let bytes = match capture.read(&mut pcm) {
             Ok(bytes) => bytes,
             Err(error) => {

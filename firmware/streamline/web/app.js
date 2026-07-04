@@ -248,9 +248,9 @@ function formBody(form) {
 // --- Transactions: one lifecycle for every mutation ---------------------------
 
 /**
- * Run `work` behind `button` with the full visible lifecycle. `reboots` labels
- * a device restart so the expected offline window is narrated instead of
- * looking like a failure.
+ * Run `work` behind `button` with the full visible lifecycle. When the device
+ * answers `rebooting: true`, `reboots` labels the restart so the expected
+ * offline window is narrated instead of looking like a failure.
  */
 async function transact(button, work, { busyText, okText, reboots = '' } = {}) {
   if (button.disabled) return;
@@ -258,8 +258,8 @@ async function transact(button, work, { busyText, okText, reboots = '' } = {}) {
   button.classList.add('busy');
   setActionState(button, busyText || 'Working…');
   try {
-    await work();
-    if (reboots) {
+    const data = await work();
+    if (reboots && data?.rebooting) {
       setActionState(button, `Saved — device is restarting`, 'ok');
       beginRebootWait(reboots);
     } else {
@@ -742,7 +742,9 @@ $('audioForm').addEventListener('submit', (e) => {
   e.preventDefault();
   const button = e.target.querySelector('button[type="submit"]');
   transact(button, () => api('/api/audio', { method: 'POST', body: formBody(e.target) }), {
-    busyText: 'Saving…',
+    busyText: 'Applying…',
+    okText: 'Applied — the meter shows the new levels',
+    // In setup mode the codec is not running, so the device restarts instead.
     reboots: 'the audio settings',
   });
 });
@@ -760,12 +762,13 @@ $('setupForm').addEventListener('submit', (e) => {
       }
       if (!firstSetup && !state.editingPassword) $('password').value = '';
       if (firstSetup) ensureSetupKey();
-      await api('/api/setup', { method: 'POST', body: formBody(e.target) });
+      const data = await api('/api/setup', { method: 'POST', body: formBody(e.target) });
       if (firstSetup && state.setupKey) {
         // The device reboots onto the home network; keep the key so this
         // browser can unlock it there.
         unlockSettings(state.setupKey, $('rememberSetupKey').checked);
       }
+      return data;
     },
     { busyText: 'Saving…', reboots: 'the network settings' },
   );
@@ -815,8 +818,9 @@ $('factoryYes').addEventListener('click', () => {
   transact(
     button,
     async () => {
-      await api('/api/reset', { method: 'POST' });
+      const data = await api('/api/reset', { method: 'POST' });
       $('factoryConfirm').hidden = true;
+      return data;
     },
     { busyText: 'Erasing…', reboots: 'the factory reset' },
   );

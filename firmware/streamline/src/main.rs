@@ -36,7 +36,7 @@ fn main() -> Result<()> {
     let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
     let suffix = wifi::device_suffix()?;
 
-    let (mode, config, stream) = match persisted {
+    let (mode, config, stream, codec) = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
             Ok(()) => match TargetAddress::resolve(&config) {
                 Ok(target) => {
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
                         peripherals.pins.gpio0,
                         peripherals.pins.gpio25,
                     )?;
-                    codec::configure(
+                    let codec = codec::configure(
                         peripherals.i2c0,
                         peripherals.pins.gpio33,
                         peripherals.pins.gpio32,
@@ -55,7 +55,12 @@ fn main() -> Result<()> {
                     )?;
                     let stream = runtime::start(capture, target)?;
                     log::info!("StreamLine Rust firmware started TCP streaming");
-                    (Mode::Streaming, config, Some(stream))
+                    (
+                        Mode::Streaming,
+                        config,
+                        Some(stream),
+                        Some(Arc::new(Mutex::new(codec))),
+                    )
                 }
                 Err(error) => {
                     let reason = format!("TCP target resolution failed: {error:#}");
@@ -90,6 +95,7 @@ fn main() -> Result<()> {
         config: Arc::new(Mutex::new(config)),
         store,
         stream,
+        codec,
         ota: Arc::new(ota::OtaProgress::default()),
     });
     let _server = http::start(state)?;
@@ -113,10 +119,14 @@ fn note_fallback(store: &Arc<Mutex<ConfigStore>>, reason: &str) {
     }
 }
 
-fn start_setup(
-    wifi: &mut wifi::WifiController<'_>,
-    suffix: &str,
-) -> Result<(Mode, RuntimeConfig, Option<Arc<runtime::StreamStatus>>)> {
+type SetupState = (
+    Mode,
+    RuntimeConfig,
+    Option<Arc<runtime::StreamStatus>>,
+    Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+);
+
+fn start_setup(wifi: &mut wifi::WifiController<'_>, suffix: &str) -> Result<SetupState> {
     let ssid = wifi::start_setup_ap(wifi, suffix)?;
     log::info!("setup AP started: {ssid}");
     Ok((
@@ -137,6 +147,7 @@ fn start_setup(
                 adc_attenuation_db: 0,
             },
         },
+        None,
         None,
     ))
 }

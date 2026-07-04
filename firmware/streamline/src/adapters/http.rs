@@ -311,6 +311,16 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         respond(request, 200, "application/json", r#"{"ok":true}"#)
     })?;
 
+    // Plain reboot with settings intact — recovers a wedged stream without a
+    // trip to the power plug.
+    let state_for_restart = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>("/api/restart", Method::Post, move |request| {
+        if !authorized(&request, &state_for_restart) {
+            return unauthorized(request);
+        }
+        reboot_response(request)
+    })?;
+
     server.fn_handler::<anyhow::Error, _>("/api/factory-reset", Method::Post, move |request| {
         if !authorized(&request, &state) {
             return unauthorized(request);

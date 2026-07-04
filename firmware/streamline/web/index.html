@@ -46,7 +46,7 @@
       <div><strong>Loud passages are clipping.</strong>
         <span class="sub" id="clipCalloutText"></span>
       </div>
-      <button class="btn secondary" type="button" id="clipCalloutButton">Adjust levels</button>
+      <button class="btn secondary" type="button" id="clipCalloutButton">Calibrate levels…</button>
     </div>
 
     <div class="healthstrip">
@@ -124,10 +124,14 @@
             <div class="unit"><input id="adc_atten_db" name="atten" type="number" min="0" max="48"><span class="u">dB</span></div>
             <span class="help">Raise until loud passages stop clipping.</span>
           </div>
+          <div class="field">
+            <label for="calibrateButton">Not sure?</label>
+            <button class="btn secondary" type="button" id="calibrateButton" style="justify-self:start">Calibrate levels…</button>
+            <span class="help">Measures your source and sets these for you.</span>
+          </div>
         </div>
         <div class="cardfoot">
-          <button class="btn primary" type="submit"><span class="spin"></span>Apply</button>
-          <button class="btn secondary" type="button" id="calibrateButton">Calibrate for me…</button>
+          <button class="btn primary" type="submit"><span class="spin"></span>Save</button>
           <span class="actionstate"></span>
         </div>
       </form>
@@ -170,6 +174,10 @@
               <span class="help" id="passwordHelp">The saved password stays unless you change it here.</span>
             </div>
           </div>
+          <div class="cardfoot">
+            <button class="btn primary" type="submit"><span class="spin"></span>Save &amp; restart</button>
+            <span class="actionstate"></span>
+          </div>
         </div>
 
         <div class="card gated">
@@ -198,8 +206,9 @@
           </div>
 
           <div class="cardfoot">
-            <button class="btn primary" type="submit"><span class="spin"></span>Save network settings &amp; restart</button>
+            <button class="btn primary" type="submit"><span class="spin"></span>Save &amp; restart</button>
             <span class="actionstate"></span>
+            <span class="chip healthchip" id="targetHealth" hidden><span class="statusdot" id="targetHealthDot"></span><span id="targetHealthText"></span></span>
           </div>
         </div>
       </div>
@@ -208,25 +217,6 @@
 
   <!-- ============ SYSTEM ============ -->
   <section class="view" id="view-system">
-    <div class="card gated">
-      <span class="lockhint">Unlock to edit</span>
-      <h2>Device name</h2>
-      <p class="lead">Shown in the console header and browser tab so you can tell devices apart.</p>
-      <form id="nameForm">
-        <div class="formgrid">
-          <div class="field">
-            <label for="device_name">Name</label>
-            <input id="device_name" name="name" type="text" autocomplete="off" maxlength="32" placeholder="e.g. Study CD player">
-            <span class="help">Leave blank to show only the address.</span>
-          </div>
-        </div>
-        <div class="cardfoot">
-          <button class="btn primary" type="submit"><span class="spin"></span>Save name</button>
-          <span class="actionstate"></span>
-        </div>
-      </form>
-    </div>
-
     <div class="card gated">
       <span class="lockhint">Unlock to edit</span>
       <h2>Firmware</h2>
@@ -262,22 +252,45 @@
 
     <div class="card gated">
       <span class="lockhint">Unlock to edit</span>
+      <h2>Device name</h2>
+      <p class="lead">Shown in the console header and browser tab so you can tell devices apart.</p>
+      <form id="nameForm">
+        <div class="formgrid">
+          <div class="field">
+            <label for="device_name">Name</label>
+            <input id="device_name" name="name" type="text" autocomplete="off" maxlength="32" placeholder="e.g. Study CD player">
+            <span class="help">Leave blank to show only the address.</span>
+          </div>
+        </div>
+        <div class="cardfoot">
+          <button class="btn primary" type="submit"><span class="spin"></span>Save</button>
+          <span class="actionstate"></span>
+        </div>
+      </form>
+    </div>
+
+    <div class="card gated">
+      <span class="lockhint">Unlock to edit</span>
       <h2>Access</h2>
       <p class="lead">One admin key protects every change. Reads are open on your network; unlocking lasts 15 minutes.</p>
       <form id="adminKeyForm">
         <input id="replacement_admin_secret" name="admin_secret" type="hidden">
+        <div class="cardfoot" style="border:0;padding:0;margin-top:12px" id="replaceKeyIntro">
+          <button class="btn secondary" type="button" id="replaceKeyButton">Replace admin key…</button>
+          <span class="actionstate">The new key is shown once before it takes effect.</span>
+        </div>
         <div class="keypanel" id="replacementKeyPanel" hidden>
-          <p><strong style="color:var(--text)">New admin key.</strong> Shown only once — copy it before saving.</p>
+          <p><strong style="color:var(--text)">Your new admin key.</strong> Copy it before saving — it is shown only this once.</p>
           <div class="keyblock" id="replacementKeyValue"></div>
-        </div>
-        <div class="cardfoot" style="border:0;padding:0;margin-top:12px">
-          <button class="btn secondary" type="button" id="generateReplacementKeyButton">Generate new key</button>
-          <button class="btn secondary" type="button" id="copyReplacementKeyButton" disabled>Copy key</button>
-          <button class="btn primary" type="submit"><span class="spin"></span>Save new key</button>
-          <label class="switch"><input id="rememberReplacementKey" type="checkbox"><span class="knob"></span>Remember on this browser</label>
-        </div>
-        <div class="cardfoot" style="border:0;padding:0">
-          <span class="actionstate"></span>
+          <div class="inputrow" style="align-items:center">
+            <label class="switch"><input id="rememberReplacementKey" type="checkbox" checked><span class="knob"></span>Remember on this browser</label>
+            <button class="btn secondary" type="button" id="copyReplacementKeyButton">Copy key</button>
+          </div>
+          <div class="cardfoot">
+            <button class="btn primary" type="submit"><span class="spin"></span>Save</button>
+            <button class="btn secondary" type="button" id="cancelReplaceKeyButton">Cancel</button>
+            <span class="actionstate"></span>
+          </div>
         </div>
       </form>
     </div>
@@ -286,6 +299,7 @@
       <span class="lockhint">Unlock to edit</span>
       <h2>Reset</h2>
       <div class="cardfoot" style="border:0;padding:0;margin-top:10px">
+        <button class="btn secondary" type="button" id="restartButton"><span class="spin"></span>Restart device</button>
         <button class="btn danger" type="button" id="factoryButton">Factory reset…</button>
         <span class="actionstate" id="factoryState"></span>
       </div>

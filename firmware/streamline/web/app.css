@@ -90,6 +90,9 @@ button {
   color: var(--muted);
   font: 500 11.5px var(--mono);
 }
+.healthchip {
+  margin-left: auto;
+}
 
 .lockchip {
   display: inline-flex;
@@ -277,6 +280,10 @@ body.locked .gated :is(form, .cardfoot) {
   border-radius: 50%;
   flex: none;
   background: var(--faint);
+}
+.healthchip .statusdot {
+  width: 6px;
+  height: 6px;
 }
 .statusdot.good {
   background: var(--good);

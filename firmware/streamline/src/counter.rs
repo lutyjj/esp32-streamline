@@ -41,6 +41,35 @@ impl Counter64 {
         }
     }
 
+    /// Set the counter back to zero using the same seqlock as `add`, so a
+    /// concurrent reader never sees a torn value.
+    pub(crate) fn reset(&self) {
+        loop {
+            let version = self.version.load(Ordering::Acquire);
+            if version % 2 != 0 {
+                core::hint::spin_loop();
+                continue;
+            }
+            if self
+                .version
+                .compare_exchange_weak(
+                    version,
+                    version.wrapping_add(1),
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
+                )
+                .is_err()
+            {
+                continue;
+            }
+            self.low.store(0, Ordering::Relaxed);
+            self.high.store(0, Ordering::Relaxed);
+            self.version
+                .store(version.wrapping_add(2), Ordering::Release);
+            return;
+        }
+    }
+
     pub(crate) fn load(&self) -> u64 {
         loop {
             let start = self.version.load(Ordering::Acquire);
@@ -75,5 +104,18 @@ mod tests {
         counter.add(10);
 
         assert_eq!(counter.load(), 4_294_967_305);
+    }
+
+    #[test]
+    fn reset_returns_to_zero_and_counts_again() {
+        let counter = Counter64::default();
+
+        counter.add(u32::MAX);
+        counter.add(10);
+        counter.reset();
+        assert_eq!(counter.load(), 0);
+
+        counter.add(7);
+        assert_eq!(counter.load(), 7);
     }
 }

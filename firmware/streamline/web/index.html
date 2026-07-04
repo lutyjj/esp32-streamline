@@ -381,6 +381,69 @@
     </div>
   </div>
 
+  <!-- ============ FIRST-RUN ONBOARDING ============ -->
+  <div class="overlay" id="onboard" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="First-run setup">
+      <div class="stepline">FIRST-RUN SETUP
+        <span class="stepdots" id="obDots"><i></i><i></i><i></i></span>
+      </div>
+
+      <div id="obStep1" hidden>
+        <h3>Welcome &mdash; let&rsquo;s put StreamLine on your network</h3>
+        <div class="body">
+          <p>You&rsquo;re connected to the device&rsquo;s own setup network. Pick your home Wi-Fi and StreamLine will join it and restart.</p>
+        </div>
+        <div class="formgrid" style="grid-template-columns:1fr">
+          <div class="field">
+            <label for="ob_ssid">Your Wi-Fi network</label>
+            <input id="ob_ssid" type="text" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="ob_password">Wi-Fi password</label>
+            <input id="ob_password" type="password" autocomplete="new-password">
+          </div>
+        </div>
+      </div>
+
+      <div id="obStep2" hidden>
+        <h3>Save your admin key</h3>
+        <div class="body">
+          <p>This key unlocks settings later. It is shown <strong style="color:var(--text)">only once</strong> &mdash; copy it somewhere safe now.</p>
+        </div>
+        <div class="keyblock" id="obKeyValue"></div>
+        <div class="inputrow" style="align-items:center">
+          <label class="switch"><input id="obRememberKey" type="checkbox" checked><span class="knob"></span>Remember on this browser</label>
+          <button class="btn secondary" type="button" id="obCopyKey">Copy key</button>
+        </div>
+      </div>
+
+      <div id="obStep3" hidden>
+        <h3 id="obJoinTitle">Joining&hellip;</h3>
+        <div class="body">
+          <p>The setup network will disappear &mdash; that&rsquo;s normal. Reconnect to your own Wi-Fi, then find your device at:</p>
+        </div>
+        <div class="bigread"><span class="n" id="obAddress" style="font-size:17px"></span></div>
+        <div class="progress"><i id="obProg"></i></div>
+        <div class="body" id="obCountdownWrap"><p id="obCountdown">Restarting&hellip;</p></div>
+        <div class="body" style="margin-top:4px">
+          <p>Two steps left once you&rsquo;re back in the console:</p>
+          <ol class="checklist">
+            <li><b>Point StreamLine at your bridge</b> &mdash; Network tab, takes a minute</li>
+            <li><b>Calibrate input levels</b> &mdash; Audio tab; have a loud track ready</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="sheetfoot">
+        <button class="btn secondary" type="button" id="obCancel">Cancel</button>
+        <div class="row" style="align-items:center">
+          <span class="actionstate err" id="obError"></span>
+          <button class="btn primary" type="button" id="obNext">Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="toasts" id="toasts"></div>
 </main>
 <script src="/app.js" type="module"></script>

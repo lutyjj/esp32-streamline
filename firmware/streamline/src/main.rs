@@ -41,7 +41,7 @@ fn main() -> Result<()> {
 
     let (mode, config, stream, codec) = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
-            Ok(()) => match TargetAddress::resolve(&config) {
+            Ok(()) => match resolve_target(&config) {
                 Ok(target) => {
                     let capture = Capture::new(
                         peripherals.i2s0,
@@ -56,10 +56,18 @@ fn main() -> Result<()> {
                         peripherals.pins.gpio32,
                         config.audio,
                     )?;
+                    let streaming = target.is_some();
                     let stream = runtime::start(capture, target)?;
-                    log::info!("StreamLine Rust firmware started TCP streaming");
+                    log::info!(
+                        "StreamLine provisioned; {}",
+                        if streaming {
+                            "streaming over TCP"
+                        } else {
+                            "capturing until a bridge target is set"
+                        }
+                    );
                     (
-                        Mode::Streaming,
+                        Mode::Provisioned,
                         config,
                         Some(stream),
                         Some(Arc::new(Mutex::new(codec))),
@@ -82,18 +90,18 @@ fn main() -> Result<()> {
         None => start_setup(&mut wifi, &suffix)?,
     };
 
-    // Reaching a healthy streaming state is the signal an over-the-air image
-    // booted correctly; confirm the slot so the rollback watchdog accepts it. A
-    // device that fell back to the setup AP stays in pending-verify and reverts
-    // to the previous firmware on the next reboot.
-    if mode == Mode::Streaming {
+    // Reaching the home network with the console up is the signal an
+    // over-the-air image booted correctly; confirm the slot so the rollback
+    // watchdog accepts it. A device that fell back to the setup AP stays in
+    // pending-verify and reverts to the previous firmware on the next reboot.
+    if mode == Mode::Provisioned {
         if let Err(error) = time::start() {
             log::warn!("SNTP initialization failed: {error:#}");
         }
         ota::mark_current_valid();
     }
 
-    let mdns = if mode == Mode::Streaming {
+    let mdns = if mode == Mode::Provisioned {
         match MdnsAdvertisement::start(&mdns_hostname, &config) {
             Ok(advertisement) => Some(Arc::new(Mutex::new(advertisement))),
             Err(error) => {
@@ -136,6 +144,15 @@ fn note_fallback(store: &Arc<Mutex<ConfigStore>>, reason: &str) {
     }
 }
 
+/// The stream target for a provisioned boot: `None` when no bridge is
+/// configured yet, so capture runs without a network task.
+fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
+    if config.target_host.is_empty() {
+        return Ok(None);
+    }
+    TargetAddress::resolve(config).map(Some)
+}
+
 type SetupState = (
     Mode,
     RuntimeConfig,
@@ -147,7 +164,7 @@ fn start_setup(wifi: &mut wifi::WifiController<'_>, suffix: &str) -> Result<Setu
     let ssid = wifi::start_setup_ap(wifi, suffix)?;
     log::info!("setup AP started: {ssid}");
     Ok((
-        Mode::SetupAp,
+        Mode::Setup,
         RuntimeConfig {
             ssid: String::new(),
             password: String::new(),

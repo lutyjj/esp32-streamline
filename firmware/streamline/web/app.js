@@ -742,7 +742,10 @@ $('copySetupKeyButton').addEventListener('click', () => {
   );
 });
 
-$('clipCalloutButton').addEventListener('click', () => showView('audio'));
+$('clipCalloutButton').addEventListener('click', () => {
+  showView('audio');
+  if (isUnlocked()) openWizard();
+});
 
 $('audioForm').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -753,6 +756,280 @@ $('audioForm').addEventListener('submit', (e) => {
     // In setup mode the codec is not running, so the device restarts instead.
     reboots: 'the audio settings',
   });
+});
+
+// --- Calibration wizard: prepare · silence · loud · done -----------------------
+
+/** Wizard runtime state; null while closed. `run` is a generation counter —
+ * every step change bumps it, and measurement loops stop when it moves. */
+let wiz = null;
+
+const WIZ_POLL_MS = 500;
+/** Polls in the silence measurement (~4 s). */
+const WIZ_SILENCE_SAMPLES = 8;
+/** Clean polls required at one attenuation before it is accepted (~3 s). */
+const WIZ_WINDOW_SAMPLES = 6;
+/** Attenuation step between windows; divides the 48 dB range evenly. */
+const WIZ_ATTEN_STEP = 3;
+const WIZ_ATTEN_MAX = 48;
+/** RMS below this is not playback — mirrors the firmware's start gate. */
+const WIZ_SIGNAL_RMS = 150;
+
+function wzPct(abs) {
+  if (!abs) return 0;
+  const db = 20 * Math.log10(abs / 32768);
+  return Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+}
+
+function wzLog(text, cls = '') {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = text;
+  $('wzLog').append(line);
+  $('wzLog').scrollTop = $('wzLog').scrollHeight;
+}
+
+function wzDelay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** One telemetry poll reduced to the levels the wizard reasons about. */
+async function wzSample() {
+  /** @type {DeviceStatus} */
+  const s = await api('/api/status');
+  return {
+    rms: Math.max(s.metrics.rms_left, s.metrics.rms_right),
+    peak: Math.max(s.metrics.peak_abs_left, s.metrics.peak_abs_right),
+    clipped: s.metrics.clipped_samples_total,
+    threshold: s.metrics.clip_threshold_abs,
+  };
+}
+
+/** Apply an attenuation live, keeping the configured line and gain. */
+async function wzApplyAudio(atten) {
+  const body = new URLSearchParams({
+    line: String(wiz.original.line),
+    gain: String(wiz.original.gain),
+    atten: String(atten),
+  });
+  await api('/api/settings/audio', { method: 'POST', body });
+  wiz.applied = atten;
+}
+
+function openWizard() {
+  if (state.status?.mode !== 'streaming') {
+    toast('Calibration needs the device streaming on your network', 'err');
+    return;
+  }
+  const audio = state.status.audio;
+  wiz = {
+    step: 0,
+    run: 0,
+    original: {
+      line: audio.input_line,
+      gain: audio.input_gain,
+      atten: audio.adc_atten_db,
+    },
+    applied: null,
+    idle: 0,
+    idleOk: false,
+    result: null,
+  };
+  $('wizard').hidden = false;
+  wzShow(1);
+}
+
+async function closeWizard(restore) {
+  if (!wiz) return;
+  const w = wiz;
+  wiz = null;
+  $('wizard').hidden = true;
+  if (restore && w.applied !== null && w.applied !== w.original.atten) {
+    try {
+      const body = new URLSearchParams({
+        line: String(w.original.line),
+        gain: String(w.original.gain),
+        atten: String(w.original.atten),
+      });
+      await api('/api/settings/audio', { method: 'POST', body });
+      toast(`Put ADC attenuation back to ${w.original.atten} dB`, 'ok');
+    } catch (err) {
+      toast(`Could not restore previous levels: ${err.message}`, 'err');
+    }
+  }
+}
+
+function wzShow(step) {
+  wiz.step = step;
+  wiz.run += 1;
+  for (let i = 1; i <= 4; i += 1) $(`wzStep${i}`).hidden = i !== step;
+  const dots = $('wzDots').children;
+  for (let i = 0; i < dots.length; i += 1) dots[i].classList.toggle('on', i < step);
+  $('wizBack').hidden = step === 1;
+  $('wizCancel').textContent = step === 4 ? 'Undo & close' : 'Cancel';
+  const next = $('wizNext');
+  next.hidden = step === 3;
+  next.disabled = step === 2;
+  if (step === 1) next.textContent = 'Start';
+  if (step === 2) {
+    next.textContent = 'Continue';
+    wzMeasureSilence();
+  }
+  if (step === 3) wzMeasureLoud();
+  if (step === 4) next.textContent = 'Done';
+}
+
+async function wzMeasureSilence() {
+  const run = wiz.run;
+  wiz.idleOk = false;
+  $('wzSilenceNote').hidden = true;
+  $('wzFloor').textContent = '—';
+  $('wzProg').style.width = '0';
+  const samples = [];
+  for (let i = 0; i < WIZ_SILENCE_SAMPLES; i += 1) {
+    await wzDelay(WIZ_POLL_MS);
+    if (!wiz || wiz.run !== run) return;
+    let sample;
+    try {
+      sample = await wzSample();
+    } catch {
+      continue; // a missed poll only stretches the measurement
+    }
+    if (!wiz || wiz.run !== run) return;
+    samples.push(sample.rms);
+    $('wzFloor').textContent = sample.rms ? dbfs(sample.rms) : '−∞';
+    $('wzProg').style.width = `${((i + 1) / WIZ_SILENCE_SAMPLES) * 100}%`;
+  }
+  samples.sort((a, b) => a - b);
+  const median = samples[Math.floor(samples.length / 2)] || 0;
+  $('wzFloor').textContent = median ? dbfs(median) : '−∞';
+  const note = $('wzSilenceNote');
+  if (median >= WIZ_SIGNAL_RMS) {
+    note.textContent =
+      'That sounds like playback, not silence — pause the source, then measure again.';
+    note.hidden = false;
+    $('wizNext').textContent = 'Measure again';
+    $('wizNext').disabled = false;
+    return;
+  }
+  wiz.idle = median;
+  wiz.idleOk = true;
+  $('wizNext').disabled = false;
+}
+
+async function wzMeasureLoud() {
+  const run = wiz.run;
+  $('wzLog').textContent = '';
+  let atten = 0;
+  const gate = Math.max(WIZ_SIGNAL_RMS, wiz.idle * 3);
+  try {
+    await wzApplyAudio(atten);
+  } catch (err) {
+    wzLog(`Could not set attenuation: ${err.message}`);
+    return;
+  }
+  if (!wiz || wiz.run !== run) return;
+  wzLog('Waiting for playback — press play and turn it up…');
+  let waiting = true;
+  let windowStart = null;
+  let windowPeak = 0;
+  let windowRms = 0;
+  let count = 0;
+  while (wiz && wiz.run === run) {
+    await wzDelay(WIZ_POLL_MS);
+    if (!wiz || wiz.run !== run) return;
+    let s;
+    try {
+      s = await wzSample();
+    } catch {
+      continue;
+    }
+    if (!wiz || wiz.run !== run) return;
+    $('wzFill').style.clipPath = `inset(0 ${100 - wzPct(s.rms)}% 0 0)`;
+    $('wzPeak').style.left = `calc(${wzPct(s.peak)}% - 1px)`;
+    if (waiting) {
+      if (s.rms < gate) continue;
+      waiting = false;
+      windowStart = null;
+      wzLog('Hearing it. Checking 0 dB…');
+    }
+    if (windowStart === null) {
+      // (Re)base the clip counter on this poll so samples clipped under the
+      // previous attenuation do not count against the new one.
+      windowStart = s.clipped;
+      windowPeak = 0;
+      windowRms = 0;
+      count = 0;
+      continue;
+    }
+    count += 1;
+    windowPeak = Math.max(windowPeak, s.peak);
+    windowRms = Math.max(windowRms, s.rms);
+    if (s.clipped > windowStart || s.peak >= s.threshold) {
+      if (atten >= WIZ_ATTEN_MAX) {
+        wzLog(
+          `Still clipping at ${WIZ_ATTEN_MAX} dB — turn the source volume down, then go Back and retry.`,
+        );
+        return;
+      }
+      atten += WIZ_ATTEN_STEP;
+      try {
+        await wzApplyAudio(atten);
+      } catch (err) {
+        wzLog(`Could not raise attenuation: ${err.message}`);
+        return;
+      }
+      if (!wiz || wiz.run !== run) return;
+      wzLog(`Clipping — raising to ${atten} dB…`);
+      windowStart = null;
+      continue;
+    }
+    if (count < WIZ_WINDOW_SAMPLES) continue;
+    if (windowRms < gate) {
+      wzLog('Signal went quiet — keep the loud part playing…');
+      waiting = true;
+      continue;
+    }
+    wiz.result = { atten, peakDb: dbfs(windowPeak) };
+    wzLog(`Clean at ${atten} dB — no clipping, peak ${dbfs(windowPeak)} dBFS.`, 'ok');
+    wzFinish();
+    return;
+  }
+}
+
+function wzFinish() {
+  const r = wiz.result;
+  $('wzDoneText').textContent =
+    r.atten === wiz.original.atten
+      ? 'Your current setting was already right — nothing changed.'
+      : 'Applied and saved — the device is already running with the new setting.';
+  $('wzDoneKv').textContent = '';
+  const rows = [
+    [
+      'ADC attenuation',
+      `${r.atten} dB${r.atten === wiz.original.atten ? ' — unchanged' : ` (was ${wiz.original.atten} dB)`}`,
+    ],
+    ['Loudest peak', `${r.peakDb} dBFS, no clipping`],
+    ['Input gain', `${wiz.original.gain} — unchanged`],
+  ];
+  for (const [key, value] of rows) {
+    const dt = document.createElement('dt');
+    dt.textContent = key;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    $('wzDoneKv').append(dt, dd);
+  }
+  $('adc_atten_db').value = r.atten;
+  wzShow(4);
+}
+
+$('calibrateButton').addEventListener('click', openWizard);
+$('wizCancel').addEventListener('click', () => closeWizard(true));
+$('wizBack').addEventListener('click', () => wzShow(wiz.step - 1));
+$('wizNext').addEventListener('click', () => {
+  if (wiz.step === 1) wzShow(2);
+  else if (wiz.step === 2) wzShow(wiz.idleOk ? 3 : 2);
+  else if (wiz.step === 4) closeWizard(false);
 });
 
 $('nameForm').addEventListener('submit', (e) => {

@@ -569,6 +569,7 @@ struct MetricsStatus {
     peak_abs_right: u32,
     rms_left: u32,
     rms_right: u32,
+    noise_floor: u32,
     clipped_samples_total: u64,
     playing: bool,
 }
@@ -652,6 +653,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             peak_abs_right: metrics.peak_right,
             rms_left: metrics.rms_left,
             rms_right: metrics.rms_right,
+            noise_floor: metrics.noise_floor,
             clipped_samples_total: metrics.clipped_total,
             playing: metrics.playing,
         },
@@ -745,6 +747,7 @@ impl<'a> From<&'a TelemetrySnapshot> for StatusResponse<'a> {
                 peak_abs_right: snapshot.audio.peak_abs_right,
                 rms_left: snapshot.audio.rms_left,
                 rms_right: snapshot.audio.rms_right,
+                noise_floor: snapshot.audio.noise_floor,
                 clipped_samples_total: snapshot.audio.clipped_samples_total,
                 playing: snapshot.audio.playing,
             },

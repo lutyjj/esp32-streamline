@@ -11,7 +11,8 @@ architecture rules live in [AGENTS.md](../../AGENTS.md).
 - byte-exact `ELI1` TCP packets, 256 frames / 1,024 PCM bytes — see the
   [PCM protocol](../../docs/pcm-protocol.md)
 - signal-gated streaming: packets flow only while the input plays, decided
-  with amplitude + time hysteresis (`src/play.rs`)
+  by thresholds calibrated to the tracked noise floor plus amplitude and
+  time hysteresis (`src/play.rs`)
 - bounded 32-packet drop-oldest queue; capture task on core 1 priority 3,
   TCP task on core 1 priority 2 — see the
   [TCP transport contract](../../docs/tcp-transport.md)

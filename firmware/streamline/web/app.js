@@ -23,7 +23,7 @@
  *              sample_rate: number, channels: number, bits_per_sample: number }} audio
  * @property {{ sequence: number, playing: boolean, clip_threshold_abs: number,
  *              peak_abs_left: number, peak_abs_right: number, rms_left: number, rms_right: number,
- *              clipped_samples_total: number }} metrics
+ *              noise_floor: number, clipped_samples_total: number }} metrics
  * @property {{ reset_reason: string, last_fallback: string, last_ota: string }} diagnostics
  * @property {OtaSnapshot} ota
  */

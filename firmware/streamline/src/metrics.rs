@@ -150,6 +150,11 @@ impl<W: Write> PrometheusWriter<W> {
             snapshot.audio.rms_left,
             snapshot.audio.rms_right,
         )?;
+        self.gauge(
+            "streamline_audio_noise_floor",
+            "Noise-floor RMS estimate the play detector calibrated to.",
+            snapshot.audio.noise_floor,
+        )?;
         self.counter(
             "streamline_audio_clipped_samples_total",
             "Clipped samples observed by the capture task.",
@@ -349,6 +354,9 @@ streamline_audio_peak_abs{channel=\"right\"} 222\n\
 # TYPE streamline_audio_rms gauge\n\
 streamline_audio_rms{channel=\"left\"} 33\n\
 streamline_audio_rms{channel=\"right\"} 44\n\
+# HELP streamline_audio_noise_floor Noise-floor RMS estimate the play detector calibrated to.\n\
+# TYPE streamline_audio_noise_floor gauge\n\
+streamline_audio_noise_floor 21\n\
 # HELP streamline_audio_clipped_samples_total Clipped samples observed by the capture task.\n\
 # TYPE streamline_audio_clipped_samples_total counter\n\
 streamline_audio_clipped_samples_total 5\n\
@@ -414,6 +422,7 @@ streamline_ota_busy 0\n"
                 peak_abs_right: 222,
                 rms_left: 33,
                 rms_right: 44,
+                noise_floor: 21,
                 clipped_samples_total: 5,
                 playing: true,
             },

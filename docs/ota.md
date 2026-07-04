@@ -1,8 +1,7 @@
 # Over-the-Air Updates
 
-The device updates itself from GitHub releases: the web console's **Check &
-update firmware** button pulls the latest release, flashes it to the inactive
-app slot, and reboots into it.
+The device updates itself from GitHub releases: the web console checks for a
+newer release, installs it into the inactive app slot, and reboots into it.
 
 ## Partition layout
 
@@ -45,9 +44,10 @@ image instead of the latest release — no USB access needed to test a build:
 1. `make firmware-artifacts` (produces `dist/firmware/streamline-dev-ota.bin`
    and `SHA256SUMS`).
 2. Serve it on the LAN: `cd dist/firmware && python3 -m http.server 8000`.
-3. In the console's **Firmware Update → Custom image** form, enter
+3. In the console's **System → Firmware → Developer — install a custom image**
+   form, enter
    `http://<your-host>:8000/streamline-dev-ota.bin` and the digest from
-   `SHA256SUMS`, then **Install from URL**.
+   `SHA256SUMS`, then **Install custom image**.
 
 The admin-supplied SHA-256 — not the transport — is the root of trust: the
 device rejects any payload whose digest differs, so a plain-HTTP LAN URL is
@@ -74,7 +74,8 @@ on the next reset. A bad update cannot brick the device.
 - `reset_reason` — what produced this boot: `power-on`, `software` (OTA or
   config reboot), `panic`, or a watchdog.
 
-The console shows all three on the Status tab.
+The console shows diagnostics in the Overview tab and the raw JSON in the
+System tab.
 
 ## Security
 

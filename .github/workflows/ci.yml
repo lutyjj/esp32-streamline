@@ -39,6 +39,9 @@ jobs:
             bridge:
               - *shared
               - 'bridge/**'
+            console:
+              - *shared
+              - 'console/**'
             tools:
               - *shared
               - 'tools/**'
@@ -47,6 +50,7 @@ jobs:
               - 'webflasher/**'
             firmware:
               - *shared
+              - 'console/**'
               - 'firmware/**'
       - id: matrix
         # Fan out over every matched component except the bespoke firmware one
@@ -76,6 +80,11 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.firmware == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      CONTAINER_USER: 0:0
+      CONTAINER_CARGO_HOME: /cargo-cache
+      FIRMWARE_CARGO_CACHE_PATH: firmware/streamline/.cargo-home
+      FIRMWARE_EMBUILD_CACHE_PATH: firmware/streamline/.embuild
     steps:
       - uses: actions/checkout@v7
 
@@ -89,43 +98,54 @@ jobs:
         id: embuild
         uses: actions/cache/restore@v6
         with:
-          path: firmware/streamline/.embuild
+          path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
-      # target/ (~1.4 GB) changes on every source edit, so it rolls: restore the
-      # newest snapshot for this lockfile via restore-keys, then save a fresh one
-      # under a run-unique key so cargo stays warm build-to-build.
-      - name: Restore cargo target
+      - name: Restore firmware Cargo home
+        id: cargo-home
         uses: actions/cache/restore@v6
         with:
-          path: firmware/streamline/target
-          key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}
+          path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
+          key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
           restore-keys: |
-            fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-
+            fw-cargo-v1-
+
+      - name: Hand firmware caches to toolchain container
+        run: |
+          mkdir -p "$FIRMWARE_CARGO_CACHE_PATH"
+          for path in "$FIRMWARE_EMBUILD_CACHE_PATH" "$FIRMWARE_CARGO_CACHE_PATH"; do
+            if [ -e "$path" ]; then
+              sudo chown -R "$CONTAINER_USER" "$path"
+            fi
+          done
 
       - name: Check
-        run: make firmware-check
+        run: |
+          make firmware-check \
+            CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
 
-      # The Makefile runs the container as root (see firmware/Makefile), so the
-      # build dirs are root-owned; hand them to the runner user before the cache
-      # save reads them. Runs even on failure so the save steps below can decide.
-      - name: Reclaim cache ownership
+      - name: Reclaim firmware caches
         if: always()
-        run: sudo chown -R "$(id -u):$(id -g)" firmware/streamline/.embuild firmware/streamline/target
+        run: |
+          for path in "$FIRMWARE_EMBUILD_CACHE_PATH" "$FIRMWARE_CARGO_CACHE_PATH"; do
+            if [ -e "$path" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$path"
+            fi
+          done
 
       - name: Save ESP-IDF build (.embuild)
         if: ${{ success() && steps.embuild.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
-          path: firmware/streamline/.embuild
+          path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
-      - name: Save cargo target
-        if: ${{ success() }}
+      - name: Save firmware Cargo home
+        if: ${{ success() && steps.cargo-home.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
-          path: firmware/streamline/target
-          key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}
+          path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
+          key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
 
   # Single stable status the whole workflow rolls up into. Mark THIS as the
   # required check in branch protection: it passes when the relevant jobs pass

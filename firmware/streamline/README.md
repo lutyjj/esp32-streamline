@@ -21,7 +21,7 @@ architecture rules live in [AGENTS.md](../../AGENTS.md).
 - mDNS console advertisement at `streamline-xxxx.local` in station mode
 - HTTP config/status API: open reads; a per-device admin key gates writes —
   see the [security notes](../../docs/security.md)
-- embedded web console in `web/`, linted by Biome
+- embedded web console built from `../../console`
 
 The host-testable core (`config`, `levels`, `packet`, `play`, `protocol`,
 `update`) lives in the crate root; ESP-IDF stays behind `adapters/`.

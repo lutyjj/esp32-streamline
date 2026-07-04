@@ -12,8 +12,8 @@ for Snapcast, Icecast, or Music Assistant.
 - **Dumb node architecture** — the ESP32 captures and moves packets. Encoding,
   buffering, and syncing live on the bridge. See [design notes](docs/design.md).
 - **Zero-config commissioning** — an unconfigured device opens a setup AP. A
-  small web console sets Wi-Fi, stream target, and audio levels. A per-device
-  admin key gates every write; reads stay open.
+  small web console joins Wi-Fi, then handles the stream target and audio
+  levels. A per-device admin key gates every write; reads stay open.
 - **Signal-gated streaming** — the device streams while the input plays and
   pauses on sustained silence, so an idle input costs no bandwidth.
 - **Self-hosted bridge** — one Docker container turns the TCP PCM stream into
@@ -76,11 +76,13 @@ tuning flags.
 ### 3. Configure the device
 
 1. Join the `esp32-streamline-XXXX` Wi-Fi network and open `http://192.168.71.1/`.
-2. Enter your Wi-Fi credentials and set **TCP Target Host** to the bridge IP.
+2. Enter your Wi-Fi credentials and continue to the generated admin key.
 3. **Save the generated admin key.** The device never shows it again. The key
    unlocks every later settings change; lose it and you must reflash.
-4. Save. The device reboots onto your network and advertises its console as
+4. Join. The device reboots onto your network and advertises its console as
    `http://streamline-xxxx.local/`.
+5. Open the station console, then set the bridge host in **Network** and
+   calibrate from **Audio**.
 
 Open the console at its `.local` name to tune audio, change settings, or reset
 the device. Use the station IP if your network does not pass mDNS. For
@@ -89,7 +91,7 @@ monitoring, scrape `http://<esp32-host>/api/metrics`; JSON diagnostics live at
 
 ### 4. Update
 
-Console → **Advanced** → **Check for updates**. [OTA updates](docs/ota.md)
+Console → **System** → **Check for update**. [OTA updates](docs/ota.md)
 covers the flow, rollback, and the one-time serial reflash that pre-OTA
 devices need.
 

@@ -247,6 +247,10 @@ function formBody(form) {
   return new URLSearchParams(new FormData(form));
 }
 
+function submitButton(event) {
+  return event.submitter || event.target.querySelector('button[type="submit"]');
+}
+
 // --- Transactions: one lifecycle for every mutation ---------------------------
 
 /**
@@ -279,9 +283,13 @@ async function transact(button, work, { busyText, okText, reboots = '' } = {}) {
 /** Failed polls (~1.5 s each) before warning that a reboot is overdue. */
 const REBOOT_WARN_POLLS = 40;
 
-function beginRebootWait(label) {
+function beginRebootWait(label, toastText) {
   state.rebootWait = { label, failedPolls: 0 };
-  toast(`Restarting to apply ${label} — the console reconnects by itself`, 'wait', 8000);
+  toast(
+    toastText || `Restarting to apply ${label} — the console reconnects by itself`,
+    'wait',
+    8000,
+  );
 }
 
 function rebootWaitTick(pollFailed) {
@@ -346,8 +354,8 @@ function renderHealth(s) {
   const rms = Math.max(s.metrics.rms_left, s.metrics.rms_right);
   $('hSignal').textContent = `${dbfs(rms)} dBFS`;
   $('hSignalSub').textContent = s.metrics.clipped_samples_total
-    ? `${s.metrics.clipped_samples_total} clipped since restart`
-    : 'no clipping since restart';
+    ? `${s.metrics.clipped_samples_total} clipped since levels were set`
+    : 'no clipping';
 
   $('hWifi').textContent = s.wifi.ssid || '—';
   $('hWifiSub').textContent = setup
@@ -358,6 +366,16 @@ function renderHealth(s) {
   $('hBridge').textContent = setup ? '—' : moving ? 'Sending' : playing ? 'Connecting' : 'Idle';
   $('dotBridge').className = `statusdot ${moving ? 'good' : playing ? 'warn' : ''}`;
   $('hBridgeSub').textContent = `${s.target.target_host}:${s.target.target_port}`;
+
+  // Same bridge verdict, repeated next to the target form so a saved target
+  // can be judged where it was typed.
+  $('targetHealth').hidden = setup;
+  $('targetHealthDot').className = `statusdot ${moving ? 'good' : playing ? 'warn' : ''}`;
+  $('targetHealthText').textContent = moving
+    ? 'connection healthy'
+    : playing
+      ? 'connecting to bridge…'
+      : 'idle — nothing to send';
 
   $('wifiLead').textContent = setup
     ? 'Not configured yet — join the device to your home network.'
@@ -412,7 +430,7 @@ function renderClipCallout(s) {
   $('clipCallout').hidden = !show;
   if (show) {
     $('clipCalloutText').textContent =
-      ` ${clips} samples hit full scale since the last restart — raise the ADC attenuation until loud passages stay clean.`;
+      ` ${clips} samples hit full scale since the levels were last set — the recording is distorted at the bridge. Calibration fixes this in about a minute.`;
   }
 }
 
@@ -563,8 +581,6 @@ function renderAuth() {
     $('lockSub').textContent = storedAdminKey()
       ? '· key saved — click to unlock'
       : '· click to unlock';
-    // Never write the saved key into the input: the field belongs to the user.
-    $('unlockSecret').placeholder = storedAdminKey() ? 'saved key used if empty' : 'admin key';
     $('forgetKeyButton').hidden = !storedAdminKey();
   }
   renderGating();
@@ -576,7 +592,7 @@ function renderGating() {
   const gate =
     '#audioForm input,#audioForm select,#audioForm button,' +
     '#setupForm input:not([type="hidden"]),#setupForm button,' +
-    '#customOtaForm input,#customOtaForm button,#factoryButton';
+    '#customOtaForm input,#customOtaForm button,#restartButton,#factoryButton';
   for (const el of document.querySelectorAll(gate)) {
     el.disabled = !writable;
     el.title = writable ? '' : 'Unlock settings with the admin key';
@@ -693,7 +709,13 @@ $('lockChip').addEventListener('click', () => {
     toast('Settings locked', 'ok');
   } else {
     $('unlockPanel').hidden = !$('unlockPanel').hidden;
-    if (!$('unlockPanel').hidden) $('unlockSecret').focus();
+    if (!$('unlockPanel').hidden) {
+      // A saved key fills the field (masked) so it is visible that Unlock
+      // has something to work with; replacing the text uses a different key.
+      if (!$('unlockSecret').value) $('unlockSecret').value = storedAdminKey();
+      $('rememberKey').checked = Boolean(localStorage.getItem(ADMIN_KEY_STORAGE));
+      $('unlockSecret').focus();
+    }
   }
 });
 
@@ -726,6 +748,7 @@ $('unlockSecret').addEventListener('keydown', (e) => {
 
 $('forgetKeyButton').addEventListener('click', () => {
   forgetAdminKey();
+  $('unlockSecret').value = '';
   toast('Saved admin key forgotten', 'ok');
 });
 
@@ -749,10 +772,10 @@ $('clipCalloutButton').addEventListener('click', () => {
 
 $('audioForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const button = e.target.querySelector('button[type="submit"]');
+  const button = submitButton(e);
   transact(button, () => api('/api/settings/audio', { method: 'POST', body: formBody(e.target) }), {
-    busyText: 'Applying…',
-    okText: 'Applied — the meter shows the new levels',
+    busyText: 'Saving…',
+    okText: 'Saved — the meter shows the new levels',
     // In setup mode the codec is not running, so the device restarts instead.
     reboots: 'the audio settings',
   });
@@ -1034,7 +1057,7 @@ $('wizNext').addEventListener('click', () => {
 
 $('nameForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const button = e.target.querySelector('button[type="submit"]');
+  const button = submitButton(e);
   transact(button, () => api('/api/settings/name', { method: 'POST', body: formBody(e.target) }), {
     busyText: 'Saving…',
     okText: 'Saved',
@@ -1043,7 +1066,7 @@ $('nameForm').addEventListener('submit', (e) => {
 
 $('setupForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const button = e.target.querySelector('button[type="submit"]');
+  const button = submitButton(e);
   const firstSetup = state.status?.auth_required === false;
   transact(
     button,
@@ -1075,27 +1098,53 @@ $('setupForm').addEventListener('submit', (e) => {
 
 $('adminKeyForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const button = e.target.querySelector('button[type="submit"]');
+  const button = submitButton(e);
   transact(
     button,
     async () => {
       if (!isUnlocked()) throw new Error('unlock settings before replacing the admin key');
       if (!state.replacementKey) stageReplacementKey();
       await api('/api/settings/admin-key', { method: 'POST', body: formBody(e.target) });
-      unlockSettings(state.replacementKey, $('rememberReplacementKey').checked);
+      const remember = $('rememberReplacementKey').checked;
+      unlockSettings(state.replacementKey, remember);
+      // Refresh the unlock field so a later unlock shows the active key.
+      $('unlockSecret').value = remember ? state.replacementKey : '';
       state.replacementKey = '';
       $('replacementKeyPanel').hidden = true;
+      $('replaceKeyIntro').hidden = false;
     },
     { busyText: 'Saving…', okText: 'New key saved and active' },
   );
 });
 
-$('generateReplacementKeyButton').addEventListener('click', stageReplacementKey);
+$('replaceKeyButton').addEventListener('click', () => {
+  stageReplacementKey();
+  $('replaceKeyIntro').hidden = true;
+});
+
+$('cancelReplaceKeyButton').addEventListener('click', () => {
+  state.replacementKey = '';
+  $('replacement_admin_secret').value = '';
+  $('replacementKeyPanel').hidden = true;
+  $('replaceKeyIntro').hidden = false;
+  renderGating();
+});
 
 $('copyReplacementKeyButton').addEventListener('click', () => {
   copySecret(state.replacementKey).then(
     () => toast('New admin key copied', 'ok'),
     (err) => toast(err.message, 'err'),
+  );
+});
+
+$('restartButton').addEventListener('click', () => {
+  transact(
+    $('restartButton'),
+    async () => {
+      await api('/api/restart', { method: 'POST' });
+      beginRebootWait('the restart', 'Restarting — the console reconnects by itself');
+    },
+    { busyText: 'Restarting…', okText: 'Restarting — back in ~10 s' },
   );
 });
 
@@ -1137,7 +1186,7 @@ $('installButton').addEventListener('click', () => {
 
 $('customOtaForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const button = e.target.querySelector('button[type="submit"]');
+  const button = submitButton(e);
   const url = $('ota_url').value.trim();
   beginOtaSession(`Installing custom image from ${url}…`);
   transact(button, () => api('/api/ota/update', { method: 'POST', body: formBody(e.target) }), {

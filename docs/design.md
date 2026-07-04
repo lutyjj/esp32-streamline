@@ -134,7 +134,8 @@ Endpoint paths follow one rule: nouns for state, verbs for actions.
   `POST /api/settings/network`, `/api/settings/audio`, `/api/settings/name`,
   `/api/settings/admin-key`.
 - Device-wide actions are top-level verbs: `POST /api/unlock`,
-  `POST /api/factory-reset`, `POST /api/ota/check`, `POST /api/ota/update`.
+  `POST /api/restart`, `POST /api/factory-reset`, `POST /api/ota/check`,
+  `POST /api/ota/update`.
 
 Every write requires the admin key ([security.md](security.md)). Responses
 carry `rebooting: true` when the change restarts the device, so clients react

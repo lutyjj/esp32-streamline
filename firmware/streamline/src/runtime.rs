@@ -54,8 +54,8 @@ pub struct StreamStatus {
 
 impl StreamStatus {
     /// Ask the capture task to restart play detection from scratch. Called
-    /// after a live codec change: the idle estimate and thresholds are scaled
-    /// to the old input settings and must not gate the new signal.
+    /// after a live codec change: the idle estimate and thresholds belong to a
+    /// different input scale and must be rebuilt before gating the signal.
     pub fn request_relearn(&self) {
         self.relearn.store(true, Ordering::Relaxed);
     }
@@ -184,6 +184,9 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
     loop {
         if status.relearn.swap(false, Ordering::Relaxed) {
             detector = PlayDetector::new();
+            // Clips counted under a different input scale say nothing about
+            // these settings; the UI reports this as "since levels were set".
+            status.clipped_total.reset();
         }
         let bytes = match capture.read(&mut pcm) {
             Ok(bytes) => bytes,

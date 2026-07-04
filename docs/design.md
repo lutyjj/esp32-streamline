@@ -123,3 +123,19 @@ gain:        0-100 (NVS configured)
 The firmware exports read-only runtime state as JSON at `/api/status` and as
 Prometheus text at `/api/metrics`. Both endpoints read the same in-memory
 streaming counters.
+
+## HTTP API Shape
+
+Endpoint paths follow one rule: nouns for state, verbs for actions.
+
+- Reads are open: `GET /api/status` (runtime), `GET /api/metrics`
+  (Prometheus), `GET /api/settings` (persisted settings, no secrets).
+- Settings writes are one group per endpoint under the noun they change:
+  `POST /api/settings/network`, `/api/settings/audio`, `/api/settings/name`,
+  `/api/settings/admin-key`.
+- Device-wide actions are top-level verbs: `POST /api/unlock`,
+  `POST /api/factory-reset`, `POST /api/ota/check`, `POST /api/ota/update`.
+
+Every write requires the admin key ([security.md](security.md)). Responses
+carry `rebooting: true` when the change restarts the device, so clients react
+to what the device says rather than assuming.

@@ -91,7 +91,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     })?;
 
     let state_for_config = Arc::clone(&state);
-    server.fn_handler("/api/config", Method::Get, move |request| {
+    server.fn_handler("/api/settings", Method::Get, move |request| {
         respond(
             request,
             200,
@@ -106,137 +106,153 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     // with the new settings, which keeps swapping the stream target during testing
     // cheap.
     let state_for_setup = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/setup", Method::Post, move |mut request| {
-        if !authorized(&request, &state_for_setup) {
-            return unauthorized(request);
-        }
-        let result = (|| -> Result<()> {
-            let form = form(&mut request)?;
-            let current = state_for_setup
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
-            let password = form
-                .get("password")
-                .filter(|value| !value.is_empty())
-                .cloned()
-                .unwrap_or(current.password);
-            // The admin key is preserved when left blank, just like the password, so a
-            // routine Wi-Fi/target change does not require retyping it.
-            let admin_secret = form
-                .get("admin_secret")
-                .filter(|value| !value.is_empty())
-                .cloned()
-                .unwrap_or(current.admin_secret);
-            let next = RuntimeConfig {
-                ssid: required(&form, "ssid")?.to_owned(),
-                password,
-                target_host: required(&form, "target_host")?.trim().to_owned(),
-                target_port: parse_u16(&form, "target_port")?,
-                admin_secret,
-                device_name: current.device_name,
-                audio: current.audio,
-            };
-            save(&state_for_setup, next)
-        })();
-        match result {
-            Ok(()) => reboot_response(request),
-            Err(error) => bad_request(request, error),
-        }
-    })?;
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/network",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_setup) {
+                return unauthorized(request);
+            }
+            let result = (|| -> Result<()> {
+                let form = form(&mut request)?;
+                let current = state_for_setup
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?
+                    .clone();
+                let password = form
+                    .get("password")
+                    .filter(|value| !value.is_empty())
+                    .cloned()
+                    .unwrap_or(current.password);
+                // The admin key is preserved when left blank, just like the password, so a
+                // routine Wi-Fi/target change does not require retyping it.
+                let admin_secret = form
+                    .get("admin_secret")
+                    .filter(|value| !value.is_empty())
+                    .cloned()
+                    .unwrap_or(current.admin_secret);
+                let next = RuntimeConfig {
+                    ssid: required(&form, "ssid")?.to_owned(),
+                    password,
+                    target_host: required(&form, "target_host")?.trim().to_owned(),
+                    target_port: parse_u16(&form, "target_port")?,
+                    admin_secret,
+                    device_name: current.device_name,
+                    audio: current.audio,
+                };
+                save(&state_for_setup, next)
+            })();
+            match result {
+                Ok(()) => reboot_response(request),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
 
     // While streaming, audio params are written straight to the running codec
     // and play detection re-baselines to the new input scale — no reboot. In
     // setup-AP mode the codec is not running, so the settings are persisted
     // and take effect when the device boots into streaming.
     let state_for_audio = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/audio", Method::Post, move |mut request| {
-        if !authorized(&request, &state_for_audio) {
-            return unauthorized(request);
-        }
-        // Ok(true) means the settings were applied live.
-        let result = (|| -> Result<bool> {
-            let form = form(&mut request)?;
-            let current = state_for_audio
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
-            let audio = AudioSettings {
-                input_line: InputLine::try_from(parse_u8(&form, "line")?)
-                    .map_err(|_| anyhow!("line must be 1 or 2"))?,
-                input_gain: parse_u8(&form, "gain")?,
-                adc_attenuation_db: parse_u8(&form, "atten")?,
-            };
-            save(&state_for_audio, RuntimeConfig { audio, ..current })?;
-            let Some(codec) = &state_for_audio.codec else {
-                return Ok(false);
-            };
-            // The settings are already persisted: if the live write fails, a
-            // reboot re-applies them from storage.
-            codec
-                .lock()
-                .map_err(|_| anyhow!("codec lock poisoned"))?
-                .apply(audio)?;
-            if let Some(stream) = &state_for_audio.stream {
-                stream.request_relearn();
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/audio",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_audio) {
+                return unauthorized(request);
             }
-            Ok(true)
-        })();
-        match result {
-            Ok(true) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-            Ok(false) => reboot_response(request),
-            Err(error) => bad_request(request, error),
-        }
-    })?;
+            // Ok(true) means the settings were applied live.
+            let result = (|| -> Result<bool> {
+                let form = form(&mut request)?;
+                let current = state_for_audio
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?
+                    .clone();
+                let audio = AudioSettings {
+                    input_line: InputLine::try_from(parse_u8(&form, "line")?)
+                        .map_err(|_| anyhow!("line must be 1 or 2"))?,
+                    input_gain: parse_u8(&form, "gain")?,
+                    adc_attenuation_db: parse_u8(&form, "atten")?,
+                };
+                save(&state_for_audio, RuntimeConfig { audio, ..current })?;
+                let Some(codec) = &state_for_audio.codec else {
+                    return Ok(false);
+                };
+                // The settings are already persisted: if the live write fails, a
+                // reboot re-applies them from storage.
+                codec
+                    .lock()
+                    .map_err(|_| anyhow!("codec lock poisoned"))?
+                    .apply(audio)?;
+                if let Some(stream) = &state_for_audio.stream {
+                    stream.request_relearn();
+                }
+                Ok(true)
+            })();
+            match result {
+                Ok(true) => respond(request, 200, "application/json", r#"{"ok":true}"#),
+                Ok(false) => reboot_response(request),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
 
     // The friendly device name only labels the console and browser tab, so it
     // applies immediately — no reboot. Blank clears the name.
     let state_for_name = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/name", Method::Post, move |mut request| {
-        if !authorized(&request, &state_for_name) {
-            return unauthorized(request);
-        }
-        let result = (|| -> Result<()> {
-            let form = form(&mut request)?;
-            let mut next = state_for_name
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
-            next.device_name = form
-                .get("name")
-                .map(|value| value.trim().to_owned())
-                .unwrap_or_default();
-            save(&state_for_name, next)
-        })();
-        match result {
-            Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-            Err(error) => bad_request(request, error),
-        }
-    })?;
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/name",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_name) {
+                return unauthorized(request);
+            }
+            let result = (|| -> Result<()> {
+                let form = form(&mut request)?;
+                let mut next = state_for_name
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?
+                    .clone();
+                next.device_name = form
+                    .get("name")
+                    .map(|value| value.trim().to_owned())
+                    .unwrap_or_default();
+                save(&state_for_name, next)
+            })();
+            match result {
+                Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
 
     let state_for_admin_key = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/admin-key", Method::Post, move |mut request| {
-        if !authorized(&request, &state_for_admin_key) {
-            return unauthorized(request);
-        }
-        let result = (|| -> Result<()> {
-            let form = form(&mut request)?;
-            let mut next = state_for_admin_key
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
-            next.admin_secret = required(&form, "admin_secret")?.to_owned();
-            save(&state_for_admin_key, next)
-        })();
-        match result {
-            Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-            Err(error) => bad_request(request, error),
-        }
-    })?;
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/admin-key",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_admin_key) {
+                return unauthorized(request);
+            }
+            let result = (|| -> Result<()> {
+                let form = form(&mut request)?;
+                let mut next = state_for_admin_key
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?
+                    .clone();
+                next.admin_secret = required(&form, "admin_secret")?.to_owned();
+                save(&state_for_admin_key, next)
+            })();
+            match result {
+                Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
 
     // Check GitHub for a newer release without installing it. The work runs on a
     // background task; clients poll `/api/status` (the `ota` field) for the
@@ -295,7 +311,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         respond(request, 200, "application/json", r#"{"ok":true}"#)
     })?;
 
-    server.fn_handler::<anyhow::Error, _>("/api/reset", Method::Post, move |request| {
+    server.fn_handler::<anyhow::Error, _>("/api/factory-reset", Method::Post, move |request| {
         if !authorized(&request, &state) {
             return unauthorized(request);
         }

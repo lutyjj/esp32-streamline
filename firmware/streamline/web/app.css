@@ -90,6 +90,9 @@ button {
   color: var(--muted);
   font: 500 11.5px var(--mono);
 }
+.healthchip {
+  margin-left: auto;
+}
 
 .lockchip {
   display: inline-flex;
@@ -277,6 +280,10 @@ body.locked .gated :is(form, .cardfoot) {
   border-radius: 50%;
   flex: none;
   background: var(--faint);
+}
+.healthchip .statusdot {
+  width: 6px;
+  height: 6px;
 }
 .statusdot.good {
   background: var(--good);
@@ -778,4 +785,129 @@ select:disabled {
   .tabs button {
     white-space: nowrap;
   }
+}
+
+/* --- Calibration wizard --------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 12, 0.72);
+  padding: 20px;
+}
+.overlay[hidden] {
+  display: none;
+}
+.sheet {
+  width: 560px;
+  max-width: 100%;
+  max-height: min(640px, 92vh);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+.stepline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--faint);
+  font: 650 10.5px var(--mono);
+  letter-spacing: 0.09em;
+}
+.stepdots {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+.stepdots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.stepdots i.on {
+  background: var(--accent);
+}
+.sheet h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  text-wrap: balance;
+}
+.sheet .body {
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.sheet .body p {
+  margin: 0 0 10px;
+}
+.sheet .body p:last-child {
+  margin-bottom: 0;
+}
+.checklist {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.checklist b {
+  color: var(--text);
+  font-weight: 600;
+}
+.bigread {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.bigread .n {
+  font: 650 26px var(--mono);
+  color: var(--text);
+}
+.bigread .l {
+  color: var(--faint);
+  font-size: 12px;
+}
+.progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+  margin-top: 12px;
+}
+.progress i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.3s linear;
+}
+.wznote {
+  margin: 10px 0 0;
+  color: var(--warn);
+}
+.wizlog {
+  margin-top: 12px;
+  min-height: 64px;
+}
+.sheetfoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sheetfoot .row {
+  display: flex;
+  gap: 8px;
 }

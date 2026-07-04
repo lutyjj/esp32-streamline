@@ -32,9 +32,7 @@ use crate::{
     update,
 };
 
-const INDEX: &str = include_str!("../../web/index.html");
-const APP_CSS: &str = include_str!("../../web/app.css");
-const APP_JS: &str = include_str!("../../web/app.js");
+const INDEX: &str = include_str!("../../../../console/dist/index.html");
 const MAX_REQUEST_BYTES: usize = 512;
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
@@ -77,12 +75,6 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     })?;
     server.fn_handler("/", Method::Get, move |request| {
         respond(request, 200, "text/html; charset=utf-8", INDEX)
-    })?;
-    server.fn_handler("/app.css", Method::Get, move |request| {
-        respond(request, 200, "text/css; charset=utf-8", APP_CSS)
-    })?;
-    server.fn_handler("/app.js", Method::Get, move |request| {
-        respond(request, 200, "text/javascript; charset=utf-8", APP_JS)
     })?;
 
     let state_for_status = Arc::clone(&state);

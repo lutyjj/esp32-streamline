@@ -1,0 +1,237 @@
+import { useEffect, useState } from 'preact/hooks';
+import { copySecret, unlockSettings } from '../lib/adminKey';
+import { postForm } from '../lib/api';
+import { useTransact, useWritable } from '../lib/hooks';
+import { config, noBridge, packetsMoving, setupMode, status } from '../state/device';
+import { setupKey } from '../state/setupKey';
+import { toast } from '../state/toasts';
+
+export function NetworkTab() {
+  const writable = useWritable();
+  const s = status.value;
+  const setup = setupMode.value;
+  const firstSetup = s?.auth_required === false;
+  const wifiTransact = useTransact();
+  const targetTransact = useTransact();
+
+  const [ssid, setSsid] = useState('');
+  const [password, setPassword] = useState('');
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [targetHost, setTargetHost] = useState('');
+  const [targetPort, setTargetPort] = useState('39000');
+  const [rememberKey, setRememberKey] = useState(true);
+
+  const c = config.value;
+  useEffect(() => {
+    if (!c) return;
+    setSsid(c.ssid);
+    setTargetHost(c.target_host);
+    setTargetPort(String(c.target_port));
+    setPassword('');
+    setEditingPassword(false);
+  }, [c]);
+
+  const passwordEditable = firstSetup || editingPassword;
+
+  /** Both cards submit the same settings write; the device restarts on it. */
+  function save(transact: ReturnType<typeof useTransact>) {
+    transact.run(
+      async () => {
+        const host = targetHost.trim();
+        if (host.includes(':') || host.includes('/')) {
+          throw new Error('target host must not include port, scheme, or path');
+        }
+        const fields: Record<string, string> = {
+          ssid: ssid.trim(),
+          password: passwordEditable ? password : '',
+          target_host: host,
+          target_port: targetPort,
+        };
+        if (firstSetup) fields.admin_secret = setupKey.value;
+        const data = await postForm('/api/settings/network', fields);
+        if (firstSetup && setupKey.value) {
+          // The device reboots onto the home network; keep the key so this
+          // browser can unlock it there.
+          unlockSettings(setupKey.value, rememberKey);
+        }
+        return data;
+      },
+      { busyText: 'Saving…', reboots: 'the network settings' },
+    );
+    if (firstSetup) {
+      const hostname = s?.wifi?.hostname || 'streamline-xxxx.local';
+      toast(
+        `The setup network disappears now — reconnect to your own Wi-Fi, then open http://${hostname}/.`,
+        'wait',
+        0,
+      );
+    }
+  }
+
+  const moving = packetsMoving.value;
+  const playing = s?.metrics.playing ?? false;
+
+  return (
+    <div style="display:grid;gap:14px">
+      <div class="card gated">
+        <span class="lockhint">Unlock to edit</span>
+        <h2>Wi-Fi</h2>
+        <p class="lead">
+          {setup
+            ? 'Not configured yet — join the device to your home network.'
+            : s
+              ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi} dBm · ${s.wifi.sta_ip}`
+              : '—'}
+        </p>
+        <div class="formgrid">
+          <div class="field">
+            <label for="ssid">Network name</label>
+            <input
+              id="ssid"
+              type="text"
+              autocomplete="off"
+              disabled={!writable}
+              value={ssid}
+              onInput={(e) => setSsid(e.currentTarget.value)}
+            />
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <div class="inputrow">
+              <input
+                id="password"
+                type="password"
+                autocomplete={firstSetup ? 'new-password' : 'off'}
+                placeholder={
+                  firstSetup ? 'network password' : passwordEditable ? 'new password' : 'unchanged'
+                }
+                disabled={!writable || !passwordEditable}
+                value={password}
+                onInput={(e) => setPassword(e.currentTarget.value)}
+              />
+              {!firstSetup && (
+                <button
+                  class="btn secondary"
+                  type="button"
+                  disabled={!writable}
+                  onClick={() => {
+                    setEditingPassword(!editingPassword);
+                    if (editingPassword) setPassword('');
+                  }}
+                >
+                  {editingPassword ? 'Keep current' : 'Change'}
+                </button>
+              )}
+            </div>
+            <span class="help">
+              {firstSetup
+                ? 'The password of the Wi-Fi network the device should join.'
+                : 'The saved password stays unless you change it here.'}
+            </span>
+          </div>
+        </div>
+        <div class="cardfoot">
+          <button
+            class={`btn primary${wifiTransact.busy ? ' busy' : ''}`}
+            type="button"
+            disabled={!writable || wifiTransact.busy}
+            onClick={() => save(wifiTransact)}
+          >
+            <span class="spin" />
+            Save &amp; restart
+          </button>
+          <span class={`actionstate ${wifiTransact.state.cls}`}>{wifiTransact.state.text}</span>
+        </div>
+      </div>
+
+      <div class="card gated">
+        <span class="lockhint">Unlock to edit</span>
+        <h2>Stream target</h2>
+        <p class="lead">Where the audio goes — your bridge or Home Assistant add-on.</p>
+        <div class="formgrid">
+          <div class="field">
+            <label for="target_host">Host or IP</label>
+            <input
+              id="target_host"
+              type="text"
+              autocomplete="off"
+              disabled={!writable}
+              value={targetHost}
+              onInput={(e) => setTargetHost(e.currentTarget.value)}
+            />
+          </div>
+          <div class="field">
+            <label for="target_port">Port</label>
+            <input
+              id="target_port"
+              type="number"
+              min="1"
+              max="65535"
+              disabled={!writable}
+              value={targetPort}
+              onInput={(e) => setTargetPort(e.currentTarget.value)}
+            />
+          </div>
+        </div>
+
+        {firstSetup && setupKey.value && (
+          <div class="keypanel">
+            <p>
+              <strong style="color:var(--text)">Your admin key.</strong> It unlocks settings after
+              setup and is shown only once — copy it somewhere safe now.
+            </p>
+            <div class="keyblock">{setupKey.value}</div>
+            <div class="inputrow" style="align-items:center">
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  checked={rememberKey}
+                  onChange={(e) => setRememberKey(e.currentTarget.checked)}
+                />
+                <span class="knob" />
+                Remember on this browser
+              </label>
+              <button
+                class="btn secondary"
+                type="button"
+                onClick={() =>
+                  copySecret(setupKey.value).then(
+                    () => toast('Admin key copied', 'ok'),
+                    (err) => toast(err.message, 'err'),
+                  )
+                }
+              >
+                Copy key
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div class="cardfoot">
+          <button
+            class={`btn primary${targetTransact.busy ? ' busy' : ''}`}
+            type="button"
+            disabled={!writable || targetTransact.busy}
+            onClick={() => save(targetTransact)}
+          >
+            <span class="spin" />
+            Save &amp; restart
+          </button>
+          <span class={`actionstate ${targetTransact.state.cls}`}>{targetTransact.state.text}</span>
+          {!setup && !noBridge.value && (
+            <span class="chip healthchip">
+              <span class={`statusdot ${moving ? 'good' : playing ? 'warn' : ''}`} />
+              <span>
+                {moving
+                  ? 'connection healthy'
+                  : playing
+                    ? 'connecting to bridge…'
+                    : 'idle — nothing to send'}
+              </span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -7,6 +7,8 @@ ELF := target/$(TARGET)/release/streamline-firmware
 VERSION ?= dev
 PORT ?= /dev/cu.usbserial-0001
 DIST_DIR ?= $(abspath ../dist)
+ROOT_DIR := $(abspath ..)
+CONSOLE_DIR := $(ROOT_DIR)/console
 
 # Run cargo in the toolchain image as root with the image user's HOME so the
 # rustup toolchain resolves normally. Root is required because CI checks out the
@@ -14,7 +16,7 @@ DIST_DIR ?= $(abspath ../dist)
 # (cargo target/, esp-idf .embuild/). On macOS the bind mount is UID-mapped, so
 # artifacts still land readable on the host.
 CONTAINER_FLAGS := --rm --user 0:0 -e HOME=/home/esp \
-	-v "$(CURDIR)/$(SRC):/workspace" -w /workspace
+	-v "$(ROOT_DIR):/repo" -w /repo/firmware/$(SRC)
 CONTAINER_RUN := $(CONTAINER) run $(CONTAINER_FLAGS) $(IMAGE)
 
 CAPTURE_SECS ?= 20
@@ -24,32 +26,28 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-# Lint/format for the embedded web console (streamline/web). Biome is a single
-# pinned binary image; config lives in streamline/web/biome.json.
-BIOME_IMAGE := ghcr.io/biomejs/biome:2.3.4
-BIOME_RUN := $(CONTAINER) run --rm -v "$(CURDIR)/$(SRC)/web:/workspace" -w /workspace $(BIOME_IMAGE)
-
-.PHONY: image format lint build test flash monitor capture clean artifacts
+.PHONY: image console-asset format lint build test flash monitor capture clean artifacts
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
 
+console-asset:
+	$(MAKE) -C $(CONSOLE_DIR) build
+
 format: image
 	$(CONTAINER_RUN) cargo fmt --all
-	$(BIOME_RUN) check --write .
 
 # clippy runs `--lib` on the host target: the crate core is host-buildable while
 # the `cfg(espidf)` adapters and binary only compile in the cross build, which
 # `build` exercises with warnings intact.
-lint: image
+lint: image console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --lib -- -D warnings
-	$(BIOME_RUN) check .
 
-build: image
+build: image console-asset
 	$(CONTAINER_RUN) cargo build --release --target $(TARGET)
 
-test: image
+test: image console-asset
 	$(CONTAINER_RUN) cargo test --lib
 
 # Serial devices are host resources; Docker Desktop on macOS cannot expose the

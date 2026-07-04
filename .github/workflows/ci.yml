@@ -39,6 +39,9 @@ jobs:
             bridge:
               - *shared
               - 'bridge/**'
+            console:
+              - *shared
+              - 'console/**'
             tools:
               - *shared
               - 'tools/**'
@@ -47,6 +50,7 @@ jobs:
               - 'webflasher/**'
             firmware:
               - *shared
+              - 'console/**'
               - 'firmware/**'
       - id: matrix
         # Fan out over every matched component except the bespoke firmware one

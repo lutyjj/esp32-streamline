@@ -20,6 +20,7 @@ pub struct TelemetrySnapshot {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WifiTelemetry {
+    pub hostname: String,
     pub ssid: String,
     pub status: &'static str,
     pub sta_ip: String,

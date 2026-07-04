@@ -11,13 +11,14 @@ use streamline_firmware::{
         codec,
         http::{self, ApiState, Mode},
         i2s::Capture,
+        mdns::MdnsAdvertisement,
         nvs::ConfigStore,
         ota,
         tcp::TargetAddress,
         time, wifi,
     },
     config::{AudioSettings, InputLine, RuntimeConfig},
-    runtime,
+    identity, runtime,
 };
 
 fn main() -> Result<()> {
@@ -35,6 +36,8 @@ fn main() -> Result<()> {
         .load()?;
     let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
     let suffix = wifi::device_suffix()?;
+    let mdns_hostname = wifi::mdns_hostname()?;
+    let local_hostname = identity::local_hostname(&mdns_hostname);
 
     let (mode, config, stream, codec) = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
@@ -90,12 +93,26 @@ fn main() -> Result<()> {
         ota::mark_current_valid();
     }
 
+    let mdns = if mode == Mode::Streaming {
+        match MdnsAdvertisement::start(&mdns_hostname, &config) {
+            Ok(advertisement) => Some(Arc::new(Mutex::new(advertisement))),
+            Err(error) => {
+                log::warn!("mDNS advertisement failed: {error:#}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let state = Arc::new(ApiState {
         mode,
+        hostname: local_hostname,
         config: Arc::new(Mutex::new(config)),
         store,
         stream,
         codec,
+        mdns,
         ota: Arc::new(ota::OtaProgress::default()),
     });
     let _server = http::start(state)?;

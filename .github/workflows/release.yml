@@ -16,6 +16,11 @@ jobs:
   publish:
     name: Verify and publish release
     runs-on: ubuntu-latest
+    env:
+      CONTAINER_USER: 0:0
+      CONTAINER_CARGO_HOME: /cargo-cache
+      FIRMWARE_CARGO_CACHE_PATH: firmware/streamline/.cargo-home
+      FIRMWARE_EMBUILD_CACHE_PATH: firmware/streamline/.embuild
     steps:
       - uses: actions/checkout@v7
 
@@ -32,19 +37,41 @@ jobs:
       - name: Restore ESP-IDF build (.embuild)
         uses: actions/cache/restore@v6
         with:
-          path: firmware/streamline/.embuild
+          path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
-      - name: Restore cargo target
+      - name: Restore firmware Cargo home
         uses: actions/cache/restore@v6
         with:
-          path: firmware/streamline/target
-          key: fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-${{ github.run_id }}
+          path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
+          key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
           restore-keys: |
-            fw-target-v1-${{ hashFiles('firmware/streamline/Cargo.lock') }}-
+            fw-cargo-v1-
+
+      - name: Hand firmware caches to toolchain container
+        run: |
+          mkdir -p "$FIRMWARE_CARGO_CACHE_PATH"
+          for path in "$FIRMWARE_EMBUILD_CACHE_PATH" "$FIRMWARE_CARGO_CACHE_PATH"; do
+            if [ -e "$path" ]; then
+              sudo chown -R "$CONTAINER_USER" "$path"
+            fi
+          done
 
       - name: Build release deliverables
-        run: make release VERSION=${{ steps.version.outputs.value }} BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
+        run: |
+          make release \
+            VERSION=${{ steps.version.outputs.value }} \
+            BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge \
+            CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
+
+      - name: Reclaim firmware caches
+        if: always()
+        run: |
+          for path in "$FIRMWARE_EMBUILD_CACHE_PATH" "$FIRMWARE_CARGO_CACHE_PATH"; do
+            if [ -e "$path" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$path"
+            fi
+          done
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4

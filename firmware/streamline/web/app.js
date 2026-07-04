@@ -18,7 +18,7 @@
  * @typedef {Object} DeviceStatus
  * @property {string} firmware_version
  * @property {string} device_name friendly name; empty when unnamed
- * @property {string} mode "streaming" | "setup-ap"
+ * @property {string} mode "provisioned" | "setup"
  * @property {string} config_source
  * @property {boolean} configuration_writable
  * @property {boolean} auth_required
@@ -323,8 +323,7 @@ function applyStatus(s) {
   $('chipVersion').textContent = `v${s.firmware_version}`;
   $('chipFormat').textContent =
     `${s.audio.sample_rate / 1000} kHz / ${s.audio.bits_per_sample}-bit`;
-  $('chipAddr').textContent =
-    s.mode === 'setup-ap' ? s.wifi.ap_ip : s.wifi.hostname || s.wifi.sta_ip;
+  $('chipAddr').textContent = s.mode === 'setup' ? s.wifi.ap_ip : s.wifi.hostname || s.wifi.sta_ip;
   $('deviceName').textContent = s.device_name;
   $('deviceName').hidden = !s.device_name;
   document.title = s.device_name ? `${s.device_name} — StreamLine` : 'StreamLine';
@@ -338,14 +337,22 @@ function applyStatus(s) {
   $('apiDump').textContent = JSON.stringify(s, null, 2);
 
   state.lastPackets = s.metrics.packets;
-  if (first && s.mode === 'setup-ap') openOnboarding();
+  if (first && s.mode === 'setup') openOnboarding();
 }
 
 /** @param {DeviceStatus} s */
 function renderHealth(s) {
   const playing = s.metrics.playing;
-  const setup = s.mode === 'setup-ap';
-  $('hStatus').textContent = setup ? 'Setup' : playing ? 'Streaming' : 'Idle';
+  const setup = s.mode === 'setup';
+  // Provisioned but no bridge configured yet: capture runs, nothing streams.
+  const noBridge = !setup && !s.target.target_host;
+  $('hStatus').textContent = setup
+    ? 'Setup'
+    : playing
+      ? noBridge
+        ? 'Signal'
+        : 'Streaming'
+      : 'Idle';
   $('hStatusSub').textContent = setup
     ? 'waiting for first-time setup'
     : playing
@@ -365,13 +372,24 @@ function renderHealth(s) {
     : `${s.wifi.rssi} dBm · ${s.wifi.hostname || s.wifi.sta_ip}`;
 
   const moving = state.lastPackets >= 0 && s.metrics.packets > state.lastPackets;
-  $('hBridge').textContent = setup ? '—' : moving ? 'Sending' : playing ? 'Connecting' : 'Idle';
-  $('dotBridge').className = `statusdot ${moving ? 'good' : playing ? 'warn' : ''}`;
-  $('hBridgeSub').textContent = `${s.target.target_host}:${s.target.target_port}`;
+  $('hBridge').textContent = setup
+    ? '—'
+    : noBridge
+      ? 'Not set'
+      : moving
+        ? 'Sending'
+        : playing
+          ? 'Connecting'
+          : 'Idle';
+  $('dotBridge').className =
+    `statusdot ${noBridge ? 'warn' : moving ? 'good' : playing ? 'warn' : ''}`;
+  $('hBridgeSub').textContent = noBridge
+    ? 'point it at your bridge in the Network tab'
+    : `${s.target.target_host}:${s.target.target_port}`;
 
   // Same bridge verdict, repeated next to the target form so a saved target
   // can be judged where it was typed.
-  $('targetHealth').hidden = setup;
+  $('targetHealth').hidden = setup || noBridge;
   $('targetHealthDot').className = `statusdot ${moving ? 'good' : playing ? 'warn' : ''}`;
   $('targetHealthText').textContent = moving
     ? 'connection healthy'
@@ -428,7 +446,7 @@ function renderMeters(s) {
 /** @param {DeviceStatus} s */
 function renderClipCallout(s) {
   const clips = s.metrics.clipped_samples_total;
-  const show = clips > 0 && !state.clipDismissed && s.mode !== 'setup-ap';
+  const show = clips > 0 && !state.clipDismissed && s.mode !== 'setup';
   $('clipCallout').hidden = !show;
   if (show) {
     $('clipCalloutText').textContent =
@@ -863,8 +881,8 @@ async function wzApplyAudio(atten) {
 }
 
 function openWizard() {
-  if (state.status?.mode !== 'streaming') {
-    toast('Calibration needs the device streaming on your network', 'err');
+  if (state.status?.mode !== 'provisioned') {
+    toast('Calibration needs the device on your home network', 'err');
     return;
   }
   const audio = state.status.audio;
@@ -1080,102 +1098,117 @@ $('wizNext').addEventListener('click', () => {
 
 // --- First-run onboarding: Wi-Fi · admin key · joining -------------------------
 
-let obStep = 0;
+/** Current onboarding step, or 0 while the overlay is closed. */
+let onboardingStep = 0;
+
+/** Seconds the device takes to restart onto the home network. */
+const ONBOARDING_REBOOT_SECS = 10;
 
 function openOnboarding() {
-  if (state.status?.mode !== 'setup-ap') return;
+  if (state.status?.mode !== 'setup') return;
   ensureSetupKey();
-  obStep = 0;
   $('onboard').hidden = false;
-  obShow(1);
+  showOnboardingStep(1);
 }
 
 function closeOnboarding() {
+  onboardingStep = 0;
   $('onboard').hidden = true;
-  obStep = 0;
   showView('network');
 }
 
-function obShow(step) {
-  obStep = step;
+function onboardingError(text) {
+  $('obError').textContent = text;
+}
+
+function showOnboardingStep(step) {
+  onboardingStep = step;
   for (let i = 1; i <= 3; i += 1) $(`obStep${i}`).hidden = i !== step;
   const dots = $('obDots').children;
   for (let i = 0; i < dots.length; i += 1) dots[i].classList.toggle('on', i < step);
+  onboardingError('');
   const next = $('obNext');
   next.classList.remove('busy');
-  next.hidden = false;
   next.disabled = false;
-  $('obCancel').textContent = 'Cancel';
-  if (step === 1) {
-    next.textContent = 'Join network';
-  } else if (step === 2) {
+  next.hidden = step === 3;
+  $('obCancel').textContent = step === 3 ? 'Close' : 'Cancel';
+  if (step === 1) next.textContent = 'Continue';
+  if (step === 2) {
     $('obKeyValue').textContent = state.setupKey;
-    next.textContent = 'I saved my key \u2014 continue';
-  } else if (step === 3) {
-    next.hidden = true;
-    $('obCancel').textContent = 'Close';
-    obStartJoining();
+    next.textContent = 'I saved my key \u2014 join network';
   }
 }
 
-async function obStartJoining() {
-  const ssid = $('ob_ssid').value.trim();
-  const hostname = state.status?.wifi?.hostname || 'streamline-xxxx.local';
-  $('obJoinTitle').textContent = `Joining ${ssid}\u2026`;
-  $('obAddress').textContent = `http://${hostname}/`;
-  $('obProg').style.width = '0';
-  $('obCountdown').textContent = 'Saving\u2026';
-
+/**
+ * Save Wi-Fi credentials and the admin key. Only the device's confirmation
+ * advances to the joining screen: the response is flushed before the restart,
+ * so a failed request means nothing was saved and the error is shown where
+ * the user can act on it.
+ */
+async function joinNetwork() {
+  const next = $('obNext');
+  next.disabled = true;
+  next.classList.add('busy');
+  onboardingError('');
+  // No target_host: the bridge is configured later, from the home network.
   const body = new URLSearchParams({
-    ssid,
+    ssid: $('ob_ssid').value.trim(),
     password: $('ob_password').value,
-    target_host: state.status?.target?.target_host || '',
     target_port: String(state.status?.target?.target_port || 39000),
     admin_secret: state.setupKey,
   });
-
   try {
     await api('/api/settings/network', { method: 'POST', body });
-  } catch {
-    // The device reboots immediately; the fetch typically fails.
+  } catch (err) {
+    next.disabled = false;
+    next.classList.remove('busy');
+    onboardingError(`Not saved \u2014 ${err.message}`);
+    return;
   }
-
   unlockSettings(state.setupKey, $('obRememberKey').checked);
   beginRebootWait('the network settings');
+  showJoiningStep();
+}
 
-  let remaining = 10;
-  $('obCountdown').textContent = `Restarting \u2014 about ${remaining} s\u2026`;
-  const iv = setInterval(() => {
-    remaining -= 1;
-    const pct = Math.min(100, ((10 - remaining) / 10) * 100);
-    $('obProg').style.width = `${pct}%`;
-    if (remaining > 0) {
-      $('obCountdown').textContent = `Restarting \u2014 about ${remaining} s\u2026`;
-    } else {
-      clearInterval(iv);
-      $('obProg').style.width = '100%';
+function showJoiningStep() {
+  showOnboardingStep(3);
+  $('obJoinTitle').textContent = `Joining ${$('ob_ssid').value.trim()}\u2026`;
+  $('obAddress').textContent = `http://${state.status?.wifi?.hostname || 'streamline-xxxx.local'}/`;
+  $('obProg').style.width = '0';
+  $('obCountdown').textContent = `Restarting \u2014 about ${ONBOARDING_REBOOT_SECS} s\u2026`;
+  let elapsed = 0;
+  const tick = setInterval(() => {
+    if (onboardingStep !== 3) {
+      clearInterval(tick);
+      return;
+    }
+    elapsed += 1;
+    $('obProg').style.width = `${Math.min(100, (elapsed / ONBOARDING_REBOOT_SECS) * 100)}%`;
+    if (elapsed >= ONBOARDING_REBOOT_SECS) {
+      clearInterval(tick);
       $('obCountdown').textContent =
         'Done \u2014 reconnect to your own Wi-Fi and open the address above.';
+    } else {
+      $('obCountdown').textContent =
+        `Restarting \u2014 about ${ONBOARDING_REBOOT_SECS - elapsed} s\u2026`;
     }
   }, 1000);
 }
 
 $('obCancel').addEventListener('click', closeOnboarding);
 $('obNext').addEventListener('click', () => {
-  if (obStep === 1) {
-    const ssid = $('ob_ssid').value.trim();
-    const pass = $('ob_password').value;
-    if (!ssid) {
-      toast('Enter your Wi-Fi network name', 'err');
+  if (onboardingStep === 1) {
+    if (!$('ob_ssid').value.trim()) {
+      onboardingError('Enter your Wi-Fi network name');
       return;
     }
-    if (!pass) {
-      toast('Enter the Wi-Fi password', 'err');
+    if (!$('ob_password').value) {
+      onboardingError('Enter the Wi-Fi password');
       return;
     }
-    obShow(2);
-  } else if (obStep === 2) {
-    obShow(3);
+    showOnboardingStep(2);
+  } else if (onboardingStep === 2) {
+    joinNetwork();
   }
 });
 $('obCopyKey').addEventListener('click', () => {

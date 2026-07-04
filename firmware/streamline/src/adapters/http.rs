@@ -38,10 +38,22 @@ const APP_JS: &str = include_str!("../../web/app.js");
 const MAX_REQUEST_BYTES: usize = 512;
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
+/// The boot contract: the one decision made at startup that fixes which
+/// services run and who may write until the next reboot.
+///
+/// A state earns a variant here only if it changes the service set or the
+/// trust model, and only at boot. Anything that changes at runtime is status
+/// (`metrics.playing`, `ota.phase`); anything that is a configuration
+/// difference reads from config (an empty `target_host` is "no bridge yet",
+/// not a mode).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
-    SetupAp,
-    Streaming,
+    /// Unconfigured: own open AP, writes accepted so a first admin key can be
+    /// set. Capture and streaming are down.
+    Setup,
+    /// Station on the home network: console behind the admin key, capture
+    /// running; the TCP stream runs only while a bridge target is configured.
+    Provisioned,
 }
 
 pub struct ApiState {
@@ -50,8 +62,8 @@ pub struct ApiState {
     pub config: Arc<Mutex<RuntimeConfig>>,
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
-    /// Live codec control, present while streaming so audio settings apply
-    /// without a reboot. Absent in setup-AP mode, where the codec is not
+    /// Live codec control, present when provisioned so audio settings apply
+    /// without a reboot. Absent in setup mode, where the codec is not
     /// running.
     pub codec: Option<Arc<Mutex<CodecControl<'static>>>>,
     pub mdns: Option<Arc<Mutex<MdnsAdvertisement>>>,
@@ -138,7 +150,13 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                 let next = RuntimeConfig {
                     ssid: required(&form, "ssid")?.to_owned(),
                     password,
-                    target_host: required(&form, "target_host")?.trim().to_owned(),
+                    // Optional: commissioning sets Wi-Fi first and the bridge
+                    // target later, so an absent or blank host means "no
+                    // bridge yet" and the device boots into no-target mode.
+                    target_host: form
+                        .get("target_host")
+                        .map(|value| value.trim().to_owned())
+                        .unwrap_or_default(),
                     target_port: parse_u16(&form, "target_port")?,
                     admin_secret,
                     device_name: current.device_name,
@@ -714,8 +732,8 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         .map(|stream| stream.snapshot())
         .unwrap_or_default();
     let (mode, wifi_status) = match state.mode {
-        Mode::SetupAp => ("setup-ap", "ap"),
-        Mode::Streaming => ("streaming", "connected"),
+        Mode::Setup => ("setup", "ap"),
+        Mode::Provisioned => ("provisioned", "connected"),
     };
     let ota = state.ota.snapshot();
     TelemetrySnapshot {

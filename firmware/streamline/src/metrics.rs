@@ -289,7 +289,7 @@ mod tests {
             text,
             "# HELP streamline_firmware_info Firmware build and runtime mode.\n\
 # TYPE streamline_firmware_info gauge\n\
-streamline_firmware_info{version=\"0.3.3\",mode=\"streaming\"} 1\n\
+streamline_firmware_info{version=\"0.3.3\",mode=\"provisioned\"} 1\n\
 # HELP streamline_wifi_info Wi-Fi identity and address labels.\n\
 # TYPE streamline_wifi_info gauge\n\
 streamline_wifi_info{hostname=\"streamline-a8b2.local\",ssid=\"studio\",status=\"connected\",sta_ip=\"192.168.1.50\",ap_ip=\"\"} 1\n\
@@ -395,7 +395,7 @@ streamline_ota_busy 0\n"
         TelemetrySnapshot {
             firmware_version: "0.3.3",
             device_name: "Study CD player".to_owned(),
-            mode: "streaming",
+            mode: "provisioned",
             config_source: "nvs",
             web_server: true,
             configuration_writable: true,

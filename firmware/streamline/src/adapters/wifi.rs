@@ -73,7 +73,7 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
 
 /// Start the physical-presence setup network. It is deliberately open because
 /// initial configuration has no pre-shared secret; HTTP writes are only enabled
-/// in this mode and the AP is never started in normal streaming mode.
+/// in this mode and the AP is never started on a provisioned device.
 pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<String> {
     let ssid = format!("esp32-streamline-{suffix}");
     let access_point = Configuration::AccessPoint(AccessPointConfiguration {

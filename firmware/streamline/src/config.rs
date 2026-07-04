@@ -61,9 +61,6 @@ impl<'a> NetworkSettings<'a> {
         if self.ssid.is_empty() {
             return Err(ConfigError::MissingSsid);
         }
-        if self.target_host.is_empty() {
-            return Err(ConfigError::MissingTargetHost);
-        }
         if self.target_host.contains(':') || self.target_host.contains('/') {
             return Err(ConfigError::MalformedTargetHost);
         }
@@ -77,7 +74,6 @@ impl<'a> NetworkSettings<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigError {
     MissingSsid,
-    MissingTargetHost,
     MalformedTargetHost,
     InvalidTargetPort,
     InvalidInputLine,
@@ -96,6 +92,9 @@ pub enum ConfigError {
 pub struct RuntimeConfig {
     pub ssid: String,
     pub password: String,
+    /// Bridge host the PCM stream is sent to. Empty means no bridge is
+    /// configured yet: the device joins Wi-Fi and serves the console but does
+    /// not stream.
     pub target_host: String,
     pub target_port: u16,
     /// Admin key required on the mutating HTTP API. Set during commissioning
@@ -142,8 +141,19 @@ mod tests {
     }
 
     #[test]
+    fn accepts_an_unset_target_host() {
+        let settings = NetworkSettings {
+            ssid: "studio",
+            target_host: "",
+            target_port: 39_000,
+        };
+
+        assert_eq!(settings.validate(), Ok(settings));
+    }
+
+    #[test]
     fn rejects_target_urls_and_ports() {
-        for target_host in ["", "tcp://192.0.2.10", "192.0.2.10:39000"] {
+        for target_host in ["tcp://192.0.2.10", "192.0.2.10:39000"] {
             let settings = NetworkSettings {
                 ssid: "studio",
                 target_host,

@@ -157,24 +157,34 @@ impl PacketQueue {
     }
 }
 
-pub fn start(capture: Capture, target: TargetAddress) -> Result<Arc<StreamStatus>> {
+/// Start capture unconditionally; stream to `target` only when one is
+/// configured. Without a target the queue has no consumer, so none is created
+/// and captured audio stops at level analysis — the meters and calibration
+/// work before a bridge exists.
+pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<StreamStatus>> {
     let status = Arc::new(StreamStatus::default());
-    let queue = Arc::new(PacketQueue::new());
+    let queue = target.is_some().then(|| Arc::new(PacketQueue::new()));
 
     let capture_status = Arc::clone(&status);
-    let capture_queue = Arc::clone(&queue);
+    let capture_queue = queue.clone();
     spawn_pinned(c"capture", CAPTURE_PRIORITY, move || {
         capture_loop(capture, capture_queue, capture_status)
     })?;
 
-    let network_status = Arc::clone(&status);
-    spawn_pinned(c"network", NETWORK_PRIORITY, move || {
-        network_loop(TcpClient::new(target), queue, network_status)
-    })?;
+    if let (Some(target), Some(queue)) = (target, queue) {
+        let network_status = Arc::clone(&status);
+        spawn_pinned(c"network", NETWORK_PRIORITY, move || {
+            network_loop(TcpClient::new(target), queue, network_status)
+        })?;
+    }
     Ok(status)
 }
 
-fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<StreamStatus>) -> ! {
+fn capture_loop(
+    mut capture: Capture,
+    queue: Option<Arc<PacketQueue>>,
+    status: Arc<StreamStatus>,
+) -> ! {
     let mut pcm = [0_u8; PAYLOAD_BYTES];
     // The capture task owns play detection: only packets captured while the
     // input carries signal are enqueued, so the network task simply drains the
@@ -215,6 +225,9 @@ fn capture_loop(mut capture: Capture, queue: Arc<PacketQueue>, status: Arc<Strea
         if !playing {
             continue;
         }
+        let Some(queue) = &queue else {
+            continue;
+        };
         let Some(packet) = AudioPacket::from_pcm(sequence, &pcm[..bytes]) else {
             status.short_reads.add(1);
             continue;

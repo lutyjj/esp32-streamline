@@ -54,9 +54,12 @@ test: image
 
 # Serial devices are host resources; Docker Desktop on macOS cannot expose the
 # /dev/cu.* device reliably. Install espflash on the host for these two targets.
+# `--erase-parts otadata` makes the freshly flashed slot the boot choice: a
+# device whose last update arrived over OTA otherwise keeps booting the other
+# slot, silently running the old image. Config in NVS survives.
 flash: build
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	espflash flash --chip esp32 --port $(PORT) --partition-table $(SRC)/partitions.csv $(SRC)/$(ELF)
+	espflash flash --chip esp32 --port $(PORT) --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
 
 monitor:
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)

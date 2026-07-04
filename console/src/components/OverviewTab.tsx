@@ -1,6 +1,7 @@
 import { signal } from '@preact/signals';
 import { dbfs } from '../lib/format';
 import { noBridge, packetsMoving, setupMode, status } from '../state/device';
+import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
 import { Meter } from './Meter';
 
@@ -49,7 +50,7 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
             </span>
           </div>
           <button class="btn secondary" type="button" onClick={onCalibrate}>
-            Calibrate levels…
+            Calibrate levels
           </button>
         </div>
       )}
@@ -121,10 +122,9 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
       </div>
 
       <div class="card">
-        <details class="plain">
-          <summary>Diagnostics</summary>
+        <Disclosure title="Diagnostics">
           <Kv rows={diagRows} />
-        </details>
+        </Disclosure>
       </div>
     </>
   );

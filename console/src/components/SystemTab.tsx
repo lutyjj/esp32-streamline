@@ -12,6 +12,7 @@ import { config, status } from '../state/device';
 import { beginOtaSession, otaLog, prettyPhase } from '../state/ota';
 import { beginRebootWait } from '../state/rebootWait';
 import { toast } from '../state/toasts';
+import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
 
 export function SystemTab() {
@@ -107,13 +108,12 @@ function FirmwareCard() {
         )}
         {installing && (
           <button class="btn primary" type="button" disabled>
-            Installing…
+            Installing
           </button>
         )}
         <span class={`actionstate ${transact.state.cls}`}>{transact.state.text}</span>
       </div>
-      <details class="plain" style="margin-top:14px">
-        <summary>Developer — install a custom image</summary>
+      <Disclosure title="Developer — install a custom image" className="disclosure-offset">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -164,7 +164,7 @@ function FirmwareCard() {
             </span>
           </div>
         </form>
-      </details>
+      </Disclosure>
     </div>
   );
 }
@@ -264,7 +264,7 @@ function AccessCard() {
               disabled={!manageable}
               onClick={() => setStaged(generateAdminKey())}
             >
-              Replace admin key…
+              Replace admin key
             </button>
             <span class="actionstate">The new key is shown once before it takes effect.</span>
           </div>
@@ -362,7 +362,7 @@ function ResetCard() {
           disabled={!writable}
           onClick={() => setConfirming(true)}
         >
-          Factory reset…
+          Factory reset
         </button>
         <span class={`actionstate ${factory.state.cls}`}>{factory.state.text}</span>
       </div>
@@ -406,8 +406,7 @@ function ResetCard() {
 function RawStatusCard() {
   return (
     <div class="card">
-      <details class="plain">
-        <summary>Developer — raw status</summary>
+      <Disclosure title="Developer — raw status">
         <div class="log apidump" style="margin-top:12px">
           {JSON.stringify(status.value, null, 2)}
         </div>
@@ -416,7 +415,7 @@ function RawStatusCard() {
             Full JSON at <code>/api/status</code> · Prometheus at <code>/api/metrics</code>
           </span>
         </div>
-      </details>
+      </Disclosure>
     </div>
   );
 }

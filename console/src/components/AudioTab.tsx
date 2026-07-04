@@ -95,7 +95,7 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
                 disabled={!writable}
                 onClick={onCalibrate}
               >
-                Calibrate levels…
+                Calibrate levels
               </button>
               <span class="help">Measures your source and sets these for you.</span>
             </div>

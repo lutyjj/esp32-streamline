@@ -27,6 +27,7 @@ export function App() {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingSeen, setOnboardingSeen] = useState(false);
   const writable = useWritable();
+  const viewIndex = VIEWS.indexOf(view);
 
   // An unconfigured device goes straight into first-run onboarding, once.
   const setup = setupMode.value;
@@ -62,7 +63,11 @@ export function App() {
 
       {unreachable.value && <div class="connbanner">Device unreachable — retrying…</div>}
 
-      <div class="tabs" role="tablist">
+      <div
+        class="tabs"
+        role="tablist"
+        style={`--tab-count:${VIEWS.length};--tab-index:${viewIndex}`}
+      >
         {VIEWS.map((v) => (
           <button
             key={v}

@@ -68,6 +68,12 @@ button {
 .wordmark span {
   color: var(--accent);
 }
+.devname {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
 .chips {
   display: flex;
   gap: 6px;

@@ -11,6 +11,7 @@
   <header class="masthead">
     <div>
       <h1 class="wordmark">Stream<span>Line</span></h1>
+      <div class="devname" id="deviceName" hidden></div>
       <div class="chips">
         <span class="chip" id="chipVersion">v—</span>
         <span class="chip" id="chipFormat">— Hz</span>
@@ -206,6 +207,25 @@
 
   <!-- ============ SYSTEM ============ -->
   <section class="view" id="view-system">
+    <div class="card gated">
+      <span class="lockhint">Unlock to edit</span>
+      <h2>Device name</h2>
+      <p class="lead">Shown in the console header and browser tab so you can tell devices apart.</p>
+      <form id="nameForm">
+        <div class="formgrid">
+          <div class="field">
+            <label for="device_name">Name</label>
+            <input id="device_name" name="name" type="text" autocomplete="off" maxlength="32" placeholder="e.g. Study CD player">
+            <span class="help">Leave blank to show only the address.</span>
+          </div>
+        </div>
+        <div class="cardfoot">
+          <button class="btn primary" type="submit"><span class="spin"></span>Save name</button>
+          <span class="actionstate"></span>
+        </div>
+      </form>
+    </div>
+
     <div class="card gated">
       <span class="lockhint">Unlock to edit</span>
       <h2>Firmware</h2>

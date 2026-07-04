@@ -12,6 +12,7 @@ const KEY_PASSWORD: &str = "password";
 const KEY_TARGET_HOST: &str = "target_host";
 const KEY_TARGET_PORT: &str = "target_port";
 const KEY_ADMIN_SECRET: &str = "admin_secret";
+const KEY_DEVICE_NAME: &str = "device_name";
 const KEY_INPUT_LINE: &str = "input_line";
 const KEY_INPUT_GAIN: &str = "input_gain";
 const KEY_ADC_ATTENUATION: &str = "adc_attenuation";
@@ -55,6 +56,10 @@ impl ConfigStore {
             target_host: self.required_string(KEY_TARGET_HOST)?,
             target_port: self.required_u16(KEY_TARGET_PORT)?,
             admin_secret: self.required_string(KEY_ADMIN_SECRET)?,
+            // Optional: absent on stores written before names existed, so it
+            // reads best-effort instead of forcing a schema bump that would
+            // re-commission every upgraded device.
+            device_name: self.optional_string(KEY_DEVICE_NAME),
             audio: AudioSettings {
                 input_line: InputLine::try_from(self.required_u8(KEY_INPUT_LINE)?)
                     .map_err(config_error)?,
@@ -73,6 +78,7 @@ impl ConfigStore {
         self.nvs.set_str(KEY_TARGET_HOST, &config.target_host)?;
         self.nvs.set_u16(KEY_TARGET_PORT, config.target_port)?;
         self.nvs.set_str(KEY_ADMIN_SECRET, &config.admin_secret)?;
+        self.nvs.set_str(KEY_DEVICE_NAME, &config.device_name)?;
         self.nvs.set_u8(
             KEY_INPUT_LINE,
             match config.audio.input_line {
@@ -95,6 +101,7 @@ impl ConfigStore {
             KEY_TARGET_HOST,
             KEY_TARGET_PORT,
             KEY_ADMIN_SECRET,
+            KEY_DEVICE_NAME,
             KEY_INPUT_LINE,
             KEY_INPUT_GAIN,
             KEY_ADC_ATTENUATION,
@@ -122,16 +129,16 @@ impl ConfigStore {
     }
 
     pub fn last_fallback(&self) -> String {
-        self.note(KEY_LAST_FALLBACK)
+        self.optional_string(KEY_LAST_FALLBACK)
     }
 
     pub fn last_ota(&self) -> String {
-        self.note(KEY_LAST_OTA)
+        self.optional_string(KEY_LAST_OTA)
     }
 
-    /// Diagnostic notes are best-effort: a missing or unreadable note must not
-    /// take the status endpoint down, so read errors collapse to empty.
-    fn note(&self, key: &str) -> String {
+    /// Best-effort string read for optional fields and diagnostic notes: a
+    /// missing or unreadable value collapses to empty instead of failing.
+    fn optional_string(&self, key: &str) -> String {
         let mut buffer = [0_u8; 256];
         self.nvs
             .get_str(key, &mut buffer)

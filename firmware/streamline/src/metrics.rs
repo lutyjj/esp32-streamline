@@ -393,6 +393,7 @@ streamline_ota_busy 0\n"
     fn snapshot() -> TelemetrySnapshot {
         TelemetrySnapshot {
             firmware_version: "0.3.3",
+            device_name: "Study CD player".to_owned(),
             mode: "streaming",
             config_source: "nvs",
             web_server: true,

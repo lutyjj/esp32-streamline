@@ -2,6 +2,9 @@
 
 pub const MIN_PORT: u16 = 1;
 pub const MAX_ADC_ATTENUATION_DB: u8 = 48;
+/// Longest friendly device name, in characters. Fits an NVS string entry and
+/// a browser tab title.
+pub const MAX_DEVICE_NAME_CHARS: usize = 32;
 /// Minimum length for the admin key that guards the mutating HTTP API.
 pub const MIN_ADMIN_SECRET_LEN: usize = 8;
 /// Version stamped into persisted configuration. An incompatible stored version is
@@ -81,6 +84,7 @@ pub enum ConfigError {
     InvalidInputGain,
     InvalidAdcAttenuation,
     WeakAdminSecret,
+    DeviceNameTooLong,
 }
 
 /// The application-owned configuration loaded from persistent storage.
@@ -97,6 +101,9 @@ pub struct RuntimeConfig {
     /// Admin key required on the mutating HTTP API. Set during commissioning
     /// and write-only: it is persisted but never returned through the API.
     pub admin_secret: String,
+    /// Friendly name that tells devices apart in the console and browser tab.
+    /// Empty means unnamed; clients fall back to the device's address.
+    pub device_name: String,
     pub audio: AudioSettings,
 }
 
@@ -110,6 +117,9 @@ impl RuntimeConfig {
         .validate()?;
         if self.admin_secret.len() < MIN_ADMIN_SECRET_LEN {
             return Err(ConfigError::WeakAdminSecret);
+        }
+        if self.device_name.chars().count() > MAX_DEVICE_NAME_CHARS {
+            return Err(ConfigError::DeviceNameTooLong);
         }
         self.audio.validate()?;
         Ok(())
@@ -171,6 +181,7 @@ mod tests {
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
             admin_secret: "console-secret".to_owned(),
+            device_name: String::new(),
             audio: AudioSettings {
                 input_line: InputLine::Two,
                 input_gain: 0,
@@ -182,6 +193,16 @@ mod tests {
     #[test]
     fn validates_an_owned_runtime_configuration() {
         assert_eq!(sample_runtime_config().validate(), Ok(()));
+    }
+
+    #[test]
+    fn bounds_the_device_name_by_characters_not_bytes() {
+        let mut config = sample_runtime_config();
+        config.device_name = "ü".repeat(super::MAX_DEVICE_NAME_CHARS);
+        assert_eq!(config.validate(), Ok(()));
+
+        config.device_name.push('x');
+        assert_eq!(config.validate(), Err(ConfigError::DeviceNameTooLong));
     }
 
     #[test]

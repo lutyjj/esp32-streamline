@@ -56,7 +56,7 @@ test: image
 # /dev/cu.* device reliably. Install espflash on the host for these two targets.
 flash: build
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	espflash flash --chip esp32 --port $(PORT) $(SRC)/$(ELF)
+	espflash flash --chip esp32 --port $(PORT) --partition-table $(SRC)/partitions.csv $(SRC)/$(ELF)
 
 monitor:
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)

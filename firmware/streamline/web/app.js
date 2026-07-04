@@ -551,6 +551,34 @@ function settingsWritable() {
   return !state.status.auth_required || isUnlocked();
 }
 
+const GATED_CONTROL_SELECTOR =
+  '.gated input:not([type="hidden"]),.gated select,.gated textarea,.gated button';
+
+// Preserve disabled states owned by other UI logic, such as password editing
+// and OTA progress; the lock only re-enables controls it disabled.
+function setLockedGate(el, locked) {
+  if (locked) {
+    if (!('gateTitle' in el.dataset)) el.dataset.gateTitle = el.getAttribute('title') || '';
+    el.title = 'Unlock settings with the admin key';
+    if (!el.disabled) {
+      el.dataset.gateDisabled = 'true';
+      el.disabled = true;
+    }
+    return;
+  }
+
+  if (el.dataset.gateDisabled) {
+    el.disabled = false;
+    delete el.dataset.gateDisabled;
+  }
+  if ('gateTitle' in el.dataset) {
+    const title = el.dataset.gateTitle;
+    if (title) el.title = title;
+    else el.removeAttribute('title');
+    delete el.dataset.gateTitle;
+  }
+}
+
 function renderAuth() {
   const chip = $('lockChip');
   const s = state.status;
@@ -589,14 +617,7 @@ function renderAuth() {
 function renderGating() {
   const writable = settingsWritable();
   document.body.classList.toggle('locked', !writable);
-  const gate =
-    '#audioForm input,#audioForm select,#audioForm button,' +
-    '#setupForm input:not([type="hidden"]),#setupForm button,' +
-    '#customOtaForm input,#customOtaForm button,#restartButton,#factoryButton';
-  for (const el of document.querySelectorAll(gate)) {
-    el.disabled = !writable;
-    el.title = writable ? '' : 'Unlock settings with the admin key';
-  }
+  for (const el of document.querySelectorAll(GATED_CONTROL_SELECTOR)) setLockedGate(el, !writable);
   const keyManageable = Boolean(state.status?.auth_required && isUnlocked());
   for (const el of document.querySelectorAll('#adminKeyForm input,#adminKeyForm button')) {
     el.disabled = !keyManageable;

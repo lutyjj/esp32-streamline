@@ -115,6 +115,7 @@ Flashing runs on the host because Docker Desktop on macOS cannot reliably
 expose serial devices. Install the tool once: `cargo install espflash`.
 
 Docs: [design](docs/design.md) ·
+[user journey](docs/user-journey.md) ·
 [PCM protocol](docs/pcm-protocol.md) ·
 [TCP transport](docs/tcp-transport.md) ·
 [OTA](docs/ota.md) ·

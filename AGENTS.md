@@ -67,10 +67,11 @@ duplication or unlocks a test, not before.
 
 ## Design for the whole journey
 
-The console is one user journey, from first boot to steady streaming. Judge
-any UI change against the whole path: no dead ends, no unexplained
-interruptions, no state the user cannot leave or understand. A change that
-fixes one screen but opens a seam elsewhere in the journey is not done.
+The console is one user journey, from first boot to steady streaming.
+[docs/user-journey.md](docs/user-journey.md) defines its stages and promises;
+judge any UI change against them: no dead ends, no unexplained interruptions,
+no state the user cannot leave or understand. A change that fixes one screen
+but opens a seam elsewhere in the journey is not done.
 
 ## Every capability is an API first
 

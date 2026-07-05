@@ -3,7 +3,8 @@
 use anyhow::Result;
 use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
 
-use crate::config::{AudioSettings, ConfigError, InputLine, RuntimeConfig, CONFIG_SCHEMA_VERSION};
+use crate::board;
+use crate::config::{AudioSettings, ConfigError, RuntimeConfig, CONFIG_SCHEMA_VERSION};
 
 const NAMESPACE: &str = "streamline";
 const KEY_SCHEMA: &str = "schema";
@@ -61,31 +62,26 @@ impl ConfigStore {
             // re-commission every upgraded device.
             device_name: self.optional_string(KEY_DEVICE_NAME),
             audio: AudioSettings {
-                input_line: InputLine::try_from(self.required_u8(KEY_INPUT_LINE)?)
-                    .map_err(config_error)?,
+                input_line: self.required_u8(KEY_INPUT_LINE)?,
                 input_gain: self.required_u8(KEY_INPUT_GAIN)?,
                 adc_attenuation_db: self.required_u8(KEY_ADC_ATTENUATION)?,
             },
         };
-        config.validate().map_err(config_error)?;
+        // A stored line the active board does not advertise fails here, so a
+        // device reflashed for different hardware re-commissions cleanly.
+        config.validate(board::ACTIVE).map_err(config_error)?;
         Ok(Some(config))
     }
 
     pub fn save(&self, config: &RuntimeConfig) -> Result<()> {
-        config.validate().map_err(config_error)?;
+        config.validate(board::ACTIVE).map_err(config_error)?;
         self.nvs.set_str(KEY_SSID, &config.ssid)?;
         self.nvs.set_str(KEY_PASSWORD, &config.password)?;
         self.nvs.set_str(KEY_TARGET_HOST, &config.target_host)?;
         self.nvs.set_u16(KEY_TARGET_PORT, config.target_port)?;
         self.nvs.set_str(KEY_ADMIN_SECRET, &config.admin_secret)?;
         self.nvs.set_str(KEY_DEVICE_NAME, &config.device_name)?;
-        self.nvs.set_u8(
-            KEY_INPUT_LINE,
-            match config.audio.input_line {
-                InputLine::One => 1,
-                InputLine::Two => 2,
-            },
-        )?;
+        self.nvs.set_u8(KEY_INPUT_LINE, config.audio.input_line)?;
         self.nvs.set_u8(KEY_INPUT_GAIN, config.audio.input_gain)?;
         self.nvs
             .set_u8(KEY_ADC_ATTENUATION, config.audio.adc_attenuation_db)?;

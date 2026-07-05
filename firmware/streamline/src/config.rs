@@ -1,7 +1,10 @@
-//! Validated, hardware-independent provisioning settings.
+//! Validated provisioning settings. Audio bounds come from the active
+//! board's descriptor (`crate::board`), so validation stays host-testable
+//! and cannot diverge from what the device advertises.
+
+use crate::board::Board;
 
 pub const MIN_PORT: u16 = 1;
-pub const MAX_ADC_ATTENUATION_DB: u8 = 48;
 /// Longest friendly device name, in characters. Fits an NVS string entry and
 /// a browser tab title.
 pub const MAX_DEVICE_NAME_CHARS: usize = 32;
@@ -13,36 +16,22 @@ pub const MIN_ADMIN_SECRET_LEN: usize = 8;
 pub const CONFIG_SCHEMA_VERSION: u8 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InputLine {
-    One,
-    Two,
-}
-
-impl TryFrom<u8> for InputLine {
-    type Error = ConfigError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(Self::One),
-            2 => Ok(Self::Two),
-            _ => Err(ConfigError::InvalidInputLine),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AudioSettings {
-    pub input_line: InputLine,
+    /// Selected input, one of the active board's advertised lines.
+    pub input_line: u8,
     pub input_gain: u8,
     pub adc_attenuation_db: u8,
 }
 
 impl AudioSettings {
-    pub const fn validate(self) -> Result<Self, ConfigError> {
-        if self.input_gain > 100 {
+    pub fn validate(self, board: &Board) -> Result<Self, ConfigError> {
+        if !board.accepts_line(self.input_line) {
+            return Err(ConfigError::InvalidInputLine);
+        }
+        if self.input_gain > board.input_gain_max {
             return Err(ConfigError::InvalidInputGain);
         }
-        if self.adc_attenuation_db > MAX_ADC_ATTENUATION_DB {
+        if self.adc_attenuation_db > board.adc_atten_max_db {
             return Err(ConfigError::InvalidAdcAttenuation);
         }
         Ok(self)
@@ -107,7 +96,7 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    pub fn validate(&self) -> Result<(), ConfigError> {
+    pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
         NetworkSettings {
             ssid: &self.ssid,
             target_host: &self.target_host,
@@ -120,14 +109,15 @@ impl RuntimeConfig {
         if self.device_name.chars().count() > MAX_DEVICE_NAME_CHARS {
             return Err(ConfigError::DeviceNameTooLong);
         }
-        self.audio.validate()?;
+        self.audio.validate(board)?;
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{AudioSettings, ConfigError, InputLine, NetworkSettings};
+    use super::{AudioSettings, ConfigError, NetworkSettings};
+    use crate::board;
 
     #[test]
     fn accepts_the_deployed_network_shape() {
@@ -171,16 +161,34 @@ mod tests {
     }
 
     #[test]
-    fn validates_audio_bounds() {
-        assert_eq!(InputLine::try_from(3), Err(ConfigError::InvalidInputLine));
+    fn validates_audio_against_the_board() {
+        let board = board::ACTIVE;
         assert_eq!(
             AudioSettings {
-                input_line: InputLine::Two,
-                input_gain: 101,
+                input_line: 3,
+                input_gain: 0,
                 adc_attenuation_db: 0,
             }
-            .validate(),
+            .validate(board),
+            Err(ConfigError::InvalidInputLine)
+        );
+        assert_eq!(
+            AudioSettings {
+                input_line: 2,
+                input_gain: board.input_gain_max + 1,
+                adc_attenuation_db: 0,
+            }
+            .validate(board),
             Err(ConfigError::InvalidInputGain)
+        );
+        assert_eq!(
+            AudioSettings {
+                input_line: 2,
+                input_gain: 0,
+                adc_attenuation_db: board.adc_atten_max_db + 1,
+            }
+            .validate(board),
+            Err(ConfigError::InvalidAdcAttenuation)
         );
     }
 
@@ -193,7 +201,7 @@ mod tests {
             admin_secret: "console-secret".to_owned(),
             device_name: String::new(),
             audio: AudioSettings {
-                input_line: InputLine::Two,
+                input_line: 2,
                 input_gain: 0,
                 adc_attenuation_db: 0,
             },
@@ -202,26 +210,35 @@ mod tests {
 
     #[test]
     fn validates_an_owned_runtime_configuration() {
-        assert_eq!(sample_runtime_config().validate(), Ok(()));
+        assert_eq!(sample_runtime_config().validate(board::ACTIVE), Ok(()));
     }
 
     #[test]
     fn bounds_the_device_name_by_characters_not_bytes() {
         let mut config = sample_runtime_config();
         config.device_name = "ü".repeat(super::MAX_DEVICE_NAME_CHARS);
-        assert_eq!(config.validate(), Ok(()));
+        assert_eq!(config.validate(board::ACTIVE), Ok(()));
 
         config.device_name.push('x');
-        assert_eq!(config.validate(), Err(ConfigError::DeviceNameTooLong));
+        assert_eq!(
+            config.validate(board::ACTIVE),
+            Err(ConfigError::DeviceNameTooLong)
+        );
     }
 
     #[test]
     fn rejects_a_short_admin_secret() {
         let mut config = sample_runtime_config();
         config.admin_secret = "short".to_owned();
-        assert_eq!(config.validate(), Err(ConfigError::WeakAdminSecret));
+        assert_eq!(
+            config.validate(board::ACTIVE),
+            Err(ConfigError::WeakAdminSecret)
+        );
 
         config.admin_secret = String::new();
-        assert_eq!(config.validate(), Err(ConfigError::WeakAdminSecret));
+        assert_eq!(
+            config.validate(board::ACTIVE),
+            Err(ConfigError::WeakAdminSecret)
+        );
     }
 }

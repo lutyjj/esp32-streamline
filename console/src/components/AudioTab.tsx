@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'preact/hooks';
 import { postForm } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
-import { config } from '../state/device';
+import { config, status } from '../state/device';
 import { Meter } from './Meter';
 import { ActionState, TransactButton } from './Transact';
 
 export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
   const writable = useWritable();
   const transact = useTransact();
+  // Board facts come from the device; the console hardcodes none of them.
+  const caps = status.value?.capabilities;
   const [line, setLine] = useState('2');
   const [gain, setGain] = useState('0');
   const [atten, setAtten] = useState('0');
@@ -50,8 +52,11 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
                 value={line}
                 onChange={(e) => setLine(e.currentTarget.value)}
               >
-                <option value="2">Line 2 — 3.5 mm jack</option>
-                <option value="1">Line 1 — header pins</option>
+                {(caps?.input_lines ?? []).map((option) => (
+                  <option key={option.line} value={String(option.line)}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div class="field">
@@ -61,12 +66,12 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
                   id="input_gain"
                   type="number"
                   min="0"
-                  max="100"
+                  max={caps?.input_gain_max}
                   disabled={!writable}
                   value={gain}
                   onInput={(e) => setGain(e.currentTarget.value)}
                 />
-                <span class="u">/ 100</span>
+                <span class="u">/ {caps?.input_gain_max ?? '—'}</span>
               </div>
               <span class="help">Leave at 0 for line-level sources.</span>
             </div>
@@ -77,7 +82,7 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
                   id="adc_atten_db"
                   type="number"
                   min="0"
-                  max="48"
+                  max={caps?.adc_atten_max_db}
                   disabled={!writable}
                   value={atten}
                   onInput={(e) => setAtten(e.currentTarget.value)}

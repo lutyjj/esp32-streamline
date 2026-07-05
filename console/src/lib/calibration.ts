@@ -15,8 +15,9 @@ export const CAL_POLL_MS = 500;
 export const CAL_SILENCE_SAMPLES = 8;
 /** Clean polls required at one attenuation before it is accepted (~3 s). */
 export const CAL_WINDOW_SAMPLES = 6;
-/** Attenuation step between windows; divides the 48 dB range evenly. */
+/** Attenuation step between windows; divides the default range evenly. */
 export const CAL_ATTEN_STEP = 3;
+/** Fallback attenuation ceiling when the device has not reported its own. */
 export const CAL_ATTEN_MAX = 48;
 /** RMS below this is not playback — mirrors the firmware's start gate. */
 export const CAL_SIGNAL_RMS = 150;
@@ -52,12 +53,21 @@ export type LoudResult =
   | { kind: 'apply-failed'; message: string }
   | { kind: 'cancelled' };
 
+/** Attenuation range to walk; the board's reported capabilities set it. */
+export interface CalibrationRange {
+  attenMax: number;
+  attenStep: number;
+}
+
 export class CalibrationEngine {
   private cancelled = false;
   /** The attenuation last written to the device, or null if none was. */
   applied: number | null = null;
 
-  constructor(private deps: CalibrationDeps) {}
+  constructor(
+    private deps: CalibrationDeps,
+    private range: CalibrationRange = { attenMax: CAL_ATTEN_MAX, attenStep: CAL_ATTEN_STEP },
+  ) {}
 
   cancel(): void {
     this.cancelled = true;
@@ -138,8 +148,8 @@ export class CalibrationEngine {
       count += 1;
       windowPeak = Math.max(windowPeak, s.peak);
       if (s.clipped > windowStart || s.peak >= s.threshold) {
-        if (atten >= CAL_ATTEN_MAX) return { kind: 'still-clipping-at-max' };
-        atten += CAL_ATTEN_STEP;
+        if (atten >= this.range.attenMax) return { kind: 'still-clipping-at-max' };
+        atten += this.range.attenStep;
         try {
           await this.applyAttenuation(atten);
         } catch (error) {

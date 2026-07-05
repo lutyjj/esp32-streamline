@@ -21,7 +21,8 @@ use crate::{
         ota::{self, OtaProgress},
         wifi,
     },
-    config::{AudioSettings, InputLine, RuntimeConfig},
+    board,
+    config::{AudioSettings, RuntimeConfig},
     levels::CLIP_THRESHOLD_ABS,
     metrics::render_prometheus,
     runtime::StreamStatus,
@@ -184,11 +185,12 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     .map_err(|_| anyhow!("configuration lock poisoned"))?
                     .clone();
                 let audio = AudioSettings {
-                    input_line: InputLine::try_from(parse_u8(&form, "line")?)
-                        .map_err(|_| anyhow!("line must be 1 or 2"))?,
+                    input_line: parse_u8(&form, "line")?,
                     input_gain: parse_u8(&form, "gain")?,
                     adc_attenuation_db: parse_u8(&form, "atten")?,
-                };
+                }
+                .validate(board::ACTIVE)
+                .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
                 save(&state_for_audio, RuntimeConfig { audio, ..current })?;
                 let Some(codec) = &state_for_audio.codec else {
                     return Ok(false);
@@ -352,7 +354,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
 
 fn save(state: &ApiState, config: RuntimeConfig) -> Result<()> {
     config
-        .validate()
+        .validate(board::ACTIVE)
         .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
     state
         .store
@@ -613,12 +615,49 @@ struct StatusResponse<'a> {
     web_server: bool,
     configuration_writable: bool,
     auth_required: bool,
+    capabilities: CapabilitiesStatus,
     wifi: WifiStatus<'a>,
     target: TargetStatus<'a>,
     audio: AudioStatus,
     metrics: MetricsStatus,
     diagnostics: DiagnosticsStatus<'a>,
     ota: OtaStatus<'a>,
+}
+
+/// The active board's facts, from its descriptor in [`crate::board`]; the
+/// console renders its audio controls from this. Mirrors `capabilities` in
+/// `console/src/lib/api.ts`.
+#[derive(Serialize)]
+struct CapabilitiesStatus {
+    board: &'static str,
+    input_lines: Vec<InputLineStatus>,
+    input_gain_max: u8,
+    adc_atten_max_db: u8,
+}
+
+#[derive(Serialize)]
+struct InputLineStatus {
+    line: u8,
+    label: &'static str,
+}
+
+impl CapabilitiesStatus {
+    fn current() -> Self {
+        let board = board::ACTIVE;
+        Self {
+            board: board.name,
+            input_lines: board
+                .input_lines
+                .iter()
+                .map(|option| InputLineStatus {
+                    line: option.line,
+                    label: option.label,
+                })
+                .collect(),
+            input_gain_max: board.input_gain_max,
+            adc_atten_max_db: board.adc_atten_max_db,
+        }
+    }
 }
 
 /// Post-mortem evidence for boots the user did not watch: why the device is
@@ -696,7 +735,7 @@ fn config_json(state: &ApiState) -> String {
         ssid: &config.ssid,
         target_host: &config.target_host,
         target_port: config.target_port,
-        input_line: line(config.audio.input_line),
+        input_line: config.audio.input_line,
         input_gain: config.audio.input_gain,
         adc_atten_db: config.audio.adc_attenuation_db,
         config_source: "nvs",
@@ -750,7 +789,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             transport: "tcp",
         },
         audio: AudioTelemetry {
-            input_line: line(config.audio.input_line),
+            input_line: config.audio.input_line,
             input_gain: config.audio.input_gain,
             adc_attenuation_db: config.audio.adc_attenuation_db,
             sample_rate_hz: 48_000,
@@ -821,6 +860,7 @@ impl<'a> From<&'a TelemetrySnapshot> for StatusResponse<'a> {
             web_server: snapshot.web_server,
             configuration_writable: snapshot.configuration_writable,
             auth_required: snapshot.auth_required,
+            capabilities: CapabilitiesStatus::current(),
             wifi: WifiStatus {
                 hostname: &snapshot.wifi.hostname,
                 ssid: &snapshot.wifi.ssid,
@@ -882,13 +922,6 @@ impl<'a> From<&'a TelemetrySnapshot> for StatusResponse<'a> {
 /// `serde_json` never fails to encode.
 fn serialize<T: Serialize>(value: &T) -> String {
     serde_json::to_string(value).expect("response is always serializable")
-}
-
-const fn line(line: InputLine) -> u8 {
-    match line {
-        InputLine::One => 1,
-        InputLine::Two => 2,
-    }
 }
 
 #[cfg(test)]

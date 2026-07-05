@@ -17,7 +17,8 @@ use streamline_firmware::{
         tcp::TargetAddress,
         time, wifi,
     },
-    config::{AudioSettings, InputLine, RuntimeConfig},
+    board,
+    config::{AudioSettings, RuntimeConfig},
     identity, runtime,
 };
 
@@ -177,7 +178,7 @@ fn start_setup(wifi: &mut wifi::WifiController<'_>, suffix: &str) -> Result<Setu
             // Safe line-in baseline: 0 dB PGA (no clipping) on line 2. Adjust per
             // board in setup mode.
             audio: AudioSettings {
-                input_line: InputLine::Two,
+                input_line: board::ACTIVE.default_line(),
                 input_gain: 0,
                 adc_attenuation_db: 0,
             },

@@ -25,6 +25,15 @@ export function deviceStatus(
     web_server: true,
     configuration_writable: true,
     auth_required: true,
+    capabilities: {
+      board: 'ESP32 Audio Kit (ES8388)',
+      input_lines: [
+        { line: 2, label: 'Line 2 — 3.5 mm jack' },
+        { line: 1, label: 'Line 1 — header pins' },
+      ],
+      input_gain_max: 100,
+      adc_atten_max_db: 48,
+    },
     wifi: {
       hostname: 'streamline-0000.local',
       ssid: 'home',

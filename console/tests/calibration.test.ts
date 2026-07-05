@@ -7,6 +7,7 @@ import {
   CAL_WINDOW_SAMPLES,
   type CalibrationDeps,
   CalibrationEngine,
+  type CalibrationRange,
   type LevelSample,
 } from '../src/lib/calibration';
 
@@ -17,18 +18,25 @@ function sample(rms: number, peak = rms, clipped = 0): LevelSample {
 }
 
 /** Engine wired to a scripted sample feed; applied attenuations are recorded. */
-function engineWith(samples: LevelSample[], overrides: Partial<CalibrationDeps> = {}) {
+function engineWith(
+  samples: LevelSample[],
+  overrides: Partial<CalibrationDeps> = {},
+  range?: CalibrationRange,
+) {
   const applied: number[] = [];
   let index = 0;
-  const engine = new CalibrationEngine({
-    sample: async () => samples[Math.min(index++, samples.length - 1)],
-    applyAttenuation: async (atten) => {
-      applied.push(atten);
+  const engine = new CalibrationEngine(
+    {
+      sample: async () => samples[Math.min(index++, samples.length - 1)],
+      applyAttenuation: async (atten) => {
+        applied.push(atten);
+      },
+      delay: async () => {},
+      log: () => {},
+      ...overrides,
     },
-    delay: async () => {},
-    log: () => {},
-    ...overrides,
-  });
+    range,
+  );
   return { engine, applied };
 }
 
@@ -132,6 +140,18 @@ describe('findAttenuation', () => {
     const outcome = await engine.findAttenuation(30);
     expect(outcome.kind).toBe('still-clipping-at-max');
     expect(applied.at(-1)).toBe(CAL_ATTEN_MAX);
+  });
+
+  it('walks only the range the board reports', async () => {
+    // Every window clips; a board with a 6 dB ceiling gives up at 6 dB.
+    const feed: LevelSample[] = [sample(LOUD, LOUD)];
+    for (let i = 0; i <= 2; i += 1) {
+      feed.push(sample(LOUD, LOUD), sample(LOUD, THRESHOLD));
+    }
+    const { engine, applied } = engineWith(feed, {}, { attenMax: 6, attenStep: 3 });
+    const outcome = await engine.findAttenuation(30);
+    expect(outcome.kind).toBe('still-clipping-at-max');
+    expect(applied.at(-1)).toBe(6);
   });
 
   it('reports a failed settings write instead of looping', async () => {

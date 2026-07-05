@@ -9,6 +9,7 @@ import { Toasts } from './components/Toasts';
 import { WizardOverlay } from './components/WizardOverlay';
 import { useWritable } from './lib/hooks';
 import { setupMode, status, unreachable } from './state/device';
+import { handoff, handoffMessage } from './state/join';
 import { toast } from './state/toasts';
 
 const VIEWS = ['overview', 'audio', 'network', 'system'] as const;
@@ -61,7 +62,11 @@ export function App() {
     <main class="wrap">
       <Masthead />
 
-      {unreachable.value && <div class="connbanner">Device unreachable — retrying…</div>}
+      {handoff.value ? (
+        <div class="connbanner">{handoffMessage()}</div>
+      ) : (
+        unreachable.value && <div class="connbanner">Device unreachable — retrying…</div>
+      )}
 
       <div
         class="tabs"

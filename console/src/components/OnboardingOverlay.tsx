@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { unlockSettings } from '../lib/adminKey';
-import { postForm } from '../lib/api';
 import { errorMessage } from '../lib/errors';
-import { status } from '../state/device';
-import { beginRebootWait } from '../state/rebootWait';
+import { expectedHostname, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { KeyReveal } from './KeyReveal';
 
@@ -36,31 +33,19 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
     }
   }
 
-  /**
-   * Save Wi-Fi credentials and the admin key. Only the device's confirmation
-   * advances to the joining screen: the response is flushed before the
-   * restart, so a failed request means nothing was saved and the error is
-   * shown where the user can act on it.
-   */
+  /** Advance to the joining screen only on the device's confirmation. */
   async function join() {
     setBusy(true);
     setError('');
     try {
-      // No target_host: the bridge is configured later, from the home network.
-      await postForm('/api/settings/network', {
-        ssid: ssid.trim(),
-        password,
-        target_port: String(status.value?.target?.target_port || 39000),
-        admin_secret: setupKey.value,
-      });
+      // No target: the bridge is configured later, from the home network.
+      await joinNetwork({ ssid, password, rememberKey: remember });
     } catch (err) {
       setBusy(false);
       setError(`Not saved — ${errorMessage(err)}`);
       return;
     }
     setBusy(false);
-    unlockSettings(setupKey.value, remember);
-    beginRebootWait('the network settings');
     setStep(3);
   }
 
@@ -151,7 +136,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
 
 function JoiningStep({ ssid }: { ssid: string }) {
   const [elapsed, setElapsed] = useState(0);
-  const hostname = status.value?.wifi?.hostname || 'streamline-xxxx.local';
+  const hostname = expectedHostname();
 
   useEffect(() => {
     const tick = setInterval(() => {

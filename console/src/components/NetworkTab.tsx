@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
-import { unlockSettings } from '../lib/adminKey';
 import { postForm } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, noBridge, packetsMoving, setupMode, status } from '../state/device';
+import { handoffMessage, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
 import { KeyReveal } from './KeyReveal';
@@ -43,28 +43,29 @@ export function NetworkTab() {
         if (host.includes(':') || host.includes('/')) {
           throw new Error('target host must not include port, scheme, or path');
         }
-        const fields: Record<string, string> = {
+        if (firstSetup) {
+          // A first join is a network handoff, not a reboot wait: this
+          // browser stays behind on the vanishing setup network.
+          const data = await joinNetwork({
+            ssid,
+            password,
+            targetHost: host,
+            targetPort,
+            rememberKey,
+          });
+          toast(handoffMessage(), 'wait', 0);
+          return data;
+        }
+        return postForm('/api/settings/network', {
           ssid: ssid.trim(),
           password: passwordEditable ? password : '',
           target_host: host,
           target_port: targetPort,
-        };
-        if (firstSetup) fields.admin_secret = setupKey.value;
-        const data = await postForm('/api/settings/network', fields);
-        if (firstSetup && setupKey.value) {
-          // The device reboots onto the home network; keep the key so this
-          // browser can unlock it there.
-          unlockSettings(setupKey.value, rememberKey);
-          const hostname = s?.wifi?.hostname || 'streamline-xxxx.local';
-          toast(
-            `The setup network disappears now — reconnect to your own Wi-Fi, then open http://${hostname}/.`,
-            'wait',
-            0,
-          );
-        }
-        return data;
+        });
       },
-      { busyText: 'Saving…', reboots: 'the network settings' },
+      firstSetup
+        ? { busyText: 'Saving…', okText: 'Saved — the device is joining your network' }
+        : { busyText: 'Saving…', reboots: 'the network settings' },
     );
   }
 

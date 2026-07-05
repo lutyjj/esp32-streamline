@@ -24,7 +24,7 @@ pub struct AudioSettings {
 }
 
 impl AudioSettings {
-    pub fn validate(self, board: &Board) -> Result<Self, ConfigError> {
+    pub fn validate(self, board: &Board<'_>) -> Result<Self, ConfigError> {
         if !board.accepts_line(self.input_line) {
             return Err(ConfigError::InvalidInputLine);
         }
@@ -96,7 +96,7 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
+    pub fn validate(&self, board: &Board<'_>) -> Result<(), ConfigError> {
         NetworkSettings {
             ssid: &self.ssid,
             target_host: &self.target_host,

@@ -55,6 +55,7 @@ fn main() -> Result<()> {
                         peripherals.i2c0,
                         peripherals.pins.gpio33,
                         peripherals.pins.gpio32,
+                        board::ACTIVE.codec,
                         config.audio,
                     )?;
                     let streaming = target.is_some();

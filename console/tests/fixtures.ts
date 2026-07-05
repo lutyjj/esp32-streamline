@@ -26,7 +26,9 @@ export function deviceStatus(
     configuration_writable: true,
     auth_required: true,
     capabilities: {
-      board: 'ESP32 Audio Kit (ES8388)',
+      board_id: 'ai-thinker-esp32-audio-kit-v2-2-es8388',
+      board: 'Ai-Thinker ESP32 Audio Kit v2.2 (ES8388)',
+      codec: { driver: 'es8388', i2c_address: 0x10 },
       input_lines: [
         { line: 2, label: 'Line 2 — 3.5 mm jack' },
         { line: 1, label: 'Line 1 — header pins' },

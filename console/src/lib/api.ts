@@ -21,7 +21,9 @@ export interface DeviceStatus {
   auth_required: boolean;
   /** Mirrors `CapabilitiesStatus`: the active board's facts, which the audio controls render from. */
   capabilities: {
+    board_id: string;
     board: string;
+    codec: { driver: string; i2c_address: number };
     input_lines: { line: number; label: string }[];
     input_gain_max: number;
     adc_atten_max_db: number;

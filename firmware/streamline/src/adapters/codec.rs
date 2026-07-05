@@ -1,15 +1,16 @@
-//! Minimal, board-specific audio codec configuration.
+//! Minimal audio codec configuration.
 //!
 //! This is deliberately not a port of the Arduino audio-driver abstraction.
 //! The register sequence is the small, auditable subset required for the
-//! original ESP32 Audio Kit: ES8388 in I2S slave mode, 48 kHz/16-bit stereo,
-//! an ADC input selected from line one or two, and no DAC output.
+//! current Ai-Thinker ESP32 Audio Kit v2.2 preset: ES8388 in I2S slave mode,
+//! 48 kHz/16-bit stereo, an ADC input selected from line one or two, and no
+//! DAC output.
 //!
-//! The [`Codec`] trait keeps the ES8388 as one implementation so other
-//! ESP32-A1S codec variants (for example the AC101 at I2C `0x1A`) can be added
-//! as their own `Codec` impl without touching the capture or transport paths.
+//! A board descriptor selects a codec driver by stable id. New codec chips add
+//! one implementation plus one resolver entry; capture and transport never name
+//! a codec.
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use esp_idf_svc::hal::{
     delay::BLOCK,
     gpio::{Gpio32, Gpio33},
@@ -17,21 +18,48 @@ use esp_idf_svc::hal::{
     units::Hertz,
 };
 
-use crate::config::AudioSettings;
+use crate::{
+    board::{CodecDriverId, CodecSpec},
+    config::AudioSettings,
+};
 
 /// A line-in capture codec on the shared I2C control bus.
-pub trait Codec {
-    /// 7-bit I2C address the codec answers on.
-    const I2C_ADDRESS: u8;
-
+trait CodecDriver {
     /// Apply the capture configuration over an already-open I2C bus: I2S slave
     /// at 48 kHz/16-bit stereo, with the selected input line, gain, and ADC
     /// attenuation.
-    fn configure(bus: &mut I2cDriver<'_>, audio: AudioSettings) -> Result<()>;
+    fn configure(bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()>;
 
     /// Rewrite only the input controls — line, gain, attenuation — on a codec
     /// that is already running, without a reset or capture interruption.
-    fn apply(bus: &mut I2cDriver<'_>, audio: AudioSettings) -> Result<()>;
+    fn apply(bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Driver {
+    Es8388,
+}
+
+impl Driver {
+    fn resolve(id: CodecDriverId<'_>) -> Result<Self> {
+        if id == CodecDriverId::ES8388 {
+            Ok(Self::Es8388)
+        } else {
+            Err(anyhow!("unsupported codec driver '{}'", id.as_str()))
+        }
+    }
+
+    fn configure(self, bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()> {
+        match self {
+            Self::Es8388 => Es8388::configure(bus, address, audio),
+        }
+    }
+
+    fn apply(self, bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()> {
+        match self {
+            Self::Es8388 => Es8388::apply(bus, address, audio),
+        }
+    }
 }
 
 /// Open the control bus, configure the board's codec, and return a handle that
@@ -40,32 +68,40 @@ pub fn configure<'d>(
     i2c: I2C0<'d>,
     sda: Gpio33<'d>,
     scl: Gpio32<'d>,
+    codec: CodecSpec<'_>,
     audio: AudioSettings,
 ) -> Result<CodecControl<'d>> {
+    let driver = Driver::resolve(codec.driver)?;
     let config = I2cConfig::new()
         .baudrate(Hertz(100_000))
         .sda_enable_pullup(true)
         .scl_enable_pullup(true);
     let mut bus = I2cDriver::new(i2c, sda, scl, &config)?;
-    Es8388::configure(&mut bus, audio)?;
-    Ok(CodecControl { bus })
+    driver.configure(&mut bus, codec.i2c_address, audio)?;
+    Ok(CodecControl {
+        bus,
+        driver,
+        i2c_address: codec.i2c_address,
+    })
 }
 
 /// Owns the codec's I2C control bus after boot so input settings can change
 /// without rebooting the device.
 pub struct CodecControl<'d> {
     bus: I2cDriver<'d>,
+    driver: Driver,
+    i2c_address: u8,
 }
 
 impl CodecControl<'_> {
     /// Apply new input settings to the running codec.
     pub fn apply(&mut self, audio: AudioSettings) -> Result<()> {
-        Es8388::apply(&mut self.bus, audio)
+        self.driver.apply(&mut self.bus, self.i2c_address, audio)
     }
 }
 
-/// ES8388 ADC at I2C `0x10` — the codec on the Ai-Thinker ESP32-A1S / Audio Kit.
-pub struct Es8388;
+/// ES8388 ADC codec.
+struct Es8388;
 
 const CONTROL1: u8 = 0x00;
 const CONTROL2: u8 = 0x01;
@@ -89,10 +125,8 @@ const DAC_CONTROL20: u8 = 0x2a;
 const DAC_CONTROL21: u8 = 0x2b;
 const DAC_CONTROL23: u8 = 0x2d;
 
-impl Codec for Es8388 {
-    const I2C_ADDRESS: u8 = 0x10;
-
-    fn configure(bus: &mut I2cDriver<'_>, audio: AudioSettings) -> Result<()> {
+impl CodecDriver for Es8388 {
+    fn configure(bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()> {
         // Reset/normal power state and I2S slave clocking.
         for (register, value) in [
             (DAC_CONTROL3, 0x04),
@@ -125,14 +159,14 @@ impl Codec for Es8388 {
             (ADC_CONTROL9, attenuation_register(audio.adc_attenuation_db)),
             (ADC_POWER, 0x09),
         ] {
-            bus.write(Self::I2C_ADDRESS, &[register, value], BLOCK)?;
+            bus.write(address, &[register, value], BLOCK)?;
         }
         Ok(())
     }
 
-    fn apply(bus: &mut I2cDriver<'_>, audio: AudioSettings) -> Result<()> {
+    fn apply(bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()> {
         for (register, value) in input_controls(audio) {
-            bus.write(Self::I2C_ADDRESS, &[register, value], BLOCK)?;
+            bus.write(address, &[register, value], BLOCK)?;
         }
         Ok(())
     }

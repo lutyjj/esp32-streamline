@@ -15,8 +15,8 @@ export function Meter({ foot = false }: { foot?: boolean }) {
           <span key={s}>{s}</span>
         ))}
       </div>
-      <Row label="L" rms={m?.rms_left ?? 0} peak={hold.left} />
-      <Row label="R" rms={m?.rms_right ?? 0} peak={hold.right} />
+      <MeterRow label="L" rms={m?.rms_left ?? 0} peak={hold.left} />
+      <MeterRow label="R" rms={m?.rms_right ?? 0} peak={hold.right} />
       {foot && m && (
         <div class="meterfoot">
           <span>
@@ -38,7 +38,8 @@ export function Meter({ foot = false }: { foot?: boolean }) {
   );
 }
 
-function Row({ label, rms, peak }: { label: string; rms: number; peak: number }) {
+/** One channel of the meter; standalone users wrap it in a `.meter` container. */
+export function MeterRow({ label, rms, peak }: { label: string; rms: number; peak: number }) {
   return (
     <div class="meterrow">
       <span class="chn">{label}</span>

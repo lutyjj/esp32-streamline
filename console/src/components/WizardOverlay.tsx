@@ -1,10 +1,11 @@
 import { useRef, useState } from 'preact/hooks';
 import { getStatus, postForm } from '../lib/api';
 import { CAL_ATTEN_MAX, CalibrationEngine, type LevelSample } from '../lib/calibration';
-import { dbfs, meterPct } from '../lib/format';
+import { dbfs } from '../lib/format';
 import { loadConfig, status } from '../state/device';
 import { toast } from '../state/toasts';
 import { Kv } from './Kv';
+import { MeterRow } from './Meter';
 
 interface LogLine {
   text: string;
@@ -228,17 +229,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
               </p>
             </div>
             <div class="meter">
-              <div class="meterrow">
-                <span class="chn">In</span>
-                <div class="track">
-                  <div class="zones" />
-                  <div
-                    class="fill"
-                    style={{ clipPath: `inset(0 ${100 - meterPct(live.rms)}% 0 0)` }}
-                  />
-                  <div class="peakhold" style={{ left: `calc(${meterPct(live.peak)}% - 1px)` }} />
-                </div>
-              </div>
+              <MeterRow label="In" rms={live.rms} peak={live.peak} />
             </div>
             <div class="log wizlog">
               {log.map((line, i) => (

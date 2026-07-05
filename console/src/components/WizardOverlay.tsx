@@ -19,9 +19,12 @@ interface AudioBaseline {
   atten: number;
 }
 
+const WIZARD_STEPS = ['prepare', 'silence', 'loud', 'done'] as const;
+type WizardStep = (typeof WIZARD_STEPS)[number];
+
 /** Calibration wizard: prepare · silence · loud · done. */
 export function WizardOverlay({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<WizardStep>('prepare');
   const [floor, setFloor] = useState<number | null>(null);
   const [floorText, setFloorText] = useState('—');
   const [floorOk, setFloorOk] = useState(false);
@@ -116,14 +119,14 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
     setResult({ atten: outcome.atten, peakDb: outcome.peakDb });
     // The calibrated value is already live on the device; refresh the audio form.
     loadConfig().catch(() => {});
-    show(4);
+    show('done');
   }
 
-  function show(next: number) {
+  function show(next: WizardStep) {
     engine.current?.cancel();
     setStep(next);
-    if (next === 2) runSilence();
-    if (next === 3) runLoud();
+    if (next === 'silence') runSilence();
+    if (next === 'loud') runLoud();
   }
 
   async function close(restore: boolean) {
@@ -161,19 +164,21 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
       ]
     : [];
 
+  const stepIndex = WIZARD_STEPS.indexOf(step);
+
   return (
     <div class="overlay">
       <div class="sheet" role="dialog" aria-modal="true" aria-label="Level calibration">
         <div class="stepline">
           LEVEL CALIBRATION
           <span class="stepdots">
-            {[1, 2, 3, 4].map((i) => (
-              <i key={i} class={i <= step ? 'on' : ''} />
+            {WIZARD_STEPS.map((name, i) => (
+              <i key={name} class={i <= stepIndex ? 'on' : ''} />
             ))}
           </span>
         </div>
 
-        {step === 1 && (
+        {step === 'prepare' && (
           <div>
             <h3>Calibrate input levels</h3>
             <div class="body">
@@ -197,7 +202,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {step === 2 && (
+        {step === 'silence' && (
           <div>
             <h3>First, measure the quiet</h3>
             <div class="body">
@@ -217,7 +222,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {step === 3 && (
+        {step === 'loud' && (
           <div>
             <h3>Now play the loudest track you have</h3>
             <div class="body">
@@ -239,7 +244,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {step === 4 && result && (
+        {step === 'done' && result && (
           <div>
             <h3>Calibrated</h3>
             <div class="body">
@@ -255,28 +260,32 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
 
         <div class="sheetfoot">
           <button class="btn secondary" type="button" onClick={() => close(true)}>
-            {step === 4 ? 'Undo & close' : 'Cancel'}
+            {step === 'done' ? 'Undo & close' : 'Cancel'}
           </button>
           <div class="row">
-            {step > 1 && step < 4 && (
-              <button class="btn secondary" type="button" onClick={() => show(step - 1)}>
+            {stepIndex > 0 && step !== 'done' && (
+              <button
+                class="btn secondary"
+                type="button"
+                onClick={() => show(WIZARD_STEPS[stepIndex - 1])}
+              >
                 Back
               </button>
             )}
-            {step !== 3 && (
+            {step !== 'loud' && (
               <button
                 class="btn primary"
                 type="button"
-                disabled={step === 2 && !floorOk && !silenceNote}
+                disabled={step === 'silence' && !floorOk && !silenceNote}
                 onClick={() => {
-                  if (step === 1) show(2);
-                  else if (step === 2) show(floorOk ? 3 : 2);
-                  else if (step === 4) close(false);
+                  if (step === 'prepare') show('silence');
+                  else if (step === 'silence') show(floorOk ? 'loud' : 'silence');
+                  else if (step === 'done') close(false);
                 }}
               >
-                {step === 1
+                {step === 'prepare'
                   ? 'Start'
-                  : step === 2
+                  : step === 'silence'
                     ? silenceNote
                       ? 'Measure again'
                       : 'Continue'

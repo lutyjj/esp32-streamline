@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'preact/hooks';
-import { unlockSettings } from '../lib/adminKey';
-import { postForm } from '../lib/api';
 import { errorMessage } from '../lib/errors';
-import { status } from '../state/device';
-import { beginRebootWait } from '../state/rebootWait';
+import { expectedHostname, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { KeyReveal } from './KeyReveal';
 
 /** Seconds the device takes to restart onto the home network. */
 export const ONBOARDING_REBOOT_SECS = 10;
 
+const ONBOARDING_STEPS = ['wifi', 'key', 'joining'] as const;
+type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
 /** First-run onboarding: Wi-Fi · admin key · joining. */
 export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<OnboardingStep>('wifi');
   const [ssid, setSsid] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
@@ -21,7 +21,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
 
   function next() {
     setError('');
-    if (step === 1) {
+    if (step === 'wifi') {
       if (!ssid.trim()) {
         setError('Enter your Wi-Fi network name');
         return;
@@ -30,38 +30,26 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
         setError('Enter the Wi-Fi password');
         return;
       }
-      setStep(2);
-    } else if (step === 2) {
+      setStep('key');
+    } else if (step === 'key') {
       join();
     }
   }
 
-  /**
-   * Save Wi-Fi credentials and the admin key. Only the device's confirmation
-   * advances to the joining screen: the response is flushed before the
-   * restart, so a failed request means nothing was saved and the error is
-   * shown where the user can act on it.
-   */
+  /** Advance to the joining screen only on the device's confirmation. */
   async function join() {
     setBusy(true);
     setError('');
     try {
-      // No target_host: the bridge is configured later, from the home network.
-      await postForm('/api/settings/network', {
-        ssid: ssid.trim(),
-        password,
-        target_port: String(status.value?.target?.target_port || 39000),
-        admin_secret: setupKey.value,
-      });
+      // No target: the bridge is configured later, from the home network.
+      await joinNetwork({ ssid, password, rememberKey: remember });
     } catch (err) {
       setBusy(false);
       setError(`Not saved — ${errorMessage(err)}`);
       return;
     }
     setBusy(false);
-    unlockSettings(setupKey.value, remember);
-    beginRebootWait('the network settings');
-    setStep(3);
+    setStep('joining');
   }
 
   return (
@@ -70,13 +58,13 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
         <div class="stepline">
           FIRST-RUN SETUP
           <span class="stepdots">
-            {[1, 2, 3].map((i) => (
-              <i key={i} class={i <= step ? 'on' : ''} />
+            {ONBOARDING_STEPS.map((name, i) => (
+              <i key={name} class={i <= ONBOARDING_STEPS.indexOf(step) ? 'on' : ''} />
             ))}
           </span>
         </div>
 
-        {step === 1 && (
+        {step === 'wifi' && (
           <div>
             <h3>Welcome — let’s put StreamLine on your network</h3>
             <div class="body">
@@ -110,7 +98,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {step === 2 && (
+        {step === 'key' && (
           <div>
             <h3>Save your admin key</h3>
             <div class="body">
@@ -123,15 +111,15 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {step === 3 && <JoiningStep ssid={ssid.trim()} />}
+        {step === 'joining' && <JoiningStep ssid={ssid.trim()} />}
 
         <div class="sheetfoot">
           <button class="btn secondary" type="button" onClick={onClose}>
-            {step === 3 ? 'Close' : 'Cancel'}
+            {step === 'joining' ? 'Close' : 'Cancel'}
           </button>
           <div class="row" style="align-items:center">
             <span class="actionstate err">{error}</span>
-            {step < 3 && (
+            {step !== 'joining' && (
               <button
                 class={`btn primary${busy ? ' busy' : ''}`}
                 type="button"
@@ -139,7 +127,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
                 onClick={next}
               >
                 <span class="spin" />
-                {step === 1 ? 'Continue' : 'I saved my key — join network'}
+                {step === 'wifi' ? 'Continue' : 'I saved my key — join network'}
               </button>
             )}
           </div>
@@ -151,7 +139,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
 
 function JoiningStep({ ssid }: { ssid: string }) {
   const [elapsed, setElapsed] = useState(0);
-  const hostname = status.value?.wifi?.hostname || 'streamline-xxxx.local';
+  const hostname = expectedHostname();
 
   useEffect(() => {
     const tick = setInterval(() => {

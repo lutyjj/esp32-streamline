@@ -2,10 +2,10 @@
 
 [![CI](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml/badge.svg)](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml)
 
-ESP32 StreamLine turns an ESP32 Audio Kit into a network line-in source. It
-captures analog audio — a turntable, a CD deck — and streams the raw PCM over
-TCP/Wi-Fi to a self-hosted bridge. The bridge publishes a live HTTP WAV stream
-for Snapcast, Icecast, or Music Assistant.
+ESP32 StreamLine turns a supported ESP32 line-in board into a network audio
+source. It captures analog audio — a turntable, a CD deck — and streams the raw
+PCM over TCP/Wi-Fi to a self-hosted bridge. The bridge publishes a live HTTP
+WAV stream for Snapcast, Icecast, or Music Assistant.
 
 ## Features
 
@@ -32,9 +32,10 @@ The device speaks plain HTTP on a trusted LAN. Read the
 - **Codec**: ES8388 (I2C address `0x10`)
 - **Flash**: 8 MB
 
-Board support is descriptor-driven. The firmware can grow more official
-presets and a constrained BYOD path without changing the capture or transport
-contracts. See [design notes](docs/design.md#board-support).
+Board support is descriptor-driven: presets define the codec, I2C/I2S pin map,
+input labels, and audio limits. Official presets and BYOD descriptors use the
+same contract when the codec driver is compiled into the firmware. See
+[design notes](docs/design.md#board-support).
 
 ## Quick start
 

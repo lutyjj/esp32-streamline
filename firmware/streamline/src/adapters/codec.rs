@@ -1,10 +1,9 @@
 //! Minimal audio codec configuration.
 //!
 //! This is deliberately not a port of the Arduino audio-driver abstraction.
-//! The register sequence is the small, auditable subset required for the
-//! current Ai-Thinker ESP32 Audio Kit v2.2 preset: ES8388 in I2S slave mode,
-//! 48 kHz/16-bit stereo, an ADC input selected from line one or two, and no
-//! DAC output.
+//! The register sequence is the small, auditable subset required for ES8388
+//! line-in capture: I2S slave mode, 48 kHz/16-bit stereo, an ADC input selected
+//! by the board descriptor, and no DAC output.
 //!
 //! A board descriptor selects a codec driver by stable id. New codec chips add
 //! one implementation plus one resolver entry; capture and transport never name
@@ -13,12 +12,12 @@
 use anyhow::{anyhow, Result};
 use esp_idf_svc::hal::{
     delay::BLOCK,
-    gpio::{Gpio32, Gpio33},
     i2c::{I2cConfig, I2cDriver, I2C0},
     units::Hertz,
 };
 
 use crate::{
+    adapters::pins::I2cBusPins,
     board::{CodecDriverId, CodecSpec},
     config::AudioSettings,
 };
@@ -66,8 +65,7 @@ impl Driver {
 /// can re-apply input settings while the device streams.
 pub fn configure<'d>(
     i2c: I2C0<'d>,
-    sda: Gpio33<'d>,
-    scl: Gpio32<'d>,
+    pins: I2cBusPins<'d>,
     codec: CodecSpec<'_>,
     audio: AudioSettings,
 ) -> Result<CodecControl<'d>> {
@@ -76,7 +74,7 @@ pub fn configure<'d>(
         .baudrate(Hertz(100_000))
         .sda_enable_pullup(true)
         .scl_enable_pullup(true);
-    let mut bus = I2cDriver::new(i2c, sda, scl, &config)?;
+    let mut bus = I2cDriver::new(i2c, pins.sda, pins.scl, &config)?;
     driver.configure(&mut bus, codec.i2c_address, audio)?;
     Ok(CodecControl {
         bus,

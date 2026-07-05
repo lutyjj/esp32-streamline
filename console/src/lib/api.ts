@@ -24,6 +24,10 @@ export interface DeviceStatus {
     board_id: string;
     board: string;
     codec: { driver: string; i2c_address: number };
+    pins: {
+      i2c: { sda: number; scl: number };
+      i2s: { mclk: number; bclk: number; ws: number; din: number };
+    };
     input_lines: { line: number; label: string }[];
     input_gain_max: number;
     adc_atten_max_db: number;

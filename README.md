@@ -28,9 +28,13 @@ The device speaks plain HTTP on a trusted LAN. Read the
 
 ## Hardware
 
-- **Board**: Ai-Thinker ESP32-A1S / ESP32 Audio Kit v2.2 class
+- **Official preset**: Ai-Thinker ESP32 Audio Kit v2.2 (ES8388)
 - **Codec**: ES8388 (I2C address `0x10`)
 - **Flash**: 8 MB
+
+Board support is descriptor-driven. The firmware can grow more official
+presets and a constrained BYOD path without changing the capture or transport
+contracts. See [design notes](docs/design.md#board-support).
 
 ## Quick start
 

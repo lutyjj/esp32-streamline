@@ -1,4 +1,4 @@
-//! I2S RX capture for the ESP32 Audio Kit, on the safe `esp-idf-hal` driver.
+//! I2S RX capture for the active board preset, on the safe `esp-idf-hal` driver.
 
 use anyhow::Result;
 use esp_idf_svc::hal::{
@@ -20,9 +20,9 @@ pub struct Capture {
 }
 
 impl Capture {
-    /// Configure the original ESP32 Audio Kit pin map: MCLK GPIO0, BCLK GPIO27,
-    /// LRCLK GPIO25, DIN GPIO35. Philips standard format, 48 kHz/16-bit stereo,
-    /// MCLK at 256x the sample rate to clock the ES8388.
+    /// Configure the active preset's pin map: MCLK GPIO0, BCLK GPIO27, LRCLK
+    /// GPIO25, DIN GPIO35. Philips standard format, 48 kHz/16-bit stereo, MCLK
+    /// at 256x the sample rate to clock the codec.
     pub fn new(
         i2s: I2S0<'static>,
         bclk: Gpio27<'static>,

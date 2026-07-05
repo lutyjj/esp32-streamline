@@ -615,7 +615,7 @@ struct StatusResponse<'a> {
     web_server: bool,
     configuration_writable: bool,
     auth_required: bool,
-    capabilities: CapabilitiesStatus,
+    capabilities: CapabilitiesStatus<'a>,
     wifi: WifiStatus<'a>,
     target: TargetStatus<'a>,
     audio: AudioStatus,
@@ -628,24 +628,36 @@ struct StatusResponse<'a> {
 /// console renders its audio controls from this. Mirrors `capabilities` in
 /// `console/src/lib/api.ts`.
 #[derive(Serialize)]
-struct CapabilitiesStatus {
-    board: &'static str,
-    input_lines: Vec<InputLineStatus>,
+struct CapabilitiesStatus<'a> {
+    board_id: &'a str,
+    board: &'a str,
+    codec: CodecStatus<'a>,
+    input_lines: Vec<InputLineStatus<'a>>,
     input_gain_max: u8,
     adc_atten_max_db: u8,
 }
 
 #[derive(Serialize)]
-struct InputLineStatus {
-    line: u8,
-    label: &'static str,
+struct CodecStatus<'a> {
+    driver: &'a str,
+    i2c_address: u8,
 }
 
-impl CapabilitiesStatus {
-    fn current() -> Self {
-        let board = board::ACTIVE;
+#[derive(Serialize)]
+struct InputLineStatus<'a> {
+    line: u8,
+    label: &'a str,
+}
+
+impl<'a> CapabilitiesStatus<'a> {
+    fn from_board(board: &'a board::Board<'a>) -> Self {
         Self {
+            board_id: board.id,
             board: board.name,
+            codec: CodecStatus {
+                driver: board.codec.driver.as_str(),
+                i2c_address: board.codec.i2c_address,
+            },
             input_lines: board
                 .input_lines
                 .iter()
@@ -657,6 +669,12 @@ impl CapabilitiesStatus {
             input_gain_max: board.input_gain_max,
             adc_atten_max_db: board.adc_atten_max_db,
         }
+    }
+}
+
+impl CapabilitiesStatus<'static> {
+    fn current() -> Self {
+        Self::from_board(board::ACTIVE)
     }
 }
 

@@ -86,37 +86,70 @@ when one ESP32 feeds the bridge, or
 source. If Music Assistant proves unreliable with live WAV, keep this bridge and
 add Liquidsoap/Icecast after it to publish FLAC/MP3/Opus.
 
+## Board support
+
+StreamLine targets ESP32 boards that can feed 48 kHz stereo PCM into I2S.
+The application treats board facts as data: a board descriptor names the
+preset id, display name, codec driver id, codec address, input labels, and
+audio limits. Settings validation, status capabilities, and console controls
+read that descriptor.
+
+Board support has three tiers:
+
+- **Official presets** are compiled into the firmware catalog and tested on
+  real hardware. A preset name is concrete: vendor, board family or revision,
+  and codec variant when that affects behavior.
+- **Custom descriptors** use the same shape as official presets. They are the
+  intended BYOD path for boards that use a compiled-in codec driver and an
+  ESP32 pin map the firmware can initialize from data.
+- **Custom firmware** covers boards that need a new codec driver, different
+  clocking, or hardware behavior outside the descriptor contract. The hardware
+  layer changes there; capture, transport, settings, and the console stay on
+  the descriptor and API contracts.
+
+The current firmware selects one official preset at build time. Runtime board
+selection and user-supplied descriptors belong behind the same descriptor
+validation, then persist in NVS. Pin maps are the remaining hardware boundary:
+ESP-IDF exposes I2C and I2S pin setup through GPIO numbers, while the current
+safe Rust adapters own typed GPIO pins. A first-class BYOD setup flow needs a
+focused hardware adapter that validates descriptor GPIO numbers, initializes
+I2C/I2S from those numbers, and owns cleanup on failure.
+
 ## Codec
 
-The codec sits on I2C on the Audio Kit pins:
+The active board descriptor names the codec driver and the 7-bit I2C address.
+The Ai-Thinker ESP32 Audio Kit v2.2 ES8388 preset uses these control pins:
 
 ```text
 SDA GPIO33
 SCL GPIO32
 ```
 
-The board's codec answers at `0x10`:
+The known ESP32-A1S codec addresses are:
 
 ```text
-0x10 -> ES8388  <-- current board
-0x1A -> AC101   <-- other ESP32-A1S variant
+0x10 -> ES8388
+0x1A -> AC101
 ```
 
-The firmware owns a minimal typed ES8388 register sequence behind a `Codec`
-trait, so other ESP32-A1S codec variants can be added as their own
-implementation without touching the capture or transport paths.
+Each board descriptor has a stable id, a display name, a codec driver id with
+its I2C address, and the user-facing audio limits. Built-in presets and custom
+board descriptors use the same shape and validation rules. The firmware
+resolves the descriptor's codec driver id to a typed driver in the codec
+adapter. A new codec chip adds its driver and one resolver entry; the capture,
+transport, settings, and HTTP paths keep reading the board descriptor.
 
 ## Capture Bring-Up
 
 The production Rust capture adapter uses:
 
 ```text
-codec:       ES8388 at 0x10
+codec:       board descriptor's codec at its I2C address
 I2C:         SDA GPIO33 / SCL GPIO32
 I2S:         MCLK GPIO0 / BCLK GPIO27 / LRCLK GPIO25 / DIN GPIO35
 sample rate: 48000 Hz
 format:      16-bit stereo I2S
-input:       ES8388 line input 1 or 2 (NVS configured)
+input:       board descriptor's line input (NVS configured)
 gain:        0-100 (NVS configured)
 ```
 

@@ -16,6 +16,10 @@ make test    # bridge + firmware tests, firmware release build
 Flashing and serial need `espflash` on the host (`cargo install espflash`);
 see [README.md](README.md).
 
+Working against a real device? Copy [.env.example](.env.example) to `.env`
+(gitignored) and set your device's address there — Makefiles and agents read
+it, so `make console-dev` proxies to your node without extra flags.
+
 ## Pull requests
 
 - Branch from `mainline`; do not push to it directly.

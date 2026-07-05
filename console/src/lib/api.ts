@@ -8,6 +8,26 @@
 
 import { isUnlocked, lockSettings, storedAdminKey } from './adminKey';
 
+/** Mirrors `CapabilitiesStatus`. */
+export interface BoardCapabilities {
+  board_id: string;
+  board: string;
+  codec: { driver: string; i2c_address: number };
+  pins: {
+    i2c: { sda: number; scl: number };
+    i2s: { mclk: number; bclk: number; ws: number; din: number };
+  };
+  input_lines: { line: number; label: string }[];
+  input_gain_max: number;
+  adc_atten_max_db: number;
+}
+
+/** Mirrors `BoardCatalogResponse`. */
+export interface BoardCatalog {
+  selected_board_id: string;
+  boards: BoardCapabilities[];
+}
+
 /** Mirrors `StatusResponse`. */
 export interface DeviceStatus {
   firmware_version: string;
@@ -19,19 +39,8 @@ export interface DeviceStatus {
   web_server: boolean;
   configuration_writable: boolean;
   auth_required: boolean;
-  /** Mirrors `CapabilitiesStatus`: the active board's facts, which the audio controls render from. */
-  capabilities: {
-    board_id: string;
-    board: string;
-    codec: { driver: string; i2c_address: number };
-    pins: {
-      i2c: { sda: number; scl: number };
-      i2s: { mclk: number; bclk: number; ws: number; din: number };
-    };
-    input_lines: { line: number; label: string }[];
-    input_gain_max: number;
-    adc_atten_max_db: number;
-  };
+  /** The resolved board's facts, which the audio controls render from. */
+  capabilities: BoardCapabilities;
   wifi: {
     hostname: string;
     ssid: string;
@@ -147,6 +156,10 @@ export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
 export const getStatus = () => api<DeviceStatus>('/api/status');
 
 export const getSettings = () => api<DeviceConfig>('/api/settings');
+
+export const getBoards = () => api<BoardCatalog>('/api/boards');
+
+export const setBoard = (board_id: string) => postForm('/api/settings/board', { board_id });
 
 export function postForm<T = Ack>(path: string, fields: Record<string, string>): Promise<T> {
   return api<T>(path, { method: 'POST', body: new URLSearchParams(fields) });

@@ -58,6 +58,7 @@ pub enum Mode {
 pub struct ApiState {
     pub mode: Mode,
     pub hostname: String,
+    pub board: &'static board::Board<'static>,
     pub config: Arc<Mutex<RuntimeConfig>>,
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
@@ -105,6 +106,16 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             200,
             "application/json",
             &config_json(&state_for_config),
+        )
+    })?;
+
+    let state_for_boards = Arc::clone(&state);
+    server.fn_handler("/api/boards", Method::Get, move |request| {
+        respond(
+            request,
+            200,
+            "application/json",
+            &board_catalog_json(&state_for_boards),
         )
     })?;
 
@@ -164,6 +175,50 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         },
     )?;
 
+    let state_for_board = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/board",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_board) {
+                return unauthorized(request);
+            }
+            let result = (|| -> Result<()> {
+                let form = form(&mut request)?;
+                let board_id = required(&form, "board_id")?;
+                let selected = board::find_preset(board_id)
+                    .ok_or_else(|| anyhow!("unknown board preset '{board_id}'"))?;
+                let next = state_for_board
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?
+                    .clone()
+                    .with_audio_compatible_with(selected);
+
+                let store = state_for_board
+                    .store
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?;
+                if state_for_board.mode == Mode::Provisioned {
+                    next.validate(selected)
+                        .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
+                    store.save(&next, selected)?;
+                } else {
+                    store.save_board_preset(selected)?;
+                }
+                *state_for_board
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
+                Ok(())
+            })();
+            match result {
+                Ok(()) => reboot_response(request),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
+
     // While streaming, audio params are written straight to the running codec
     // and play detection re-baselines to the new input scale — no reboot. In
     // setup-AP mode the codec is not running, so the settings are persisted
@@ -189,7 +244,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     input_gain: parse_u8(&form, "gain")?,
                     adc_attenuation_db: parse_u8(&form, "atten")?,
                 }
-                .validate(board::ACTIVE)
+                .validate(state_for_audio.board)
                 .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
                 save(&state_for_audio, RuntimeConfig { audio, ..current })?;
                 let Some(codec) = &state_for_audio.codec else {
@@ -354,13 +409,13 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
 
 fn save(state: &ApiState, config: RuntimeConfig) -> Result<()> {
     config
-        .validate(board::ACTIVE)
+        .validate(state.board)
         .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
     state
         .store
         .lock()
         .map_err(|_| anyhow!("configuration lock poisoned"))?
-        .save(&config)?;
+        .save(&config, state.board)?;
     *state
         .config
         .lock()
@@ -607,6 +662,12 @@ struct ConfigResponse<'a> {
 }
 
 #[derive(Serialize)]
+struct BoardCatalogResponse<'a> {
+    selected_board_id: &'a str,
+    boards: Vec<CapabilitiesStatus<'a>>,
+}
+
+#[derive(Serialize)]
 struct StatusResponse<'a> {
     firmware_version: &'a str,
     device_name: &'a str,
@@ -624,7 +685,7 @@ struct StatusResponse<'a> {
     ota: OtaStatus<'a>,
 }
 
-/// The active board's facts, from its descriptor in [`crate::board`]; the
+/// The resolved board's facts, from its descriptor in [`crate::board`]; the
 /// console renders its audio controls from this. Mirrors `capabilities` in
 /// `console/src/lib/api.ts`.
 #[derive(Serialize)]
@@ -702,12 +763,6 @@ impl<'a> CapabilitiesStatus<'a> {
             input_gain_max: board.input_gain_max,
             adc_atten_max_db: board.adc_atten_max_db,
         }
-    }
-}
-
-impl CapabilitiesStatus<'static> {
-    fn current() -> Self {
-        Self::from_board(board::ACTIVE)
     }
 }
 
@@ -795,7 +850,18 @@ fn config_json(state: &ApiState) -> String {
 
 fn status_json(state: &ApiState) -> String {
     let snapshot = telemetry_snapshot(state);
-    serialize(&StatusResponse::from(&snapshot))
+    serialize(&StatusResponse::from_snapshot(&snapshot, state.board))
+}
+
+fn board_catalog_json(state: &ApiState) -> String {
+    let boards = board::CATALOG
+        .iter()
+        .map(|board| CapabilitiesStatus::from_board(*board))
+        .collect();
+    serialize(&BoardCatalogResponse {
+        selected_board_id: state.board.id,
+        boards,
+    })
 }
 
 fn metrics_text(state: &ApiState) -> String {
@@ -901,8 +967,8 @@ fn reset_reason() -> &'static str {
     }
 }
 
-impl<'a> From<&'a TelemetrySnapshot> for StatusResponse<'a> {
-    fn from(snapshot: &'a TelemetrySnapshot) -> Self {
+impl<'a> StatusResponse<'a> {
+    fn from_snapshot(snapshot: &'a TelemetrySnapshot, board: &'a board::Board<'a>) -> Self {
         Self {
             firmware_version: snapshot.firmware_version,
             device_name: &snapshot.device_name,
@@ -911,7 +977,7 @@ impl<'a> From<&'a TelemetrySnapshot> for StatusResponse<'a> {
             web_server: snapshot.web_server,
             configuration_writable: snapshot.configuration_writable,
             auth_required: snapshot.auth_required,
-            capabilities: CapabilitiesStatus::current(),
+            capabilities: CapabilitiesStatus::from_board(board),
             wifi: WifiStatus {
                 hostname: &snapshot.wifi.hostname,
                 ssid: &snapshot.wifi.ssid,
@@ -977,7 +1043,11 @@ fn serialize<T: Serialize>(value: &T) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{authorized_secret, constant_time_eq, parse_form, serialize, CapabilitiesStatus};
+    use super::{
+        authorized_secret, constant_time_eq, parse_form, serialize, BoardCatalogResponse,
+        CapabilitiesStatus,
+    };
+    use crate::board;
 
     #[test]
     fn decodes_browser_urlencoded_forms() {
@@ -1010,12 +1080,27 @@ mod tests {
     }
 
     #[test]
-    fn capabilities_report_the_active_board_descriptor() {
-        let json = serialize(&CapabilitiesStatus::current());
+    fn capabilities_report_a_resolved_board_descriptor() {
+        let json = serialize(&CapabilitiesStatus::from_board(board::DEFAULT_PRESET));
         assert!(json.contains(r#""board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
         assert!(json.contains(r#""codec":{"driver":"es8388","i2c_address":16}"#));
         assert!(json.contains(
             r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
         ));
+    }
+
+    #[test]
+    fn board_catalog_reports_the_active_preset_and_built_ins() {
+        let boards = board::CATALOG
+            .iter()
+            .map(|board| CapabilitiesStatus::from_board(*board))
+            .collect();
+        let json = serialize(&BoardCatalogResponse {
+            selected_board_id: board::DEFAULT_PRESET.id,
+            boards,
+        });
+
+        assert!(json.contains(r#""selected_board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
+        assert!(json.contains(r#""boards":[{"board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
     }
 }

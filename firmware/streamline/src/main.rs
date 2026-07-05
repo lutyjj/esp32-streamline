@@ -12,13 +12,13 @@ use streamline_firmware::{
         http::{self, ApiState, Mode},
         i2s::Capture,
         mdns::MdnsAdvertisement,
-        nvs::ConfigStore,
+        nvs::{BoardPresetSelection, ConfigStore},
         ota,
         pins::AudioPins,
         tcp::TargetAddress,
         time, wifi,
     },
-    board,
+    board::Board,
     config::{AudioSettings, RuntimeConfig},
     identity, runtime,
 };
@@ -31,16 +31,22 @@ fn main() -> Result<()> {
     let Peripherals {
         modem, i2c0, i2s0, ..
     } = Peripherals::take()?;
-    board::ACTIVE
-        .validate()
-        .map_err(|error| anyhow::anyhow!("invalid active board descriptor: {error:?}"))?;
     let event_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let store = Arc::new(Mutex::new(ConfigStore::open(nvs_partition.clone())?));
-    let persisted = store
+    let board_selection = store
         .lock()
         .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
-        .load()?;
+        .load_board_preset()?;
+    let board = board_selection.board();
+    log::info!("using board preset '{}'", board.id);
+    let persisted = match board_selection {
+        BoardPresetSelection::Resolved(_) => store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
+            .load(board)?,
+        BoardPresetSelection::Unknown { .. } => None,
+    };
     let mut wifi = wifi::create(modem, event_loop, nvs_partition)?;
     let suffix = wifi::device_suffix()?;
     let mdns_hostname = wifi::mdns_hostname()?;
@@ -50,10 +56,9 @@ fn main() -> Result<()> {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
             Ok(()) => match resolve_target(&config) {
                 Ok(target) => {
-                    let audio_pins = AudioPins::new(board::ACTIVE.pins);
+                    let audio_pins = AudioPins::new(board.pins);
                     let capture = Capture::new(i2s0, audio_pins.i2s)?;
-                    let codec =
-                        codec::configure(i2c0, audio_pins.i2c, board::ACTIVE.codec, config.audio)?;
+                    let codec = codec::configure(i2c0, audio_pins.i2c, board.codec, config.audio)?;
                     let streaming = target.is_some();
                     let stream = runtime::start(capture, target)?;
                     log::info!(
@@ -75,17 +80,17 @@ fn main() -> Result<()> {
                     let reason = format!("TCP target resolution failed: {error:#}");
                     log::warn!("{reason}; opening setup AP");
                     note_fallback(&store, &reason);
-                    start_setup(&mut wifi, &suffix)?
+                    start_setup(&mut wifi, &suffix, board)?
                 }
             },
             Err(error) => {
                 let reason = format!("Wi-Fi station connection failed: {error:#}");
                 log::warn!("{reason}; opening setup AP");
                 note_fallback(&store, &reason);
-                start_setup(&mut wifi, &suffix)?
+                start_setup(&mut wifi, &suffix, board)?
             }
         },
-        None => start_setup(&mut wifi, &suffix)?,
+        None => start_setup(&mut wifi, &suffix, board)?,
     };
 
     // Reaching the home network with the console up is the signal an
@@ -115,6 +120,7 @@ fn main() -> Result<()> {
         mode,
         hostname: local_hostname,
         config: Arc::new(Mutex::new(config)),
+        board,
         store,
         stream,
         codec,
@@ -158,7 +164,11 @@ type SetupState = (
     Option<Arc<Mutex<codec::CodecControl<'static>>>>,
 );
 
-fn start_setup(wifi: &mut wifi::WifiController<'_>, suffix: &str) -> Result<SetupState> {
+fn start_setup(
+    wifi: &mut wifi::WifiController<'_>,
+    suffix: &str,
+    board: &Board<'_>,
+) -> Result<SetupState> {
     let ssid = wifi::start_setup_ap(wifi, suffix)?;
     log::info!("setup AP started: {ssid}");
     Ok((
@@ -175,7 +185,7 @@ fn start_setup(wifi: &mut wifi::WifiController<'_>, suffix: &str) -> Result<Setu
             // Safe line-in baseline: 0 dB PGA (no clipping) on line 2. Adjust per
             // board in setup mode.
             audio: AudioSettings {
-                input_line: board::ACTIVE.default_line(),
+                input_line: board.default_line(),
                 input_gain: 0,
                 adc_attenuation_db: 0,
             },

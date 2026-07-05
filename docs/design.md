@@ -97,25 +97,26 @@ audio hardware initialization, and console controls read that descriptor.
 Board support has three tiers:
 
 - **Official presets** are compiled into the firmware catalog and tested on
-  real hardware. A preset name is concrete: vendor, board family or revision,
-  and codec variant when that affects behavior.
-- **Custom descriptors** use the same shape as official presets. They are the
-  intended BYOD path for boards that use a compiled-in codec driver and an
-  ESP32 I2C/I2S pin map the firmware can initialize from data.
+  real hardware. The device stores the selected preset id in NVS, resolves it
+  at boot, and reboots after a preset change because pins and codec selection
+  are boot-time hardware wiring. A preset name is concrete: vendor, board
+  family or revision, and codec variant when that affects behavior.
+- **Custom descriptors** use the same hardware contract as official presets.
+  User-supplied descriptor upload is not part of the firmware yet; boards that
+  use a compiled-in codec driver can be added today as descriptor data under
+  `firmware/streamline/src/board/presets.rs`.
 - **Custom firmware** covers boards that need a new codec driver, different
   clocking, or hardware behavior outside the descriptor contract. The hardware
   layer changes there; capture, transport, settings, and the console stay on
   the descriptor and API contracts.
 
-The current firmware selects one official preset at build time. Runtime board
-selection and user-supplied descriptors belong behind the same descriptor
-validation, then persist in NVS. The hardware adapter converts validated
-descriptor GPIO numbers into erased ESP-IDF HAL pins; the capture and codec
-adapters receive those pins without naming a board.
+The hardware adapter converts validated descriptor GPIO numbers into erased
+ESP-IDF HAL pins; the capture and codec adapters receive those pins without
+naming a board.
 
 ## Codec
 
-The active board descriptor names the codec driver and the 7-bit I2C address.
+The resolved board descriptor names the codec driver and the 7-bit I2C address.
 The Ai-Thinker ESP32 Audio Kit v2.2 ES8388 preset descriptor uses these I2C
 control pins:
 
@@ -162,10 +163,11 @@ identity, network, and streaming counters.
 Endpoint paths follow one rule: nouns for state, verbs for actions.
 
 - Reads are open: `GET /api/status` (runtime), `GET /api/metrics`
-  (Prometheus), `GET /api/settings` (persisted settings, no secrets).
+  (Prometheus), `GET /api/settings` (persisted settings, no secrets),
+  `GET /api/boards` (built-in board catalog and selected preset).
 - Settings writes are one group per endpoint under the noun they change:
   `POST /api/settings/network`, `/api/settings/audio`, `/api/settings/name`,
-  `/api/settings/admin-key`.
+  `/api/settings/admin-key`, `/api/settings/board`.
 - Device-wide actions are top-level verbs: `POST /api/unlock`,
   `POST /api/restart`, `POST /api/factory-reset`, `POST /api/ota/check`,
   `POST /api/ota/update`.

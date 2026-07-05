@@ -1,10 +1,13 @@
 //! ESP-IDF NVS persistence for StreamLine configuration.
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
 
 use crate::board;
-use crate::config::{AudioSettings, ConfigError, RuntimeConfig, CONFIG_SCHEMA_VERSION};
+use crate::{
+    board::Board,
+    config::{AudioSettings, ConfigError, RuntimeConfig, CONFIG_SCHEMA_VERSION},
+};
 
 const NAMESPACE: &str = "streamline";
 const KEY_SCHEMA: &str = "schema";
@@ -14,6 +17,7 @@ const KEY_TARGET_HOST: &str = "target_host";
 const KEY_TARGET_PORT: &str = "target_port";
 const KEY_ADMIN_SECRET: &str = "admin_secret";
 const KEY_DEVICE_NAME: &str = "device_name";
+const KEY_BOARD_ID: &str = "board_id";
 const KEY_INPUT_LINE: &str = "input_line";
 const KEY_INPUT_GAIN: &str = "input_gain";
 const KEY_ADC_ATTENUATION: &str = "adc_attenuation";
@@ -29,6 +33,20 @@ pub struct ConfigStore {
     nvs: EspDefaultNvs,
 }
 
+pub enum BoardPresetSelection {
+    Resolved(&'static Board<'static>),
+    Unknown { fallback: &'static Board<'static> },
+}
+
+impl BoardPresetSelection {
+    pub fn board(&self) -> &'static Board<'static> {
+        match self {
+            Self::Resolved(board) => board,
+            Self::Unknown { fallback } => fallback,
+        }
+    }
+}
+
 impl ConfigStore {
     pub fn open(partition: EspDefaultNvsPartition) -> Result<Self> {
         Ok(Self {
@@ -36,7 +54,37 @@ impl ConfigStore {
         })
     }
 
-    pub fn load(&self) -> Result<Option<RuntimeConfig>> {
+    pub fn load_board_preset(&self) -> Result<BoardPresetSelection> {
+        let stored = self.optional_string(KEY_BOARD_ID);
+        let selection = if let Some(preset) =
+            board::resolve_preset((!stored.is_empty()).then_some(stored.as_str()))
+        {
+            BoardPresetSelection::Resolved(preset)
+        } else {
+            log::warn!(
+                "stored board preset '{stored}' is not built into this firmware; opening setup with '{}'",
+                board::DEFAULT_PRESET.id
+            );
+            BoardPresetSelection::Unknown {
+                fallback: board::DEFAULT_PRESET,
+            }
+        };
+        let preset = selection.board();
+        preset
+            .validate()
+            .map_err(|error| anyhow!("invalid board preset '{}': {error:?}", preset.id))?;
+        Ok(selection)
+    }
+
+    pub fn save_board_preset(&self, board: &Board<'_>) -> Result<()> {
+        board
+            .validate()
+            .map_err(|error| anyhow!("invalid board preset '{}': {error:?}", board.id))?;
+        self.nvs.set_str(KEY_BOARD_ID, board.id)?;
+        Ok(())
+    }
+
+    pub fn load(&self, board: &Board<'_>) -> Result<Option<RuntimeConfig>> {
         let schema = self.nvs.get_u8(KEY_SCHEMA)?;
         if schema.is_none() {
             return Ok(None);
@@ -67,14 +115,23 @@ impl ConfigStore {
                 adc_attenuation_db: self.required_u8(KEY_ADC_ATTENUATION)?,
             },
         };
-        // A stored line the active board does not advertise fails here, so a
-        // device reflashed for different hardware re-commissions cleanly.
-        config.validate(board::ACTIVE).map_err(config_error)?;
-        Ok(Some(config))
+        // A stored audio setting the selected board does not advertise opens
+        // setup mode, so a device moved to different hardware can recover.
+        match config.validate(board) {
+            Ok(()) => Ok(Some(config)),
+            Err(error) => {
+                log::warn!(
+                    "stored configuration is invalid for board preset '{}': {error:?}; re-commissioning",
+                    board.id
+                );
+                Ok(None)
+            }
+        }
     }
 
-    pub fn save(&self, config: &RuntimeConfig) -> Result<()> {
-        config.validate(board::ACTIVE).map_err(config_error)?;
+    pub fn save(&self, config: &RuntimeConfig, board: &Board<'_>) -> Result<()> {
+        config.validate(board).map_err(config_error)?;
+        self.save_board_preset(board)?;
         self.nvs.set_str(KEY_SSID, &config.ssid)?;
         self.nvs.set_str(KEY_PASSWORD, &config.password)?;
         self.nvs.set_str(KEY_TARGET_HOST, &config.target_host)?;
@@ -98,6 +155,7 @@ impl ConfigStore {
             KEY_TARGET_PORT,
             KEY_ADMIN_SECRET,
             KEY_DEVICE_NAME,
+            KEY_BOARD_ID,
             KEY_INPUT_LINE,
             KEY_INPUT_GAIN,
             KEY_ADC_ATTENUATION,

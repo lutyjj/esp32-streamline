@@ -1,6 +1,11 @@
 import { useRef, useState } from 'preact/hooks';
 import { getStatus, postForm } from '../lib/api';
-import { CAL_ATTEN_MAX, CalibrationEngine, type LevelSample } from '../lib/calibration';
+import {
+  CAL_ATTEN_MAX,
+  CAL_ATTEN_STEP,
+  CalibrationEngine,
+  type LevelSample,
+} from '../lib/calibration';
 import { errorMessage } from '../lib/errors';
 import { dbfs } from '../lib/format';
 import { loadConfig, status } from '../state/device';
@@ -40,36 +45,41 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
     gain: status.value?.audio.input_gain ?? 0,
     atten: status.value?.audio.adc_atten_db ?? 0,
   });
+  /** Board-reported ceiling; the wizard never walks past what the ADC has. */
+  const attenMax = status.value?.capabilities.adc_atten_max_db ?? CAL_ATTEN_MAX;
 
   function newEngine(): CalibrationEngine {
     engine.current?.cancel();
     const applied = engine.current?.applied ?? null;
-    const next = new CalibrationEngine({
-      sample: async (): Promise<LevelSample> => {
-        const s = await getStatus();
-        return {
-          rms: Math.max(s.metrics.rms_left, s.metrics.rms_right),
-          peak: Math.max(s.metrics.peak_abs_left, s.metrics.peak_abs_right),
-          clipped: s.metrics.clipped_samples_total,
-          threshold: s.metrics.clip_threshold_abs,
-        };
+    const next = new CalibrationEngine(
+      {
+        sample: async (): Promise<LevelSample> => {
+          const s = await getStatus();
+          return {
+            rms: Math.max(s.metrics.rms_left, s.metrics.rms_right),
+            peak: Math.max(s.metrics.peak_abs_left, s.metrics.peak_abs_right),
+            clipped: s.metrics.clipped_samples_total,
+            threshold: s.metrics.clip_threshold_abs,
+          };
+        },
+        applyAttenuation: async (atten) => {
+          const o = original.current;
+          await postForm('/api/settings/audio', {
+            line: String(o.line),
+            gain: String(o.gain),
+            atten: String(atten),
+          });
+        },
+        delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        log: (text, cls = '') => setLog((lines) => [...lines, { text, cls }]),
+        levels: (s) => setLive({ rms: s.rms, peak: s.peak }),
+        silenceProgress: (fraction, rms) => {
+          setProgress(fraction);
+          setFloorText(rms ? dbfs(rms) : '−∞');
+        },
       },
-      applyAttenuation: async (atten) => {
-        const o = original.current;
-        await postForm('/api/settings/audio', {
-          line: String(o.line),
-          gain: String(o.gain),
-          atten: String(atten),
-        });
-      },
-      delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-      log: (text, cls = '') => setLog((lines) => [...lines, { text, cls }]),
-      levels: (s) => setLive({ rms: s.rms, peak: s.peak }),
-      silenceProgress: (fraction, rms) => {
-        setProgress(fraction);
-        setFloorText(rms ? dbfs(rms) : '−∞');
-      },
-    });
+      { attenMax, attenStep: CAL_ATTEN_STEP },
+    );
     // Carry the last applied attenuation across step re-entries so cancel can
     // still restore the pre-wizard value.
     next.applied = applied;
@@ -110,7 +120,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
       setLog((lines) => [
         ...lines,
         {
-          text: `Still clipping at ${CAL_ATTEN_MAX} dB — turn the source volume down, then go Back and retry.`,
+          text: `Still clipping at ${attenMax} dB — turn the source volume down, then go Back and retry.`,
           cls: '',
         },
       ]);

@@ -19,6 +19,13 @@ export interface DeviceStatus {
   web_server: boolean;
   configuration_writable: boolean;
   auth_required: boolean;
+  /** Mirrors `CapabilitiesStatus`: the active board's facts, which the audio controls render from. */
+  capabilities: {
+    board: string;
+    input_lines: { line: number; label: string }[];
+    input_gain_max: number;
+    adc_atten_max_db: number;
+  };
   wifi: {
     hostname: string;
     ssid: string;

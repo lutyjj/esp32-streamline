@@ -6,6 +6,7 @@
 //! configuration here makes them host-testable and prevents board/runtime
 //! concerns from leaking into application logic.
 
+pub mod board;
 pub mod config;
 #[cfg(any(test, target_os = "espidf"))]
 mod counter;

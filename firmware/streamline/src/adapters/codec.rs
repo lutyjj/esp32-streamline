@@ -17,7 +17,7 @@ use esp_idf_svc::hal::{
     units::Hertz,
 };
 
-use crate::config::{AudioSettings, InputLine};
+use crate::config::AudioSettings;
 
 /// A line-in capture codec on the shared I2C control bus.
 pub trait Codec {
@@ -149,10 +149,13 @@ const fn input_controls(audio: AudioSettings) -> [(u8, u8); 4] {
     ]
 }
 
-const fn input_register(line: InputLine) -> u8 {
+/// ES8388 input mux for the board's line numbers. Settings are validated
+/// against the board descriptor before they reach the codec, so an unknown
+/// line cannot arrive here; the fallback keeps the mapping total.
+const fn input_register(line: u8) -> u8 {
     match line {
-        InputLine::One => 0x00,
-        InputLine::Two => 0x50,
+        1 => 0x00,
+        _ => 0x50,
     }
 }
 
@@ -173,12 +176,12 @@ mod tests {
         attenuation_register, input_controls, input_gain_register, input_register, ADC_CONTROL1,
         ADC_CONTROL2, ADC_CONTROL8, ADC_CONTROL9,
     };
-    use crate::config::{AudioSettings, InputLine};
+    use crate::config::AudioSettings;
 
     #[test]
     fn maps_audio_controls_to_documented_register_values() {
-        assert_eq!(input_register(InputLine::One), 0x00);
-        assert_eq!(input_register(InputLine::Two), 0x50);
+        assert_eq!(input_register(1), 0x00);
+        assert_eq!(input_register(2), 0x50);
         assert_eq!(input_gain_register(0), 0x00);
         assert_eq!(input_gain_register(100), 0x88);
         assert_eq!(attenuation_register(48), 96);
@@ -187,7 +190,7 @@ mod tests {
     #[test]
     fn live_apply_writes_exactly_the_input_control_registers() {
         let audio = AudioSettings {
-            input_line: InputLine::Two,
+            input_line: 2,
             input_gain: 0,
             adc_attenuation_db: 9,
         };

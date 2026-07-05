@@ -34,7 +34,9 @@ The device speaks plain HTTP on a trusted LAN. Read the
 
 Board support is descriptor-driven: presets define the codec, I2C/I2S pin map,
 input labels, and audio limits. Official presets and BYOD descriptors use the
-same contract when the codec driver is compiled into the firmware. See
+same JSON contract when the codec driver is compiled into the firmware. The
+release firmware is a generic ESP32 app image with an embedded official
+descriptor catalog. See
 [design notes](docs/design.md#board-support).
 
 ## Quick start

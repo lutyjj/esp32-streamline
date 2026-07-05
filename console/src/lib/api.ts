@@ -25,7 +25,22 @@ export interface BoardCapabilities {
 /** Mirrors `BoardCatalogResponse`. */
 export interface BoardCatalog {
   selected_board_id: string;
+  selected_board: BoardCapabilities;
   boards: BoardCapabilities[];
+}
+
+/** Mirrors `board::Board`. */
+export interface BoardDescriptor {
+  id: string;
+  name: string;
+  codec: { driver: string; i2c_address: number };
+  pins: {
+    i2c: { sda: number; scl: number };
+    i2s: { mclk: number; bclk: number; ws: number; din: number };
+  };
+  input_lines: { line: number; label: string }[];
+  input_gain_max: number;
+  adc_atten_max_db: number;
 }
 
 /** Mirrors `StatusResponse`. */
@@ -160,6 +175,9 @@ export const getSettings = () => api<DeviceConfig>('/api/settings');
 export const getBoards = () => api<BoardCatalog>('/api/boards');
 
 export const setBoard = (board_id: string) => postForm('/api/settings/board', { board_id });
+
+export const setCustomBoard = (descriptor: BoardDescriptor) =>
+  postForm('/api/settings/board', { descriptor: JSON.stringify(descriptor) });
 
 export function postForm<T = Ack>(path: string, fields: Record<string, string>): Promise<T> {
   return api<T>(path, { method: 'POST', body: new URLSearchParams(fields) });

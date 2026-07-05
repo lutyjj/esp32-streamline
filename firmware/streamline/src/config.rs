@@ -24,7 +24,7 @@ pub struct AudioSettings {
 }
 
 impl AudioSettings {
-    pub fn validate(self, board: &Board<'_>) -> Result<Self, ConfigError> {
+    pub fn validate(self, board: &Board) -> Result<Self, ConfigError> {
         if !board.accepts_line(self.input_line) {
             return Err(ConfigError::InvalidInputLine);
         }
@@ -37,7 +37,7 @@ impl AudioSettings {
         Ok(self)
     }
 
-    pub fn compatible_with(self, board: &Board<'_>) -> Self {
+    pub fn compatible_with(self, board: &Board) -> Self {
         Self {
             input_line: if board.accepts_line(self.input_line) {
                 self.input_line
@@ -108,7 +108,7 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    pub fn validate(&self, board: &Board<'_>) -> Result<(), ConfigError> {
+    pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
         NetworkSettings {
             ssid: &self.ssid,
             target_host: &self.target_host,
@@ -125,7 +125,7 @@ impl RuntimeConfig {
         Ok(())
     }
 
-    pub fn with_audio_compatible_with(mut self, board: &Board<'_>) -> Self {
+    pub fn with_audio_compatible_with(mut self, board: &Board) -> Self {
         self.audio = self.audio.compatible_with(board);
         self
     }
@@ -134,9 +134,7 @@ impl RuntimeConfig {
 #[cfg(test)]
 mod tests {
     use super::{AudioSettings, ConfigError, NetworkSettings};
-    use crate::board::{
-        self, Board, CodecDriverId, CodecSpec, I2cPins, I2sPins, InputOption, PinMap,
-    };
+    use crate::board::{self, Board, CodecSpec, I2cPins, I2sPins, InputOption, PinMap};
 
     #[test]
     fn accepts_the_deployed_network_shape() {
@@ -181,14 +179,14 @@ mod tests {
 
     #[test]
     fn validates_audio_against_the_board() {
-        let board = board::DEFAULT_PRESET;
+        let board = default_board();
         assert_eq!(
             AudioSettings {
                 input_line: 3,
                 input_gain: 0,
                 adc_attenuation_db: 0,
             }
-            .validate(board),
+            .validate(&board),
             Err(ConfigError::InvalidInputLine)
         );
         assert_eq!(
@@ -197,7 +195,7 @@ mod tests {
                 input_gain: board.input_gain_max + 1,
                 adc_attenuation_db: 0,
             }
-            .validate(board),
+            .validate(&board),
             Err(ConfigError::InvalidInputGain)
         );
         assert_eq!(
@@ -206,7 +204,7 @@ mod tests {
                 input_gain: 0,
                 adc_attenuation_db: board.adc_atten_max_db + 1,
             }
-            .validate(board),
+            .validate(&board),
             Err(ConfigError::InvalidAdcAttenuation)
         );
     }
@@ -214,10 +212,10 @@ mod tests {
     #[test]
     fn adapts_audio_to_a_board_contract() {
         let board = Board {
-            id: "test-board",
-            name: "test board",
+            id: "test-board".to_owned(),
+            name: "test board".to_owned(),
             codec: CodecSpec {
-                driver: CodecDriverId::ES8388,
+                driver: "es8388".to_owned(),
                 i2c_address: 0x10,
             },
             pins: PinMap {
@@ -229,9 +227,9 @@ mod tests {
                     din: 35,
                 },
             },
-            input_lines: &[InputOption {
+            input_lines: vec![InputOption {
                 line: 7,
-                label: "test input",
+                label: "test input".to_owned(),
             }],
             input_gain_max: 20,
             adc_atten_max_db: 6,
@@ -270,21 +268,18 @@ mod tests {
 
     #[test]
     fn validates_an_owned_runtime_configuration() {
-        assert_eq!(
-            sample_runtime_config().validate(board::DEFAULT_PRESET),
-            Ok(())
-        );
+        assert_eq!(sample_runtime_config().validate(&default_board()), Ok(()));
     }
 
     #[test]
     fn bounds_the_device_name_by_characters_not_bytes() {
         let mut config = sample_runtime_config();
         config.device_name = "ü".repeat(super::MAX_DEVICE_NAME_CHARS);
-        assert_eq!(config.validate(board::DEFAULT_PRESET), Ok(()));
+        assert_eq!(config.validate(&default_board()), Ok(()));
 
         config.device_name.push('x');
         assert_eq!(
-            config.validate(board::DEFAULT_PRESET),
+            config.validate(&default_board()),
             Err(ConfigError::DeviceNameTooLong)
         );
     }
@@ -294,14 +289,21 @@ mod tests {
         let mut config = sample_runtime_config();
         config.admin_secret = "short".to_owned();
         assert_eq!(
-            config.validate(board::DEFAULT_PRESET),
+            config.validate(&default_board()),
             Err(ConfigError::WeakAdminSecret)
         );
 
         config.admin_secret = String::new();
         assert_eq!(
-            config.validate(board::DEFAULT_PRESET),
+            config.validate(&default_board()),
             Err(ConfigError::WeakAdminSecret)
         );
+    }
+
+    fn default_board() -> Board {
+        let catalog = board::builtin_catalog().expect("valid catalog");
+        board::resolve(&catalog, None)
+            .expect("default board")
+            .clone()
     }
 }

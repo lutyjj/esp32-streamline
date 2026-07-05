@@ -20,17 +20,18 @@ debug = true
 opt-level = "z"
 
 [dependencies]
-# Used by the host-testable verifying-download pipeline in `update`, so it must
-# build for every target, not only the device.
+# Host-testable core logic, so these must build for every target, not only the
+# device: `sha2` backs the verifying-download pipeline in `update`; serde backs
+# the board descriptor model in `board`, parsed and validated on the host.
 sha2 = { version = "0.10", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [target.'cfg(target_os = "espidf")'.dependencies]
 anyhow = "1"
 embedded-svc = "0.29"
 esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
 log = "0.4"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 
 [build-dependencies]
 embuild = { version = "0.33", features = ["espidf"] }

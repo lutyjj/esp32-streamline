@@ -16,11 +16,9 @@ use esp_idf_svc::hal::{
     units::Hertz,
 };
 
-use crate::{
-    adapters::pins::I2cBusPins,
-    board::{CodecDriverId, CodecSpec},
-    config::AudioSettings,
-};
+use crate::{adapters::pins::I2cBusPins, board::CodecSpec, config::AudioSettings};
+
+const DRIVER_ES8388: &str = "es8388";
 
 /// A line-in capture codec on the shared I2C control bus.
 trait CodecDriver {
@@ -40,11 +38,11 @@ enum Driver {
 }
 
 impl Driver {
-    fn resolve(id: CodecDriverId<'_>) -> Result<Self> {
-        if id == CodecDriverId::ES8388 {
+    fn resolve(id: &str) -> Result<Self> {
+        if id == DRIVER_ES8388 {
             Ok(Self::Es8388)
         } else {
-            Err(anyhow!("unsupported codec driver '{}'", id.as_str()))
+            Err(anyhow!("unsupported codec driver '{id}'"))
         }
     }
 
@@ -61,15 +59,20 @@ impl Driver {
     }
 }
 
+/// Validate that the firmware contains a driver for a descriptor's codec.
+pub fn validate_supported(codec: &CodecSpec) -> Result<()> {
+    Driver::resolve(&codec.driver).map(|_| ())
+}
+
 /// Open the control bus, configure the board's codec, and return a handle that
 /// can re-apply input settings while the device streams.
 pub fn configure<'d>(
     i2c: I2C0<'d>,
     pins: I2cBusPins<'d>,
-    codec: CodecSpec<'_>,
+    codec: &CodecSpec,
     audio: AudioSettings,
 ) -> Result<CodecControl<'d>> {
-    let driver = Driver::resolve(codec.driver)?;
+    let driver = Driver::resolve(&codec.driver)?;
     let config = I2cConfig::new()
         .baudrate(Hertz(100_000))
         .sda_enable_pullup(true)
@@ -217,6 +220,20 @@ mod tests {
         assert_eq!(input_gain_register(0), 0x00);
         assert_eq!(input_gain_register(100), 0x88);
         assert_eq!(attenuation_register(48), 96);
+    }
+
+    #[test]
+    fn validates_supported_codec_descriptors() {
+        assert!(super::validate_supported(&crate::board::CodecSpec {
+            driver: DRIVER_ES8388.to_owned(),
+            i2c_address: 0x10,
+        })
+        .is_ok());
+        assert!(super::validate_supported(&crate::board::CodecSpec {
+            driver: "missing-codec".to_owned(),
+            i2c_address: 0x10,
+        })
+        .is_err());
     }
 
     #[test]

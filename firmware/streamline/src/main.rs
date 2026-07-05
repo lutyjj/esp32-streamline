@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
-    hal::{delay::FreeRtos, peripherals::Peripherals},
+    hal::{delay::FreeRtos, i2c::I2C0, i2s::I2S0, peripherals::Peripherals},
     nvs::EspDefaultNvsPartition,
 };
 use streamline_firmware::{
@@ -12,13 +12,13 @@ use streamline_firmware::{
         http::{self, ApiState, Mode},
         i2s::Capture,
         mdns::MdnsAdvertisement,
-        nvs::{BoardPresetSelection, ConfigStore},
+        nvs::ConfigStore,
         ota,
         pins::AudioPins,
         tcp::TargetAddress,
         time, wifi,
     },
-    board::Board,
+    board::{self, Board},
     config::{AudioSettings, RuntimeConfig},
     identity, runtime,
 };
@@ -34,18 +34,23 @@ fn main() -> Result<()> {
     let event_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let store = Arc::new(Mutex::new(ConfigStore::open(nvs_partition.clone())?));
+    let board_catalog = Arc::new(
+        board::builtin_catalog()
+            .map_err(|error| anyhow::anyhow!("invalid built-in board catalog: {error}"))?,
+    );
     let board_selection = store
         .lock()
         .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
-        .load_board_preset()?;
-    let board = board_selection.board();
-    log::info!("using board preset '{}'", board.id);
-    let persisted = match board_selection {
-        BoardPresetSelection::Resolved(_) => store
+        .load_board_selection(&board_catalog)?;
+    let board = Arc::new(board_selection.board().clone());
+    log::info!("using board descriptor '{}'", board.id);
+    let persisted = if board_selection.is_resolved() {
+        store
             .lock()
             .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
-            .load(board)?,
-        BoardPresetSelection::Unknown { .. } => None,
+            .load(board.as_ref())?
+    } else {
+        None
     };
     let mut wifi = wifi::create(modem, event_loop, nvs_partition)?;
     let suffix = wifi::device_suffix()?;
@@ -55,42 +60,40 @@ fn main() -> Result<()> {
     let (mode, config, stream, codec) = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
             Ok(()) => match resolve_target(&config) {
-                Ok(target) => {
-                    let audio_pins = AudioPins::new(board.pins);
-                    let capture = Capture::new(i2s0, audio_pins.i2s)?;
-                    let codec = codec::configure(i2c0, audio_pins.i2c, board.codec, config.audio)?;
-                    let streaming = target.is_some();
-                    let stream = runtime::start(capture, target)?;
-                    log::info!(
-                        "StreamLine provisioned; {}",
-                        if streaming {
-                            "streaming over TCP"
-                        } else {
-                            "capturing until a bridge target is set"
-                        }
-                    );
-                    (
-                        Mode::Provisioned,
-                        config,
-                        Some(stream),
-                        Some(Arc::new(Mutex::new(codec))),
-                    )
-                }
+                Ok(target) => match start_audio(i2c0, i2s0, board.as_ref(), &config, target) {
+                    Ok((stream, codec)) => {
+                        log::info!(
+                            "StreamLine provisioned; {}",
+                            if target.is_some() {
+                                "streaming over TCP"
+                            } else {
+                                "capturing until a bridge target is set"
+                            }
+                        );
+                        (Mode::Provisioned, config, Some(stream), Some(codec))
+                    }
+                    Err(error) => {
+                        let reason = format!("audio hardware initialization failed: {error:#}");
+                        log::warn!("{reason}; opening setup AP");
+                        note_fallback(&store, &reason);
+                        start_setup(&mut wifi, &suffix, board.as_ref())?
+                    }
+                },
                 Err(error) => {
                     let reason = format!("TCP target resolution failed: {error:#}");
                     log::warn!("{reason}; opening setup AP");
                     note_fallback(&store, &reason);
-                    start_setup(&mut wifi, &suffix, board)?
+                    start_setup(&mut wifi, &suffix, board.as_ref())?
                 }
             },
             Err(error) => {
                 let reason = format!("Wi-Fi station connection failed: {error:#}");
                 log::warn!("{reason}; opening setup AP");
                 note_fallback(&store, &reason);
-                start_setup(&mut wifi, &suffix, board)?
+                start_setup(&mut wifi, &suffix, board.as_ref())?
             }
         },
-        None => start_setup(&mut wifi, &suffix, board)?,
+        None => start_setup(&mut wifi, &suffix, board.as_ref())?,
     };
 
     // Reaching the home network with the console up is the signal an
@@ -120,6 +123,7 @@ fn main() -> Result<()> {
         mode,
         hostname: local_hostname,
         config: Arc::new(Mutex::new(config)),
+        board_catalog,
         board,
         store,
         stream,
@@ -157,6 +161,26 @@ fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
     TargetAddress::resolve(config).map(Some)
 }
 
+type ProvisionedAudio = (
+    Arc<runtime::StreamStatus>,
+    Arc<Mutex<codec::CodecControl<'static>>>,
+);
+
+fn start_audio(
+    i2c0: I2C0<'static>,
+    i2s0: I2S0<'static>,
+    board: &Board,
+    config: &RuntimeConfig,
+    target: Option<TargetAddress>,
+) -> Result<ProvisionedAudio> {
+    let audio_pins = AudioPins::new(board.pins);
+    let capture = Capture::new(i2s0, audio_pins.i2s).context("I2S capture setup failed")?;
+    let codec = codec::configure(i2c0, audio_pins.i2c, &board.codec, config.audio)
+        .context("codec setup failed")?;
+    let stream = runtime::start(capture, target).context("capture task setup failed")?;
+    Ok((stream, Arc::new(Mutex::new(codec))))
+}
+
 type SetupState = (
     Mode,
     RuntimeConfig,
@@ -167,7 +191,7 @@ type SetupState = (
 fn start_setup(
     wifi: &mut wifi::WifiController<'_>,
     suffix: &str,
-    board: &Board<'_>,
+    board: &Board,
 ) -> Result<SetupState> {
     let ssid = wifi::start_setup_ap(wifi, suffix)?;
     log::info!("setup AP started: {ssid}");

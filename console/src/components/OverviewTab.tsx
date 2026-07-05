@@ -1,12 +1,9 @@
-import { signal } from '@preact/signals';
 import { dbfs } from '../lib/format';
+import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import { noBridge, packetsMoving, setupMode, status } from '../state/device';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
 import { Meter } from './Meter';
-
-/** True once the clip callout was dismissed this session. */
-export const clipDismissed = signal(false);
 
 export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
   const s = status.value;
@@ -17,7 +14,7 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
   const bridgeless = noBridge.value;
   const moving = packetsMoving.value;
   const clips = s.metrics.clipped_samples_total;
-  const showClipCallout = clips > 0 && !clipDismissed.value && !setup;
+  const showClipCallout = clipCalloutVisible.value;
   const rms = Math.max(s.metrics.rms_left, s.metrics.rms_right);
 
   const diagRows: [string, string][] = [
@@ -49,9 +46,14 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
               {` ${clips} samples hit full scale since the levels were last set — the recording is distorted at the bridge. Calibration fixes this in about a minute.`}
             </span>
           </div>
-          <button class="btn secondary" type="button" onClick={onCalibrate}>
-            Calibrate levels
-          </button>
+          <div class="actions">
+            <button class="btn secondary" type="button" onClick={onCalibrate}>
+              Calibrate levels
+            </button>
+            <button class="btn secondary" type="button" onClick={dismissClipCallout}>
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 

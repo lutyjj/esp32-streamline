@@ -164,9 +164,8 @@ mod tests {
     use super::{PlayDetector, START_AFTER_PACKETS, STOP_AFTER_PACKETS, WARMUP_PACKETS};
     use crate::levels::LevelStats;
 
-    /// Idle-input RMS (max of both channels) sampled from an ESP32-A1S node
-    /// connected to a powered-on, non-playing CD player: median 23 with
-    /// excursions to 89.
+    /// Idle-input RMS (max of both channels) from a powered-on, non-playing CD
+    /// player: median 23 with excursions to 89.
     const IDLE_CD_PLAYER_RMS: [u16; 120] = [
         13, 17, 26, 20, 69, 13, 27, 23, 17, 20, 20, 14, 24, 20, 59, 28, 31, 41, 89, 20, 24, 24, 13,
         12, 28, 25, 20, 26, 24, 16, 15, 24, 32, 11, 14, 21, 43, 20, 45, 27, 41, 28, 25, 30, 27, 22,

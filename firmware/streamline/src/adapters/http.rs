@@ -632,6 +632,7 @@ struct CapabilitiesStatus<'a> {
     board_id: &'a str,
     board: &'a str,
     codec: CodecStatus<'a>,
+    pins: PinMapStatus,
     input_lines: Vec<InputLineStatus<'a>>,
     input_gain_max: u8,
     adc_atten_max_db: u8,
@@ -641,6 +642,26 @@ struct CapabilitiesStatus<'a> {
 struct CodecStatus<'a> {
     driver: &'a str,
     i2c_address: u8,
+}
+
+#[derive(Serialize)]
+struct PinMapStatus {
+    i2c: I2cPinsStatus,
+    i2s: I2sPinsStatus,
+}
+
+#[derive(Serialize)]
+struct I2cPinsStatus {
+    sda: u8,
+    scl: u8,
+}
+
+#[derive(Serialize)]
+struct I2sPinsStatus {
+    mclk: u8,
+    bclk: u8,
+    ws: u8,
+    din: u8,
 }
 
 #[derive(Serialize)]
@@ -657,6 +678,18 @@ impl<'a> CapabilitiesStatus<'a> {
             codec: CodecStatus {
                 driver: board.codec.driver.as_str(),
                 i2c_address: board.codec.i2c_address,
+            },
+            pins: PinMapStatus {
+                i2c: I2cPinsStatus {
+                    sda: board.pins.i2c.sda,
+                    scl: board.pins.i2c.scl,
+                },
+                i2s: I2sPinsStatus {
+                    mclk: board.pins.i2s.mclk,
+                    bclk: board.pins.i2s.bclk,
+                    ws: board.pins.i2s.ws,
+                    din: board.pins.i2s.din,
+                },
             },
             input_lines: board
                 .input_lines
@@ -944,7 +977,7 @@ fn serialize<T: Serialize>(value: &T) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{authorized_secret, constant_time_eq, parse_form};
+    use super::{authorized_secret, constant_time_eq, parse_form, serialize, CapabilitiesStatus};
 
     #[test]
     fn decodes_browser_urlencoded_forms() {
@@ -973,6 +1006,16 @@ mod tests {
         assert!(!authorized_secret(
             "console-secret",
             Some("Bearer console-secreX")
+        ));
+    }
+
+    #[test]
+    fn capabilities_report_the_active_board_descriptor() {
+        let json = serialize(&CapabilitiesStatus::current());
+        assert!(json.contains(r#""board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
+        assert!(json.contains(r#""codec":{"driver":"es8388","i2c_address":16}"#));
+        assert!(json.contains(
+            r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
         ));
     }
 }

@@ -14,6 +14,7 @@ use streamline_firmware::{
         mdns::MdnsAdvertisement,
         nvs::ConfigStore,
         ota,
+        pins::AudioPins,
         tcp::TargetAddress,
         time, wifi,
     },
@@ -27,7 +28,12 @@ fn main() -> Result<()> {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    let peripherals = Peripherals::take()?;
+    let Peripherals {
+        modem, i2c0, i2s0, ..
+    } = Peripherals::take()?;
+    board::ACTIVE
+        .validate()
+        .map_err(|error| anyhow::anyhow!("invalid active board descriptor: {error:?}"))?;
     let event_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let store = Arc::new(Mutex::new(ConfigStore::open(nvs_partition.clone())?));
@@ -35,7 +41,7 @@ fn main() -> Result<()> {
         .lock()
         .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
         .load()?;
-    let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
+    let mut wifi = wifi::create(modem, event_loop, nvs_partition)?;
     let suffix = wifi::device_suffix()?;
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
@@ -44,20 +50,10 @@ fn main() -> Result<()> {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
             Ok(()) => match resolve_target(&config) {
                 Ok(target) => {
-                    let capture = Capture::new(
-                        peripherals.i2s0,
-                        peripherals.pins.gpio27,
-                        peripherals.pins.gpio35,
-                        peripherals.pins.gpio0,
-                        peripherals.pins.gpio25,
-                    )?;
-                    let codec = codec::configure(
-                        peripherals.i2c0,
-                        peripherals.pins.gpio33,
-                        peripherals.pins.gpio32,
-                        board::ACTIVE.codec,
-                        config.audio,
-                    )?;
+                    let audio_pins = AudioPins::new(board::ACTIVE.pins);
+                    let capture = Capture::new(i2s0, audio_pins.i2s)?;
+                    let codec =
+                        codec::configure(i2c0, audio_pins.i2c, board::ACTIVE.codec, config.audio)?;
                     let streaming = target.is_some();
                     let stream = runtime::start(capture, target)?;
                     log::info!(

@@ -32,6 +32,27 @@ pub struct CodecSpec<'a> {
     pub i2c_address: u8,
 }
 
+/// ESP32 GPIO wiring used by the board's audio hardware.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PinMap {
+    pub i2c: I2cPins,
+    pub i2s: I2sPins,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct I2cPins {
+    pub sda: u8,
+    pub scl: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct I2sPins {
+    pub mclk: u8,
+    pub bclk: u8,
+    pub ws: u8,
+    pub din: u8,
+}
+
 /// One selectable input, with the label the console shows for it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InputOption<'a> {
@@ -49,6 +70,8 @@ pub struct Board<'a> {
     pub name: &'a str,
     /// Codec driver and bus address needed to control line-in capture.
     pub codec: CodecSpec<'a>,
+    /// ESP32 GPIO wiring for codec control and I2S capture.
+    pub pins: PinMap,
     /// Selectable inputs in console order, never empty; the first entry is
     /// the factory default.
     pub input_lines: &'a [InputOption<'a>],
@@ -64,6 +87,9 @@ pub enum BoardError {
     MissingName,
     MissingCodecDriver,
     InvalidCodecAddress,
+    InvalidOutputGpio,
+    InvalidInputGpio,
+    DuplicateGpio,
     NoInputLines,
     MissingInputLabel,
     DuplicateInputLine,
@@ -83,6 +109,19 @@ impl Board<'_> {
         }
         if self.codec.i2c_address > 0x7f {
             return Err(BoardError::InvalidCodecAddress);
+        }
+        validate_output_gpio(self.pins.i2c.sda)?;
+        validate_output_gpio(self.pins.i2c.scl)?;
+        validate_output_gpio(self.pins.i2s.mclk)?;
+        validate_output_gpio(self.pins.i2s.bclk)?;
+        validate_output_gpio(self.pins.i2s.ws)?;
+        validate_input_gpio(self.pins.i2s.din)?;
+        for (i, a) in self.gpios().iter().enumerate() {
+            for b in &self.gpios()[i + 1..] {
+                if a == b {
+                    return Err(BoardError::DuplicateGpio);
+                }
+            }
         }
         if self.input_lines.is_empty() {
             return Err(BoardError::NoInputLines);
@@ -112,6 +151,41 @@ impl Board<'_> {
     pub fn default_line(&self) -> u8 {
         self.input_lines[0].line
     }
+
+    fn gpios(&self) -> [u8; 6] {
+        [
+            self.pins.i2c.sda,
+            self.pins.i2c.scl,
+            self.pins.i2s.mclk,
+            self.pins.i2s.bclk,
+            self.pins.i2s.ws,
+            self.pins.i2s.din,
+        ]
+    }
+}
+
+fn validate_output_gpio(gpio: u8) -> Result<(), BoardError> {
+    if is_output_gpio(gpio) {
+        Ok(())
+    } else {
+        Err(BoardError::InvalidOutputGpio)
+    }
+}
+
+fn validate_input_gpio(gpio: u8) -> Result<(), BoardError> {
+    if is_gpio(gpio) {
+        Ok(())
+    } else {
+        Err(BoardError::InvalidInputGpio)
+    }
+}
+
+const fn is_output_gpio(gpio: u8) -> bool {
+    matches!(gpio, 0..=5 | 12..=23 | 25..=33)
+}
+
+const fn is_gpio(gpio: u8) -> bool {
+    matches!(gpio, 0..=5 | 12..=23 | 25..=39)
 }
 
 /// The board this firmware build targets.
@@ -127,6 +201,15 @@ pub const AI_THINKER_ESP32_AUDIO_KIT_V2_2_ES8388: Board<'static> = Board {
     codec: CodecSpec {
         driver: CodecDriverId::ES8388,
         i2c_address: 0x10,
+    },
+    pins: PinMap {
+        i2c: I2cPins { sda: 33, scl: 32 },
+        i2s: I2sPins {
+            mclk: 0,
+            bclk: 27,
+            ws: 25,
+            din: 35,
+        },
     },
     input_lines: &[
         InputOption {
@@ -170,6 +253,15 @@ mod tests {
                 driver: CodecDriverId::ES8388,
                 i2c_address: 0x10,
             },
+            pins: PinMap {
+                i2c: I2cPins { sda: 4, scl: 5 },
+                i2s: I2sPins {
+                    mclk: 12,
+                    bclk: 13,
+                    ws: 14,
+                    din: 35,
+                },
+            },
             input_lines: &[InputOption {
                 line: 7,
                 label: "only input",
@@ -190,6 +282,15 @@ mod tests {
             codec: CodecSpec {
                 driver: CodecDriverId::new("es8388"),
                 i2c_address: 0x10,
+            },
+            pins: PinMap {
+                i2c: I2cPins { sda: 4, scl: 5 },
+                i2s: I2sPins {
+                    mclk: 12,
+                    bclk: 13,
+                    ws: 14,
+                    din: 35,
+                },
             },
             input_lines: &[
                 InputOption {
@@ -219,6 +320,37 @@ mod tests {
         assert_eq!(
             invalid_codec_address.validate(),
             Err(BoardError::InvalidCodecAddress)
+        );
+
+        let duplicate_gpios = Board {
+            pins: PinMap {
+                i2c: I2cPins { sda: 4, scl: 5 },
+                i2s: I2sPins {
+                    mclk: 12,
+                    bclk: 13,
+                    ws: 14,
+                    din: 14,
+                },
+            },
+            ..duplicate_lines
+        };
+        assert_eq!(duplicate_gpios.validate(), Err(BoardError::DuplicateGpio));
+
+        let invalid_output = Board {
+            pins: PinMap {
+                i2c: I2cPins { sda: 35, scl: 5 },
+                i2s: I2sPins {
+                    mclk: 12,
+                    bclk: 13,
+                    ws: 14,
+                    din: 34,
+                },
+            },
+            ..duplicate_lines
+        };
+        assert_eq!(
+            invalid_output.validate(),
+            Err(BoardError::InvalidOutputGpio)
         );
     }
 }

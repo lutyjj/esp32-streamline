@@ -1,100 +1,13 @@
-/**
- * Typed client for the device HTTP API.
- *
- * Every shape here mirrors a serde struct in
- * `firmware/streamline/src/adapters/http.rs` — change one, change the other
- * in the same PR.
- */
-
 import { isUnlocked, lockSettings, storedAdminKey } from './adminKey';
+import type { components } from './generated/openapi';
 
-/** Mirrors `StatusResponse`. */
-export interface DeviceStatus {
-  firmware_version: string;
-  /** Friendly name; empty when unnamed. */
-  device_name: string;
-  /** The boot contract: "setup" (own AP) or "provisioned" (home network). */
-  mode: 'setup' | 'provisioned';
-  config_source: string;
-  web_server: boolean;
-  configuration_writable: boolean;
-  auth_required: boolean;
-  wifi: {
-    hostname: string;
-    ssid: string;
-    status: string;
-    sta_ip: string;
-    ap_ip: string;
-    rssi: number;
-  };
-  target: {
-    target_host: string;
-    target_port: number;
-    transport: string;
-  };
-  audio: {
-    input_line: number;
-    input_gain: number;
-    adc_atten_db: number;
-    sample_rate: number;
-    channels: number;
-    bits_per_sample: number;
-  };
-  metrics: {
-    sequence: number;
-    packets: number;
-    bytes: number;
-    read_errors: number;
-    short_reads: number;
-    queue_depth: number;
-    queue_drops_total: number;
-    network_errors_total: number;
-    reconnects_total: number;
-    clip_threshold_abs: number;
-    peak_abs_left: number;
-    peak_abs_right: number;
-    rms_left: number;
-    rms_right: number;
-    noise_floor: number;
-    clipped_samples_total: number;
-    playing: boolean;
-  };
-  diagnostics: {
-    reset_reason: string;
-    last_fallback: string;
-    last_ota: string;
-  };
-  ota: OtaSnapshot;
-}
-
-/** Mirrors `OtaStatus`. */
-export interface OtaSnapshot {
-  phase: string;
-  bytes_written: number;
-  bytes_total: number;
-  latest_version: string;
-  message: string;
-  busy: boolean;
-}
-
-/** Mirrors `ConfigResponse`. */
-export interface DeviceConfig {
-  device_name: string;
-  ssid: string;
-  target_host: string;
-  target_port: number;
-  input_line: number;
-  input_gain: number;
-  adc_atten_db: number;
-  config_source: string;
-}
+export type OpenApiDocument = components['schemas']['OpenApiDocument'];
+export type DeviceStatus = components['schemas']['DeviceStatus'];
+export type OtaSnapshot = components['schemas']['OtaSnapshot'];
+export type DeviceConfig = components['schemas']['DeviceConfig'];
 
 /** Mutation acknowledgement; `rebooting` marks writes that restart the device. */
-export interface Ack {
-  ok?: boolean;
-  rebooting?: boolean;
-  started?: boolean;
-}
+export type Ack = components['schemas']['Ack'];
 
 /** Injectable transport so tests run without a browser network stack. */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -134,6 +47,8 @@ export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
 export const getStatus = () => api<DeviceStatus>('/api/status');
 
 export const getSettings = () => api<DeviceConfig>('/api/settings');
+
+export const getOpenApi = () => api<OpenApiDocument>('/api/openapi.json');
 
 export function postForm<T = Ack>(path: string, fields: Record<string, string>): Promise<T> {
   return api<T>(path, { method: 'POST', body: new URLSearchParams(fields) });

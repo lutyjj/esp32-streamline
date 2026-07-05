@@ -16,6 +16,7 @@ CONTAINER_GIT_SAFE_DIR ?= $(CONTAINER_WORKSPACE)
 CONTAINER_CARGO_HOME ?=
 CONTAINER_EXTRA_FLAGS ?=
 CONTAINER_CARGO_ENV := $(if $(CONTAINER_CARGO_HOME),-e CARGO_HOME="$(CONTAINER_CARGO_HOME)")
+OPENAPI_DOC := $(ROOT_DIR)/docs/openapi.json
 
 # Firmware uses Espressif's pinned toolchain image as delivered. Its ESP/Rust
 # environment is rooted under /home/esp, while the project is a bind-mounted
@@ -37,12 +38,26 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint build test flash monitor capture clean artifacts
+.PHONY: image openapi openapi-check console-asset format lint build test flash monitor capture clean artifacts
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
 
-console-asset:
+openapi: image
+	mkdir -p "$(dir $(OPENAPI_DOC))"
+	$(CONTAINER_RUN) cargo run --quiet --bin streamline-openapi --features openapi > "$(OPENAPI_DOC)"
+
+openapi-check: image
+	@tmp="$$(mktemp)"; \
+	$(CONTAINER_RUN) cargo run --quiet --bin streamline-openapi --features openapi > "$$tmp"; \
+	if ! cmp -s "$(OPENAPI_DOC)" "$$tmp"; then \
+		diff -u "$(OPENAPI_DOC)" "$$tmp"; \
+		rm -f "$$tmp"; \
+		exit 1; \
+	fi; \
+	rm -f "$$tmp"
+
+console-asset: openapi
 	$(MAKE) -C $(CONSOLE_DIR) build
 
 format: image
@@ -51,18 +66,18 @@ format: image
 # clippy runs `--lib` on the host target: the crate core is host-buildable while
 # the `cfg(espidf)` adapters and binary only compile in the cross build, which
 # `build` exercises with warnings intact.
-lint: image console-asset
+lint: image openapi-check console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --lib -- -D warnings
 
-build: image console-asset
+build: image openapi console-asset
 	$(CONTAINER_RUN) cargo build --release --target $(TARGET)
 
-test: image console-asset
+test: image openapi-check console-asset
 	$(CONTAINER_RUN) cargo test --lib
 
-# Serial devices are host resources; Docker Desktop on macOS cannot expose the
-# /dev/cu.* device reliably. Install espflash on the host for these two targets.
+# Serial devices are host resources, and container access to them is
+# platform-dependent. Install espflash on the host for these two targets.
 # `--erase-parts otadata` makes the freshly flashed slot the boot choice: a
 # device whose last update arrived over OTA otherwise keeps booting the other
 # slot, silently running the old image. Config in NVS survives.

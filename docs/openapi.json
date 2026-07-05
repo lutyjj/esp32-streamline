@@ -1,0 +1,1094 @@
+{
+  "components": {
+    "schemas": {
+      "Ack": {
+        "properties": {
+          "ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "rebooting": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "started": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AdminKeyForm": {
+        "additionalProperties": false,
+        "properties": {
+          "admin_secret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "admin_secret"
+        ],
+        "type": "object"
+      },
+      "AudioSettingsForm": {
+        "additionalProperties": false,
+        "properties": {
+          "atten": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "gain": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "line": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "line",
+          "gain",
+          "atten"
+        ],
+        "type": "object"
+      },
+      "AudioStatus": {
+        "properties": {
+          "adc_atten_db": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bits_per_sample": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "channels": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "input_gain": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "input_line": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sample_rate": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_line",
+          "input_gain",
+          "adc_atten_db",
+          "sample_rate",
+          "channels",
+          "bits_per_sample"
+        ],
+        "type": "object"
+      },
+      "DeviceConfig": {
+        "properties": {
+          "adc_atten_db": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "config_source": {
+            "type": "string"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "input_gain": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "input_line": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ssid": {
+            "type": "string"
+          },
+          "target_host": {
+            "type": "string"
+          },
+          "target_port": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "device_name",
+          "ssid",
+          "target_host",
+          "target_port",
+          "input_line",
+          "input_gain",
+          "adc_atten_db",
+          "config_source"
+        ],
+        "type": "object"
+      },
+      "DeviceNameForm": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DeviceStatus": {
+        "properties": {
+          "audio": {
+            "$ref": "#/components/schemas/AudioStatus"
+          },
+          "auth_required": {
+            "type": "boolean"
+          },
+          "config_source": {
+            "type": "string"
+          },
+          "configuration_writable": {
+            "type": "boolean"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/DiagnosticsStatus"
+          },
+          "firmware_version": {
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/MetricsStatus"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "ota": {
+            "$ref": "#/components/schemas/OtaSnapshot"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetStatus"
+          },
+          "web_server": {
+            "type": "boolean"
+          },
+          "wifi": {
+            "$ref": "#/components/schemas/WifiStatus"
+          }
+        },
+        "required": [
+          "firmware_version",
+          "device_name",
+          "mode",
+          "config_source",
+          "web_server",
+          "configuration_writable",
+          "auth_required",
+          "wifi",
+          "target",
+          "audio",
+          "metrics",
+          "diagnostics",
+          "ota"
+        ],
+        "type": "object"
+      },
+      "DiagnosticsStatus": {
+        "properties": {
+          "last_fallback": {
+            "type": "string"
+          },
+          "last_ota": {
+            "type": "string"
+          },
+          "reset_reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reset_reason",
+          "last_fallback",
+          "last_ota"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "MetricsStatus": {
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clip_threshold_abs": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clipped_samples_total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "network_errors_total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "noise_floor": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "packets": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "peak_abs_left": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "peak_abs_right": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "playing": {
+            "type": "boolean"
+          },
+          "queue_depth": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "queue_drops_total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "read_errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reconnects_total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rms_left": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rms_right": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sequence": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "short_reads": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "packets",
+          "bytes",
+          "read_errors",
+          "short_reads",
+          "queue_depth",
+          "queue_drops_total",
+          "network_errors_total",
+          "reconnects_total",
+          "clip_threshold_abs",
+          "peak_abs_left",
+          "peak_abs_right",
+          "rms_left",
+          "rms_right",
+          "noise_floor",
+          "clipped_samples_total",
+          "playing"
+        ],
+        "type": "object"
+      },
+      "NetworkSettingsForm": {
+        "additionalProperties": false,
+        "properties": {
+          "admin_secret": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "ssid": {
+            "type": "string"
+          },
+          "target_host": {
+            "type": "string"
+          },
+          "target_port": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ssid",
+          "target_port"
+        ],
+        "type": "object"
+      },
+      "OpenApiDocument": {
+        "additionalProperties": true,
+        "properties": {
+          "info": {
+            "additionalProperties": true,
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "version"
+            ],
+            "type": "object"
+          },
+          "openapi": {
+            "type": "string"
+          },
+          "paths": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "openapi",
+          "info",
+          "paths"
+        ],
+        "type": "object"
+      },
+      "OtaSnapshot": {
+        "properties": {
+          "busy": {
+            "type": "boolean"
+          },
+          "bytes_total": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bytes_written": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "latest_version": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "bytes_written",
+          "bytes_total",
+          "latest_version",
+          "message",
+          "busy"
+        ],
+        "type": "object"
+      },
+      "OtaUpdateForm": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "TargetStatus": {
+        "properties": {
+          "target_host": {
+            "type": "string"
+          },
+          "target_port": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transport": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_host",
+          "target_port",
+          "transport"
+        ],
+        "type": "object"
+      },
+      "WifiStatus": {
+        "properties": {
+          "ap_ip": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "rssi": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "ssid": {
+            "type": "string"
+          },
+          "sta_ip": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname",
+          "ssid",
+          "status",
+          "sta_ip",
+          "ap_ip",
+          "rssi"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "adminKey": {
+        "description": "Per-device admin key. Required for mutating endpoints once provisioned.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "HTTP API exposed by one ESP32 StreamLine device on a trusted LAN.",
+    "title": "StreamLine Device API",
+    "version": "0.4.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/factory-reset": {
+      "post": {
+        "operationId": "factoryReset",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "The supplied key is accepted."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Erase persisted settings and restart.",
+        "tags": [
+          "Actions"
+        ]
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Prometheus exposition text."
+          }
+        },
+        "summary": "Get Prometheus metrics.",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenApiDocument"
+                }
+              }
+            },
+            "description": "The device API contract as JSON."
+          }
+        },
+        "summary": "Get the OpenAPI contract.",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/api/ota/check": {
+      "post": {
+        "operationId": "checkOta",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Background OTA check started; poll status.ota for the result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "An OTA check or install is already running."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Check for a newer firmware release.",
+        "tags": [
+          "Actions"
+        ]
+      }
+    },
+    "/api/ota/update": {
+      "post": {
+        "operationId": "updateOta",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OtaUpdateForm"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Background OTA work started; poll status.ota for progress."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "An OTA check or install is already running."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Install firmware from the latest release or a pinned custom image.",
+        "tags": [
+          "Actions"
+        ]
+      }
+    },
+    "/api/restart": {
+      "post": {
+        "operationId": "restart",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "The supplied key is accepted."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Restart the device.",
+        "tags": [
+          "Actions"
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "getSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceConfig"
+                }
+              }
+            },
+            "description": "Persisted settings safe to show in the console."
+          }
+        },
+        "summary": "Get persisted settings without secrets.",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/settings/admin-key": {
+      "post": {
+        "operationId": "setAdminKey",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminKeyForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Mutation accepted."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Replace the admin key.",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/settings/audio": {
+      "post": {
+        "operationId": "setAudioSettings",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/AudioSettingsForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Mutation accepted."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Save input gain, line, and attenuation.",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/settings/name": {
+      "post": {
+        "operationId": "setDeviceName",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceNameForm"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Mutation accepted."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Save the friendly device name.",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/settings/network": {
+      "post": {
+        "operationId": "setNetworkSettings",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkSettingsForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "Mutation accepted."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request body is invalid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Save Wi-Fi and stream target settings.",
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/api/status": {
+      "get": {
+        "operationId": "getStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceStatus"
+                }
+              }
+            },
+            "description": "Runtime, network, audio, diagnostics, and OTA state."
+          }
+        },
+        "summary": "Get runtime status.",
+        "tags": [
+          "Runtime"
+        ]
+      }
+    },
+    "/api/unlock": {
+      "post": {
+        "operationId": "unlock",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ack"
+                }
+              }
+            },
+            "description": "The supplied key is accepted."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The admin key is absent or invalid."
+          }
+        },
+        "security": [
+          {
+            "adminKey": []
+          }
+        ],
+        "summary": "Check whether an admin key is accepted.",
+        "tags": [
+          "Actions"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Runtime"
+    },
+    {
+      "name": "Settings"
+    },
+    {
+      "name": "Actions"
+    }
+  ]
+}

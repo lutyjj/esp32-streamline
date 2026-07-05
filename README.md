@@ -111,11 +111,13 @@ make firmware-capture CAPTURE_SECS=30     # bounded serial capture for scripts
 make bridge-up                            # run the bridge from source
 ```
 
-Flashing runs on the host because Docker Desktop on macOS cannot reliably
-expose serial devices. Install the tool once: `cargo install espflash`.
+Flashing and serial monitoring run on the host because container access to
+serial devices is platform-dependent. Install the tool once:
+`cargo install espflash`.
 
 Docs: [design](docs/design.md) ·
 [user journey](docs/user-journey.md) ·
+[HTTP API](docs/openapi.json) ·
 [PCM protocol](docs/pcm-protocol.md) ·
 [TCP transport](docs/tcp-transport.md) ·
 [OTA](docs/ota.md) ·

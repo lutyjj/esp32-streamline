@@ -39,7 +39,7 @@ export function deviceStatus(
       input_line: 2,
       input_gain: 0,
       adc_atten_db: 9,
-      sample_rate: 44100,
+      sample_rate: 48000,
       channels: 2,
       bits_per_sample: 16,
       ...audio,

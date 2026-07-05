@@ -11,6 +11,7 @@ analysis-data/
 dist/
 node_modules/
 .vite/
+console/src/lib/generated/openapi.d.ts
 # Firmware bundled into the WebFlasher site at deploy time; never committed.
 webflasher/*.bin
 .DS_Store

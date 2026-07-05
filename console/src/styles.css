@@ -770,6 +770,47 @@ select:disabled {
   max-height: 320px;
 }
 
+/* ---------- API reference ---------- */
+.apiendpoint {
+  display: grid;
+  gap: 8px;
+}
+.apihead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.apihead code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.method {
+  min-width: 48px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  padding: 2px 7px;
+  text-align: center;
+  font: 700 11px var(--mono);
+}
+.method.get {
+  color: var(--accent);
+  border-color: #285b85;
+}
+.method.post {
+  color: var(--good);
+  border-color: #2f6a49;
+}
+.method.put,
+.method.patch {
+  color: var(--warn);
+  border-color: #6b5a2a;
+}
+.method.delete {
+  color: var(--bad);
+  border-color: #6b3434;
+}
+
 /* ---------- Toasts ---------- */
 .toasts {
   position: fixed;

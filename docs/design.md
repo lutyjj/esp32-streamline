@@ -126,6 +126,9 @@ identity, network, and streaming counters.
 
 ## HTTP API Shape
 
+The firmware-owned API contract lives in
+[`../firmware/streamline/src/api.rs`](../firmware/streamline/src/api.rs);
+[`openapi.json`](openapi.json) is generated from it.
 Endpoint paths follow one rule: nouns for state, verbs for actions.
 
 - Reads are open: `GET /api/status` (runtime), `GET /api/metrics`

@@ -5,13 +5,15 @@ DEV_IMAGE := esp32-streamline-console-dev
 # to STREAMLINE_DEVICE from the root .env, else the setup-AP address.
 DEVICE ?= $(or $(call dotenv,STREAMLINE_DEVICE),192.168.71.1)
 HOST_USER := $(shell id -u):$(shell id -g)
+GENERATED_API_TYPES := src/lib/generated/openapi.d.ts
+ROOT_DIR := $(abspath ..)
 
 CONTAINER_RUN := $(CONTAINER) run --rm \
-	--user "$(HOST_USER)" -v "$(CURDIR):/workspace" \
+	--user "$(HOST_USER)" -v "$(ROOT_DIR):/repo" \
 	-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
-	-e npm_config_update_notifier=false -w /workspace $(DEV_IMAGE)
+	-e npm_config_update_notifier=false -w /repo/console $(DEV_IMAGE)
 
-.PHONY: dev-image deps format lint test build dev
+.PHONY: dev-image deps generate-api format lint test build dev
 
 dev-image:
 	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
@@ -23,27 +25,33 @@ node_modules/.package-lock.json: package.json package-lock.json | dev-image
 
 deps: node_modules/.package-lock.json
 
+$(GENERATED_API_TYPES): ../docs/openapi.json package.json package-lock.json | deps
+	mkdir -p $(dir $@)
+	$(CONTAINER_RUN) npm run generate:api
+
+generate-api: $(GENERATED_API_TYPES)
+
 format: deps
 	$(CONTAINER_RUN) npx biome check --write .
 
-lint: deps
+lint: deps generate-api
 	$(CONTAINER_RUN) npx biome check .
 	$(CONTAINER_RUN) npx tsc
 
-test: deps
+test: deps generate-api
 	$(CONTAINER_RUN) npx vitest run
 
 # One self-contained HTML file in dist/; the firmware embeds it at compile
 # time (see the `web` target in firmware/Makefile).
-build: deps
+build: deps generate-api
 	$(CONTAINER_RUN) npx vite build
 
 # Live-reload UI development against a real device:
 # `make dev DEVICE=192.0.2.10` (or set STREAMLINE_DEVICE in the root .env),
 # then open http://localhost:5173/.
-dev: deps
-	$(CONTAINER) run --rm --user "$(HOST_USER)" -v "$(CURDIR):/workspace" \
+dev: deps generate-api
+	$(CONTAINER) run --rm --user "$(HOST_USER)" -v "$(ROOT_DIR):/repo" \
 		-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
 		-e npm_config_update_notifier=false \
-		-e STREAMLINE_DEVICE=$(DEVICE) -p 5173:5173 -w /workspace \
+		-e STREAMLINE_DEVICE=$(DEVICE) -p 5173:5173 -w /repo/console \
 		$(DEV_IMAGE) npx vite --host

@@ -84,9 +84,11 @@ can reach, put the API in first and the UI on top.
 ## Mirror cross-boundary contracts
 
 When two components share a wire format or API shape, write the shape down on
-both sides and bind them with a comment naming the counterpart. The
-interfaces in `console/src/lib/api.ts` mirror the serde structs in
-`adapters/http.rs`;
+both sides and bind them with a comment naming the counterpart.
+`firmware/streamline/src/api.rs` owns the device HTTP API: firmware handlers
+use its endpoint constants and DTOs, `docs/openapi.json` is generated from it,
+and the console types in `console/src/lib/generated/openapi.d.ts` are generated
+from that OpenAPI document.
 `docs/pcm-protocol.md` defines the frame that both `src/protocol.rs` and the
 bridge's `protocol.py` implement byte-exactly. Change one side, change the
 other in the same PR.
@@ -145,9 +147,10 @@ hostnames in examples. Check the artifact before publishing, not after.
 
 ## Run in Docker, do not pollute the host
 
-Run builds and checks in containers — the Makefiles already do. The only
-host-side tools are `espflash` and the serial port, which containers cannot
-reach on macOS.
+Run builds, checks, dependency commands, code generation, and toolchain probes
+in containers — the Makefiles already do. Do not rely on host Rust, Python, or
+Node installs. The only host-side tools are `espflash` and the serial port,
+where containers cannot reliably reach the hardware.
 
 ## Use branches and pull requests
 
@@ -163,6 +166,8 @@ Use **Conventional Commits** (`feat:`, `fix:`, `ci:`, `docs:`, `refactor:`, …)
 Build outputs (`dist/`, `firmware/streamline/target/`, `.embuild/`), captures
 (`captures/`, `analysis-data/`), site-bundled binaries (`webflasher/*.bin`),
 and secrets (`.env`) stay out of git. See `.gitignore`; extend it if needed.
+Commit `docs/openapi.json`; it is a generated public contract checked by
+`make firmware-openapi-check`, not a local build output.
 
 ## Releases are tag-based
 

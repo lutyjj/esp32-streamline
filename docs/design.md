@@ -90,21 +90,25 @@ add Liquidsoap/Icecast after it to publish FLAC/MP3/Opus.
 
 StreamLine targets ESP32 boards that can feed 48 kHz stereo PCM into I2S.
 The application treats board facts as data: a board descriptor names the
-preset id, display name, codec driver id, codec address, ESP32 audio pin map,
+descriptor id, display name, codec driver id, codec address, ESP32 audio pin map,
 input labels, and audio limits. Settings validation, status capabilities,
 audio hardware initialization, and console controls read that descriptor.
 
 Board support has three tiers:
 
-- **Official presets** are compiled into the firmware catalog and tested on
-  real hardware. The device stores the selected preset id in NVS, resolves it
-  at boot, and reboots after a preset change because pins and codec selection
-  are boot-time hardware wiring. A preset name is concrete: vendor, board
-  family or revision, and codec variant when that affects behavior.
-- **Custom descriptors** use the same hardware contract as official presets.
-  User-supplied descriptor upload is not part of the firmware yet; boards that
-  use a compiled-in codec driver can be added today as descriptor data under
-  `firmware/streamline/src/board/presets.rs`.
+- **Official presets** are JSON descriptors in
+  `firmware/streamline/boards/`, compiled into the firmware catalog, and
+  tested on real hardware. The device stores the selected descriptor id in
+  NVS, resolves it at boot, and reboots after a preset change because pins and
+  codec selection are boot-time hardware wiring. A preset name is concrete:
+  vendor, board family or revision, and codec variant when that affects
+  behavior.
+- **Custom descriptors** use the same JSON contract as official presets. A
+  user-supplied descriptor is posted to `/api/settings/board`, stored in NVS,
+  resolved at boot, and accepted only when it names a codec driver compiled
+  into the firmware. The descriptor is capped below ESP-IDF's NVS string
+  limit, so this path is for one selected board definition rather than a
+  downloaded board library.
 - **Custom firmware** covers boards that need a new codec driver, different
   clocking, or hardware behavior outside the descriptor contract. The hardware
   layer changes there; capture, transport, settings, and the console stay on
@@ -113,6 +117,11 @@ Board support has three tiers:
 The hardware adapter converts validated descriptor GPIO numbers into erased
 ESP-IDF HAL pins; the capture and codec adapters receive those pins without
 naming a board.
+
+The release firmware is a generic ESP32 app image plus an embedded official
+descriptor catalog. Per-board binaries are useful when a build needs a
+different compiled driver set, a smaller catalog, or hardware behavior that is
+not expressible as descriptor data.
 
 ## Codec
 
@@ -164,7 +173,7 @@ Endpoint paths follow one rule: nouns for state, verbs for actions.
 
 - Reads are open: `GET /api/status` (runtime), `GET /api/metrics`
   (Prometheus), `GET /api/settings` (persisted settings, no secrets),
-  `GET /api/boards` (built-in board catalog and selected preset).
+  `GET /api/boards` (built-in board catalog and selected descriptor).
 - Settings writes are one group per endpoint under the noun they change:
   `POST /api/settings/network`, `/api/settings/audio`, `/api/settings/name`,
   `/api/settings/admin-key`, `/api/settings/board`.

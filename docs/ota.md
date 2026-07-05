@@ -11,7 +11,7 @@ out of `sdkconfig.defaults`):
 
 | Partition | Size | Role |
 |---|---|---|
-| `nvs` | 24 KB | Wi-Fi/target/audio config and admin key |
+| `nvs` | 24 KB | Wi-Fi/target/audio config, selected board descriptor, and admin key |
 | `otadata` | 8 KB | Records the bootable slot |
 | `phy_init` | 4 KB | RF calibration |
 | `ota_0`, `ota_1` | 3 MB each | Application slots; the bootloader runs one and updates the other |

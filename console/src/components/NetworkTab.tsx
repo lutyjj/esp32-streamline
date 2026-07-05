@@ -5,6 +5,7 @@ import { useTransact, useWritable } from '../lib/hooks';
 import { config, noBridge, packetsMoving, setupMode, status } from '../state/device';
 import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
+import { ActionState, TransactButton } from './Transact';
 
 export function NetworkTab() {
   const writable = useWritable();
@@ -129,16 +130,14 @@ export function NetworkTab() {
           </div>
         </div>
         <div class="cardfoot">
-          <button
-            class={`btn primary${wifiTransact.busy ? ' busy' : ''}`}
-            type="button"
-            disabled={!writable || wifiTransact.busy}
+          <TransactButton
+            transact={wifiTransact}
+            disabled={!writable}
             onClick={() => save(wifiTransact)}
           >
-            <span class="spin" />
             Save &amp; restart
-          </button>
-          <span class={`actionstate ${wifiTransact.state.cls}`}>{wifiTransact.state.text}</span>
+          </TransactButton>
+          <ActionState state={wifiTransact.state} />
         </div>
       </div>
 
@@ -206,16 +205,14 @@ export function NetworkTab() {
         )}
 
         <div class="cardfoot">
-          <button
-            class={`btn primary${targetTransact.busy ? ' busy' : ''}`}
-            type="button"
-            disabled={!writable || targetTransact.busy}
+          <TransactButton
+            transact={targetTransact}
+            disabled={!writable}
             onClick={() => save(targetTransact)}
           >
-            <span class="spin" />
             Save &amp; restart
-          </button>
-          <span class={`actionstate ${targetTransact.state.cls}`}>{targetTransact.state.text}</span>
+          </TransactButton>
+          <ActionState state={targetTransact.state} />
           {!setup && !noBridge.value && (
             <span class="chip healthchip">
               <span class={`statusdot ${moving ? 'good' : playing ? 'warn' : ''}`} />

@@ -3,6 +3,7 @@ import { postForm } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config } from '../state/device';
 import { Meter } from './Meter';
+import { ActionState, TransactButton } from './Transact';
 
 export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
   const writable = useWritable();
@@ -101,15 +102,10 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
             </div>
           </div>
           <div class="cardfoot">
-            <button
-              class={`btn primary${transact.busy ? ' busy' : ''}`}
-              type="submit"
-              disabled={!writable || transact.busy}
-            >
-              <span class="spin" />
+            <TransactButton transact={transact} type="submit" disabled={!writable}>
               Save
-            </button>
-            <span class={`actionstate ${transact.state.cls}`}>{transact.state.text}</span>
+            </TransactButton>
+            <ActionState state={transact.state} />
           </div>
         </form>
       </div>

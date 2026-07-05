@@ -14,6 +14,7 @@ import { beginRebootWait } from '../state/rebootWait';
 import { toast } from '../state/toasts';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
+import { ActionState, TransactButton } from './Transact';
 
 export function SystemTab() {
   return (
@@ -74,10 +75,10 @@ function FirmwareCard() {
         </div>
       </div>
       <div class="cardfoot">
-        <button
-          class={`btn secondary${transact.busy ? ' busy' : ''}`}
-          type="button"
-          disabled={!writable || ota?.busy || transact.busy}
+        <TransactButton
+          transact={transact}
+          kind="secondary"
+          disabled={!writable || ota?.busy}
           onClick={() => {
             beginOtaSession('Checking GitHub for a newer release…');
             transact.run(() => api('/api/ota/check', { method: 'POST' }), {
@@ -86,13 +87,11 @@ function FirmwareCard() {
             });
           }}
         >
-          <span class="spin" />
           Check for update
-        </button>
+        </TransactButton>
         {ota?.phase === 'update-available' && (
-          <button
-            class="btn primary"
-            type="button"
+          <TransactButton
+            transact={transact}
             disabled={!writable || ota.busy}
             onClick={() => {
               beginOtaSession(`Installing ${latest ? `v${latest}` : 'the latest release'}…`);
@@ -102,16 +101,15 @@ function FirmwareCard() {
               });
             }}
           >
-            <span class="spin" />
             Install v{latest}
-          </button>
+          </TransactButton>
         )}
         {installing && (
           <button class="btn primary" type="button" disabled>
             Installing
           </button>
         )}
-        <span class={`actionstate ${transact.state.cls}`}>{transact.state.text}</span>
+        <ActionState state={transact.state} />
       </div>
       <Disclosure title="Developer — install a custom image" className="disclosure-offset">
         <form
@@ -151,17 +149,15 @@ function FirmwareCard() {
             </div>
           </div>
           <div class="cardfoot">
-            <button
-              class={`btn secondary${customTransact.busy ? ' busy' : ''}`}
+            <TransactButton
+              transact={customTransact}
+              kind="secondary"
               type="submit"
-              disabled={!writable || customTransact.busy}
+              disabled={!writable}
             >
-              <span class="spin" />
               Install custom image
-            </button>
-            <span class={`actionstate ${customTransact.state.cls}`}>
-              {customTransact.state.text}
-            </span>
+            </TransactButton>
+            <ActionState state={customTransact.state} />
           </div>
         </form>
       </Disclosure>
@@ -210,15 +206,10 @@ function NameCard() {
           </div>
         </div>
         <div class="cardfoot">
-          <button
-            class={`btn primary${transact.busy ? ' busy' : ''}`}
-            type="submit"
-            disabled={!writable || transact.busy}
-          >
-            <span class="spin" />
+          <TransactButton transact={transact} type="submit" disabled={!writable}>
             Save
-          </button>
-          <span class={`actionstate ${transact.state.cls}`}>{transact.state.text}</span>
+          </TransactButton>
+          <ActionState state={transact.state} />
         </div>
       </form>
     </div>
@@ -302,14 +293,9 @@ function AccessCard() {
               </button>
             </div>
             <div class="cardfoot">
-              <button
-                class={`btn primary${transact.busy ? ' busy' : ''}`}
-                type="submit"
-                disabled={!manageable || transact.busy}
-              >
-                <span class="spin" />
+              <TransactButton transact={transact} type="submit" disabled={!manageable}>
                 Save
-              </button>
+              </TransactButton>
               <button
                 class="btn secondary"
                 type="button"
@@ -318,7 +304,7 @@ function AccessCard() {
               >
                 Cancel
               </button>
-              <span class={`actionstate ${transact.state.cls}`}>{transact.state.text}</span>
+              <ActionState state={transact.state} />
             </div>
           </div>
         )}
@@ -338,10 +324,10 @@ function ResetCard() {
       <span class="lockhint">Unlock to edit</span>
       <h2>Reset</h2>
       <div class="cardfoot" style="border:0;padding:0;margin-top:10px">
-        <button
-          class={`btn secondary${restart.busy ? ' busy' : ''}`}
-          type="button"
-          disabled={!writable || restart.busy}
+        <TransactButton
+          transact={restart}
+          kind="secondary"
+          disabled={!writable}
           onClick={() =>
             restart.run(
               async (): Promise<undefined> => {
@@ -353,9 +339,8 @@ function ResetCard() {
             )
           }
         >
-          <span class="spin" />
           Restart device
-        </button>
+        </TransactButton>
         <button
           class="btn danger"
           type="button"
@@ -364,7 +349,7 @@ function ResetCard() {
         >
           Factory reset
         </button>
-        <span class={`actionstate ${factory.state.cls}`}>{factory.state.text}</span>
+        <ActionState state={factory.state} />
       </div>
       {confirming && (
         <div class="confirmbox">
@@ -373,10 +358,10 @@ function ResetCard() {
             returns to its setup network.
           </span>
           <div class="row">
-            <button
-              class={`btn danger${factory.busy ? ' busy' : ''}`}
-              type="button"
-              disabled={!writable || factory.busy}
+            <TransactButton
+              transact={factory}
+              kind="danger"
+              disabled={!writable}
               onClick={() =>
                 factory.run(
                   async () => {
@@ -390,9 +375,8 @@ function ResetCard() {
                 )
               }
             >
-              <span class="spin" />
               Erase everything
-            </button>
+            </TransactButton>
             <button class="btn secondary" type="button" onClick={() => setConfirming(false)}>
               Cancel
             </button>

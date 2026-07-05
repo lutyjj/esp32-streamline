@@ -37,6 +37,11 @@ trait it owns and implement that trait in the adapter — never call a concrete
 driver from the core. `update::install_verified` and its adapter in
 `adapters/ota.rs` are the pattern to copy.
 
+The console follows the same rule: behavior lives in `console/src/lib` and
+`console/src/state` and is tested with vitest on the host; components stay
+thin renderers over that state. A console behavior change ships with its
+test.
+
 ## Write meaningful unit tests
 
 Unit tests are design pressure, not coverage accounting. Test behavior at the
@@ -60,11 +65,19 @@ But isolate what changes — URLs, transports, sinks, clocks — behind a narrow
 interface so it can be swapped or faked in a test. Abstract when it removes
 duplication or unlocks a test, not before.
 
+## Design for the whole journey
+
+The console is one user journey, from first boot to steady streaming. Judge
+any UI change against the whole path: no dead ends, no unexplained
+interruptions, no state the user cannot leave or understand. A change that
+fixes one screen but opens a seam elsewhere in the journey is not done.
+
 ## Mirror cross-boundary contracts
 
 When two components share a wire format or API shape, write the shape down on
-both sides and bind them with a comment naming the counterpart. The JSDoc
-typedefs in `web/app.js` mirror the serde structs in `adapters/http.rs`;
+both sides and bind them with a comment naming the counterpart. The
+interfaces in `console/src/lib/api.ts` mirror the serde structs in
+`adapters/http.rs`;
 `docs/pcm-protocol.md` defines the frame that both `src/protocol.rs` and the
 bridge's `protocol.py` implement byte-exactly. Change one side, change the
 other in the same PR.
@@ -88,7 +101,9 @@ Every component builds standalone: its Dockerfile starts `FROM` a public
 image and its pins live in its own files. Accept small pin duplication —
 Dependabot refreshes it. Do not introduce local base images or hidden include
 chains; a contributor must understand any one component without tracing build
-plumbing.
+plumbing. One deliberate exception: the firmware embeds the console's built
+`dist/index.html`, so firmware targets build the console first — the
+firmware Makefile owns that wiring.
 
 ## No unchecked code
 
@@ -102,6 +117,22 @@ add its check to the owning component's lint target.
 
 A change is ready to commit only when it builds, passes tests, and passes
 formatting and lint. Run `make lint && make test`; CI runs the same.
+
+## Prove firmware on a device
+
+A firmware change is ready only after the new image ran on real hardware,
+installed over the custom OTA path: the console's developer install under
+System → Firmware, or `POST /api/ota/update` with `url` and `sha256`.
+Serial flashing is for repartitioning, bootloader work, and recovery. Your
+device's address and admin key live in the gitignored root `.env`
+(see `.env.example`).
+
+## Keep lab details out of public artifacts
+
+Real device addresses, hostnames, network names, and keys belong only in the
+gitignored `.env`. Never put them in code, tests, docs, commits, issues, or
+pull requests — use documentation addresses (`192.0.2.x`) and neutral
+hostnames in examples. Check the artifact before publishing, not after.
 
 ## Run in Docker, do not pollute the host
 

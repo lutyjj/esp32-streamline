@@ -72,6 +72,14 @@ any UI change against the whole path: no dead ends, no unexplained
 interruptions, no state the user cannot leave or understand. A change that
 fixes one screen but opens a seam elsewhere in the journey is not done.
 
+## Every capability is an API first
+
+Machines are users too: scripts, tests, AI agents, and future clients (CLI,
+MCP) must be able to drive the device end to end without a browser. Anything
+a person can do in the console exists first as a clean HTTP endpoint that the
+console merely calls. If a change adds behavior only a human clicking a UI
+can reach, put the API in first and the UI on top.
+
 ## Mirror cross-boundary contracts
 
 When two components share a wire format or API shape, write the shape down on

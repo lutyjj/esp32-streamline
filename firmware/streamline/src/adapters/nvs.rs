@@ -1,11 +1,10 @@
 //! ESP-IDF NVS persistence for StreamLine configuration.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
 
-use crate::board;
 use crate::{
-    board::Board,
+    board::{self, Board, BoardSelection},
     config::{AudioSettings, ConfigError, RuntimeConfig, CONFIG_SCHEMA_VERSION},
 };
 
@@ -18,6 +17,7 @@ const KEY_TARGET_PORT: &str = "target_port";
 const KEY_ADMIN_SECRET: &str = "admin_secret";
 const KEY_DEVICE_NAME: &str = "device_name";
 const KEY_BOARD_ID: &str = "board_id";
+const KEY_BOARD_DESCRIPTOR: &str = "board_json";
 const KEY_INPUT_LINE: &str = "input_line";
 const KEY_INPUT_GAIN: &str = "input_gain";
 const KEY_ADC_ATTENUATION: &str = "adc_attenuation";
@@ -25,26 +25,15 @@ const KEY_LAST_FALLBACK: &str = "last_fallback";
 const KEY_LAST_OTA: &str = "last_ota";
 /// Diagnostic notes are trimmed to fit the 256-byte read buffer.
 const MAX_NOTE_BYTES: usize = 240;
+/// Keep custom descriptors comfortably below ESP-IDF's NVS string limit.
+pub const MAX_BOARD_DESCRIPTOR_BYTES: usize = 3_072;
+const MAX_BOARD_DESCRIPTOR_BUFFER_BYTES: usize = MAX_BOARD_DESCRIPTOR_BYTES + 1;
 
 /// Owns the NVS namespace and keeps the partition alive for the lifetime of
 /// all reads and writes. The namespace is versioned so future migrations have
 /// an explicit decision point rather than silently accepting incompatible data.
 pub struct ConfigStore {
     nvs: EspDefaultNvs,
-}
-
-pub enum BoardPresetSelection {
-    Resolved(&'static Board<'static>),
-    Unknown { fallback: &'static Board<'static> },
-}
-
-impl BoardPresetSelection {
-    pub fn board(&self) -> &'static Board<'static> {
-        match self {
-            Self::Resolved(board) => board,
-            Self::Unknown { fallback } => fallback,
-        }
-    }
 }
 
 impl ConfigStore {
@@ -54,37 +43,52 @@ impl ConfigStore {
         })
     }
 
-    pub fn load_board_preset(&self) -> Result<BoardPresetSelection> {
+    pub fn load_board_selection(&self, catalog: &[Board]) -> Result<BoardSelection> {
         let stored = self.optional_string(KEY_BOARD_ID);
-        let selection = if let Some(preset) =
-            board::resolve_preset((!stored.is_empty()).then_some(stored.as_str()))
-        {
-            BoardPresetSelection::Resolved(preset)
-        } else {
-            log::warn!(
-                "stored board preset '{stored}' is not built into this firmware; opening setup with '{}'",
-                board::DEFAULT_PRESET.id
-            );
-            BoardPresetSelection::Unknown {
-                fallback: board::DEFAULT_PRESET,
-            }
-        };
-        let preset = selection.board();
-        preset
-            .validate()
-            .map_err(|error| anyhow!("invalid board preset '{}': {error:?}", preset.id))?;
+        let custom_json = self.optional_board_descriptor().unwrap_or_else(|error| {
+            log::warn!("stored custom board descriptor is unreadable: {error:#}");
+            String::new()
+        });
+        let selection = board::select(
+            catalog,
+            (!stored.is_empty()).then_some(stored.as_str()),
+            (!custom_json.is_empty()).then_some(custom_json.as_str()),
+        )?;
+        if let BoardSelection::Unknown { fallback, reason } = &selection {
+            log::warn!("{reason}; opening setup with '{}'", fallback.id);
+        }
         Ok(selection)
     }
 
-    pub fn save_board_preset(&self, board: &Board<'_>) -> Result<()> {
+    pub fn save_built_in_board(&self, board: &Board) -> Result<()> {
         board
             .validate()
-            .map_err(|error| anyhow!("invalid board preset '{}': {error:?}", board.id))?;
-        self.nvs.set_str(KEY_BOARD_ID, board.id)?;
+            .map_err(|error| anyhow!("invalid board descriptor '{}': {error:?}", board.id))?;
+        self.nvs.set_str(KEY_BOARD_ID, &board.id)?;
+        self.nvs.remove(KEY_BOARD_DESCRIPTOR)?;
         Ok(())
     }
 
-    pub fn load(&self, board: &Board<'_>) -> Result<Option<RuntimeConfig>> {
+    /// Persist a validated custom board in its canonical serialization, so the
+    /// stored bytes are exactly what boot will parse back.
+    pub fn save_custom_board(&self, board: &Board) -> Result<()> {
+        board
+            .validate()
+            .map_err(|error| anyhow!("invalid board descriptor '{}': {error:?}", board.id))?;
+        let descriptor_json = serde_json::to_string(board)?;
+        if descriptor_json.len() > MAX_BOARD_DESCRIPTOR_BYTES {
+            bail!(
+                "board descriptor is too large: {} bytes, max {}",
+                descriptor_json.len(),
+                MAX_BOARD_DESCRIPTOR_BYTES
+            );
+        }
+        self.nvs.set_str(KEY_BOARD_DESCRIPTOR, &descriptor_json)?;
+        self.nvs.set_str(KEY_BOARD_ID, &board.id)?;
+        Ok(())
+    }
+
+    pub fn load(&self, board: &Board) -> Result<Option<RuntimeConfig>> {
         let schema = self.nvs.get_u8(KEY_SCHEMA)?;
         if schema.is_none() {
             return Ok(None);
@@ -121,7 +125,7 @@ impl ConfigStore {
             Ok(()) => Ok(Some(config)),
             Err(error) => {
                 log::warn!(
-                    "stored configuration is invalid for board preset '{}': {error:?}; re-commissioning",
+                    "stored configuration is invalid for board descriptor '{}': {error:?}; re-commissioning",
                     board.id
                 );
                 Ok(None)
@@ -129,9 +133,8 @@ impl ConfigStore {
         }
     }
 
-    pub fn save(&self, config: &RuntimeConfig, board: &Board<'_>) -> Result<()> {
+    pub fn save(&self, config: &RuntimeConfig, board: &Board) -> Result<()> {
         config.validate(board).map_err(config_error)?;
-        self.save_board_preset(board)?;
         self.nvs.set_str(KEY_SSID, &config.ssid)?;
         self.nvs.set_str(KEY_PASSWORD, &config.password)?;
         self.nvs.set_str(KEY_TARGET_HOST, &config.target_host)?;
@@ -156,6 +159,7 @@ impl ConfigStore {
             KEY_ADMIN_SECRET,
             KEY_DEVICE_NAME,
             KEY_BOARD_ID,
+            KEY_BOARD_DESCRIPTOR,
             KEY_INPUT_LINE,
             KEY_INPUT_GAIN,
             KEY_ADC_ATTENUATION,
@@ -200,6 +204,15 @@ impl ConfigStore {
             .flatten()
             .map(str::to_owned)
             .unwrap_or_default()
+    }
+
+    fn optional_board_descriptor(&self) -> Result<String> {
+        let mut buffer = vec![0_u8; MAX_BOARD_DESCRIPTOR_BUFFER_BYTES];
+        Ok(self
+            .nvs
+            .get_str(KEY_BOARD_DESCRIPTOR, &mut buffer)?
+            .map(str::to_owned)
+            .unwrap_or_default())
     }
 
     fn required_string(&self, key: &str) -> Result<String> {

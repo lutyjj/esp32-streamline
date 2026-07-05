@@ -1,53 +1,45 @@
 //! Board descriptor model.
 //!
 //! A descriptor is the hardware contract the firmware advertises, validates
-//! against, and uses to initialize audio. Official preset data lives in
-//! [`presets`]; generic consumers read a resolved [`Board`] value.
+//! against, and uses to initialize audio. Built-in descriptors and custom
+//! BYOD descriptors use the same JSON shape and validation rules.
 
-pub mod presets;
+use std::fmt;
 
-pub use presets::{find_preset, resolve_preset, CATALOG, DEFAULT_PRESET};
+use serde::{Deserialize, Serialize};
 
-/// Stable id for a codec driver compiled into the firmware.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CodecDriverId<'a>(&'a str);
+pub mod catalog;
+pub mod selection;
 
-impl CodecDriverId<'static> {
-    pub const ES8388: Self = Self("es8388");
-}
-
-impl<'a> CodecDriverId<'a> {
-    pub const fn new(id: &'a str) -> Self {
-        Self(id)
-    }
-
-    pub const fn as_str(self) -> &'a str {
-        self.0
-    }
-}
+pub use catalog::{builtin_catalog, find, resolve, DEFAULT_BOARD_ID};
+pub use selection::{select, BoardSelection};
 
 /// Codec hardware mounted on the board.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CodecSpec<'a> {
-    pub driver: CodecDriverId<'a>,
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodecSpec {
+    pub driver: String,
     /// 7-bit I2C address the codec answers on.
     pub i2c_address: u8,
 }
 
 /// ESP32 GPIO wiring used by the board's audio hardware.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PinMap {
     pub i2c: I2cPins,
     pub i2s: I2sPins,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct I2cPins {
     pub sda: u8,
     pub scl: u8,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct I2sPins {
     pub mclk: u8,
     pub bclk: u8,
@@ -56,28 +48,30 @@ pub struct I2sPins {
 }
 
 /// One selectable input, with the label the console shows for it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct InputOption<'a> {
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputOption {
     pub line: u8,
-    pub label: &'a str,
+    pub label: String,
 }
 
 /// What a board offers the user. The status API advertises this and the
 /// settings API validates against it, so the two cannot diverge.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Board<'a> {
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Board {
     /// Stable descriptor id. Official presets and custom boards share this
     /// identity shape.
-    pub id: &'a str,
+    pub id: String,
     /// Human-readable board name, advertised in `/api/status`.
-    pub name: &'a str,
+    pub name: String,
     /// Codec driver and bus address needed to control line-in capture.
-    pub codec: CodecSpec<'a>,
+    pub codec: CodecSpec,
     /// ESP32 GPIO wiring for codec control and I2S capture.
     pub pins: PinMap,
     /// Selectable inputs in console order, never empty; the first entry is
     /// the factory default.
-    pub input_lines: &'a [InputOption<'a>],
+    pub input_lines: Vec<InputOption>,
     /// Upper bound of the input gain control, as a 0..=100 percentage.
     pub input_gain_max: u8,
     /// Upper bound of the ADC attenuation control, in dB.
@@ -99,7 +93,28 @@ pub enum BoardError {
     InvalidInputGainMax,
 }
 
-impl Board<'_> {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BoardLoadError {
+    Json(String),
+    Invalid { id: String, error: BoardError },
+    DuplicateId(String),
+    MissingDefault(String),
+}
+
+impl fmt::Display for BoardLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Json(error) => write!(f, "invalid board descriptor JSON: {error}"),
+            Self::Invalid { id, error } => write!(f, "invalid board descriptor '{id}': {error:?}"),
+            Self::DuplicateId(id) => write!(f, "duplicate board descriptor id '{id}'"),
+            Self::MissingDefault(id) => write!(f, "default board descriptor '{id}' is missing"),
+        }
+    }
+}
+
+impl std::error::Error for BoardLoadError {}
+
+impl Board {
     pub fn validate(&self) -> Result<(), BoardError> {
         if self.id.is_empty() {
             return Err(BoardError::MissingId);
@@ -107,7 +122,7 @@ impl Board<'_> {
         if self.name.is_empty() {
             return Err(BoardError::MissingName);
         }
-        if self.codec.driver.as_str().is_empty() {
+        if self.codec.driver.is_empty() {
             return Err(BoardError::MissingCodecDriver);
         }
         if self.codec.i2c_address > 0x7f {
@@ -167,6 +182,37 @@ impl Board<'_> {
     }
 }
 
+pub fn parse_descriptor(json: &str) -> Result<Board, BoardLoadError> {
+    let board: Board =
+        serde_json::from_str(json).map_err(|error| BoardLoadError::Json(error.to_string()))?;
+    validate_descriptor(board)
+}
+
+pub fn validate_descriptor(board: Board) -> Result<Board, BoardLoadError> {
+    board.validate().map_err(|error| BoardLoadError::Invalid {
+        id: board.id.clone(),
+        error,
+    })?;
+    Ok(board)
+}
+
+pub fn validate_catalog(catalog: &[Board]) -> Result<(), BoardLoadError> {
+    for board in catalog {
+        board.validate().map_err(|error| BoardLoadError::Invalid {
+            id: board.id.clone(),
+            error,
+        })?;
+    }
+    for (i, a) in catalog.iter().enumerate() {
+        for b in &catalog[i + 1..] {
+            if a.id == b.id {
+                return Err(BoardLoadError::DuplicateId(a.id.clone()));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_output_gpio(gpio: u8) -> Result<(), BoardError> {
     if is_output_gpio(gpio) {
         Ok(())
@@ -196,42 +242,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn membership_checks_use_the_advertised_lines() {
-        let board = Board {
-            id: "test-board",
-            name: "test",
-            codec: CodecSpec {
-                driver: CodecDriverId::ES8388,
-                i2c_address: 0x10,
-            },
-            pins: PinMap {
-                i2c: I2cPins { sda: 4, scl: 5 },
-                i2s: I2sPins {
-                    mclk: 12,
-                    bclk: 13,
-                    ws: 14,
-                    din: 35,
+    fn parses_json_descriptors() {
+        let board = parse_descriptor(
+            r#"{
+                "id":"test-board",
+                "name":"test",
+                "codec":{"driver":"es8388","i2c_address":16},
+                "pins":{
+                    "i2c":{"sda":4,"scl":5},
+                    "i2s":{"mclk":12,"bclk":13,"ws":14,"din":35}
                 },
-            },
-            input_lines: &[InputOption {
-                line: 7,
-                label: "only input",
-            }],
-            input_gain_max: 10,
-            adc_atten_max_db: 6,
-        };
+                "input_lines":[{"line":7,"label":"only input"}],
+                "input_gain_max":10,
+                "adc_atten_max_db":6
+            }"#,
+        )
+        .expect("valid descriptor");
+
         assert!(board.accepts_line(7));
         assert!(!board.accepts_line(1));
         assert_eq!(board.default_line(), 7);
     }
 
     #[test]
+    fn rejects_unknown_json_fields() {
+        assert!(matches!(
+            parse_descriptor(
+                r#"{
+                    "id":"test-board",
+                    "name":"test",
+                    "codec":{"driver":"es8388","i2c_address":16},
+                    "pins":{
+                        "i2c":{"sda":4,"scl":5},
+                        "i2s":{"mclk":12,"bclk":13,"ws":14,"din":35}
+                    },
+                    "input_lines":[{"line":7,"label":"only input"}],
+                    "input_gain_max":10,
+                    "adc_atten_max_db":6,
+                    "surprise":true
+                }"#,
+            ),
+            Err(BoardLoadError::Json(_))
+        ));
+    }
+
+    #[test]
     fn validates_descriptor_shape() {
         let duplicate_lines = Board {
-            id: "test-board",
-            name: "test",
+            id: "test-board".to_owned(),
+            name: "test".to_owned(),
             codec: CodecSpec {
-                driver: CodecDriverId::new("es8388"),
+                driver: "es8388".to_owned(),
                 i2c_address: 0x10,
             },
             pins: PinMap {
@@ -243,14 +304,14 @@ mod tests {
                     din: 35,
                 },
             },
-            input_lines: &[
+            input_lines: vec![
                 InputOption {
                     line: 1,
-                    label: "one",
+                    label: "one".to_owned(),
                 },
                 InputOption {
                     line: 1,
-                    label: "again",
+                    label: "again".to_owned(),
                 },
             ],
             input_gain_max: 100,
@@ -263,10 +324,10 @@ mod tests {
 
         let invalid_codec_address = Board {
             codec: CodecSpec {
-                driver: CodecDriverId::new("es8388"),
+                driver: "es8388".to_owned(),
                 i2c_address: 0x80,
             },
-            ..duplicate_lines
+            ..duplicate_lines.clone()
         };
         assert_eq!(
             invalid_codec_address.validate(),
@@ -283,7 +344,7 @@ mod tests {
                     din: 14,
                 },
             },
-            ..duplicate_lines
+            ..duplicate_lines.clone()
         };
         assert_eq!(duplicate_gpios.validate(), Err(BoardError::DuplicateGpio));
 

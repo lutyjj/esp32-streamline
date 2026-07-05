@@ -15,9 +15,9 @@ use serde::Serialize;
 
 use crate::{
     adapters::{
-        codec::CodecControl,
+        codec::{self, CodecControl},
         mdns::MdnsAdvertisement,
-        nvs::ConfigStore,
+        nvs::{ConfigStore, MAX_BOARD_DESCRIPTOR_BYTES},
         ota::{self, OtaProgress},
         wifi,
     },
@@ -34,7 +34,10 @@ use crate::{
 };
 
 const INDEX: &str = include_str!("../../../../console/dist/index.html");
-const MAX_REQUEST_BYTES: usize = 512;
+/// A form-urlencoded byte can expand to `%XX`, so a descriptor upload can be
+/// three times its raw size on the wire; the rest of the fields fit in 512.
+const URL_ENCODED_EXPANSION: usize = 3;
+const MAX_REQUEST_BYTES: usize = MAX_BOARD_DESCRIPTOR_BYTES * URL_ENCODED_EXPANSION + 512;
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
 /// The boot contract: the one decision made at startup that fixes which
@@ -58,7 +61,8 @@ pub enum Mode {
 pub struct ApiState {
     pub mode: Mode,
     pub hostname: String,
-    pub board: &'static board::Board<'static>,
+    pub board_catalog: Arc<Vec<board::Board>>,
+    pub board: Arc<board::Board>,
     pub config: Arc<Mutex<RuntimeConfig>>,
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
@@ -185,9 +189,8 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             }
             let result = (|| -> Result<()> {
                 let form = form(&mut request)?;
-                let board_id = required(&form, "board_id")?;
-                let selected = board::find_preset(board_id)
-                    .ok_or_else(|| anyhow!("unknown board preset '{board_id}'"))?;
+                let update = board_update_from_form(&form, &state_for_board.board_catalog)?;
+                let selected = update.board();
                 let next = state_for_board
                     .config
                     .lock()
@@ -202,9 +205,13 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                 if state_for_board.mode == Mode::Provisioned {
                     next.validate(selected)
                         .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
+                }
+                match &update {
+                    BoardUpdate::BuiltIn(board) => store.save_built_in_board(board)?,
+                    BoardUpdate::Custom(board) => store.save_custom_board(board)?,
+                }
+                if state_for_board.mode == Mode::Provisioned {
                     store.save(&next, selected)?;
-                } else {
-                    store.save_board_preset(selected)?;
                 }
                 *state_for_board
                     .config
@@ -244,7 +251,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     input_gain: parse_u8(&form, "gain")?,
                     adc_attenuation_db: parse_u8(&form, "atten")?,
                 }
-                .validate(state_for_audio.board)
+                .validate(state_for_audio.board.as_ref())
                 .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
                 save(&state_for_audio, RuntimeConfig { audio, ..current })?;
                 let Some(codec) = &state_for_audio.codec else {
@@ -409,13 +416,13 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
 
 fn save(state: &ApiState, config: RuntimeConfig) -> Result<()> {
     config
-        .validate(state.board)
+        .validate(state.board.as_ref())
         .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
     state
         .store
         .lock()
         .map_err(|_| anyhow!("configuration lock poisoned"))?
-        .save(&config, state.board)?;
+        .save(&config, state.board.as_ref())?;
     *state
         .config
         .lock()
@@ -649,6 +656,66 @@ fn parse_u16(form: &BTreeMap<String, String>, key: &str) -> Result<u16> {
         .map_err(|_| anyhow!("{key} must be a number between 1 and 65535"))
 }
 
+enum BoardUpdate {
+    BuiltIn(board::Board),
+    Custom(board::Board),
+}
+
+impl BoardUpdate {
+    fn board(&self) -> &board::Board {
+        match self {
+            Self::BuiltIn(board) | Self::Custom(board) => board,
+        }
+    }
+}
+
+fn board_update_from_form(
+    form: &BTreeMap<String, String>,
+    catalog: &[board::Board],
+) -> Result<BoardUpdate> {
+    let board_id = form
+        .get("board_id")
+        .map(String::as_str)
+        .filter(|id| !id.is_empty());
+    let descriptor_json = form
+        .get("descriptor")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+
+    match (board_id, descriptor_json) {
+        (Some(_), Some(_)) => bail!("send either board_id or descriptor, not both"),
+        (Some(id), None) => {
+            let board = board::find(catalog, id)
+                .ok_or_else(|| anyhow!("unknown board descriptor '{id}'"))?
+                .clone();
+            Ok(BoardUpdate::BuiltIn(board))
+        }
+        (None, Some(json)) => {
+            if json.len() > MAX_BOARD_DESCRIPTOR_BYTES {
+                bail!(
+                    "board descriptor is too large: {} bytes, max {}",
+                    json.len(),
+                    MAX_BOARD_DESCRIPTOR_BYTES
+                );
+            }
+            let board = board::parse_descriptor(json)
+                .map_err(|error| anyhow!("invalid board descriptor: {error}"))?;
+            // One id names one board. A custom descriptor may not reuse a
+            // built-in id, or the boot-time selection would be ambiguous and
+            // the built-in would silently shadow the upload.
+            if board::find(catalog, &board.id).is_some() {
+                bail!(
+                    "board descriptor id '{}' is a built-in; choose a different id for a custom board",
+                    board.id
+                );
+            }
+            codec::validate_supported(&board.codec)?;
+            Ok(BoardUpdate::Custom(board))
+        }
+        (None, None) => bail!("board_id or descriptor is required"),
+    }
+}
+
 #[derive(Serialize)]
 struct ConfigResponse<'a> {
     device_name: &'a str,
@@ -664,6 +731,7 @@ struct ConfigResponse<'a> {
 #[derive(Serialize)]
 struct BoardCatalogResponse<'a> {
     selected_board_id: &'a str,
+    selected_board: CapabilitiesStatus<'a>,
     boards: Vec<CapabilitiesStatus<'a>>,
 }
 
@@ -732,10 +800,10 @@ struct InputLineStatus<'a> {
 }
 
 impl<'a> CapabilitiesStatus<'a> {
-    fn from_board(board: &'a board::Board<'a>) -> Self {
+    fn from_board(board: &'a board::Board) -> Self {
         Self {
-            board_id: board.id,
-            board: board.name,
+            board_id: board.id.as_str(),
+            board: board.name.as_str(),
             codec: CodecStatus {
                 driver: board.codec.driver.as_str(),
                 i2c_address: board.codec.i2c_address,
@@ -757,7 +825,7 @@ impl<'a> CapabilitiesStatus<'a> {
                 .iter()
                 .map(|option| InputLineStatus {
                     line: option.line,
-                    label: option.label,
+                    label: option.label.as_str(),
                 })
                 .collect(),
             input_gain_max: board.input_gain_max,
@@ -850,16 +918,21 @@ fn config_json(state: &ApiState) -> String {
 
 fn status_json(state: &ApiState) -> String {
     let snapshot = telemetry_snapshot(state);
-    serialize(&StatusResponse::from_snapshot(&snapshot, state.board))
+    serialize(&StatusResponse::from_snapshot(
+        &snapshot,
+        state.board.as_ref(),
+    ))
 }
 
 fn board_catalog_json(state: &ApiState) -> String {
-    let boards = board::CATALOG
+    let boards = state
+        .board_catalog
         .iter()
-        .map(|board| CapabilitiesStatus::from_board(*board))
+        .map(CapabilitiesStatus::from_board)
         .collect();
     serialize(&BoardCatalogResponse {
-        selected_board_id: state.board.id,
+        selected_board_id: state.board.id.as_str(),
+        selected_board: CapabilitiesStatus::from_board(state.board.as_ref()),
         boards,
     })
 }
@@ -968,7 +1041,7 @@ fn reset_reason() -> &'static str {
 }
 
 impl<'a> StatusResponse<'a> {
-    fn from_snapshot(snapshot: &'a TelemetrySnapshot, board: &'a board::Board<'a>) -> Self {
+    fn from_snapshot(snapshot: &'a TelemetrySnapshot, board: &'a board::Board) -> Self {
         Self {
             firmware_version: snapshot.firmware_version,
             device_name: &snapshot.device_name,
@@ -1043,9 +1116,11 @@ fn serialize<T: Serialize>(value: &T) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::{
-        authorized_secret, constant_time_eq, parse_form, serialize, BoardCatalogResponse,
-        CapabilitiesStatus,
+        authorized_secret, board_update_from_form, constant_time_eq, parse_form, serialize,
+        BoardCatalogResponse, BoardUpdate, CapabilitiesStatus,
     };
     use crate::board;
 
@@ -1081,7 +1156,9 @@ mod tests {
 
     #[test]
     fn capabilities_report_a_resolved_board_descriptor() {
-        let json = serialize(&CapabilitiesStatus::from_board(board::DEFAULT_PRESET));
+        let catalog = board::builtin_catalog().expect("valid catalog");
+        let board = board::resolve(&catalog, None).expect("default board");
+        let json = serialize(&CapabilitiesStatus::from_board(board));
         assert!(json.contains(r#""board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
         assert!(json.contains(r#""codec":{"driver":"es8388","i2c_address":16}"#));
         assert!(json.contains(
@@ -1091,16 +1168,82 @@ mod tests {
 
     #[test]
     fn board_catalog_reports_the_active_preset_and_built_ins() {
-        let boards = board::CATALOG
-            .iter()
-            .map(|board| CapabilitiesStatus::from_board(*board))
-            .collect();
+        let catalog = board::builtin_catalog().expect("valid catalog");
+        let selected_board = board::resolve(&catalog, None).expect("default board");
+        let boards = catalog.iter().map(CapabilitiesStatus::from_board).collect();
         let json = serialize(&BoardCatalogResponse {
-            selected_board_id: board::DEFAULT_PRESET.id,
+            selected_board_id: selected_board.id.as_str(),
+            selected_board: CapabilitiesStatus::from_board(selected_board),
             boards,
         });
 
         assert!(json.contains(r#""selected_board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
+        assert!(json
+            .contains(r#""selected_board":{"board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
         assert!(json.contains(r#""boards":[{"board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
+    }
+
+    #[test]
+    fn board_update_selects_builtin_presets() {
+        let catalog = board::builtin_catalog().expect("valid catalog");
+        let form = parse_form("board_id=ai-thinker-esp32-audio-kit-v2-2-es8388").expect("form");
+
+        let update = board_update_from_form(&form, &catalog).expect("valid board update");
+
+        assert!(matches!(&update, BoardUpdate::BuiltIn(_)));
+        assert_eq!(update.board().id, "ai-thinker-esp32-audio-kit-v2-2-es8388");
+    }
+
+    fn descriptor_form(board: &board::Board) -> BTreeMap<String, String> {
+        let descriptor = serde_json::to_string(board).expect("json");
+        parse_form(&format!(
+            "descriptor={}",
+            descriptor
+                .replace('%', "%25")
+                .replace('&', "%26")
+                .replace('=', "%3D")
+                .replace('+', "%2B")
+                .replace(' ', "+")
+        ))
+        .expect("form")
+    }
+
+    #[test]
+    fn board_update_accepts_custom_descriptors_with_supported_codecs() {
+        let catalog = board::builtin_catalog().expect("valid catalog");
+        let mut custom = board::resolve(&catalog, None).expect("default").clone();
+        custom.id = "custom-akv22".to_owned();
+        let form = descriptor_form(&custom);
+
+        let update = board_update_from_form(&form, &catalog).expect("valid board update");
+
+        assert!(matches!(&update, BoardUpdate::Custom(_)));
+        assert_eq!(update.board().id, "custom-akv22");
+    }
+
+    #[test]
+    fn board_update_rejects_custom_descriptors_reusing_a_built_in_id() {
+        let catalog = board::builtin_catalog().expect("valid catalog");
+        let custom = board::resolve(&catalog, None).expect("default").clone();
+        let form = descriptor_form(&custom);
+
+        let error =
+            board_update_from_form(&form, &catalog).expect_err("built-in id must be rejected");
+
+        assert!(error.to_string().contains("built-in"));
+    }
+
+    #[test]
+    fn board_update_rejects_custom_descriptors_with_unsupported_codecs() {
+        let catalog = board::builtin_catalog().expect("valid catalog");
+        let mut custom = board::resolve(&catalog, None).expect("default").clone();
+        custom.id = "custom-unsupported".to_owned();
+        custom.codec.driver = "wm8960".to_owned();
+        let form = descriptor_form(&custom);
+
+        let error = board_update_from_form(&form, &catalog)
+            .expect_err("unsupported codec must be rejected");
+
+        assert!(error.to_string().contains("wm8960"));
     }
 }

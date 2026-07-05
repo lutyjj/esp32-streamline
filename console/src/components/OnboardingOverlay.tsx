@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
-import { copySecret, unlockSettings } from '../lib/adminKey';
+import { unlockSettings } from '../lib/adminKey';
 import { postForm } from '../lib/api';
 import { status } from '../state/device';
 import { beginRebootWait } from '../state/rebootWait';
 import { setupKey } from '../state/setupKey';
-import { toast } from '../state/toasts';
+import { KeyReveal } from './KeyReveal';
 
 /** Seconds the device takes to restart onto the home network. */
 export const ONBOARDING_REBOOT_SECS = 10;
@@ -118,30 +118,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
                 <strong style="color:var(--text)">only once</strong> — copy it somewhere safe now.
               </p>
             </div>
-            <div class="keyblock">{setupKey.value}</div>
-            <div class="inputrow" style="align-items:center">
-              <label class="switch">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.currentTarget.checked)}
-                />
-                <span class="knob" />
-                Remember on this browser
-              </label>
-              <button
-                class="btn secondary"
-                type="button"
-                onClick={() =>
-                  copySecret(setupKey.value).then(
-                    () => toast('Admin key copied', 'ok'),
-                    (err) => toast(err.message, 'err'),
-                  )
-                }
-              >
-                Copy key
-              </button>
-            </div>
+            <KeyReveal secret={setupKey.value} remember={remember} onRemember={setRemember} />
           </div>
         )}
 

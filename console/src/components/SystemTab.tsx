@@ -1,18 +1,12 @@
 import { useState } from 'preact/hooks';
-import {
-  copySecret,
-  generateAdminKey,
-  isUnlocked,
-  unlockSettings,
-  useAuthEpoch,
-} from '../lib/adminKey';
+import { generateAdminKey, isUnlocked, unlockSettings, useAuthEpoch } from '../lib/adminKey';
 import { api, postForm } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, status } from '../state/device';
 import { beginOtaSession, otaLog, prettyPhase } from '../state/ota';
 import { beginRebootWait } from '../state/rebootWait';
-import { toast } from '../state/toasts';
 import { Disclosure } from './Disclosure';
+import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
 import { ActionState, TransactButton } from './Transact';
 
@@ -266,32 +260,13 @@ function AccessCard() {
               <strong style="color:var(--text)">Your new admin key.</strong> Copy it before saving —
               it is shown only this once.
             </p>
-            <div class="keyblock">{staged}</div>
-            <div class="inputrow" style="align-items:center">
-              <label class="switch">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  disabled={!manageable}
-                  onChange={(e) => setRemember(e.currentTarget.checked)}
-                />
-                <span class="knob" />
-                Remember on this browser
-              </label>
-              <button
-                class="btn secondary"
-                type="button"
-                disabled={!manageable}
-                onClick={() =>
-                  copySecret(staged).then(
-                    () => toast('New admin key copied', 'ok'),
-                    (err) => toast(err.message, 'err'),
-                  )
-                }
-              >
-                Copy key
-              </button>
-            </div>
+            <KeyReveal
+              secret={staged}
+              remember={remember}
+              onRemember={setRemember}
+              disabled={!manageable}
+              copiedToast="New admin key copied"
+            />
             <div class="cardfoot">
               <TransactButton transact={transact} type="submit" disabled={!manageable}>
                 Save

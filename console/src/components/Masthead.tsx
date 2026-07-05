@@ -12,6 +12,7 @@ import {
 import { verifyAdminKey } from '../lib/api';
 import { setupMode, status } from '../state/device';
 import { toast } from '../state/toasts';
+import { RememberSwitch } from './RememberSwitch';
 
 export function Masthead() {
   useAuthEpoch();
@@ -115,15 +116,7 @@ function UnlockPanel({ onDone }: { onDone: () => void }) {
           if (e.key === 'Enter') unlock();
         }}
       />
-      <label class="switch">
-        <input
-          type="checkbox"
-          checked={remember}
-          onChange={(e) => setRemember(e.currentTarget.checked)}
-        />
-        <span class="knob" />
-        Remember on this browser
-      </label>
+      <RememberSwitch checked={remember} onChange={setRemember} />
       <button class={`btn primary${busy ? ' busy' : ''}`} type="button" onClick={unlock}>
         <span class="spin" />
         Unlock

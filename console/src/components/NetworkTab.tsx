@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
-import { copySecret, unlockSettings } from '../lib/adminKey';
+import { unlockSettings } from '../lib/adminKey';
 import { postForm } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, noBridge, packetsMoving, setupMode, status } from '../state/device';
 import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
+import { KeyReveal } from './KeyReveal';
 import { ActionState, TransactButton } from './Transact';
 
 export function NetworkTab() {
@@ -177,30 +178,7 @@ export function NetworkTab() {
               <strong style="color:var(--text)">Your admin key.</strong> It unlocks settings after
               setup and is shown only once — copy it somewhere safe now.
             </p>
-            <div class="keyblock">{setupKey.value}</div>
-            <div class="inputrow" style="align-items:center">
-              <label class="switch">
-                <input
-                  type="checkbox"
-                  checked={rememberKey}
-                  onChange={(e) => setRememberKey(e.currentTarget.checked)}
-                />
-                <span class="knob" />
-                Remember on this browser
-              </label>
-              <button
-                class="btn secondary"
-                type="button"
-                onClick={() =>
-                  copySecret(setupKey.value).then(
-                    () => toast('Admin key copied', 'ok'),
-                    (err) => toast(err.message, 'err'),
-                  )
-                }
-              >
-                Copy key
-              </button>
-            </div>
+            <KeyReveal secret={setupKey.value} remember={rememberKey} onRemember={setRememberKey} />
           </div>
         )}
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { unlockSettings } from '../lib/adminKey';
 import { postForm } from '../lib/api';
+import { errorMessage } from '../lib/errors';
 import { status } from '../state/device';
 import { beginRebootWait } from '../state/rebootWait';
 import { setupKey } from '../state/setupKey';
@@ -54,7 +55,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
       });
     } catch (err) {
       setBusy(false);
-      setError(`Not saved — ${err instanceof Error ? err.message : err}`);
+      setError(`Not saved — ${errorMessage(err)}`);
       return;
     }
     setBusy(false);

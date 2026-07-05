@@ -10,6 +10,7 @@ import {
   useAuthEpoch,
 } from '../lib/adminKey';
 import { verifyAdminKey } from '../lib/api';
+import { errorMessage } from '../lib/errors';
 import { setupMode, status } from '../state/device';
 import { toast } from '../state/toasts';
 import { RememberSwitch } from './RememberSwitch';
@@ -98,7 +99,7 @@ function UnlockPanel({ onDone }: { onDone: () => void }) {
       toast('Settings unlocked for 15 minutes', 'ok');
       onDone();
     } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), 'err');
+      toast(errorMessage(error), 'err');
     } finally {
       setBusy(false);
     }

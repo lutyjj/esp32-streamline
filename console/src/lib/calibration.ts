@@ -7,6 +7,7 @@
  * a device. The wizard overlay owns the DOM; this owns the decisions.
  */
 
+import { errorMessage } from './errors';
 import { dbfs } from './format';
 
 export const CAL_POLL_MS = 500;
@@ -94,7 +95,7 @@ export class CalibrationEngine {
     try {
       await this.applyAttenuation(atten);
     } catch (error) {
-      return { kind: 'apply-failed', message: message(error) };
+      return { kind: 'apply-failed', message: errorMessage(error) };
     }
     if (this.cancelled) return { kind: 'cancelled' };
     this.deps.log('Waiting for playback — press play and turn it up…');
@@ -142,7 +143,7 @@ export class CalibrationEngine {
         try {
           await this.applyAttenuation(atten);
         } catch (error) {
-          return { kind: 'apply-failed', message: message(error) };
+          return { kind: 'apply-failed', message: errorMessage(error) };
         }
         if (this.cancelled) break;
         this.deps.log(`Clipping — raising to ${atten} dB…`);
@@ -160,8 +161,4 @@ export class CalibrationEngine {
     await this.deps.applyAttenuation(atten);
     this.applied = atten;
   }
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

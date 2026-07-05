@@ -1,9 +1,9 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { generateAdminKey, isUnlocked, unlockSettings, useAuthEpoch } from '../lib/adminKey';
 import { api, postForm } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, status } from '../state/device';
-import { beginOtaSession, otaLog, prettyPhase } from '../state/ota';
+import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
 import { beginRebootWait } from '../state/rebootWait';
 import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
@@ -46,7 +46,7 @@ function FirmwareCard() {
       : []),
   ];
 
-  const installing = ['downloading', 'verifying', 'installed'].includes(ota?.phase ?? '');
+  const installing = OTA_INSTALLING_PHASES.includes(ota?.phase ?? '');
 
   return (
     <div class="card gated">
@@ -162,12 +162,14 @@ function FirmwareCard() {
 function NameCard() {
   const writable = useWritable();
   const transact = useTransact();
-  const [name, setName] = useState(config.value?.device_name ?? '');
-  const [seeded, setSeeded] = useState(false);
-  if (!seeded && config.value) {
-    setName(config.value.device_name);
-    setSeeded(true);
-  }
+  const [name, setName] = useState('');
+
+  // Seed from each settings snapshot, like every other form (initial load
+  // and after expected reboots).
+  const c = config.value;
+  useEffect(() => {
+    if (c) setName(c.device_name);
+  }, [c]);
 
   return (
     <div class="card gated">

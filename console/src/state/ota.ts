@@ -18,8 +18,11 @@ export const PHASE_LABELS: Record<string, string> = {
   failed: 'Failed',
 };
 
-/** Phases during which losing the device most likely means it is rebooting. */
-const OTA_REBOOT_PHASES = ['downloading', 'verifying', 'installed'];
+/**
+ * Phases while an install is under way. A device that stops answering in one
+ * of these is rebooting into the new image.
+ */
+export const OTA_INSTALLING_PHASES = ['downloading', 'verifying', 'installed'];
 
 export function prettyPhase(phase: string): string {
   return PHASE_LABELS[phase] || phase;
@@ -61,7 +64,7 @@ effect(() => {
 /** A device that vanishes mid-install is rebooting into the new image. */
 effect(() => {
   if (pollFailures.value === 0) return;
-  if (loggedPhase && OTA_REBOOT_PHASES.includes(loggedPhase) && !rebootWait.value) {
+  if (loggedPhase && OTA_INSTALLING_PHASES.includes(loggedPhase) && !rebootWait.value) {
     beginRebootWait('the firmware update');
   }
 });

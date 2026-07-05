@@ -1,6 +1,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { getStatus, postForm } from '../lib/api';
 import { CAL_ATTEN_MAX, CalibrationEngine, type LevelSample } from '../lib/calibration';
+import { errorMessage } from '../lib/errors';
 import { dbfs } from '../lib/format';
 import { loadConfig, status } from '../state/device';
 import { toast } from '../state/toasts';
@@ -140,10 +141,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
         toast(`Put ADC attenuation back to ${o.atten} dB`, 'ok');
         loadConfig().catch(() => {});
       } catch (error) {
-        toast(
-          `Could not restore previous levels: ${error instanceof Error ? error.message : error}`,
-          'err',
-        );
+        toast(`Could not restore previous levels: ${errorMessage(error)}`, 'err');
       }
     }
   }

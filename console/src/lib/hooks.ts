@@ -3,6 +3,7 @@ import { status } from '../state/device';
 import { beginRebootWait } from '../state/rebootWait';
 import { isUnlocked, useAuthEpoch } from './adminKey';
 import type { Ack } from './api';
+import { errorMessage } from './errors';
 
 /** True when the device accepts settings writes from this browser right now. */
 export function useWritable(): boolean {
@@ -53,7 +54,7 @@ export function useTransact(): Transact {
         setState({ text: opts.okText ?? 'Done', cls: 'ok' });
       }
     } catch (error) {
-      setState({ text: error instanceof Error ? error.message : String(error), cls: 'err' });
+      setState({ text: errorMessage(error), cls: 'err' });
     } finally {
       setBusy(false);
     }

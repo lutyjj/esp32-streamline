@@ -17,10 +17,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 COPY bridge/pyproject.toml /app/bridge/pyproject.toml
 COPY bridge/src /app/bridge/src
-RUN pip install --no-cache-dir /app/bridge \
-    && useradd --uid 10001 --no-create-home streamline
+RUN pip install --no-cache-dir /app/bridge
 
-USER streamline
+# Home Assistant owns /data/options.json; run under the Supervisor's default
+# container user so the add-on can read its mounted configuration.
 
 EXPOSE 39000/tcp
 EXPOSE 8088/tcp

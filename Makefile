@@ -49,7 +49,7 @@ console-check: console-lint console-test console-build ;
 firmware-check: firmware-lint firmware-test firmware-build ;
 tools-check: tools-lint ;
 webflasher-check: webflasher-lint ;
-ha-addon-check: ha-addon-lint ha-addon-test ha-addon-image ;
+ha-addon-check: ha-addon-lint ha-addon-test ;
 
 # Forward any `<component>-<verb>` to that component's Makefile. Pass-through
 # variables reach the sub-make through `export` above.

@@ -17,8 +17,33 @@ lint:
 	@test "$(BUILD_ARCH)" = "amd64" -o "$(BUILD_ARCH)" = "aarch64" || (echo "BUILD_ARCH must be amd64 or aarch64" >&2; exit 2)
 	@test "$(VERSION)" = "$(CONFIG_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(CONFIG_VERSION))" >&2; exit 2)
 
-test:
-	@true
+# This is intentionally an image test: Supervisor /data permissions depend on
+# the final container user and cannot be proven by bridge unit tests alone.
+test: image
+	@set -eu; \
+	volume="$$($(CONTAINER) volume create)"; \
+	stub_dir="$$(mktemp -d /tmp/streamline-ha-addon-test.XXXXXX)"; \
+	cleanup() { \
+		$(CONTAINER) volume rm -f "$$volume" >/dev/null; \
+		rm -rf "$$stub_dir"; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	$(CONTAINER) run --rm --platform $(PLATFORM) --user 0:0 --entrypoint sh \
+		-v "$$volume:/data" \
+		"$(IMAGE):$(VERSION)" \
+		-c 'printf "%s\n" "{\"max_sources\": 3}" > /data/options.json && chown 0:0 /data/options.json && chmod 600 /data/options.json'; \
+	printf '%s\n' \
+		'#!/bin/sh' \
+		'test "$$#" -eq 2' \
+		'test "$$1" = "--max-sources"' \
+		'test "$$2" = "3"' \
+		> "$$stub_dir/streamline-bridge"; \
+	chmod +x "$$stub_dir/streamline-bridge"; \
+	$(CONTAINER) run --rm --platform $(PLATFORM) \
+		-v "$$volume:/data" \
+		-v "$$stub_dir:/test-bin:ro" \
+		-e PATH="/test-bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
+		"$(IMAGE):$(VERSION)"
 
 image: lint
 	$(CONTAINER) build --platform $(PLATFORM) -f Dockerfile \
@@ -27,4 +52,4 @@ image: lint
 		-t $(IMAGE):$(VERSION) \
 		..
 
-check: lint test image
+check: lint image test

@@ -59,7 +59,12 @@ Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 
 ### 2. Run the bridge
 
-Create `docker-compose.yml` on your server and start it with
+**Home Assistant OS / Supervised**: add this repository as a Home Assistant
+add-on repository, install **ESP32 StreamLine Bridge**, and start it. The add-on
+publishes the same ports as the container: ESP32 PCM on `39000/tcp` and HTTP WAV
+on `8088/tcp`.
+
+**Docker** — create `docker-compose.yml` on your server and start it with
 `docker compose up -d`:
 
 ```yaml
@@ -110,7 +115,7 @@ and `make`. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and the PR flow;
 
 ```sh
 make help                                 # all targets
-make lint && make test                    # what CI runs
+make lint && make test                    # local baseline before a PR
 make firmware-build                       # cross-compile the firmware
 make firmware-flash PORT=/dev/ttyUSB0     # flash from the host
 make firmware-monitor PORT=/dev/ttyUSB0   # interactive serial monitor

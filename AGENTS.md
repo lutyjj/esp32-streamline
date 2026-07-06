@@ -93,10 +93,10 @@ other in the same PR.
 
 ## Components share one build contract
 
-Each component (`bridge/`, `firmware/`, `tools/`, `webflasher/`) is
-self-contained: it owns its Makefile, container image, dependency pins, and
-tool config. Component Makefiles expose the same verbs where they apply —
-`format`, `lint`, `test`, `image` — and include `mk/common.mk` for
+Each component (`bridge/`, `console/`, `firmware/`, `tools/`, `webflasher/`,
+`ha-addon/`) owns its Makefile, container image or build target, dependency
+pins, and tool config. Component Makefiles expose the same verbs where they
+apply — `format`, `lint`, `test`, `image` — and include `mk/common.mk` for
 cross-cutting values. The root `Makefile` is the public interface:
 `make <component>-<verb>` forwards to the component, and
 `make lint | test | check | format` fan out across all of them. Prefer these
@@ -110,9 +110,10 @@ Every component builds standalone: its Dockerfile starts `FROM` a public
 image and its pins live in its own files. Accept small pin duplication —
 Dependabot refreshes it. Do not introduce local base images or hidden include
 chains; a contributor must understand any one component without tracing build
-plumbing. One deliberate exception: the firmware embeds the console's built
-`dist/index.html`, so firmware targets build the console first — the
-firmware Makefile owns that wiring.
+plumbing. Deliberate exceptions own their wiring locally: the firmware embeds
+the console's built `dist/index.html`, so firmware targets build the console
+first; the Home Assistant add-on packages `bridge/`, so `ha-addon/Makefile`
+builds its image from the repository root.
 
 ## No unchecked code
 

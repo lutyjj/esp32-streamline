@@ -48,6 +48,13 @@ jobs:
             webflasher:
               - *shared
               - 'webflasher/**'
+            ha-addon:
+              - *shared
+              - 'ha-addon/**'
+              - 'repository.yaml'
+              - 'bridge/pyproject.toml'
+              - 'bridge/src/**'
+              - 'bridge/tests/**'
             firmware:
               - *shared
               - 'console/**'

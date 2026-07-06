@@ -79,6 +79,10 @@ Run it:
 make bridge-up
 ```
 
+Home Assistant OS and Supervised installs can run the same bridge through the
+`ha-addon/` add-on repository entry. The add-on exposes TCP `39000` for ESP32
+PCM and HTTP `8088` for `/streamline.wav`, `/status`, and `/health`.
+
 Set each ESP32 TCP target to the bridge host IP and port `39000`. For Music
 Assistant, add `http://<bridge-host>:8088/streamline.wav` as a URL/radio stream
 when one ESP32 feeds the bridge, or

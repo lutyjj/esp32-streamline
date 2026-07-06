@@ -1,0 +1,66 @@
+name: Feature or design work
+description: Propose a bounded capability or design change.
+title: "<surface> should <behavior>"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include Wi-Fi names, passwords, admin keys, bearer tokens, real device IPs, or real hostnames. Use documentation addresses such as `192.0.2.x` and `streamline-0000.local`.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      description: Which part owns this change?
+      options:
+        - Firmware
+        - Console
+        - Bridge
+        - Home Assistant add-on
+        - WebFlasher
+        - Tools
+        - Docs
+        - CI or release
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Explain the gap and why it matters.
+      placeholder: "Users cannot ..., which means ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: State the concrete deliverables.
+      placeholder: |
+        - Add ...
+        - Expose ...
+        - Document ...
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Explicitly out of scope
+      description: Name nearby work this issue should not pull in.
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: What proves the feature works?
+      placeholder: |
+        - `make ...`
+        - API returns ...
+        - Console shows ...
+    validations:
+      required: true
+  - type: input
+    id: depends-on
+    attributes:
+      label: Depends on
+      description: Link blockers only when they are real.
+      placeholder: "#123"

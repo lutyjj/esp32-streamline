@@ -52,7 +52,9 @@ place, and the standing items we track or have accepted.
 
 ## Bridge
 
-- Keep ports `39000` and `8088` on a trusted network; never expose them directly.
+- Keep ports `39000` and `8088` on a trusted network; never expose them
+  directly. The Home Assistant add-on exposes the same ports on the Home
+  Assistant host.
 - Set `--source-allow <ESP32 IPv4>` (or `STREAMLINE_SOURCE_ALLOW`) to reject
-  unexpected PCM sources. Not a firewall replacement — restrict inbound at the
-  boundary.
+  unexpected PCM sources. In the Home Assistant add-on, set `source_allow`.
+  This is not a firewall replacement; restrict inbound at the boundary.

@@ -1,0 +1,4 @@
+# https://developers.home-assistant.io/docs/apps/repository#repository-configuration
+name: ESP32 StreamLine Home Assistant add-ons
+url: "https://github.com/lutyjj/esp32-streamline"
+maintainer: lutyjj

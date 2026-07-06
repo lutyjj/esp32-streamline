@@ -1,0 +1,17 @@
+.git
+.cache
+.mypy_cache
+.ruff_cache
+__pycache__
+*.py[cod]
+firmware/streamline/.embuild
+firmware/streamline/.cargo-home
+firmware/streamline/target
+captures
+analysis-data
+dist
+node_modules
+.vite
+webflasher/*.bin
+.DS_Store
+.env

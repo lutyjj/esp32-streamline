@@ -10,7 +10,7 @@ and `make`:
 ```sh
 make help    # component targets
 make lint    # rustfmt, clippy, ruff, mypy --strict, biome
-make test    # bridge + firmware tests, firmware release build
+make test    # component tests and firmware release build
 ```
 
 Flashing and serial need `espflash` on the host (`cargo install espflash`);
@@ -25,6 +25,6 @@ it, so `make console-dev` proxies to your node without extra flags.
 - Branch from `mainline`; do not push to it directly.
 - Use [Conventional Commits](https://www.conventionalcommits.org)
   (`feat:`, `fix:`, `ci:`, `docs:`, `refactor:`, …).
-- `make lint && make test` must pass; CI runs the same checks.
+- `make lint && make test` must pass; CI runs the matching component checks.
 - Follow the component contract in [AGENTS.md](AGENTS.md) — it binds humans
   and AI agents alike.

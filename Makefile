@@ -35,7 +35,7 @@ format: bridge-format console-format firmware-format tools-format ha-addon-forma
 
 lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
 
-test: bridge-test console-test firmware-test firmware-build
+test: bridge-test console-test firmware-test firmware-build ha-addon-test
 
 # Only the firmware writes build artifacts onto the host; every other component
 # builds inside containers and leaves nothing to clean.

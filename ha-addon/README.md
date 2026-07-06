@@ -4,6 +4,11 @@ This add-on runs the StreamLine bridge inside Home Assistant OS or Home
 Assistant Supervised. It accepts ESP32 PCM packets on TCP `39000` and publishes
 the live WAV stream, status API, and health check on HTTP `8088`.
 
+## Install
+
+Add `https://github.com/lutyjj/esp32-streamline` as a Home Assistant add-on
+repository, then install **ESP32 StreamLine Bridge**.
+
 ## Configure
 
 `source_allow` is optional. Leave it blank to accept any LAN source, or enter a

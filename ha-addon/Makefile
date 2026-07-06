@@ -14,10 +14,11 @@ format:
 	@true
 
 lint:
+	@test "$(BUILD_ARCH)" = "amd64" -o "$(BUILD_ARCH)" = "aarch64" || (echo "BUILD_ARCH must be amd64 or aarch64" >&2; exit 2)
 	@test "$(VERSION)" = "$(CONFIG_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(CONFIG_VERSION))" >&2; exit 2)
 
 test:
-	$(MAKE) -C ../bridge test
+	@true
 
 image: lint
 	$(CONTAINER) build --platform $(PLATFORM) -f Dockerfile \

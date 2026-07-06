@@ -114,6 +114,11 @@ fn main() -> Result<()> {
         ota::mark_current_valid();
     }
 
+    // Rollback availability is fixed until the next OTA install, which reboots,
+    // so read the inactive slot once here rather than on every status poll and
+    // metrics scrape.
+    let rollback = ota::rollback_target();
+
     let mdns = if mode == Mode::Provisioned {
         match MdnsAdvertisement::start(&mdns_hostname, &config) {
             Ok(advertisement) => Some(Arc::new(Mutex::new(advertisement))),
@@ -138,6 +143,7 @@ fn main() -> Result<()> {
         mdns,
         ota: Arc::new(ota::OtaProgress::default()),
         health,
+        rollback,
     });
     let _server = http::start(state)?;
     loop {

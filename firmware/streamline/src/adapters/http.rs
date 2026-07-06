@@ -75,6 +75,10 @@ pub struct ApiState {
     pub ota: Arc<OtaProgress>,
     /// The startup health verdict, assembled once at boot (see [`crate::health`]).
     pub health: Arc<HealthReport>,
+    /// The version the inactive slot would roll back into, read once at boot;
+    /// `None` when no valid previous image is stored. Fixed until the next OTA,
+    /// which reboots and re-reads it.
+    pub rollback: Option<String>,
 }
 
 pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
@@ -1000,7 +1004,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         Mode::Provisioned => ("provisioned", "connected"),
     };
     let ota = state.ota.snapshot();
-    let rollback = ota::rollback_target();
+    let rollback = &state.rollback;
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
         device_name: config.device_name.clone(),
@@ -1062,7 +1066,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             message: ota.message,
             busy: ota.busy,
             rollback_available: rollback.is_some(),
-            rollback_version: rollback.unwrap_or_default(),
+            rollback_version: rollback.clone().unwrap_or_default(),
         },
     }
 }

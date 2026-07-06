@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     hal::{delay::FreeRtos, i2c::I2C0, i2s::I2S0, peripherals::Peripherals},
@@ -20,6 +20,7 @@ use streamline_firmware::{
     },
     board::{self, Board},
     config::{AudioSettings, RuntimeConfig},
+    health::{BootFacts, HealthReport},
     identity, runtime,
 };
 
@@ -57,35 +58,41 @@ fn main() -> Result<()> {
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
 
-    let (mode, config, stream, codec) = match persisted {
+    let (mode, config, stream, codec, health) = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
-            Ok(()) => match resolve_target(&config) {
-                Ok(target) => match start_audio(i2c0, i2s0, board.as_ref(), &config, target) {
-                    Ok((stream, codec)) => {
-                        log::info!(
-                            "StreamLine provisioned; {}",
-                            if target.is_some() {
-                                "streaming over TCP"
-                            } else {
-                                "capturing until a bridge target is set"
-                            }
-                        );
-                        (Mode::Provisioned, config, Some(stream), Some(codec))
-                    }
+            // Wi-Fi is up, so the device is reachable on the home network and
+            // stays provisioned. A bridge target that will not resolve or audio
+            // that will not initialize is a fault to surface through the health
+            // check, not a reason to drop to the setup AP — that recovery is for
+            // no network. Staying provisioned also lets `mark_current_valid`
+            // confirm the slot below, so an audio fault can never trigger a
+            // rollback.
+            Ok(()) => {
+                let target = match resolve_target(&config) {
+                    Ok(target) => target,
                     Err(error) => {
-                        let reason = format!("audio hardware initialization failed: {error:#}");
-                        log::warn!("{reason}; opening setup AP");
-                        note_fallback(&store, &reason);
-                        start_setup(&mut wifi, &suffix, board.as_ref())?
+                        log::warn!(
+                            "TCP target resolution failed: {error:#}; \
+                             staying provisioned without a stream"
+                        );
+                        None
                     }
-                },
-                Err(error) => {
-                    let reason = format!("TCP target resolution failed: {error:#}");
-                    log::warn!("{reason}; opening setup AP");
-                    note_fallback(&store, &reason);
-                    start_setup(&mut wifi, &suffix, board.as_ref())?
+                };
+                let audio = start_audio(i2c0, i2s0, board.as_ref(), &config, target);
+                if let Err(reason) = &audio.result {
+                    log::warn!("{reason}; staying provisioned so the fault is reachable");
                 }
-            },
+                let health = Arc::new(HealthReport::assess(&BootFacts {
+                    audio: Some(audio.result),
+                    bridge_configured: !config.target_host.is_empty(),
+                    board_name: board.name.clone(),
+                }));
+                log::info!(
+                    "StreamLine provisioned; startup health: {:?}",
+                    health.status
+                );
+                (Mode::Provisioned, config, audio.stream, audio.codec, health)
+            }
             Err(error) => {
                 let reason = format!("Wi-Fi station connection failed: {error:#}");
                 log::warn!("{reason}; opening setup AP");
@@ -130,6 +137,7 @@ fn main() -> Result<()> {
         codec,
         mdns,
         ota: Arc::new(ota::OtaProgress::default()),
+        health,
     });
     let _server = http::start(state)?;
     loop {
@@ -161,10 +169,16 @@ fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
     TargetAddress::resolve(config).map(Some)
 }
 
-type ProvisionedAudio = (
-    Arc<runtime::StreamStatus>,
-    Arc<Mutex<codec::CodecControl<'static>>>,
-);
+/// Audio bring-up outcome: the live handles when everything came up, plus the
+/// single fact the health check reads. A fault leaves `stream`/`codec` `None`
+/// and the device reachable, rather than tearing the boot down.
+struct AudioOutcome {
+    stream: Option<Arc<runtime::StreamStatus>>,
+    codec: Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    /// `Ok` when the codec answered and the capture task started; `Err(reason)`
+    /// otherwise, phrased for a person reading the health check.
+    result: Result<(), String>,
+}
 
 fn start_audio(
     i2c0: I2C0<'static>,
@@ -172,13 +186,34 @@ fn start_audio(
     board: &Board,
     config: &RuntimeConfig,
     target: Option<TargetAddress>,
-) -> Result<ProvisionedAudio> {
+) -> AudioOutcome {
     let audio_pins = AudioPins::new(board.pins);
-    let capture = Capture::new(i2s0, audio_pins.i2s).context("I2S capture setup failed")?;
-    let codec = codec::configure(i2c0, audio_pins.i2c, &board.codec, config.audio)
-        .context("codec setup failed")?;
-    let stream = runtime::start(capture, target).context("capture task setup failed")?;
-    Ok((stream, Arc::new(Mutex::new(codec))))
+    let capture = match Capture::new(i2s0, audio_pins.i2s) {
+        Ok(capture) => capture,
+        Err(error) => return AudioOutcome::failed(format!("I2S capture setup failed: {error:#}")),
+    };
+    let codec = match codec::configure(i2c0, audio_pins.i2c, &board.codec, config.audio) {
+        Ok(codec) => codec,
+        Err(error) => return AudioOutcome::failed(format!("codec setup failed: {error:#}")),
+    };
+    match runtime::start(capture, target) {
+        Ok(stream) => AudioOutcome {
+            stream: Some(stream),
+            codec: Some(Arc::new(Mutex::new(codec))),
+            result: Ok(()),
+        },
+        Err(error) => AudioOutcome::failed(format!("capture task setup failed: {error:#}")),
+    }
+}
+
+impl AudioOutcome {
+    fn failed(reason: String) -> Self {
+        Self {
+            stream: None,
+            codec: None,
+            result: Err(reason),
+        }
+    }
 }
 
 type SetupState = (
@@ -186,6 +221,7 @@ type SetupState = (
     RuntimeConfig,
     Option<Arc<runtime::StreamStatus>>,
     Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    Arc<HealthReport>,
 );
 
 fn start_setup(
@@ -216,5 +252,7 @@ fn start_setup(
         },
         None,
         None,
+        // Nothing to check until the device reaches the home network.
+        Arc::new(HealthReport::healthy()),
     ))
 }

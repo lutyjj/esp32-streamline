@@ -103,6 +103,26 @@ function FirmwareCard() {
             Installing
           </button>
         )}
+        {ota?.rollback_available && !installing && (
+          <TransactButton
+            transact={transact}
+            kind="secondary"
+            disabled={!writable || ota.busy}
+            onClick={() => {
+              const target = ota.rollback_version
+                ? `v${ota.rollback_version}`
+                : 'the previous version';
+              beginOtaSession(`Rolling back to ${target}…`);
+              transact.run(() => api('/api/ota/rollback', { method: 'POST' }), {
+                busyText: 'Rolling back…',
+                okText: 'Rollback started — the console reconnects by itself',
+              });
+              beginRebootWait('the rollback', 'Rolling back — the console reconnects by itself');
+            }}
+          >
+            {ota.rollback_version ? `Roll back to v${ota.rollback_version}` : 'Roll back'}
+          </TransactButton>
+        )}
         <ActionState state={transact.state} />
       </div>
       <Disclosure title="Developer — install a custom image" className="disclosure-offset">

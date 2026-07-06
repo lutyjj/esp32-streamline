@@ -1,0 +1,38 @@
+# https://developers.home-assistant.io/docs/apps/configuration#app-configuration
+name: ESP32 StreamLine Bridge
+version: "0.4.0"
+slug: streamline_bridge
+description: Stream ESP32 StreamLine PCM audio as live HTTP WAV from Home Assistant.
+url: "https://github.com/lutyjj/esp32-streamline/tree/mainline/ha-addon"
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: services
+boot: auto
+stage: experimental
+image: "ghcr.io/lutyjj/{arch}-esp32-streamline-bridge-addon"
+webui: "http://[HOST]:[PORT:8088]/status"
+watchdog: "http://[HOST]:[PORT:8088]/health"
+ports:
+  39000/tcp: 39000
+  8088/tcp: 8088
+ports_description:
+  39000/tcp: ESP32 PCM input
+  8088/tcp: HTTP WAV stream and status API
+options:
+  source_allow: ""
+  max_sources: 8
+  client_buffer_chunks: 2048
+  playout_buffer_seconds: 1.0
+  max_repeat_conceal_packets: 3
+  max_outage_silence_seconds: 5.0
+  source_idle_timeout_seconds: 5.0
+schema:
+  source_allow: str
+  max_sources: "int(1,)"
+  client_buffer_chunks: "int(1,)"
+  playout_buffer_seconds: "float(0.001,)"
+  max_repeat_conceal_packets: "int(0,)"
+  max_outage_silence_seconds: "float(0.001,)"
+  source_idle_timeout_seconds: "float(0.001,)"

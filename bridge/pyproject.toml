@@ -11,6 +11,7 @@ license = { text = "AGPL-3.0-or-later" }
 
 [project.scripts]
 streamline-bridge = "streamline_bridge.server:main"
+streamline-ha-addon = "streamline_bridge.ha_addon:main"
 
 [project.optional-dependencies]
 dev = [

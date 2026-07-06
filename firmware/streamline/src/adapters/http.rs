@@ -23,6 +23,7 @@ use crate::{
     },
     board,
     config::{AudioSettings, RuntimeConfig},
+    health::{HealthReport, Severity},
     levels::CLIP_THRESHOLD_ABS,
     metrics::render_prometheus,
     runtime::StreamStatus,
@@ -72,6 +73,8 @@ pub struct ApiState {
     pub codec: Option<Arc<Mutex<CodecControl<'static>>>>,
     pub mdns: Option<Arc<Mutex<MdnsAdvertisement>>>,
     pub ota: Arc<OtaProgress>,
+    /// The startup health verdict, assembled once at boot (see [`crate::health`]).
+    pub health: Arc<HealthReport>,
 }
 
 pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
@@ -90,6 +93,26 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             200,
             "application/json",
             &status_json(&state_for_status),
+        )
+    })?;
+
+    // A scriptable liveness probe: 200 when the startup checks found nothing
+    // blocking, 503 when they did. The same verdict rides `/api/status` under
+    // `health` for the console; this endpoint is the status code a monitor or
+    // `curl` can read without parsing JSON.
+    let state_for_health = Arc::clone(&state);
+    server.fn_handler("/api/health", Method::Get, move |request| {
+        let health = &state_for_health.health;
+        let code = if health.status == Severity::Blocking {
+            503
+        } else {
+            200
+        };
+        respond(
+            request,
+            code,
+            "application/json",
+            &serialize(health.as_ref()),
         )
     })?;
 
@@ -379,6 +402,21 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             )
         },
     )?;
+
+    // Roll back to the previous firmware by booting the other slot — instant and
+    // offline, no re-download. Flip the boot selection first so an unavailable
+    // rollback returns an error instead of a false "rebooting"; the device then
+    // reboots into the previous image, which its boot path re-confirms.
+    let state_for_rollback = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>("/api/ota/rollback", Method::Post, move |request| {
+        if !authorized(&request, &state_for_rollback) {
+            return unauthorized(request);
+        }
+        match ota::select_rollback_slot() {
+            Ok(()) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
     // Verify an admin key without changing anything, so the console can reject
     // a wrong key at unlock time instead of on the first settings write.
@@ -751,6 +789,8 @@ struct StatusResponse<'a> {
     metrics: MetricsStatus,
     diagnostics: DiagnosticsStatus<'a>,
     ota: OtaStatus<'a>,
+    /// Startup health verdict; mirrors `health` in `console/src/lib/api.ts`.
+    health: &'a HealthReport,
 }
 
 /// The resolved board's facts, from its descriptor in [`crate::board`]; the
@@ -900,6 +940,8 @@ struct OtaStatus<'a> {
     latest_version: &'a str,
     message: &'a str,
     busy: bool,
+    rollback_available: bool,
+    rollback_version: &'a str,
 }
 
 fn config_json(state: &ApiState) -> String {
@@ -921,6 +963,7 @@ fn status_json(state: &ApiState) -> String {
     serialize(&StatusResponse::from_snapshot(
         &snapshot,
         state.board.as_ref(),
+        state.health.as_ref(),
     ))
 }
 
@@ -957,6 +1000,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         Mode::Provisioned => ("provisioned", "connected"),
     };
     let ota = state.ota.snapshot();
+    let rollback = ota::rollback_target();
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
         device_name: config.device_name.clone(),
@@ -1017,6 +1061,8 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             latest_version: ota.latest_version,
             message: ota.message,
             busy: ota.busy,
+            rollback_available: rollback.is_some(),
+            rollback_version: rollback.unwrap_or_default(),
         },
     }
 }
@@ -1041,7 +1087,11 @@ fn reset_reason() -> &'static str {
 }
 
 impl<'a> StatusResponse<'a> {
-    fn from_snapshot(snapshot: &'a TelemetrySnapshot, board: &'a board::Board) -> Self {
+    fn from_snapshot(
+        snapshot: &'a TelemetrySnapshot,
+        board: &'a board::Board,
+        health: &'a HealthReport,
+    ) -> Self {
         Self {
             firmware_version: snapshot.firmware_version,
             device_name: &snapshot.device_name,
@@ -1103,7 +1153,10 @@ impl<'a> StatusResponse<'a> {
                 latest_version: &snapshot.ota.latest_version,
                 message: &snapshot.ota.message,
                 busy: snapshot.ota.busy,
+                rollback_available: snapshot.ota.rollback_available,
+                rollback_version: &snapshot.ota.rollback_version,
             },
+            health,
         }
     }
 }

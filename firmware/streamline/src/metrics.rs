@@ -452,6 +452,8 @@ streamline_ota_busy 0\n"
                 bytes_total: 0,
                 message: String::new(),
                 busy: false,
+                rollback_available: false,
+                rollback_version: String::new(),
             },
         }
     }

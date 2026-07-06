@@ -56,6 +56,23 @@ describe('joinNetwork', () => {
     expect(isUnlocked()).toBe(false);
     expect(handoff.value).toBe(false);
   });
+
+  it('treats a dropped connection as the handoff, not a failure', async () => {
+    // The device flushed its response, then tore down the setup AP as it
+    // rebooted — so the fetch rejects with a transport error after the save
+    // already succeeded. The join must land on the handoff, not "Not saved".
+    setTransport(async () => {
+      throw new TypeError('NetworkError when attempting to fetch resource.');
+    });
+
+    await expect(
+      joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: true }),
+    ).resolves.toEqual({ rebooting: true });
+    expect(isUnlocked()).toBe(true);
+    expect(handoff.value).toBe(true);
+    // Still a first join: never arm the fallback escalation.
+    expect(rebootWait.value).toBeNull();
+  });
 });
 
 describe('expectedHostname', () => {

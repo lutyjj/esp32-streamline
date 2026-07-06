@@ -1,6 +1,7 @@
 import { dbfs } from '../lib/format';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import { noBridge, packetsMoving, setupMode, status } from '../state/device';
+import { blockingHealth } from '../state/health';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
 import { Meter } from './Meter';
@@ -15,6 +16,7 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
   const moving = packetsMoving.value;
   const clips = s.metrics.clipped_samples_total;
   const showClipCallout = clipCalloutVisible.value;
+  const fault = blockingHealth.value;
   const rms = Math.max(s.metrics.rms_left, s.metrics.rms_right);
 
   const diagRows: [string, string][] = [
@@ -38,6 +40,15 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
 
   return (
     <>
+      {fault && (
+        <div class="card callout bad">
+          <div>
+            <strong>{fault.detail}</strong>
+            {fault.remedy && <span class="sub"> {fault.remedy}</span>}
+          </div>
+        </div>
+      )}
+
       {showClipCallout && (
         <div class="card callout">
           <div>
@@ -61,17 +72,27 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
         <div class="health">
           <span class="eyebrow">Status</span>
           <span class="val">
-            <span class={`statusdot ${setup ? 'warn' : playing ? 'good' : ''}`} />
+            <span class={`statusdot ${fault ? 'bad' : setup ? 'warn' : playing ? 'good' : ''}`} />
             <span>
-              {setup ? 'Setup' : playing ? (bridgeless ? 'Signal' : 'Streaming') : 'Idle'}
+              {fault
+                ? 'Fault'
+                : setup
+                  ? 'Setup'
+                  : playing
+                    ? bridgeless
+                      ? 'Signal'
+                      : 'Streaming'
+                    : 'Idle'}
             </span>
           </span>
           <span class="sub">
-            {setup
-              ? 'waiting for first-time setup'
-              : playing
-                ? 'input carries signal'
-                : 'input is quiet'}
+            {fault
+              ? 'audio hardware needs attention'
+              : setup
+                ? 'waiting for first-time setup'
+                : playing
+                  ? 'input carries signal'
+                  : 'input is quiet'}
           </span>
         </div>
         <div class="health">

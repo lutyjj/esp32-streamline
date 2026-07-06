@@ -102,6 +102,31 @@ export interface DeviceStatus {
     last_ota: string;
   };
   ota: OtaSnapshot;
+  /** The startup health verdict. */
+  health: HealthReport;
+}
+
+/** How much a health check's outcome matters; overall is the worst across checks. */
+export type HealthSeverity = 'ok' | 'info' | 'blocking';
+
+/** A health check's own outcome, independent of how much it matters. */
+export type HealthCheckStatus = 'ok' | 'warn' | 'fail';
+
+/** Mirrors `HealthCheck`. */
+export interface HealthCheck {
+  /** Stable machine id, e.g. `"codec"`. */
+  id: string;
+  status: HealthCheckStatus;
+  severity: HealthSeverity;
+  detail: string;
+  remedy: string | null;
+  fixable: boolean;
+}
+
+/** Mirrors `HealthReport`. */
+export interface HealthReport {
+  status: HealthSeverity;
+  checks: HealthCheck[];
 }
 
 /** Mirrors `OtaStatus`. */
@@ -112,6 +137,10 @@ export interface OtaSnapshot {
   latest_version: string;
   message: string;
   busy: boolean;
+  /** The inactive slot holds a valid image to roll back into. */
+  rollback_available: boolean;
+  /** The version a rollback returns to; empty when unavailable. */
+  rollback_version: string;
 }
 
 /** Mirrors `ConfigResponse`. */
@@ -131,6 +160,23 @@ export interface Ack {
   ok?: boolean;
   rebooting?: boolean;
   started?: boolean;
+}
+
+/**
+ * An HTTP error *response* from the device: a status arrived and it was not ok.
+ * Distinct from a transport failure, where `fetch` rejects before any response
+ * arrives (offline, or the device dropped the connection mid-reboot). Callers
+ * that must tell "the device rejected this" apart from "the connection went
+ * away" branch on `instanceof ApiError`.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
 }
 
 /** Injectable transport so tests run without a browser network stack. */
@@ -162,9 +208,9 @@ export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   }
   if (r.status === 401) {
     lockSettings();
-    throw new Error('unauthorized — unlock settings with the admin key');
+    throw new ApiError(401, 'unauthorized — unlock settings with the admin key');
   }
-  if (!r.ok) throw new Error(String(data.error || text || r.status));
+  if (!r.ok) throw new ApiError(r.status, String(data.error || text || r.status));
   return data as T;
 }
 

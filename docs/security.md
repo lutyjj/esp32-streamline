@@ -25,10 +25,10 @@ place, and the standing items we track or have accepted.
 
 - Mutating endpoints (`/api/settings/network`, `/api/settings/audio`,
   `/api/settings/name`, `/api/settings/admin-key`, `/api/settings/board`,
-  `/api/restart`, `/api/factory-reset`, `/api/ota/check`, `/api/ota/update`)
-  and the no-op key check (`/api/unlock`) require the admin key as a bearer
-  token, checked with a constant-time compare. Reads are open and never return
-  secrets.
+  `/api/restart`, `/api/factory-reset`, `/api/ota/check`, `/api/ota/update`,
+  `/api/ota/rollback`) and the no-op key check (`/api/unlock`) require the
+  admin key as a bearer token, checked with a constant-time compare. Reads are
+  open and never return secrets.
 - The key rides in a custom `Authorization` header, not a cookie or Basic Auth, so
   the API is CSRF-safe: a cross-origin request triggers a CORS preflight the device
   never approves. Cookies/Basic Auth would be sent by the browser automatically.

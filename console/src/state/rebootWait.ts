@@ -14,12 +14,15 @@ export const REBOOT_WARN_POLLS = 40;
 interface Wait {
   label: string;
   failedPolls: number;
+  /** Owns the recovery message when the default "applied" line would presume
+   *  too much — an update that may have rolled back narrates its own outcome. */
+  onRecover?: () => void;
 }
 
 export const rebootWait = signal<Wait | null>(null);
 
-export function beginRebootWait(label: string, toastText?: string): void {
-  rebootWait.value = { label, failedPolls: 0 };
+export function beginRebootWait(label: string, toastText?: string, onRecover?: () => void): void {
+  rebootWait.value = { label, failedPolls: 0, onRecover };
   toast(
     toastText || `Restarting to apply ${label} — the console reconnects by itself`,
     'wait',
@@ -33,7 +36,8 @@ export function rebootWaitTick(pollFailed: boolean): boolean {
   if (!wait) return false;
   if (!pollFailed) {
     rebootWait.value = null;
-    toast(`Back online — ${wait.label} applied`, 'ok');
+    if (wait.onRecover) wait.onRecover();
+    else toast(`Back online — ${wait.label} applied`, 'ok');
     return true;
   }
   wait.failedPolls += 1;

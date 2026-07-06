@@ -88,10 +88,12 @@ in dB and already applied.
 Entry: streaming works. The device lives here for months.
 
 Promise: the Overview answers "is everything fine?" in one glance: status,
-signal, Wi-Fi, bridge. Streaming follows the music, playing on signal and
-pausing on sustained silence, with no user action. Nothing asks for
-attention unless something needs it; every unprompted banner is real
-(clipping, device unreachable) and is dismissible or resolves itself.
+signal, Wi-Fi, bridge. A device that came up without its audio codec says so
+here — the Status reads Fault, not a false Idle, with the fix named. Streaming
+follows the music, playing on signal and pausing on sustained silence, with no
+user action. Nothing asks for attention unless something needs it; every
+unprompted banner is real — clipping, a device unreachable, a codec that did
+not start — and is dismissible or resolves itself.
 
 Exit: none. Maintenance interrupts and returns here.
 
@@ -103,12 +105,18 @@ is lost.
 Promise:
 
 - Updating is one button. Progress is a visible log, and the device either
-  confirms the new version or rolls back by itself.
-  [ota.md](ota.md) owns the mechanism.
+  confirms the new version or rolls back by itself. A rollback is narrated
+  too — the console names the version still running rather than claiming a
+  success — and when the device holds a previous image, one button rolls
+  back to it deliberately. [ota.md](ota.md) owns the mechanism.
 - Any change that restarts the device is narrated through to recovery, and
   an overdue recovery says what to check instead of spinning forever.
 - A device that cannot reach its Wi-Fi falls back to its own setup network,
   so it is never unreachable; the journey re-enters stage 2.
+- A fault that appears after the network is up — an audio codec that will
+  not start — keeps the device on the home network and reachable, showing
+  the fault and its fix, rather than dropping to the setup network. Only a
+  lost network re-enters stage 2.
 - Factory reset demands explicit confirmation, states exactly what it
   erases, and lands in stage 2.
 - A lost admin key means reflashing (stage 1). The README states this where

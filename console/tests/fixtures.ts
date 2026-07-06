@@ -6,7 +6,7 @@ import type { DeviceStatus } from '../src/lib/api';
  */
 export function deviceStatus(
   overrides: Partial<
-    Omit<DeviceStatus, 'wifi' | 'target' | 'audio' | 'metrics' | 'diagnostics' | 'ota'>
+    Omit<DeviceStatus, 'wifi' | 'target' | 'audio' | 'metrics' | 'diagnostics' | 'ota' | 'health'>
   > & {
     wifi?: Partial<DeviceStatus['wifi']>;
     target?: Partial<DeviceStatus['target']>;
@@ -14,9 +14,10 @@ export function deviceStatus(
     metrics?: Partial<DeviceStatus['metrics']>;
     diagnostics?: Partial<DeviceStatus['diagnostics']>;
     ota?: Partial<DeviceStatus['ota']>;
+    health?: Partial<DeviceStatus['health']>;
   } = {},
 ): DeviceStatus {
-  const { wifi, target, audio, metrics, diagnostics, ota, ...top } = overrides;
+  const { wifi, target, audio, metrics, diagnostics, ota, health, ...top } = overrides;
   return {
     firmware_version: '0.4.0',
     device_name: '',
@@ -87,7 +88,23 @@ export function deviceStatus(
       latest_version: '',
       message: '',
       busy: false,
+      rollback_available: false,
+      rollback_version: '',
       ...ota,
+    },
+    health: {
+      status: 'ok',
+      checks: [
+        {
+          id: 'codec',
+          status: 'ok',
+          severity: 'ok',
+          detail: 'The codec answered and is streaming-ready.',
+          remedy: null,
+          fixable: false,
+        },
+      ],
+      ...health,
     },
     ...top,
   };

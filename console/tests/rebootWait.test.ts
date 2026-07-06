@@ -27,6 +27,18 @@ describe('reboot-wait narration', () => {
     expect(toasts.value.map((t) => t.text)).toEqual(['Back online — the restart applied']);
   });
 
+  it('hands recovery to onRecover instead of the default applied line', () => {
+    let recovered = 0;
+    beginRebootWait('the firmware update', undefined, () => {
+      recovered += 1;
+    });
+    toasts.value = [];
+    expect(rebootWaitTick(false)).toBe(true);
+    expect(recovered).toBe(1);
+    // The presumptuous default toast must not also fire.
+    expect(toasts.value).toEqual([]);
+  });
+
   it('warns when the reboot is overdue', () => {
     beginRebootWait('the factory reset');
     toasts.value = [];

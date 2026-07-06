@@ -133,6 +133,23 @@ export interface Ack {
   started?: boolean;
 }
 
+/**
+ * An HTTP error *response* from the device: a status arrived and it was not ok.
+ * Distinct from a transport failure, where `fetch` rejects before any response
+ * arrives (offline, or the device dropped the connection mid-reboot). Callers
+ * that must tell "the device rejected this" apart from "the connection went
+ * away" branch on `instanceof ApiError`.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 /** Injectable transport so tests run without a browser network stack. */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -162,9 +179,9 @@ export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
   }
   if (r.status === 401) {
     lockSettings();
-    throw new Error('unauthorized — unlock settings with the admin key');
+    throw new ApiError(401, 'unauthorized — unlock settings with the admin key');
   }
-  if (!r.ok) throw new Error(String(data.error || text || r.status));
+  if (!r.ok) throw new ApiError(r.status, String(data.error || text || r.status));
   return data as T;
 }
 

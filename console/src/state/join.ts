@@ -11,7 +11,7 @@
 
 import { signal } from '@preact/signals';
 import { unlockSettings } from '../lib/adminKey';
-import { type Ack, postForm } from '../lib/api';
+import { type Ack, ApiError, postForm } from '../lib/api';
 import { status } from './device';
 import { setupKey } from './setupKey';
 
@@ -38,18 +38,30 @@ export function handoffMessage(): string {
 }
 
 /**
- * Save and advance only on the device's confirmation: the response is
- * flushed before the restart, so a thrown error means nothing was saved and
- * the caller shows it where the user can act.
+ * Save Wi-Fi credentials and advance to the handoff. The device flushes its
+ * response before it restarts, so an HTTP error status ([`ApiError`]) is a real
+ * rejection the caller must show inline. But the same restart tears down the
+ * setup AP this browser is on, so the connection can drop *after* a successful
+ * save — `fetch` then rejects with a transport error that is not an `ApiError`.
+ * That drop is the handoff itself, not a failure: assume the save took and tell
+ * the handoff story.
  */
 export async function joinNetwork(req: JoinRequest): Promise<Ack> {
-  const data = await postForm('/api/settings/network', {
-    ssid: req.ssid.trim(),
-    password: req.password,
-    target_host: (req.targetHost ?? '').trim(),
-    target_port: req.targetPort ?? String(status.value?.target?.target_port || 39000),
-    admin_secret: setupKey.value,
-  });
+  let data: Ack;
+  try {
+    data = await postForm('/api/settings/network', {
+      ssid: req.ssid.trim(),
+      password: req.password,
+      target_host: (req.targetHost ?? '').trim(),
+      target_port: req.targetPort ?? String(status.value?.target?.target_port || 39000),
+      admin_secret: setupKey.value,
+    });
+  } catch (err) {
+    // A status came back and it was a rejection: nothing was saved, surface it.
+    if (err instanceof ApiError) throw err;
+    // No response at all — the device dropped us as it left the setup AP.
+    data = { rebooting: true };
+  }
   // The device reboots onto the home network; keep the key so this browser
   // can unlock it there.
   if (setupKey.value) unlockSettings(setupKey.value, req.rememberKey);

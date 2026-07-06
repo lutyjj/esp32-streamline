@@ -23,10 +23,11 @@ place, and the standing items we track or have accepted.
 
 ## Authentication
 
-- Mutating endpoints (`/api/settings/network`, `/api/settings/audio`,
-  `/api/settings/name`, `/api/settings/admin-key`, `/api/settings/board`,
-  `/api/restart`, `/api/factory-reset`, `/api/ota/check`, `/api/ota/update`,
-  `/api/ota/rollback`) and the no-op key check (`/api/unlock`) require the
+- Mutating endpoints (`/api/settings/wifi`, `/api/settings/target`,
+  `/api/settings/audio`, `/api/settings/name`, `/api/settings/admin-key`,
+  `/api/settings/board`, `/api/restart`, `/api/factory-reset`,
+  `/api/ota/check`, `/api/ota/update`, `/api/ota/rollback`) and the no-op key
+  check (`/api/unlock`) require the
   admin key as a bearer token, checked with a constant-time compare. Reads are
   open and never return secrets.
 - The key rides in a custom `Authorization` header, not a cookie or Basic Auth, so

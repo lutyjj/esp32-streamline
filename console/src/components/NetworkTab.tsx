@@ -35,37 +35,56 @@ export function NetworkTab() {
 
   const passwordEditable = firstSetup || editingPassword;
 
-  /** Both cards submit the same settings write; the device restarts on it. */
-  function save(transact: ReturnType<typeof useTransact>) {
-    transact.run(
-      async () => {
-        const host = targetHost.trim();
-        if (host.includes(':') || host.includes('/')) {
-          throw new Error('target host must not include port, scheme, or path');
-        }
-        if (firstSetup) {
-          // A first join is a network handoff, not a reboot wait: this
-          // browser stays behind on the vanishing setup network.
-          const data = await joinNetwork({
-            ssid,
-            password,
-            targetHost: host,
-            targetPort,
-            rememberKey,
-          });
-          toast(handoffMessage(), 'wait', 0);
-          return data;
-        }
-        return postForm('/api/settings/network', {
-          ssid: ssid.trim(),
-          password: passwordEditable ? password : '',
-          target_host: host,
-          target_port: targetPort,
-        });
-      },
+  /**
+   * Commissioning is one atomic write (Wi-Fi + the initial target + the admin
+   * key): the device leaves for the home network right after, so both cards
+   * drive the same first-join handoff. This browser stays behind on the
+   * vanishing setup network, so it is a handoff, not a reboot wait.
+   */
+  async function commission() {
+    const host = validTargetHost();
+    const data = await joinNetwork({ ssid, password, targetHost: host, targetPort, rememberKey });
+    toast(handoffMessage(), 'wait', 0);
+    return data;
+  }
+
+  function validTargetHost() {
+    const host = targetHost.trim();
+    if (host.includes(':') || host.includes('/')) {
+      throw new Error('target host must not include port, scheme, or path');
+    }
+    return host;
+  }
+
+  /** Steady state: Wi-Fi and the stream target are separate writes, so a bad
+   * target host cannot fail a Wi-Fi save and vice versa. */
+  function saveWifi() {
+    wifiTransact.run(
+      () =>
+        firstSetup
+          ? commission()
+          : postForm('/api/settings/wifi', {
+              ssid: ssid.trim(),
+              password: passwordEditable ? password : '',
+            }),
       firstSetup
         ? { busyText: 'Saving…', okText: 'Saved — the device is joining your network' }
-        : { busyText: 'Saving…', reboots: 'the network settings' },
+        : { busyText: 'Saving…', reboots: 'the Wi-Fi settings' },
+    );
+  }
+
+  function saveTarget() {
+    targetTransact.run(
+      () =>
+        firstSetup
+          ? commission()
+          : postForm('/api/settings/target', {
+              target_host: validTargetHost(),
+              target_port: targetPort,
+            }),
+      firstSetup
+        ? { busyText: 'Saving…', okText: 'Saved — the device is joining your network' }
+        : { busyText: 'Saving…', reboots: 'the stream target' },
     );
   }
 
@@ -132,11 +151,7 @@ export function NetworkTab() {
           </div>
         </div>
         <div class="cardfoot">
-          <TransactButton
-            transact={wifiTransact}
-            disabled={!writable}
-            onClick={() => save(wifiTransact)}
-          >
+          <TransactButton transact={wifiTransact} disabled={!writable} onClick={saveWifi}>
             Save &amp; restart
           </TransactButton>
           <ActionState state={wifiTransact.state} />
@@ -184,11 +199,7 @@ export function NetworkTab() {
         )}
 
         <div class="cardfoot">
-          <TransactButton
-            transact={targetTransact}
-            disabled={!writable}
-            onClick={() => save(targetTransact)}
-          >
+          <TransactButton transact={targetTransact} disabled={!writable} onClick={saveTarget}>
             Save &amp; restart
           </TransactButton>
           <ActionState state={targetTransact.state} />

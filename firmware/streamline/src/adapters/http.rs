@@ -152,20 +152,21 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
 
     // Mutating endpoints require the admin key once one is provisioned (see
     // `authorized`); an unconfigured device accepts setup writes so the first
-    // key can be set. A Wi-Fi/target change reboots the device so it reconnects
-    // with the new settings, which keeps swapping the stream target during testing
-    // cheap.
-    let state_for_setup = Arc::clone(&state);
+    // key can be set. Wi-Fi and the stream target are separate nouns: each write
+    // validates and persists only its own fields, so a malformed target host
+    // cannot fail a Wi-Fi save and a Wi-Fi save cannot smuggle in half-typed
+    // target edits.
+    let state_for_wifi = Arc::clone(&state);
     server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/network",
+        "/api/settings/wifi",
         Method::Post,
         move |mut request| {
-            if !authorized(&request, &state_for_setup) {
+            if !authorized(&request, &state_for_wifi) {
                 return unauthorized(request);
             }
             let result = (|| -> Result<()> {
                 let form = form(&mut request)?;
-                let current = state_for_setup
+                let current = state_for_wifi
                     .config
                     .lock()
                     .map_err(|_| anyhow!("configuration lock poisoned"))?
@@ -176,28 +177,77 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     .cloned()
                     .unwrap_or(current.password);
                 // The admin key is preserved when left blank, just like the password, so a
-                // routine Wi-Fi/target change does not require retyping it.
+                // routine Wi-Fi change does not require retyping it.
                 let admin_secret = form
                     .get("admin_secret")
                     .filter(|value| !value.is_empty())
                     .cloned()
                     .unwrap_or(current.admin_secret);
+                // Commissioning may set the initial stream target in the same
+                // write, because the device reboots onto the home network right
+                // after and the two cannot be posted separately. Absent target
+                // fields are preserved, so a steady-state Wi-Fi change leaves the
+                // target alone.
+                let target_host = match form.get("target_host") {
+                    Some(value) => value.trim().to_owned(),
+                    None => current.target_host,
+                };
+                let target_port = match form.get("target_port") {
+                    Some(_) => parse_u16(&form, "target_port")?,
+                    None => current.target_port,
+                };
                 let next = RuntimeConfig {
                     ssid: required(&form, "ssid")?.to_owned(),
                     password,
-                    // Optional: commissioning sets Wi-Fi first and the bridge
-                    // target later, so an absent or blank host means "no
-                    // bridge yet" and the device boots into no-target mode.
-                    target_host: form
-                        .get("target_host")
-                        .map(|value| value.trim().to_owned())
-                        .unwrap_or_default(),
-                    target_port: parse_u16(&form, "target_port")?,
+                    target_host,
+                    target_port,
                     admin_secret,
                     device_name: current.device_name,
                     audio: current.audio,
                 };
-                save(&state_for_setup, next)
+                save(&state_for_wifi, next)
+            })();
+            match result {
+                Ok(()) => reboot_response(request),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
+
+    // The stream target is a stage-3 change, not commissioning: it sets only
+    // host and port and leaves Wi-Fi and the admin key untouched. Blank host
+    // clears the target ("no bridge yet"). A target change takes effect on the
+    // next boot; applying it to the running stream without a reboot is deferred
+    // (the stream target is fixed when the network task spawns).
+    let state_for_target = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/target",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_target) {
+                return unauthorized(request);
+            }
+            let result = (|| -> Result<()> {
+                let form = form(&mut request)?;
+                let current = state_for_target
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?
+                    .clone();
+                let target_host = form
+                    .get("target_host")
+                    .map(|value| value.trim().to_owned())
+                    .unwrap_or_default();
+                let target_port = match form.get("target_port") {
+                    Some(_) => parse_u16(&form, "target_port")?,
+                    None => current.target_port,
+                };
+                let next = RuntimeConfig {
+                    target_host,
+                    target_port,
+                    ..current
+                };
+                save(&state_for_target, next)
             })();
             match result {
                 Ok(()) => reboot_response(request),

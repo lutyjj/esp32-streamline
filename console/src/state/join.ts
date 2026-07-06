@@ -38,18 +38,22 @@ export function handoffMessage(): string {
 }
 
 /**
- * Save Wi-Fi credentials and advance to the handoff. The device flushes its
- * response before it restarts, so an HTTP error status ([`ApiError`]) is a real
- * rejection the caller must show inline. But the same restart tears down the
- * setup AP this browser is on, so the connection can drop *after* a successful
- * save — `fetch` then rejects with a transport error that is not an `ApiError`.
- * That drop is the handoff itself, not a failure: assume the save took and tell
- * the handoff story.
+ * Save Wi-Fi credentials and advance to the handoff. Commissioning is one
+ * atomic write to `/api/settings/wifi` — the device reboots onto the home
+ * network right after, so the initial stream target rides along here rather
+ * than through a separate `/api/settings/target` call that could not complete.
+ *
+ * The device flushes its response before it restarts, so an HTTP error status
+ * ([`ApiError`]) is a real rejection the caller must show inline. But the same
+ * restart tears down the setup AP this browser is on, so the connection can
+ * drop *after* a successful save — `fetch` then rejects with a transport error
+ * that is not an `ApiError`. That drop is the handoff itself, not a failure:
+ * assume the save took and tell the handoff story.
  */
 export async function joinNetwork(req: JoinRequest): Promise<Ack> {
   let data: Ack;
   try {
-    data = await postForm('/api/settings/network', {
+    data = await postForm('/api/settings/wifi', {
       ssid: req.ssid.trim(),
       password: req.password,
       target_host: (req.targetHost ?? '').trim(),

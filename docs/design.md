@@ -181,8 +181,10 @@ Endpoint paths follow one rule: nouns for state, verbs for actions.
   `GET /api/health` (a scriptable startup-health probe: `200` when nothing
   blocks, `503` when a check does).
 - Settings writes are one group per endpoint under the noun they change:
-  `POST /api/settings/network`, `/api/settings/audio`, `/api/settings/name`,
-  `/api/settings/admin-key`, `/api/settings/board`.
+  `POST /api/settings/wifi` (network credentials, and the initial stream target
+  during commissioning), `/api/settings/target` (stream host and port),
+  `/api/settings/audio`, `/api/settings/name`, `/api/settings/admin-key`,
+  `/api/settings/board`.
 - Device-wide actions are top-level verbs: `POST /api/unlock`,
   `POST /api/restart`, `POST /api/factory-reset`, `POST /api/ota/check`,
   `POST /api/ota/update`, `POST /api/ota/rollback`.

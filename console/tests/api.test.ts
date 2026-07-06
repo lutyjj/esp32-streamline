@@ -46,9 +46,7 @@ describe('api transport', () => {
 
   it('surfaces the device error message on a rejected write', async () => {
     setTransport(async () => respond(400, '{"error":"ssid is required"}'));
-    await expect(api('/api/settings/network', { method: 'POST' })).rejects.toThrow(
-      'ssid is required',
-    );
+    await expect(api('/api/settings/wifi', { method: 'POST' })).rejects.toThrow('ssid is required');
   });
 
   it('falls back to raw text when the error body is not JSON', async () => {

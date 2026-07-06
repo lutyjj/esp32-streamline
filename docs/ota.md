@@ -59,9 +59,42 @@ any release — and keep the rollback net below.
 
 `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` boots a freshly flashed slot in
 *pending-verify*. The firmware calls `esp_ota_mark_app_valid_cancel_rollback`
-only after it reaches a healthy streaming state; an image that crashes or fails
-to connect never confirms itself and the bootloader reverts to the previous slot
-on the next reset. A bad update cannot brick the device.
+once it reaches the home network with the console up — the signal that the image
+boots and is manageable. Audio is deliberately outside this gate: a codec that
+will not initialize is a fault to fix (see [Startup health](#startup-health)),
+not a reason to revert, so it can never trigger a rollback. An image that
+crashes or cannot reach the network never confirms itself, and the bootloader
+reverts to the previous slot on the next reset. A bad update cannot brick the
+device.
+
+### Manual rollback
+
+`POST /api/ota/rollback` returns to the previous firmware deliberately, without
+waiting for a bad boot. It points the next boot at the inactive slot and
+restarts — instant and offline, no re-download, going back one version. That
+slot boots in *pending-verify* like any other, so the same confirm-or-revert net
+applies. `/api/status` advertises `ota.rollback_available` and
+`ota.rollback_version`, read from the inactive slot, so the console offers the
+action only when a valid previous image is stored and can name the version it
+returns to. A freshly serial-flashed device, with only one slot written, reports
+it unavailable.
+
+## Startup health
+
+Reaching the network confirms the image *boots*; it does not prove the device is
+*usable*. A separate startup health check answers that. Once the network is up,
+the firmware assembles a boot snapshot — did the audio codec answer, is a bridge
+configured — into a verdict: an overall severity plus a check list, each with a
+`status`, a `severity` (`ok`, `info`, or `blocking`), a plain-language `detail`
+and `remedy`, and a `fixable` flag.
+
+The verdict rides `/api/status` under `health`, and `GET /api/health` returns
+its status code — `200` when nothing blocks, `503` when a check does — for
+scriptable probes. A blocking fault, such as a codec that will not initialize,
+keeps the device provisioned and reachable so the fault is visible and fixable
+rather than dropping it to the setup AP; the console surfaces it on the Overview.
+The check is a one-time boot snapshot — intermittent or periodic checks are out
+of scope, and a new check is a new entry in the firmware's `health` module.
 
 ## Post-mortem diagnostics
 

@@ -177,13 +177,19 @@ Endpoint paths follow one rule: nouns for state, verbs for actions.
 
 - Reads are open: `GET /api/status` (runtime), `GET /api/metrics`
   (Prometheus), `GET /api/settings` (persisted settings, no secrets),
-  `GET /api/boards` (built-in board catalog and selected descriptor).
+  `GET /api/boards` (built-in board catalog and selected descriptor),
+  `GET /api/health` (a scriptable startup-health probe: `200` when nothing
+  blocks, `503` when a check does).
 - Settings writes are one group per endpoint under the noun they change:
   `POST /api/settings/network`, `/api/settings/audio`, `/api/settings/name`,
   `/api/settings/admin-key`, `/api/settings/board`.
 - Device-wide actions are top-level verbs: `POST /api/unlock`,
   `POST /api/restart`, `POST /api/factory-reset`, `POST /api/ota/check`,
-  `POST /api/ota/update`.
+  `POST /api/ota/update`, `POST /api/ota/rollback`.
+
+`GET /api/status` carries a `health` block — the startup verdict assembled once
+at boot (see [ota.md](ota.md#startup-health)) — so the console renders the same
+facts the `/api/health` status code exposes to scripts.
 
 Every write requires the admin key ([security.md](security.md)). Responses
 carry `rebooting: true` when the change restarts the device, so clients react

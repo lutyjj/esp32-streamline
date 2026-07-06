@@ -236,8 +236,13 @@ pub fn rollback_target() -> Option<String> {
     let mut desc: sys::esp_app_desc_t = unsafe { core::mem::zeroed() };
     // SAFETY: `slot` is a live partition pointer; the call fills `desc`.
     if unsafe { sys::esp_ota_get_partition_description(slot, &mut desc) } == sys::ESP_OK {
-        let version = unsafe { std::ffi::CStr::from_ptr(desc.version.as_ptr().cast()) };
-        Some(version.to_string_lossy().into_owned())
+        let raw = unsafe { std::ffi::CStr::from_ptr(desc.version.as_ptr().cast()) }
+            .to_string_lossy()
+            .into_owned();
+        // The app descriptor version carries a leading `v` from the release tag;
+        // drop it so rollback_version matches the `firmware_version` format the
+        // console prefixes.
+        Some(raw.strip_prefix('v').map(str::to_owned).unwrap_or(raw))
     } else {
         Some(String::new())
     }

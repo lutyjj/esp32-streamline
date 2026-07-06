@@ -403,6 +403,21 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         },
     )?;
 
+    // Roll back to the previous firmware by booting the other slot — instant and
+    // offline, no re-download. Flip the boot selection first so an unavailable
+    // rollback returns an error instead of a false "rebooting"; the device then
+    // reboots into the previous image, which its boot path re-confirms.
+    let state_for_rollback = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>("/api/ota/rollback", Method::Post, move |request| {
+        if !authorized(&request, &state_for_rollback) {
+            return unauthorized(request);
+        }
+        match ota::select_rollback_slot() {
+            Ok(()) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
+
     // Verify an admin key without changing anything, so the console can reject
     // a wrong key at unlock time instead of on the first settings write.
     let state_for_unlock = Arc::clone(&state);
@@ -925,6 +940,8 @@ struct OtaStatus<'a> {
     latest_version: &'a str,
     message: &'a str,
     busy: bool,
+    rollback_available: bool,
+    rollback_version: &'a str,
 }
 
 fn config_json(state: &ApiState) -> String {
@@ -983,6 +1000,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         Mode::Provisioned => ("provisioned", "connected"),
     };
     let ota = state.ota.snapshot();
+    let rollback = ota::rollback_target();
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
         device_name: config.device_name.clone(),
@@ -1043,6 +1061,8 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             latest_version: ota.latest_version,
             message: ota.message,
             busy: ota.busy,
+            rollback_available: rollback.is_some(),
+            rollback_version: rollback.unwrap_or_default(),
         },
     }
 }
@@ -1133,6 +1153,8 @@ impl<'a> StatusResponse<'a> {
                 latest_version: &snapshot.ota.latest_version,
                 message: &snapshot.ota.message,
                 busy: snapshot.ota.busy,
+                rollback_available: snapshot.ota.rollback_available,
+                rollback_version: &snapshot.ota.rollback_version,
             },
             health,
         }

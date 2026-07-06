@@ -137,6 +137,10 @@ export interface OtaSnapshot {
   latest_version: string;
   message: string;
   busy: boolean;
+  /** The inactive slot holds a valid image to roll back into. */
+  rollback_available: boolean;
+  /** The version a rollback returns to; empty when unavailable. */
+  rollback_version: string;
 }
 
 /** Mirrors `ConfigResponse`. */

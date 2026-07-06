@@ -26,6 +26,7 @@ use esp_idf_svc::{
     hal::task::thread::ThreadSpawnConfiguration,
     http::client::{Configuration, EspHttpConnection, FollowRedirectsPolicy},
     ota::EspOta,
+    sys,
 };
 use serde::Serialize;
 
@@ -210,6 +211,53 @@ pub fn mark_current_valid() {
         Ok(()) => log::info!("running firmware slot confirmed valid"),
         Err(error) => log::warn!("could not mark firmware slot valid: {error}"),
     }
+}
+
+/// The inactive OTA slot when it holds a valid, bootable image; `None` when
+/// there is nothing to roll back to (a freshly serial-flashed device has only
+/// one slot written).
+fn valid_rollback_slot() -> Option<*const sys::esp_partition_t> {
+    // SAFETY: the OTA partition APIs only read the partition table and otadata.
+    let other = unsafe { sys::esp_ota_get_next_update_partition(core::ptr::null()) };
+    if other.is_null() {
+        return None;
+    }
+    let mut state = sys::esp_ota_img_states_t_ESP_OTA_IMG_UNDEFINED;
+    let read = unsafe { sys::esp_ota_get_state_partition(other, &mut state) };
+    (read == sys::ESP_OK && state == sys::esp_ota_img_states_t_ESP_OTA_IMG_VALID).then_some(other)
+}
+
+/// The firmware version the device would roll back into, when a valid previous
+/// slot exists. `Some("")` when the slot is valid but its version cannot be
+/// read; `None` when there is nothing to roll back to. Read fresh — rollback
+/// availability is fixed between reboots, and an OTA install reboots.
+pub fn rollback_target() -> Option<String> {
+    let slot = valid_rollback_slot()?;
+    let mut desc: sys::esp_app_desc_t = unsafe { core::mem::zeroed() };
+    // SAFETY: `slot` is a live partition pointer; the call fills `desc`.
+    if unsafe { sys::esp_ota_get_partition_description(slot, &mut desc) } == sys::ESP_OK {
+        let version = unsafe { std::ffi::CStr::from_ptr(desc.version.as_ptr().cast()) };
+        Some(version.to_string_lossy().into_owned())
+    } else {
+        Some(String::new())
+    }
+}
+
+/// Point the next boot at the inactive slot, returning to the previous firmware.
+/// Instant and offline — no re-download. The slot boots in pending-verify, so
+/// the normal boot path confirms it (or the bootloader bounces back), which
+/// keeps the manual rollback as safe as an automatic one. Refuses when there is
+/// no valid image to return to; the caller reboots on success.
+pub fn select_rollback_slot() -> Result<()> {
+    let slot = valid_rollback_slot()
+        .ok_or_else(|| anyhow!("no valid previous firmware to roll back to"))?;
+    // SAFETY: `slot` is a valid partition verified just above.
+    let err = unsafe { sys::esp_ota_set_boot_partition(slot) };
+    if err != sys::ESP_OK {
+        bail!("could not select the previous firmware slot (error {err})");
+    }
+    log::info!("selected the previous firmware slot for the next boot");
+    Ok(())
 }
 
 /// Where an install pulls its image from.

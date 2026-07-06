@@ -81,4 +81,9 @@ pub struct OtaTelemetry {
     pub latest_version: String,
     pub message: String,
     pub busy: bool,
+    /// The inactive slot holds a valid image to roll back into.
+    pub rollback_available: bool,
+    /// The version that a rollback would return to; empty when unavailable or
+    /// unreadable.
+    pub rollback_version: String,
 }

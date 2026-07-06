@@ -88,6 +88,8 @@ export function deviceStatus(
       latest_version: '',
       message: '',
       busy: false,
+      rollback_available: false,
+      rollback_version: '',
       ...ota,
     },
     health: {

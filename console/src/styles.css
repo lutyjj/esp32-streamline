@@ -265,6 +265,9 @@ body.locked .gated :is(form, .cardfoot) {
 .callout[hidden] {
   display: none;
 }
+.callout.bad {
+  border-left-color: var(--bad);
+}
 .callout .sub {
   color: var(--muted);
 }

@@ -102,6 +102,31 @@ export interface DeviceStatus {
     last_ota: string;
   };
   ota: OtaSnapshot;
+  /** The startup health verdict. */
+  health: HealthReport;
+}
+
+/** How much a health check's outcome matters; overall is the worst across checks. */
+export type HealthSeverity = 'ok' | 'info' | 'blocking';
+
+/** A health check's own outcome, independent of how much it matters. */
+export type HealthCheckStatus = 'ok' | 'warn' | 'fail';
+
+/** Mirrors `HealthCheck`. */
+export interface HealthCheck {
+  /** Stable machine id, e.g. `"codec"`. */
+  id: string;
+  status: HealthCheckStatus;
+  severity: HealthSeverity;
+  detail: string;
+  remedy: string | null;
+  fixable: boolean;
+}
+
+/** Mirrors `HealthReport`. */
+export interface HealthReport {
+  status: HealthSeverity;
+  checks: HealthCheck[];
 }
 
 /** Mirrors `OtaStatus`. */

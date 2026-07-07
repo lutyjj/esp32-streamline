@@ -1,0 +1,59 @@
+# git-cliff configuration — the single source for release notes.
+# `make changelog` renders ha-addon/CHANGELOG.md (what Home Assistant shows);
+# the release workflow renders the latest section into the GitHub release.
+# Both come from the Conventional Commits already required by AGENTS.md.
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+header = """
+# Changelog
+
+Notable changes per release, grouped by type. Generated from Conventional
+Commits with git-cliff — do not edit by hand.
+"""
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}\
+- {{ commit.message | split(pat="\n") | first | upper_first | trim }}
+{% endfor %}\
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+# Drop anything that is not a Conventional Commit (merge commits, one-offs) so
+# the changelog only ever lists intentional, typed changes.
+filter_unconventional = true
+filter_commits = true
+split_commits = false
+protect_breaking_commits = true
+tag_pattern = "v[0-9]*"
+topo_order = false
+sort_commits = "newest"
+
+# Only user-facing types reach the changelog. Release chores, CI, tests, build
+# plumbing, formatting, and dependency bumps are noise for a reader asking
+# "what changed for me?" — they are skipped.
+commit_parsers = [
+    { message = "^feat", group = "<!-- 0 -->🚀 Features" },
+    { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
+    { message = "^perf", group = "<!-- 2 -->⚡ Performance" },
+    { message = "^refactor", group = "<!-- 3 -->🚜 Refactor" },
+    { message = "^docs", group = "<!-- 4 -->📚 Documentation" },
+    { message = "^chore\\(release\\)", skip = true },
+    { message = "^chore\\(deps", skip = true },
+    { message = "^chore", skip = true },
+    { message = "^ci", skip = true },
+    { message = "^test", skip = true },
+    { message = "^build", skip = true },
+    { message = "^style", skip = true },
+    { message = ".*", skip = true },
+]

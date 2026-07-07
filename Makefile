@@ -14,11 +14,25 @@ ADDON_IMAGE ?=
 REF ?=
 CAP ?=
 
+# Pinned changelog generator. Bump by hand: it lives in a Makefile, so
+# Dependabot's docker ecosystem (Dockerfiles only) does not track it.
+GIT_CLIFF_IMAGE ?= orhunp/git-cliff:2.13.1
+CHANGELOG_FILE := ha-addon/CHANGELOG.md
+# Render pending commits under this version instead of "Unreleased" — set it
+# during release prep, e.g. `make changelog CHANGELOG_TAG=v0.6.0`.
+CHANGELOG_TAG ?=
+
+# $(call git_cliff,ARGS) runs the pinned generator over the repo as the host
+# user, so generated files stay editable and the repo reads as owned (git-cliff
+# is pure-Rust and needs no git binary).
+git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
+	-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(GIT_CLIFF_IMAGE) $(1)
+
 # Reach the component sub-makes through the environment so the `<component>-%`
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
-.PHONY: check help lint test format clean \
+.PHONY: check help lint test format clean changelog release-notes \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check version-check release
 
 check: lint test
@@ -79,3 +93,14 @@ version-check:
 	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$$' || (echo "VERSION must be a semantic version" >&2; exit 2)
 
 release: version-check check firmware-artifacts bridge-image ha-addon-image
+
+# Regenerate ha-addon/CHANGELOG.md from Conventional Commits. During release
+# prep (after the version bump, before tagging) pass CHANGELOG_TAG=vX.Y.Z so the
+# new commits land under that version instead of "Unreleased".
+changelog:
+	$(call git_cliff,$(if $(CHANGELOG_TAG),--tag $(CHANGELOG_TAG) )--output $(CHANGELOG_FILE))
+
+# Print the newest release's notes only (no header/footer) for the GitHub
+# release body. The release workflow feeds this to `gh release create`.
+release-notes:
+	@$(call git_cliff,--latest --strip all)

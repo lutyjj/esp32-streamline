@@ -5,16 +5,17 @@ newer release, installs it into the inactive app slot, and reboots into it.
 
 ## Partition layout
 
-`firmware/streamline/partitions.csv` defines a two-slot OTA table on 8 MB flash
-(`esp-idf-sys` auto-detects it; the `CONFIG_PARTITION_TABLE_CUSTOM*` keys stay
-out of `sdkconfig.defaults`):
+`firmware/streamline/partitions.csv` defines a two-slot OTA table sized for 4 MB
+flash, the common ESP32 module size; an 8 MB board runs it too, leaving its upper
+half unused. It is applied at flash time via `espflash --partition-table`, so the
+`CONFIG_PARTITION_TABLE_CUSTOM*` keys stay out of `sdkconfig.defaults`:
 
 | Partition | Size | Role |
 |---|---|---|
 | `nvs` | 24 KB | Wi-Fi/target/audio config, selected board descriptor, and admin key |
 | `otadata` | 8 KB | Records the bootable slot |
 | `phy_init` | 4 KB | RF calibration |
-| `ota_0`, `ota_1` | 3 MB each | Application slots; the bootloader runs one and updates the other |
+| `ota_0`, `ota_1` | 1.9 MB each | Application slots; the bootloader runs one and updates the other |
 
 ## Update flow
 
@@ -137,6 +138,12 @@ root of trust is ever required.
 
 ## Migrating existing devices
 
-OTA cannot repartition flash, so a device on the older single-app layout must be
-re-flashed once over serial with a `-full.bin` (web flasher or `espflash`). Every
-update after that is over-the-air.
+OTA writes only app slots — never the partition table or bootloader — so a change
+to the flash layout is a one-time serial reflash of a `-full.bin` (web flasher or
+`espflash`/`esptool`). Erase the flash first, so stale `otadata` or an old table
+cannot point the bootloader at a slot that moved; the web flasher does this and
+lands the device fresh in setup mode. Every update after that is over-the-air.
+
+Two layouts have needed this reflash: the original single-app image, and the 8 MB
+two-slot table that the 4 MB layout replaced. A device already on the 4 MB layout
+never needs it again.

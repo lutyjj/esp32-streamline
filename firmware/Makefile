@@ -6,6 +6,11 @@ TARGET := xtensa-esp32-espidf
 ELF := target/$(TARGET)/release/streamline-firmware
 VERSION ?= dev
 PORT ?= /dev/cu.usbserial-0001
+# Flash size baked into the release images. Keep in step with
+# CONFIG_ESPTOOLPY_FLASHSIZE in streamline/sdkconfig.defaults, which sizes the
+# bootloader for the same chip. espflash wants it lowercase, esptool uppercase.
+FLASH_SIZE ?= 4mb
+FLASH_SIZE_UPPER := $(shell echo $(FLASH_SIZE) | tr a-z A-Z)
 DIST_DIR ?= $(abspath ../dist)
 ROOT_DIR := $(abspath ..)
 CONSOLE_DIR := $(ROOT_DIR)/console
@@ -63,12 +68,16 @@ test: image console-asset
 
 # Serial devices are host resources; Docker Desktop on macOS cannot expose the
 # /dev/cu.* device reliably. Install espflash on the host for these two targets.
-# `--erase-parts otadata` makes the freshly flashed slot the boot choice: a
+# Writes a consistent set for FLASH_SIZE — the rollback-enabled bootloader, the
+# two-slot table, and the app, all with matching flash-size headers — so a dev
+# flash lands the same layout a release `-full.bin` does. Without an explicit
+# `--flash-size`, espflash can stamp an 8 MB header that panics a 4 MB chip on
+# boot. `--erase-parts otadata` makes the freshly flashed slot the boot choice: a
 # device whose last update arrived over OTA otherwise keeps booting the other
 # slot, silently running the old image. Config in NVS survives.
 flash: build
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	espflash flash --chip esp32 --port $(PORT) --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
+	espflash flash --chip esp32 --port $(PORT) --flash-size $(FLASH_SIZE) --bootloader $(SRC)/target/$(TARGET)/release/bootloader.bin --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
 
 monitor:
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
@@ -93,7 +102,7 @@ clean: image
 # `-ota.bin` entry by filename.
 artifacts: build
 	mkdir -p $(DIST_DIR)/firmware
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-$(VERSION)-full.bin --merge --skip-padding --flash-size 8mb --bootloader target/$(TARGET)/release/bootloader.bin --partition-table partitions.csv
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size 8MB -o /dist/firmware/streamline-$(VERSION)-ota.bin $(ELF)'
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-$(VERSION)-full.bin --merge --skip-padding --flash-size $(FLASH_SIZE) --bootloader target/$(TARGET)/release/bootloader.bin --partition-table partitions.csv
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/streamline-$(VERSION)-ota.bin $(ELF)'
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-$(VERSION).elf
 	cd $(DIST_DIR)/firmware && shasum -a 256 streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf > SHA256SUMS

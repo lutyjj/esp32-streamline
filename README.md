@@ -30,7 +30,7 @@ The device speaks plain HTTP on a trusted LAN. Read the
 
 - **Official preset**: Ai-Thinker ESP32 Audio Kit v2.2 (ES8388)
 - **Codec**: ES8388 (I2C address `0x10`)
-- **Flash**: 8 MB
+- **Flash**: 4 MB or larger
 
 Board support is descriptor-driven: presets define the codec, I2C/I2S pin map,
 input labels, and audio limits. Official presets and BYOD descriptors use the

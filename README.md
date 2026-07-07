@@ -5,7 +5,8 @@
 ESP32 StreamLine turns a supported ESP32 line-in board into a network audio
 source. It captures analog audio — a turntable, a CD deck — and streams the raw
 PCM over TCP/Wi-Fi to a self-hosted bridge. The bridge publishes a live HTTP
-WAV stream for Snapcast, Icecast, or Music Assistant.
+WAV stream. Music Assistant plays it as a radio URL; Snapcast, Icecast, or any
+HTTP consumer can read it too.
 
 ## Features
 
@@ -79,11 +80,13 @@ services:
     #   STREAMLINE_SOURCE_ALLOW: 192.168.1.100  # accept PCM only from your ESP32
 ```
 
-The stream goes live at `http://<bridge-host>:8088/streamline.wav` — add it to
-Music Assistant as a radio/URL stream. With several ESP32 sources, select one
-with `http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>`. `/status`
-serves per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the
-tuning flags.
+The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
+Music Assistant as a radio/URL stream, with audio already playing on the source:
+an idle node sends no audio, and Music Assistant rejects a stream it cannot
+probe. With several ESP32 sources, select one with
+`http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>`. `/status` serves
+per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning
+flags.
 
 ### 3. Configure the device
 

@@ -1,26 +1,30 @@
 # ESP32 StreamLine Bridge
 
-The add-on runs the StreamLine TCP PCM to HTTP WAV bridge as a Home Assistant
-service. Configure the ESP32 StreamLine device to send PCM to the Home
-Assistant host on port `39000`.
+This add-on runs the StreamLine PCM-to-WAV bridge as a Home Assistant service.
+Point each ESP32 device at the Home Assistant host on port `39000`; the bridge
+serves the live audio on HTTP `8088`.
 
-The WAV stream is available at:
+## Play it in Music Assistant
+
+Add this URL to Music Assistant as a radio/URL stream:
 
 ```text
 http://<home-assistant-host>:8088/streamline.wav
 ```
 
-The status endpoint is available at:
+Start audio on the source before you add the stream. A StreamLine node streams
+only while its input plays, so an idle node serves the WAV header with no audio,
+and Music Assistant rejects a stream it cannot probe. With audio playing, the URL
+validates immediately.
 
-```text
-http://<home-assistant-host>:8088/status
-```
+## Endpoints
 
-For several ESP32 sources, select one stream with:
+- `http://<home-assistant-host>:8088/streamline.wav` — live WAV stream.
+- `http://<home-assistant-host>:8088/streamline.wav?source=<esp32-ip>` — one
+  stream when several ESP32 sources feed the bridge.
+- `http://<home-assistant-host>:8088/status` — per-source JSON stats.
 
-```text
-http://<home-assistant-host>:8088/streamline.wav?source=<esp32-ip>
-```
+## Restrict sources
 
-Set `source_allow` to a comma-separated list of ESP32 IPv4 addresses when the
-bridge should reject unexpected PCM producers.
+Leave `source_allow` blank to accept any LAN source. Set it to a comma-separated
+list of ESP32 IPv4 addresses to reject unexpected PCM producers.

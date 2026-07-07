@@ -25,9 +25,10 @@ The remaining options match the bridge command-line tuning flags:
 
 ## Use
 
-Set each ESP32 device's bridge host to the Home Assistant host and bridge port
-`39000`. Add `http://<home-assistant-host>:8088/streamline.wav` to Music
-Assistant, Snapcast, Icecast, or another HTTP stream consumer.
+Point each ESP32 device at the Home Assistant host on port `39000`. Music
+Assistant plays the stream as a radio URL: add
+`http://<home-assistant-host>:8088/streamline.wav`, with audio already playing on
+the source. Snapcast, Icecast, or any HTTP consumer reads the same URL.
 
-With multiple ESP32 sources, use
+With several ESP32 sources, select one with
 `http://<home-assistant-host>:8088/streamline.wav?source=<esp32-ip>`.

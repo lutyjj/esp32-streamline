@@ -17,7 +17,7 @@ The bridge host should:
 
 - absorb Wi-Fi jitter
 - optionally resample
-- publish the stream to Snapcast or Icecast
+- publish the stream for Music Assistant, Snapcast, or Icecast
 - handle player compatibility and multiroom behavior
 
 ## Protocol Choice
@@ -35,26 +35,28 @@ and much simpler than encoding on the ESP32.
 
 ## Server Integration Options
 
+### Music Assistant
+
+The primary path. Add the bridge's `/streamline.wav` URL to Music Assistant as a
+radio stream; it plays directly, or routes through Snapcast when Music Assistant
+controls Snapcast clients. The Home Assistant add-on is the simplest way to run
+the bridge.
+
 ### Snapcast
 
-Best option if synchronized playback matters. Run a small bridge that converts the
-PCM stream into a local FIFO or TCP stream, then point Snapserver at it.
+Best when synchronized multiroom playback matters. Convert the PCM stream into a
+local FIFO or TCP stream, then point Snapserver at it.
 
 ### Icecast / Liquidsoap
 
-Best option if broad compatibility matters. Run a bridge that exposes PCM or WAV,
-then let Liquidsoap encode to FLAC/Opus/MP3 and publish an HTTP stream.
-
-### Music Assistant
-
-Treat the final stream as a normal radio/URL stream or route it through Snapcast if
-Music Assistant is controlling Snapcast clients.
+Best when a client needs an encoded stream instead of live WAV. Put Liquidsoap
+after the bridge to encode FLAC/Opus/MP3 and publish an HTTP stream.
 
 ### Sendspin
 
 Out of scope. Sendspin is Music Assistant's playback protocol for output devices;
-this device produces audio entering the media system, so it publishes a stream URL
-or feeds Snapcast/Icecast instead.
+this device produces audio entering the media system, so it publishes a stream
+URL instead.
 
 ## HTTP WAV Bridge
 
@@ -83,12 +85,13 @@ Home Assistant OS and Supervised installs can run the same bridge through the
 `ha-addon/` add-on repository entry. The add-on exposes TCP `39000` for ESP32
 PCM and HTTP `8088` for `/streamline.wav`, `/status`, and `/health`.
 
-Set each ESP32 TCP target to the bridge host IP and port `39000`. For Music
-Assistant, add `http://<bridge-host>:8088/streamline.wav` as a URL/radio stream
-when one ESP32 feeds the bridge, or
-`http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>` for a specific
-source. If Music Assistant proves unreliable with live WAV, keep this bridge and
-add Liquidsoap/Icecast after it to publish FLAC/MP3/Opus.
+Set each ESP32 TCP target to the bridge host IP and port `39000`. Add
+`http://<bridge-host>:8088/streamline.wav` to Music Assistant as a radio URL, or
+`http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>` to pick one of
+several sources. Start audio on the source before adding the URL: an idle node
+sends no audio, and Music Assistant rejects a stream it cannot probe. To serve a
+client that needs an encoded stream, put Liquidsoap/Icecast after the bridge to
+publish FLAC/MP3/Opus.
 
 ## Board support
 

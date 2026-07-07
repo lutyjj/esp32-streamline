@@ -12,10 +12,12 @@ import contextlib
 import ipaddress
 import socket
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class AudioPipeline(Protocol):

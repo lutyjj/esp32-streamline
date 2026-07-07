@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import ipaddress
 import json
+import logging
 import os
 import queue
 import socket
@@ -22,6 +23,8 @@ from urllib.parse import parse_qs, urlsplit
 
 from streamline_bridge.protocol import DEFAULT_FORMAT, DEFAULT_RATE, HEADER, PcmFormat, parse_header
 from streamline_bridge.sources import Source, SourceAdmissionError, SourceRegistry, SourceSelectionError
+
+logger = logging.getLogger(__name__)
 
 
 def bridge_version() -> str:
@@ -332,10 +335,11 @@ class AudioHub:
             stream.client_socket.shutdown(socket.SHUT_RDWR)
         with contextlib.suppress(OSError):
             stream.client_socket.close()
-        print(
-            f"evicted slow client id={stream.stats.id} "
-            f"remote={stream.stats.remote_addr} queue_depth={stream.stats.queue_depth}",
-            flush=True,
+        logger.warning(
+            "evicted slow client id=%s remote=%s queue_depth=%s",
+            stream.stats.id,
+            stream.stats.remote_addr,
+            stream.stats.queue_depth,
         )
 
 
@@ -500,10 +504,11 @@ def tcp_client_loop(
         except (OSError, ValueError) as exc:
             if source_gate.is_active(generation):
                 hub.note_tcp_error()
-                print(f"tcp drop from {addr[0]}:{addr[1]}: {exc}", flush=True)
+                logger.warning("tcp drop from %s:%s: %s", addr[0], addr[1], exc)
         finally:
             source_gate.release(generation, conn)
             hub.note_tcp_disconnect()
+            logger.info("source %s:%s disconnected", addr[0], addr[1])
 
 
 def tcp_loop(
@@ -516,16 +521,17 @@ def tcp_loop(
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((bind, port))
     sock.listen()
-    print(f"listening for ESP32 TCP on {bind}:{port}", flush=True)
+    logger.info("listening for ESP32 TCP on %s:%s", bind, port)
 
     while True:
         conn, addr = sock.accept()
         try:
             source = sources.acquire(addr[0])
         except SourceAdmissionError as exc:
-            print(f"rejected TCP source {addr[0]}:{addr[1]}: {exc}", flush=True)
+            logger.warning("rejected TCP source %s:%s: %s", addr[0], addr[1], exc)
             conn.close()
             continue
+        logger.info("source %s:%s connected", addr[0], addr[1])
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         conn.settimeout(source_idle_timeout_seconds)
         generation = source.gate.replace(conn)
@@ -554,7 +560,7 @@ def make_handler(sources: SourceRegistry[AudioHub]) -> type[BaseHTTPRequestHandl
             self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
         def log_message(self, fmt: str, *args: object) -> None:
-            print(f"{self.address_string()} - {fmt % args}", flush=True)
+            logger.info("%s - %s", self.address_string(), fmt % args)
 
         def _send_json(self, data: dict[str, object], status: HTTPStatus = HTTPStatus.OK) -> None:
             body = json.dumps(data, sort_keys=True).encode() + b"\n"
@@ -627,6 +633,7 @@ def collect_http_batch(client_queue: queue.Queue[bytes | None]) -> list[bytes] |
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = validate_args(parse_args())
 
     def make_hub() -> AudioHub:
@@ -649,12 +656,12 @@ def main() -> int:
     tcp_thread.start()
 
     server = ThreadingHTTPServer((args.http_bind, args.http_port), make_handler(sources))
-    print(f"serving HTTP WAV on http://{args.http_bind}:{args.http_port}/streamline.wav", flush=True)
+    logger.info("serving HTTP WAV on http://%s:%s/streamline.wav", args.http_bind, args.http_port)
 
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("stopped", flush=True)
+        logger.info("stopped")
     finally:
         server.server_close()
 

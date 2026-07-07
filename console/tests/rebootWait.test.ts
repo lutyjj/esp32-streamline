@@ -22,6 +22,7 @@ describe('reboot-wait narration', () => {
   it('announces recovery once and ends the wait', () => {
     beginRebootWait('the restart');
     toasts.value = [];
+    rebootWaitTick(true); // the device dropped for the reboot
     expect(rebootWaitTick(false)).toBe(true);
     expect(rebootWait.value).toBeNull();
     expect(toasts.value.map((t) => t.text)).toEqual(['Back online — the restart applied']);
@@ -33,10 +34,29 @@ describe('reboot-wait narration', () => {
       recovered += 1;
     });
     toasts.value = [];
+    rebootWaitTick(true); // the device dropped for the reboot
     expect(rebootWaitTick(false)).toBe(true);
     expect(recovered).toBe(1);
     // The presumptuous default toast must not also fire.
     expect(toasts.value).toEqual([]);
+  });
+
+  it('ignores a success before the device drops so a pre-reboot poll is not read as recovery', () => {
+    let recovered = 0;
+    beginRebootWait('the firmware update', undefined, () => {
+      recovered += 1;
+    });
+    toasts.value = [];
+    // The device stamped its new phase (e.g. OTA `installed`) but still serves
+    // the old image; this poll succeeds before the reboot. Recovery must wait.
+    expect(rebootWaitTick(false)).toBe(true);
+    expect(rebootWait.value).not.toBeNull();
+    expect(recovered).toBe(0);
+    expect(toasts.value).toEqual([]);
+    // The real reboot: polls fail, then the device returns and recovery fires.
+    rebootWaitTick(true);
+    expect(rebootWaitTick(false)).toBe(true);
+    expect(recovered).toBe(1);
   });
 
   it('warns when the reboot is overdue', () => {

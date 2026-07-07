@@ -35,6 +35,11 @@ export function rebootWaitTick(pollFailed: boolean): boolean {
   const wait = rebootWait.value;
   if (!wait) return false;
   if (!pollFailed) {
+    // A success before any poll has failed means the device has not rebooted
+    // yet: it stamped the new phase (e.g. an OTA reporting `installed`) but is
+    // still serving the old image. Keep waiting so recovery is classified from
+    // the post-reboot state, not the pre-reboot one that looks like a rollback.
+    if (wait.failedPolls === 0) return true;
     rebootWait.value = null;
     if (wait.onRecover) wait.onRecover();
     else toast(`Back online — ${wait.label} applied`, 'ok');

@@ -633,6 +633,107 @@ select:disabled {
   }
 }
 
+/* ---------- Web flasher ---------- */
+.flasher {
+  max-width: 720px;
+}
+.flasher-head {
+  margin: 30px 0 22px;
+}
+.flasher-kicker {
+  margin: 4px 0 12px;
+  color: var(--muted);
+  font: 500 13px var(--mono);
+}
+.flasher h1 {
+  margin: 0 0 8px;
+  font-size: clamp(28px, 6vw, 38px);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+.flasher-intro {
+  max-width: 58ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+.flasher-install {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  border-color: var(--primary-line);
+}
+.flasher-install > :is(.eyebrow, h2, .lead) {
+  margin: 0;
+}
+.flasher-install .lead {
+  max-width: 58ch;
+}
+.flasher-activate {
+  height: 40px;
+  padding-inline: 19px;
+  font-size: 14px;
+}
+.flasher-hint,
+.flasher-notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.flasher-notice {
+  color: var(--warn);
+}
+.flasher-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.flasher-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.flasher-list code {
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: var(--inset);
+  padding: 1px 4px;
+  color: var(--text);
+  font: 12px var(--mono);
+}
+.flasher-cli {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+}
+.flasher-cli > div > :is(.eyebrow, h2, .lead) {
+  margin-top: 0;
+}
+.flasher-cli .lead {
+  margin-bottom: 0;
+}
+.flasher-footer {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.flasher a {
+  color: var(--accent);
+}
+.flasher a.btn {
+  color: var(--text);
+  text-decoration: none;
+}
+
 .cardfoot {
   display: flex;
   align-items: center;
@@ -829,6 +930,13 @@ select:disabled {
   .callout {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .flasher-grid {
+    grid-template-columns: 1fr;
+  }
+  .flasher-cli {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 @media (max-width: 480px) {

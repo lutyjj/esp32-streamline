@@ -5,6 +5,7 @@ on:
     branches: ["mainline"]
     paths:
       - "webflasher/**"
+      - "console/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
   # Called by release.yml after a release is published, so the flasher always
@@ -34,6 +35,9 @@ jobs:
       - name: Validate the site manifest
         run: make webflasher-lint
 
+      - name: Build the WebFlasher
+        run: make console-build
+
       - name: Bundle latest stable firmware into the site
         env:
           GH_TOKEN: ${{ github.token }}
@@ -53,6 +57,7 @@ jobs:
           # Surface the real version in the install dialog instead of "latest".
           jq --arg v "${tag#v}" '.version = $v' webflasher/manifest.json > webflasher/manifest.json.tmp
           mv webflasher/manifest.json.tmp webflasher/manifest.json
+          cp console/dist/flasher/flasher.html webflasher/index.html
 
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5

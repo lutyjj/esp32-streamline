@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@preact/signals": "^2.0.0",
+    "esp-web-tools": "10.0.1",
     "preact": "^10.28.0"
   },
   "devDependencies": {

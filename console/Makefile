@@ -11,7 +11,7 @@ CONTAINER_RUN := $(CONTAINER) run --rm \
 	-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
 	-e npm_config_update_notifier=false -w /workspace $(DEV_IMAGE)
 
-.PHONY: dev-image deps format lint test build dev
+.PHONY: dev-image deps lock format lint test build dev
 
 dev-image:
 	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
@@ -22,6 +22,10 @@ node_modules/.package-lock.json: package.json package-lock.json | dev-image
 	$(CONTAINER_RUN) sh -c 'npm ci && touch $@'
 
 deps: node_modules/.package-lock.json
+
+# Refresh package-lock.json in the same pinned Node container used for checks.
+lock: dev-image
+	$(CONTAINER_RUN) npm install --package-lock-only --ignore-scripts
 
 format: deps
 	$(CONTAINER_RUN) npx biome check --write .
@@ -34,9 +38,12 @@ test: deps
 	$(CONTAINER_RUN) npx vitest run
 
 # One self-contained HTML file in dist/; the firmware embeds it at compile
-# time (see the `web` target in firmware/Makefile).
+# time (see the `web` target in firmware/Makefile). The WebFlasher builds as a
+# second single-file entry because vite-plugin-singlefile inlines one entry per
+# Rollup pass.
 build: deps
 	$(CONTAINER_RUN) npx vite build
+	$(CONTAINER_RUN) sh -c 'STREAMLINE_BUILD=flasher npx vite build'
 
 # Live-reload UI development against a real device:
 # `make dev DEVICE=192.0.2.10` (or set STREAMLINE_DEVICE in the root .env),

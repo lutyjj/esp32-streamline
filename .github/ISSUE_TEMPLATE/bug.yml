@@ -1,0 +1,32 @@
+name: Bug
+description: Report behavior that breaks the current contract.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include Wi-Fi names, passwords, admin keys, bearer tokens, real device IPs, or real hostnames. Use documentation addresses such as `192.0.2.x` and `streamline-0000.local`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior and what you expected instead.
+      placeholder: "The device reports ..., but it should ..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How can we reproduce it?
+      description: Include steps, versions, commands, logs, screenshots, or endpoint responses. Share the shortest useful evidence.
+      placeholder: |
+        1. Flash ...
+        2. Configure ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Add anything else that could help diagnose or verify the fix.

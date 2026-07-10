@@ -1,0 +1,32 @@
+name: Feature
+description: Propose a capability, improvement, or design decision.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include Wi-Fi names, passwords, admin keys, bearer tokens, real device IPs, or real hostnames. Use documentation addresses such as `192.0.2.x` and `streamline-0000.local`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this solve?
+      description: Explain who needs this and why the current behavior is not enough.
+      placeholder: "Users cannot ..., which means ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should happen?
+      description: Describe the desired outcome. For an investigation, state the question and the decision or artifact that should close it.
+      placeholder: |
+        StreamLine should ...
+
+        Success looks like ...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Add constraints, alternatives, examples, or links that help shape the work.

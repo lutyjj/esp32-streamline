@@ -12,6 +12,7 @@ const capabilities: BoardCapabilities = {
   board: 'Board A',
   codec: { driver: 'es8388', i2c_address: 16 },
   pins: { i2c: { sda: 1, scl: 2 }, i2s: { mclk: 3, bclk: 4, ws: 5, din: 6 } },
+  status_led: null,
   input_lines: [{ line: 2, label: 'Line 2' }],
   input_gain_max: 100,
   adc_atten_max_db: 48,

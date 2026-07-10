@@ -11,7 +11,7 @@
 
 import { signal } from '@preact/signals';
 import { unlockSettings } from '../lib/adminKey';
-import { type Ack, ApiError, postForm } from '../lib/api';
+import { type Ack, ApiError, apiClient, unwrap } from '../lib/api';
 import { status } from './device';
 import { setupKey } from './setupKey';
 
@@ -53,13 +53,17 @@ export function handoffMessage(): string {
 export async function joinNetwork(req: JoinRequest): Promise<Ack> {
   let data: Ack;
   try {
-    data = await postForm('/api/settings/wifi', {
-      ssid: req.ssid.trim(),
-      password: req.password,
-      target_host: (req.targetHost ?? '').trim(),
-      target_port: req.targetPort ?? String(status.value?.target?.target_port || 39000),
-      admin_secret: setupKey.value,
-    });
+    data = await unwrap(
+      apiClient.POST('/api/settings/wifi', {
+        body: {
+          ssid: req.ssid.trim(),
+          password: req.password,
+          target_host: (req.targetHost ?? '').trim(),
+          target_port: Number(req.targetPort ?? status.value?.target?.target_port ?? 39000),
+          admin_secret: setupKey.value,
+        },
+      }),
+    );
   } catch (err) {
     // A status came back and it was a rejection: nothing was saved, surface it.
     if (err instanceof ApiError) throw err;

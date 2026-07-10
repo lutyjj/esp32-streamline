@@ -66,6 +66,7 @@ impl AutoUpdateSchedule {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AudioSettings {
     /// Selected input, one of the resolved board's advertised lines.
@@ -168,7 +169,7 @@ impl RuntimeConfig {
             target_port: self.target_port,
         }
         .validate()?;
-        if self.admin_secret.len() < MIN_ADMIN_SECRET_LEN {
+        if self.admin_secret.chars().count() < MIN_ADMIN_SECRET_LEN {
             return Err(ConfigError::WeakAdminSecret);
         }
         if self.device_name.chars().count() > MAX_DEVICE_NAME_CHARS {

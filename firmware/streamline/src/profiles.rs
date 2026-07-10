@@ -15,6 +15,7 @@ pub const MAX_AUDIO_PROFILE_ID_CHARS: usize = 32;
 pub const MAX_AUDIO_PROFILE_NAME_CHARS: usize = 32;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AudioProfile {
     pub id: String,
@@ -23,6 +24,7 @@ pub struct AudioProfile {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AudioProfileCatalog {
     pub schema_version: u8,

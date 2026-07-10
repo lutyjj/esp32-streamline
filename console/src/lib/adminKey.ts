@@ -85,7 +85,7 @@ export function generateAdminKey(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function copySecret(value: string): Promise<void> {
+export async function copyText(value: string): Promise<void> {
   if (!value) return;
   if (navigator.clipboard && window.isSecureContext) {
     await navigator.clipboard.writeText(value);

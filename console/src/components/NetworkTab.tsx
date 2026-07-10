@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { postForm } from '../lib/api';
+import { apiClient, unwrap } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, noBridge, packetsMoving, setupMode, status } from '../state/device';
 import { handoffMessage, joinNetwork } from '../state/join';
@@ -63,10 +63,11 @@ export function NetworkTab() {
       () =>
         firstSetup
           ? commission()
-          : postForm('/api/settings/wifi', {
-              ssid: ssid.trim(),
-              password: passwordEditable ? password : '',
-            }),
+          : unwrap(
+              apiClient.POST('/api/settings/wifi', {
+                body: { ssid: ssid.trim(), password: passwordEditable ? password : '' },
+              }),
+            ),
       firstSetup
         ? { busyText: 'Saving…', okText: 'Saved — the device is joining your network' }
         : { busyText: 'Saving…', reboots: 'the Wi-Fi settings' },
@@ -78,10 +79,11 @@ export function NetworkTab() {
       () =>
         firstSetup
           ? commission()
-          : postForm('/api/settings/target', {
-              target_host: validTargetHost(),
-              target_port: targetPort,
-            }),
+          : unwrap(
+              apiClient.POST('/api/settings/target', {
+                body: { target_host: validTargetHost(), target_port: Number(targetPort) },
+              }),
+            ),
       firstSetup
         ? { busyText: 'Saving…', okText: 'Saved — the device is joining your network' }
         : { busyText: 'Saving…', reboots: 'the stream target' },

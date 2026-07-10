@@ -14,8 +14,12 @@ pub mod selection;
 pub use catalog::{builtin_catalog, find, resolve, DEFAULT_BOARD_ID};
 pub use selection::{select, BoardSelection};
 
+/// Largest custom descriptor accepted by the API and persistent store.
+pub const MAX_DESCRIPTOR_BYTES: usize = 3_072;
+
 /// Codec hardware mounted on the board.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CodecSpec {
     pub driver: String,
@@ -25,6 +29,7 @@ pub struct CodecSpec {
 
 /// ESP32 GPIO wiring used by the board's audio hardware.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PinMap {
     pub i2c: I2cPins,
@@ -32,6 +37,7 @@ pub struct PinMap {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct I2cPins {
     pub sda: u8,
@@ -39,6 +45,7 @@ pub struct I2cPins {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct I2sPins {
     pub mclk: u8,
@@ -49,6 +56,7 @@ pub struct I2sPins {
 
 /// Optional single-color status light wired to an ESP32 output GPIO.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct StatusLed {
     pub gpio: u8,
@@ -59,6 +67,7 @@ pub struct StatusLed {
 
 /// One selectable input, with the label the console shows for it.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct InputOption {
     pub line: u8,
@@ -68,6 +77,7 @@ pub struct InputOption {
 /// What a board offers the user. The status API advertises this and the
 /// settings API validates against it, so the two cannot diverge.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Board {
     /// Stable descriptor id. Official presets and custom boards share this

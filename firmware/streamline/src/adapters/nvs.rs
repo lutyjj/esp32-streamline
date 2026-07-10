@@ -45,8 +45,7 @@ const PROFILE_KEYS: [&str; MAX_AUDIO_PROFILES] = [
 /// Diagnostic notes are trimmed to fit the 256-byte read buffer.
 const MAX_NOTE_BYTES: usize = 240;
 /// Keep custom descriptors comfortably below ESP-IDF's NVS string limit.
-pub const MAX_BOARD_DESCRIPTOR_BYTES: usize = 3_072;
-const MAX_BOARD_DESCRIPTOR_BUFFER_BYTES: usize = MAX_BOARD_DESCRIPTOR_BYTES + 1;
+const MAX_BOARD_DESCRIPTOR_BUFFER_BYTES: usize = crate::board::MAX_DESCRIPTOR_BYTES + 1;
 /// Each profile gets its own short NVS string instead of sharing one large,
 /// fragmentation-prone catalog value.
 const MAX_PROFILE_JSON_BYTES: usize = 384;
@@ -98,11 +97,11 @@ impl ConfigStore {
             .validate()
             .map_err(|error| anyhow!("invalid board descriptor '{}': {error:?}", board.id))?;
         let descriptor_json = serde_json::to_string(board)?;
-        if descriptor_json.len() > MAX_BOARD_DESCRIPTOR_BYTES {
+        if descriptor_json.len() > crate::board::MAX_DESCRIPTOR_BYTES {
             bail!(
                 "board descriptor is too large: {} bytes, max {}",
                 descriptor_json.len(),
-                MAX_BOARD_DESCRIPTOR_BYTES
+                crate::board::MAX_DESCRIPTOR_BYTES
             );
         }
         self.nvs.set_str(KEY_BOARD_DESCRIPTOR, &descriptor_json)?;

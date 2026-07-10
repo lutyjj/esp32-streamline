@@ -208,6 +208,120 @@ button {
   gap: 14px;
 }
 
+/* ---------- API contract ---------- */
+.api-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.api-intro h2,
+.api-intro p {
+  margin: 0;
+}
+.api-list {
+  display: grid;
+  gap: 8px;
+}
+.api-operation {
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.api-operation > summary {
+  display: grid;
+  grid-template-columns: 54px minmax(210px, 1fr) minmax(120px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 13px;
+  cursor: pointer;
+  list-style: none;
+}
+.api-operation > summary::-webkit-details-marker {
+  display: none;
+}
+.api-operation > summary > span:not(.api-method, .api-auth) {
+  color: var(--muted);
+}
+.api-method {
+  border-radius: 4px;
+  padding: 2px 6px;
+  text-align: center;
+  font: 700 11px var(--mono);
+}
+.api-method.get {
+  color: var(--accent);
+  background: rgba(109, 183, 255, 0.12);
+}
+.api-method.post {
+  color: var(--good);
+  background: rgba(81, 216, 138, 0.12);
+}
+.api-auth {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 7px;
+  color: var(--warn);
+  font-size: 11px;
+}
+.api-detail {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--inset);
+}
+.api-detail :is(h3, p) {
+  margin: 0;
+}
+.api-detail h3 {
+  font-size: 12px;
+  color: var(--muted);
+}
+.api-fields {
+  display: grid;
+  gap: 6px;
+}
+.api-field {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 70px 64px minmax(160px, 2fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.api-field > span,
+.api-field > small {
+  color: var(--muted);
+}
+.api-field > strong {
+  color: var(--warn);
+  font-size: 11px;
+}
+.api-responses {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.api-responses code {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.api-example > div {
+  display: flex;
+  justify-content: space-between;
+}
+.api-example pre {
+  overflow-x: auto;
+  margin: 6px 0 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 10px;
+  color: var(--text);
+  font: 12px / 1.5 var(--mono);
+}
+
 /* ---------- Cards ---------- */
 .card {
   background: var(--surface);
@@ -973,6 +1087,18 @@ select:disabled {
     align-items: flex-start;
     flex-direction: column;
   }
+  .api-operation > summary {
+    grid-template-columns: 54px 1fr auto;
+  }
+  .api-operation > summary > span:not(.api-method, .api-auth) {
+    display: none;
+  }
+  .api-field {
+    grid-template-columns: 1fr auto;
+  }
+  .api-field > small {
+    grid-column: 1 / -1;
+  }
 }
 @media (max-width: 480px) {
   .wrap {
@@ -987,6 +1113,10 @@ select:disabled {
   .tabs button {
     white-space: nowrap;
     padding-inline: 8px;
+  }
+  .api-intro {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

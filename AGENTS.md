@@ -81,15 +81,16 @@ a person can do in the console exists first as a clean HTTP endpoint that the
 console merely calls. If a change adds behavior only a human clicking a UI
 can reach, put the API in first and the UI on top.
 
-## Mirror cross-boundary contracts
+## Derive cross-boundary contracts
 
-When two components share a wire format or API shape, write the shape down on
-both sides and bind them with a comment naming the counterpart. The
-interfaces in `console/src/lib/api.ts` mirror the serde structs in
-`adapters/http.rs`;
-`docs/pcm-protocol.md` defines the frame that both `src/protocol.rs` and the
-bridge's `protocol.py` implement byte-exactly. Change one side, change the
-other in the same PR.
+When components share a wire format or API shape, define it once and derive
+every representation that tooling supports. The Rust `api` module generates
+`docs/openapi.json`; the firmware adapter uses its routes and DTOs, and the
+console generates its client types from the artifact. Run
+`make firmware-openapi` after a contract change. `docs/pcm-protocol.md` owns the
+PCM frame that `src/protocol.rs` and the bridge's `protocol.py` implement
+byte-exactly; its two implementations remain a deliberate exception until that
+protocol has generation tooling.
 
 ## Components share one build contract
 

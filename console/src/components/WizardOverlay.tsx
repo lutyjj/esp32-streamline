@@ -8,7 +8,7 @@ import {
 } from '../lib/calibration';
 import { errorMessage } from '../lib/errors';
 import { dbfs } from '../lib/format';
-import { loadConfig, status } from '../state/device';
+import { loadDeviceSettings, status } from '../state/device';
 import { toast } from '../state/toasts';
 import { Kv } from './Kv';
 import { MeterRow } from './Meter';
@@ -128,7 +128,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
     }
     setResult({ atten: outcome.atten, peakDb: outcome.peakDb });
     // The calibrated value is already live on the device; refresh the audio form.
-    loadConfig().catch(() => {});
+    loadDeviceSettings().catch(() => {});
     show('done');
   }
 
@@ -152,7 +152,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
           atten: String(o.atten),
         });
         toast(`Put ADC attenuation back to ${o.atten} dB`, 'ok');
-        loadConfig().catch(() => {});
+        loadDeviceSettings().catch(() => {});
       } catch (error) {
         toast(`Could not restore previous levels: ${errorMessage(error)}`, 'err');
       }

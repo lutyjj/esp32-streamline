@@ -4,7 +4,14 @@
  */
 
 import { computed, signal } from '@preact/signals';
-import { type DeviceConfig, type DeviceStatus, getSettings, getStatus } from '../lib/api';
+import {
+  type AudioProfileCatalog,
+  type DeviceConfig,
+  type DeviceStatus,
+  getAudioProfiles,
+  getSettings,
+  getStatus,
+} from '../lib/api';
 import { rebootWaitTick } from './rebootWait';
 
 export const POLL_MS = 1500;
@@ -13,6 +20,8 @@ const PEAK_HOLD_MS = 2500;
 export const status = signal<DeviceStatus | null>(null);
 /** Last /api/settings read; forms copy it into local edit state. */
 export const config = signal<DeviceConfig | null>(null);
+/** Device-owned named audio profiles, stored separately from raw settings. */
+export const audioProfiles = signal<AudioProfileCatalog | null>(null);
 /** True when polls fail outside an expected reboot window. */
 export const unreachable = signal(false);
 /** Counts failed polls so subsystems (OTA) can react to the device vanishing. */
@@ -43,7 +52,7 @@ export async function refresh(): Promise<void> {
     const s = await getStatus();
     applyStatus(s);
     // A recovered expected reboot just applied new settings; re-read them.
-    if (rebootWaitTick(false)) loadConfig().catch(() => {});
+    if (rebootWaitTick(false)) loadDeviceSettings().catch(() => {});
     unreachable.value = false;
   } catch {
     pollFailures.value += 1;
@@ -73,9 +82,17 @@ export async function loadConfig(): Promise<void> {
   config.value = await getSettings();
 }
 
+export async function loadAudioProfiles(): Promise<void> {
+  audioProfiles.value = await getAudioProfiles();
+}
+
+export async function loadDeviceSettings(): Promise<void> {
+  await Promise.all([loadConfig(), loadAudioProfiles()]);
+}
+
 /** Wire the poll loop and the initial settings read; called once from main. */
 export function startPolling(): void {
-  Promise.all([loadConfig(), refresh()]).catch(() => {
+  Promise.all([loadDeviceSettings(), refresh()]).catch(() => {
     unreachable.value = true;
   });
   setInterval(refresh, POLL_MS);

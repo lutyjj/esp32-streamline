@@ -24,7 +24,9 @@ use streamline_firmware::{
     board::{self, Board},
     config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
     health::{BootFacts, HealthReport},
-    identity, runtime, update,
+    identity,
+    profiles::AudioProfileCatalog,
+    runtime, update,
 };
 
 fn main() -> Result<()> {
@@ -55,6 +57,13 @@ fn main() -> Result<()> {
             .load(board.as_ref())?
     } else {
         None
+    };
+    let audio_profiles = match persisted.as_ref() {
+        Some(config) => store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
+            .load_audio_profiles(board.as_ref(), config.audio)?,
+        None => AudioProfileCatalog::empty(board.as_ref()),
     };
     let mut wifi = wifi::create(modem, event_loop, nvs_partition)?;
     let suffix = wifi::device_suffix()?;
@@ -138,6 +147,7 @@ fn main() -> Result<()> {
         mode,
         hostname: local_hostname,
         config: Arc::new(Mutex::new(config)),
+        audio_profiles: Arc::new(Mutex::new(audio_profiles)),
         board_catalog,
         board,
         store,

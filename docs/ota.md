@@ -15,7 +15,7 @@ half unused. It is applied at flash time via `espflash --partition-table`, so th
 
 | Partition | Size | Role |
 |---|---|---|
-| `nvs` | 24 KB | Wi-Fi/target/audio config, selected board descriptor, and admin key |
+| `nvs` | 24 KB | Wi-Fi/target/audio config, audio profiles, selected board descriptor, and admin key |
 | `otadata` | 8 KB | Records the bootable slot |
 | `phy_init` | 4 KB | RF calibration |
 | `ota_0`, `ota_1` | 1.9 MB each | Application slots; the bootloader runs one and updates the other |

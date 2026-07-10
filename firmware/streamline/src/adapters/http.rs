@@ -26,6 +26,7 @@ use crate::{
     health::{HealthReport, Severity},
     levels::CLIP_THRESHOLD_ABS,
     metrics::render_prometheus,
+    profiles::AudioProfileCatalog,
     runtime::StreamStatus,
     telemetry::{
         AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry, StreamTelemetry, TargetTelemetry,
@@ -65,6 +66,7 @@ pub struct ApiState {
     pub board_catalog: Arc<Vec<board::Board>>,
     pub board: Arc<board::Board>,
     pub config: Arc<Mutex<RuntimeConfig>>,
+    pub audio_profiles: Arc<Mutex<AudioProfileCatalog>>,
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
     /// Live codec control, present when provisioned so audio settings apply
@@ -137,6 +139,16 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             200,
             "application/json",
             &config_json(&state_for_config),
+        )
+    })?;
+
+    let state_for_audio_profiles = Arc::clone(&state);
+    server.fn_handler("/api/audio-profiles", Method::Get, move |request| {
+        respond(
+            request,
+            200,
+            "application/json",
+            &audio_profiles_json(&state_for_audio_profiles),
         )
     })?;
 
@@ -288,6 +300,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     BoardUpdate::BuiltIn(board) => store.save_built_in_board(board)?,
                     BoardUpdate::Custom(board) => store.save_custom_board(board)?,
                 }
+                store.clear_audio_profiles()?;
                 if state_for_board.mode == Mode::Provisioned {
                     store.save(&next, selected)?;
                 }
@@ -295,6 +308,11 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     .config
                     .lock()
                     .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
+                *state_for_board
+                    .audio_profiles
+                    .lock()
+                    .map_err(|_| anyhow!("audio profile lock poisoned"))? =
+                    AudioProfileCatalog::empty(selected);
                 Ok(())
             })();
             match result {
@@ -332,18 +350,100 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                 .validate(state_for_audio.board.as_ref())
                 .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
                 save(&state_for_audio, RuntimeConfig { audio, ..current })?;
-                let Some(codec) = &state_for_audio.codec else {
-                    return Ok(false);
-                };
-                // The settings are already persisted: if the live write fails, a
-                // reboot re-applies them from storage.
-                codec
+                clear_active_profile(&state_for_audio)?;
+                apply_audio_live(&state_for_audio, audio)
+            })();
+            match result {
+                Ok(true) => respond(request, 200, "application/json", r#"{"ok":true}"#),
+                Ok(false) => reboot_response(request),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
+
+    // The collection write replaces the typed profile catalog. Activation is
+    // a separate setting below, so importing or editing profiles cannot change
+    // live levels as a side effect.
+    let state_for_profile_catalog = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/audio-profiles",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_profile_catalog) {
+                return unauthorized(request);
+            }
+            let result = (|| -> Result<()> {
+                let form = form(&mut request)?;
+                let mut catalog: AudioProfileCatalog =
+                    serde_json::from_str(required(&form, "catalog")?)
+                        .map_err(|error| anyhow!("invalid audio profile catalog: {error}"))?;
+                // Collection writes manage definitions only. Preserve the
+                // device's selected profile when it still exists; the
+                // singular endpoint below owns activation.
+                catalog.active_profile_id = None;
+                catalog
+                    .validate(state_for_profile_catalog.board.as_ref())
+                    .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
+                let previous_active = state_for_profile_catalog
+                    .audio_profiles
                     .lock()
-                    .map_err(|_| anyhow!("codec lock poisoned"))?
-                    .apply(audio)?;
-                if let Some(stream) = &state_for_audio.stream {
-                    stream.request_relearn();
+                    .map_err(|_| anyhow!("audio profile lock poisoned"))?
+                    .active_profile_id
+                    .clone();
+                catalog.active_profile_id = previous_active
+                    .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));
+                let current_audio = state_for_profile_catalog
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?
+                    .audio;
+                catalog.reconcile_active_audio(current_audio);
+                save_audio_profiles(&state_for_profile_catalog, catalog)
+            })();
+            match result {
+                Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
+
+    // One stable activation contract serves the console and authoritative
+    // external triggers such as Home Assistant or a source-selector GPIO.
+    let state_for_active_profile = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/audio-profile",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_active_profile) {
+                return unauthorized(request);
+            }
+            // Ok(true) means a selected profile was applied live. Selecting an
+            // empty id returns to custom settings without changing levels.
+            let result = (|| -> Result<bool> {
+                let form = form(&mut request)?;
+                let id = form.get("profile_id").map(String::as_str);
+                let mut catalog = state_for_active_profile
+                    .audio_profiles
+                    .lock()
+                    .map_err(|_| anyhow!("audio profile lock poisoned"))?
+                    .clone();
+                let audio = catalog
+                    .activate(id)
+                    .map_err(|error| anyhow!("invalid active audio profile: {error:?}"))?;
+                if let Some(audio) = audio {
+                    let current = state_for_active_profile
+                        .config
+                        .lock()
+                        .map_err(|_| anyhow!("configuration lock poisoned"))?
+                        .clone();
+                    save(
+                        &state_for_active_profile,
+                        RuntimeConfig { audio, ..current },
+                    )?;
+                    save_audio_profiles(&state_for_active_profile, catalog)?;
+                    return apply_audio_live(&state_for_active_profile, audio);
                 }
+                save_audio_profiles(&state_for_active_profile, catalog)?;
                 Ok(true)
             })();
             match result {
@@ -565,6 +665,50 @@ fn save(state: &ApiState, config: RuntimeConfig) -> Result<()> {
         .lock()
         .map_err(|_| anyhow!("configuration lock poisoned"))? = config;
     Ok(())
+}
+
+fn save_audio_profiles(state: &ApiState, catalog: AudioProfileCatalog) -> Result<()> {
+    catalog
+        .validate(state.board.as_ref())
+        .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
+    state
+        .store
+        .lock()
+        .map_err(|_| anyhow!("configuration lock poisoned"))?
+        .save_audio_profiles(&catalog, state.board.as_ref())?;
+    *state
+        .audio_profiles
+        .lock()
+        .map_err(|_| anyhow!("audio profile lock poisoned"))? = catalog;
+    Ok(())
+}
+
+fn clear_active_profile(state: &ApiState) -> Result<()> {
+    let mut catalog = state
+        .audio_profiles
+        .lock()
+        .map_err(|_| anyhow!("audio profile lock poisoned"))?
+        .clone();
+    if catalog.active_profile_id.take().is_some() {
+        save_audio_profiles(state, catalog)?;
+    }
+    Ok(())
+}
+
+/// Apply already-persisted audio settings to the running codec and reset play
+/// detection to the new scale. `false` means setup mode must reboot to apply.
+fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool> {
+    let Some(codec) = &state.codec else {
+        return Ok(false);
+    };
+    codec
+        .lock()
+        .map_err(|_| anyhow!("codec lock poisoned"))?
+        .apply(audio)?;
+    if let Some(stream) = &state.stream {
+        stream.request_relearn();
+    }
+    Ok(true)
 }
 
 fn refresh_mdns_name(state: &ApiState, config: &RuntimeConfig) {
@@ -1057,6 +1201,14 @@ fn config_json(state: &ApiState) -> String {
         auto_update_schedule: config.auto_update_schedule.as_str(),
         config_source: "nvs",
     })
+}
+
+fn audio_profiles_json(state: &ApiState) -> String {
+    let catalog = state
+        .audio_profiles
+        .lock()
+        .expect("audio profile lock poisoned");
+    serialize(&*catalog)
 }
 
 fn status_json(state: &ApiState) -> String {

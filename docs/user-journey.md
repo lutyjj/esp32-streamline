@@ -78,7 +78,11 @@ Promise: the wizard asks only for actions the user can perform (pause the
 source, then play something loud), narrates what it hears, and cannot leave
 the device worse than it found it: cancel restores the entry settings,
 finish applies the measured ones. Streaming continues while it runs. It
-refuses to start where it cannot work, and says why.
+refuses to start where it cannot work, and says why. When several sources need
+different levels, the Audio tab saves the applied settings as named profiles
+and switches them live. Importing definitions never changes the active levels.
+A profile from another board is rejected with the reason, not partially
+applied.
 
 Exit: the loudest material plays without clipping, and the result is stated
 in dB and already applied.
@@ -94,6 +98,11 @@ follows the music, playing on signal and pausing on sustained silence, with no
 user action. Nothing asks for attention unless something needs it; every
 unprompted banner is real — clipping, a device unreachable, a codec that did
 not start — and is dismissible or resolves itself.
+
+Source switching is explicit and observable: the Audio tab names the active
+profile or says `Custom settings`. An external automation can activate the same
+profile through the API when it knows the physical selector state. StreamLine
+never guesses the source from overlapping waveform characteristics.
 
 Exit: none. Maintenance interrupts and returns here.
 

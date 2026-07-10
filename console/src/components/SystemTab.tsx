@@ -403,8 +403,8 @@ function ResetCard() {
       {confirming && (
         <div class="confirmbox">
           <span>
-            This erases Wi-Fi, the stream target, audio settings, and the admin key. The device
-            returns to its setup network.
+            This erases Wi-Fi, the stream target, audio settings and profiles, and the admin key.
+            The device returns to its setup network.
           </span>
           <div class="row">
             <TransactButton

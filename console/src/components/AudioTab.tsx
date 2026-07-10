@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import { postForm } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
-import { config, status } from '../state/device';
+import { config, loadDeviceSettings, status } from '../state/device';
+import { AudioProfiles } from './AudioProfiles';
 import { Meter } from './Meter';
 import { ActionState, TransactButton } from './Transact';
 
@@ -26,21 +27,29 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
 
   function save(e: SubmitEvent) {
     e.preventDefault();
-    transact.run(() => postForm('/api/settings/audio', { line, gain, atten }), {
-      busyText: 'Saving…',
-      okText: 'Saved — the meter shows the new levels',
-      // In setup mode the codec is not running, so the device restarts instead.
-      reboots: 'the audio settings',
-    });
+    transact.run(
+      async () => {
+        const ack = await postForm('/api/settings/audio', { line, gain, atten });
+        if (!ack.rebooting) await loadDeviceSettings();
+        return ack;
+      },
+      {
+        busyText: 'Saving…',
+        okText: 'Saved — the meter shows the new levels',
+        // In setup mode the codec is not running, so the device restarts instead.
+        reboots: 'the audio settings',
+      },
+    );
   }
 
   return (
     <>
+      <AudioProfiles />
       <div class="card gated">
         <span class="lockhint">Unlock to edit</span>
-        <h2>Input</h2>
+        <h2>Input settings</h2>
         <p class="lead">
-          Changes apply instantly while the device keeps running — watch the live level below.
+          Changes apply instantly and return to Custom settings — watch the live level below.
         </p>
         <form onSubmit={save}>
           <div class="formgrid">

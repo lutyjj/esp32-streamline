@@ -60,7 +60,7 @@ clean: firmware-clean
 # fans out over these by name.
 bridge-check: bridge-lint bridge-test bridge-image ;
 console-check: console-lint console-test console-build ;
-firmware-check: firmware-lint firmware-test firmware-build ;
+firmware-check: firmware-lint firmware-test firmware-openapi-check firmware-build ;
 tools-check: tools-lint ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;

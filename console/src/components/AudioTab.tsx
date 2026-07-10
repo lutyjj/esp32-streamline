@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { postForm } from '../lib/api';
+import { apiClient, unwrap } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, loadDeviceSettings, status } from '../state/device';
 import { AudioProfiles } from './AudioProfiles';
@@ -29,7 +29,11 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
     e.preventDefault();
     transact.run(
       async () => {
-        const ack = await postForm('/api/settings/audio', { line, gain, atten });
+        const ack = await unwrap(
+          apiClient.POST('/api/settings/audio', {
+            body: { line: Number(line), gain: Number(gain), atten: Number(atten) },
+          }),
+        );
         if (!ack.rebooting) await loadDeviceSettings();
         return ack;
       },

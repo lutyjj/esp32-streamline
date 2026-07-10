@@ -1,4 +1,4 @@
-import { copySecret } from '../lib/adminKey';
+import { copyText } from '../lib/adminKey';
 import { toast } from '../state/toasts';
 import { RememberSwitch } from './RememberSwitch';
 
@@ -29,7 +29,7 @@ export function KeyReveal({
           type="button"
           disabled={disabled}
           onClick={() =>
-            copySecret(secret).then(
+            copyText(secret).then(
               () => toast(copiedToast, 'ok'),
               (err) => toast(err.message, 'err'),
             )

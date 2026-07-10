@@ -42,7 +42,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint build test flash monitor capture clean artifacts
+.PHONY: image console-asset format lint build test openapi openapi-check flash monitor capture clean artifacts
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -65,6 +65,14 @@ build: image console-asset
 
 test: image console-asset
 	$(CONTAINER_RUN) cargo test --lib
+
+# Rust DTOs and endpoint declarations are the API source. The host-only
+# `api-spec` feature keeps utoipa out of the device image.
+openapi: image
+	$(CONTAINER_RUN) cargo run --quiet --features api-spec --bin streamline-openapi -- $(CONTAINER_WORKSPACE)/docs/openapi.json
+
+openapi-check: image
+	$(CONTAINER_RUN) bash -c 'cargo run --quiet --features api-spec --bin streamline-openapi -- /tmp/openapi.json && diff -u $(CONTAINER_WORKSPACE)/docs/openapi.json /tmp/openapi.json'
 
 # Serial devices are host resources; Docker Desktop on macOS cannot expose the
 # /dev/cu.* device reliably. Install espflash on the host for these two targets.

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { ApiTab } from './components/ApiTab';
 import { AudioTab } from './components/AudioTab';
 import { Masthead } from './components/Masthead';
 import { NetworkTab } from './components/NetworkTab';
@@ -12,7 +13,7 @@ import { setupMode, status, unreachable } from './state/device';
 import { handoff, handoffMessage } from './state/join';
 import { toast } from './state/toasts';
 
-const VIEWS = ['overview', 'audio', 'network', 'system'] as const;
+const VIEWS = ['overview', 'audio', 'network', 'system', 'api'] as const;
 type View = (typeof VIEWS)[number];
 
 const VIEW_LABELS: Record<View, string> = {
@@ -20,6 +21,7 @@ const VIEW_LABELS: Record<View, string> = {
   audio: 'Audio',
   network: 'Network',
   system: 'System',
+  api: 'API',
 };
 
 export function App() {
@@ -97,6 +99,9 @@ export function App() {
       </section>
       <section class={`view${view === 'system' ? ' active' : ''}`}>
         {view === 'system' && <SystemTab />}
+      </section>
+      <section class={`view${view === 'api' ? ' active' : ''}`}>
+        {view === 'api' && <ApiTab />}
       </section>
 
       {wizardOpen && <WizardOverlay onClose={() => setWizardOpen(false)} />}

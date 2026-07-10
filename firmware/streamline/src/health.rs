@@ -15,6 +15,7 @@ use serde::Serialize;
 /// How much a check's outcome matters to the user journey. A report's overall
 /// [`HealthReport::status`] is the worst severity across its checks.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// Everything the check covers is working.
@@ -37,6 +38,7 @@ impl Severity {
 
 /// The outcome of one check, independent of how much it matters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum CheckStatus {
     Ok,
@@ -46,6 +48,7 @@ pub enum CheckStatus {
 
 /// One thing the startup check looked at.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct HealthCheck {
     /// Stable machine id, e.g. `"codec"`. Scripts and the console key off this.
     pub id: &'static str,
@@ -61,6 +64,7 @@ pub struct HealthCheck {
 
 /// The startup verdict: every check plus the worst severity across them.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct HealthReport {
     pub status: Severity,
     pub checks: Vec<HealthCheck>,

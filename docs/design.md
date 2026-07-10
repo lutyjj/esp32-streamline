@@ -183,29 +183,22 @@ identity, network, and streaming counters.
 
 ## HTTP API Shape
 
-Endpoint paths follow one rule: nouns for state, verbs for actions.
+The host-testable Rust `api` module owns endpoint paths, methods, authentication,
+request bodies, response bodies, and schema constraints. The ESP-IDF adapter
+registers those endpoint declarations and serializes or deserializes their DTOs.
+It contains no independent route strings or form-field map.
 
-- Reads are open: `GET /api/status` (runtime), `GET /api/metrics`
-  (Prometheus), `GET /api/settings` (persisted settings, no secrets),
-  `GET /api/audio-profiles` (saved profiles and active selection),
-  `GET /api/boards` (built-in board catalog and selected descriptor),
-  `GET /api/health` (a scriptable startup-health probe: `200` when nothing
-  blocks, `503` when a check does).
-- Settings writes are one group per endpoint under the noun they change:
-  `POST /api/settings/wifi` (network credentials, and the initial stream target
-  during commissioning), `/api/settings/target` (stream host and port),
-  `/api/settings/audio`, `/api/settings/name`, `/api/settings/admin-key`,
-  `/api/settings/board`, `/api/settings/audio-profiles` (replace saved profile
-  definitions), `/api/settings/audio-profile` (activate one profile),
-  `/api/settings/firmware`.
-- Device-wide actions are top-level verbs: `POST /api/unlock`,
-  `POST /api/restart`, `POST /api/factory-reset`, `POST /api/ota/check`,
-  `POST /api/ota/update`, `POST /api/ota/rollback`.
+A host-only `utoipa` feature generates [the OpenAPI 3.1 contract](openapi.json)
+from the Rust module. `make firmware-openapi` refreshes the checked-in artifact;
+`make firmware-openapi-check` fails when it is stale. The device serves the same
+artifact at `GET /api/openapi.json`.
 
-`GET /api/status` carries a `health` block — the startup verdict assembled once
-at boot (see [ota.md](ota.md#startup-health)) — so the console renders the same
-facts the `/api/health` status code exposes to scripts.
+The console runs `openapi-typescript` before lint, test, and build, then uses
+`openapi-fetch` against the generated paths. TypeScript rejects an unknown path,
+method, form field, or response shape. The console's API tab renders the served
+contract, so integrations and the UI inspect the same document.
 
-Every write requires the admin key ([security.md](security.md)). Responses
-carry `rebooting: true` when the change restarts the device, so clients react
-to what the device says rather than assuming.
+Endpoint paths use nouns for state and verbs for actions. Reads are open. Every
+write requires the admin key ([security.md](security.md)). Responses carry
+`rebooting: true` when a change restarts the device, so clients react to the
+response instead of assuming.

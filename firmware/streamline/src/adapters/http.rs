@@ -1,26 +1,25 @@
 //! Local provisioning and read-only runtime HTTP API.
 
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-};
+use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, bail, Result};
 use embedded_svc::{
     http::{Headers, Method},
     io::{Read, Write},
 };
-use esp_idf_svc::http::server::{Configuration, EspHttpServer};
-use serde::Serialize;
+use esp_idf_svc::http::server::{Configuration, EspHttpConnection, EspHttpServer};
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
     adapters::{
         codec::{self, CodecControl},
         mdns::MdnsAdvertisement,
-        nvs::{ConfigStore, MAX_BOARD_DESCRIPTOR_BYTES},
+        nvs::ConfigStore,
         ota::{self, OtaProgress},
         wifi,
     },
+    api::{self, Endpoint, HttpMethod},
     board,
     config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
     health::{HealthReport, Severity},
@@ -37,10 +36,11 @@ use crate::{
 };
 
 const INDEX: &str = include_str!("../../../../console/dist/index.html");
+const OPENAPI: &str = include_str!("../../../../docs/openapi.json");
 /// A form-urlencoded byte can expand to `%XX`, so a descriptor upload can be
 /// three times its raw size on the wire; the rest of the fields fit in 512.
 const URL_ENCODED_EXPANSION: usize = 3;
-const MAX_REQUEST_BYTES: usize = MAX_BOARD_DESCRIPTOR_BYTES * URL_ENCODED_EXPANSION + 512;
+const MAX_REQUEST_BYTES: usize = board::MAX_DESCRIPTOR_BYTES * URL_ENCODED_EXPANSION + 512;
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
 /// The boot contract: the one decision made at startup that fixes which
@@ -84,6 +84,71 @@ pub struct ApiState {
     pub rollback: Option<String>,
 }
 
+fn method(endpoint: Endpoint) -> Method {
+    match endpoint.method {
+        HttpMethod::Get => Method::Get,
+        HttpMethod::Post => Method::Post,
+    }
+}
+
+/// Thin ESP-IDF binding that refuses to finish unless every declared API
+/// operation has exactly one registered handler.
+struct ContractServer<'a> {
+    inner: EspHttpServer<'a>,
+    registered: u32,
+}
+
+impl<'a> ContractServer<'a> {
+    fn new(inner: EspHttpServer<'a>) -> Self {
+        assert!(
+            api::ENDPOINTS.len() <= u32::BITS as usize,
+            "API endpoint tracker capacity exceeded"
+        );
+        Self {
+            inner,
+            registered: 0,
+        }
+    }
+
+    fn handler<E, F>(&mut self, endpoint: Endpoint, handler: F) -> Result<()>
+    where
+        F: for<'request> Fn(
+                embedded_svc::http::server::Request<&mut EspHttpConnection<'request>>,
+            ) -> std::result::Result<(), E>
+            + Send
+            + 'static,
+        E: Debug,
+    {
+        let index = api::ENDPOINTS
+            .iter()
+            .position(|declared| *declared == endpoint)
+            .expect("registered endpoint is declared");
+        let bit = 1_u32 << index;
+        if self.registered & bit != 0 {
+            bail!("duplicate API handler for {}", endpoint.path);
+        }
+        self.inner
+            .fn_handler(endpoint.path, method(endpoint), handler)?;
+        self.registered |= bit;
+        Ok(())
+    }
+
+    fn finish(self) -> Result<EspHttpServer<'a>> {
+        let expected = (1_u32 << api::ENDPOINTS.len()) - 1;
+        if self.registered != expected {
+            let missing = api::ENDPOINTS
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| self.registered & (1_u32 << index) == 0)
+                .map(|(_, endpoint)| endpoint.path)
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!("missing API handlers: {missing}");
+        }
+        Ok(self.inner)
+    }
+}
+
 pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     let mut server = EspHttpServer::new(&Configuration {
         stack_size: 8_192,
@@ -92,9 +157,10 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     server.fn_handler("/", Method::Get, move |request| {
         respond(request, 200, "text/html; charset=utf-8", INDEX)
     })?;
+    let mut server = ContractServer::new(server);
 
     let state_for_status = Arc::clone(&state);
-    server.fn_handler("/api/status", Method::Get, move |request| {
+    server.handler(api::STATUS, move |request| {
         respond(
             request,
             200,
@@ -108,7 +174,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     // `health` for the console; this endpoint is the status code a monitor or
     // `curl` can read without parsing JSON.
     let state_for_health = Arc::clone(&state);
-    server.fn_handler("/api/health", Method::Get, move |request| {
+    server.handler(api::HEALTH, move |request| {
         let health = &state_for_health.health;
         let code = if health.status == Severity::Blocking {
             503
@@ -124,7 +190,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     })?;
 
     let state_for_metrics = Arc::clone(&state);
-    server.fn_handler("/api/metrics", Method::Get, move |request| {
+    server.handler(api::METRICS, move |request| {
         respond(
             request,
             200,
@@ -134,7 +200,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     })?;
 
     let state_for_config = Arc::clone(&state);
-    server.fn_handler("/api/settings", Method::Get, move |request| {
+    server.handler(api::SETTINGS, move |request| {
         respond(
             request,
             200,
@@ -144,7 +210,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     })?;
 
     let state_for_audio_profiles = Arc::clone(&state);
-    server.fn_handler("/api/audio-profiles", Method::Get, move |request| {
+    server.handler(api::AUDIO_PROFILES, move |request| {
         respond(
             request,
             200,
@@ -154,13 +220,17 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     })?;
 
     let state_for_boards = Arc::clone(&state);
-    server.fn_handler("/api/boards", Method::Get, move |request| {
+    server.handler(api::BOARDS, move |request| {
         respond(
             request,
             200,
             "application/json",
             &board_catalog_json(&state_for_boards),
         )
+    })?;
+
+    server.handler(api::OPENAPI, move |request| {
+        respond(request, 200, "application/json", OPENAPI)
     })?;
 
     // Mutating endpoints require the admin key once one is provisioned (see
@@ -170,63 +240,56 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     // cannot fail a Wi-Fi save and a Wi-Fi save cannot smuggle in half-typed
     // target edits.
     let state_for_wifi = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/wifi",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_wifi) {
-                return unauthorized(request);
-            }
-            let result = (|| -> Result<()> {
-                let form = form(&mut request)?;
-                let current = state_for_wifi
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .clone();
-                let password = form
-                    .get("password")
-                    .filter(|value| !value.is_empty())
-                    .cloned()
-                    .unwrap_or(current.password);
-                // The admin key is preserved when left blank, just like the password, so a
-                // routine Wi-Fi change does not require retyping it.
-                let admin_secret = form
-                    .get("admin_secret")
-                    .filter(|value| !value.is_empty())
-                    .cloned()
-                    .unwrap_or(current.admin_secret);
-                // Commissioning may set the initial stream target in the same
-                // write, because the device reboots onto the home network right
-                // after and the two cannot be posted separately. Absent target
-                // fields are preserved, so a steady-state Wi-Fi change leaves the
-                // target alone.
-                let target_host = match form.get("target_host") {
-                    Some(value) => value.trim().to_owned(),
-                    None => current.target_host,
-                };
-                let target_port = match form.get("target_port") {
-                    Some(_) => parse_u16(&form, "target_port")?,
-                    None => current.target_port,
-                };
-                let next = RuntimeConfig {
-                    ssid: required(&form, "ssid")?.to_owned(),
-                    password,
-                    target_host,
-                    target_port,
-                    admin_secret,
-                    device_name: current.device_name,
-                    auto_update_schedule: current.auto_update_schedule,
-                    audio: current.audio,
-                };
-                save(&state_for_wifi, next)
-            })();
-            match result {
-                Ok(()) => reboot_response(request),
-                Err(error) => bad_request(request, error),
-            }
-        },
-    )?;
+    server.handler::<anyhow::Error, _>(api::SET_WIFI, move |mut request| {
+        if !authorized_for(&request, &state_for_wifi, api::SET_WIFI) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form: api::WifiSettingsRequest = form(&mut request)?;
+            let current = state_for_wifi
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            let password = if form.password.is_empty() {
+                current.password
+            } else {
+                form.password
+            };
+            // The admin key is preserved when left blank, just like the password, so a
+            // routine Wi-Fi change does not require retyping it.
+            let admin_secret = if form.admin_secret.is_empty() {
+                current.admin_secret
+            } else {
+                form.admin_secret
+            };
+            // Commissioning may set the initial stream target in the same
+            // write, because the device reboots onto the home network right
+            // after and the two cannot be posted separately. Absent target
+            // fields are preserved, so a steady-state Wi-Fi change leaves the
+            // target alone.
+            let target_host = match form.target_host {
+                Some(value) => value.trim().to_owned(),
+                None => current.target_host,
+            };
+            let target_port = form.target_port.unwrap_or(current.target_port);
+            let next = RuntimeConfig {
+                ssid: form.ssid,
+                password,
+                target_host,
+                target_port,
+                admin_secret,
+                device_name: current.device_name,
+                auto_update_schedule: current.auto_update_schedule,
+                audio: current.audio,
+            };
+            save(&state_for_wifi, next)
+        })();
+        match result {
+            Ok(()) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
     // The stream target is a stage-3 change, not commissioning: it sets only
     // host and port and leaves Wi-Fi and the admin key untouched. Blank host
@@ -234,334 +297,284 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     // next boot; applying it to the running stream without a reboot is deferred
     // (the stream target is fixed when the network task spawns).
     let state_for_target = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/target",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_target) {
-                return unauthorized(request);
-            }
-            let result = (|| -> Result<()> {
-                let form = form(&mut request)?;
-                let current = state_for_target
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .clone();
-                let target_host = form
-                    .get("target_host")
-                    .map(|value| value.trim().to_owned())
-                    .unwrap_or_default();
-                let target_port = match form.get("target_port") {
-                    Some(_) => parse_u16(&form, "target_port")?,
-                    None => current.target_port,
-                };
-                let next = RuntimeConfig {
-                    target_host,
-                    target_port,
-                    ..current
-                };
-                save(&state_for_target, next)
-            })();
-            match result {
-                Ok(()) => reboot_response(request),
-                Err(error) => bad_request(request, error),
-            }
-        },
-    )?;
+    server.handler::<anyhow::Error, _>(api::SET_TARGET, move |mut request| {
+        if !authorized_for(&request, &state_for_target, api::SET_TARGET) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form: api::TargetSettingsRequest = form(&mut request)?;
+            let current = state_for_target
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            let target_host = form.target_host.trim().to_owned();
+            let target_port = form.target_port.unwrap_or(current.target_port);
+            let next = RuntimeConfig {
+                target_host,
+                target_port,
+                ..current
+            };
+            save(&state_for_target, next)
+        })();
+        match result {
+            Ok(()) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
     let state_for_board = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/board",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_board) {
-                return unauthorized(request);
-            }
-            let result = (|| -> Result<()> {
-                let form = form(&mut request)?;
-                let update = board_update_from_form(&form, &state_for_board.board_catalog)?;
-                let selected = update.board();
-                let next = state_for_board
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .clone()
-                    .with_audio_compatible_with(selected);
+    server.handler::<anyhow::Error, _>(api::SET_BOARD, move |mut request| {
+        if !authorized_for(&request, &state_for_board, api::SET_BOARD) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form: api::BoardSettingsRequest = form(&mut request)?;
+            let update = board_update_from_form(form, &state_for_board.board_catalog)?;
+            let selected = update.board();
+            let next = state_for_board
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone()
+                .with_audio_compatible_with(selected);
 
-                let store = state_for_board
-                    .store
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?;
-                if state_for_board.mode == Mode::Provisioned {
-                    next.validate(selected)
-                        .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
-                }
-                match &update {
-                    BoardUpdate::BuiltIn(board) => store.save_built_in_board(board)?,
-                    BoardUpdate::Custom(board) => store.save_custom_board(board)?,
-                }
-                store.clear_audio_profiles()?;
-                if state_for_board.mode == Mode::Provisioned {
-                    store.save(&next, selected)?;
-                }
-                *state_for_board
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
-                *state_for_board
-                    .audio_profiles
-                    .lock()
-                    .map_err(|_| anyhow!("audio profile lock poisoned"))? =
-                    AudioProfileCatalog::empty(selected);
-                Ok(())
-            })();
-            match result {
-                Ok(()) => reboot_response(request),
-                Err(error) => bad_request(request, error),
+            let store = state_for_board
+                .store
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?;
+            if state_for_board.mode == Mode::Provisioned {
+                next.validate(selected)
+                    .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
             }
-        },
-    )?;
+            match &update {
+                BoardUpdate::BuiltIn(board) => store.save_built_in_board(board)?,
+                BoardUpdate::Custom(board) => store.save_custom_board(board)?,
+            }
+            store.clear_audio_profiles()?;
+            if state_for_board.mode == Mode::Provisioned {
+                store.save(&next, selected)?;
+            }
+            *state_for_board
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
+            *state_for_board
+                .audio_profiles
+                .lock()
+                .map_err(|_| anyhow!("audio profile lock poisoned"))? =
+                AudioProfileCatalog::empty(selected);
+            Ok(())
+        })();
+        match result {
+            Ok(()) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
     // While streaming, audio params are written straight to the running codec
     // and play detection re-baselines to the new input scale — no reboot. In
     // setup-AP mode the codec is not running, so the settings are persisted
     // and take effect when the device boots into streaming.
     let state_for_audio = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/audio",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_audio) {
-                return unauthorized(request);
+    server.handler::<anyhow::Error, _>(api::SET_AUDIO, move |mut request| {
+        if !authorized_for(&request, &state_for_audio, api::SET_AUDIO) {
+            return unauthorized(request);
+        }
+        // Ok(true) means the settings were applied live.
+        let result = (|| -> Result<bool> {
+            let form: api::AudioSettingsRequest = form(&mut request)?;
+            let current = state_for_audio
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            let audio = AudioSettings {
+                input_line: form.line,
+                input_gain: form.gain,
+                adc_attenuation_db: form.atten,
             }
-            // Ok(true) means the settings were applied live.
-            let result = (|| -> Result<bool> {
-                let form = form(&mut request)?;
-                let current = state_for_audio
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .clone();
-                let audio = AudioSettings {
-                    input_line: parse_u8(&form, "line")?,
-                    input_gain: parse_u8(&form, "gain")?,
-                    adc_attenuation_db: parse_u8(&form, "atten")?,
-                }
-                .validate(state_for_audio.board.as_ref())
-                .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
-                save(&state_for_audio, RuntimeConfig { audio, ..current })?;
-                clear_active_profile(&state_for_audio)?;
-                apply_audio_live(&state_for_audio, audio)
-            })();
-            match result {
-                Ok(true) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-                Ok(false) => reboot_response(request),
-                Err(error) => bad_request(request, error),
-            }
-        },
-    )?;
+            .validate(state_for_audio.board.as_ref())
+            .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
+            save(&state_for_audio, RuntimeConfig { audio, ..current })?;
+            clear_active_profile(&state_for_audio)?;
+            apply_audio_live(&state_for_audio, audio)
+        })();
+        match result {
+            Ok(true) => json_response(request, 200, &api::Ack::ok()),
+            Ok(false) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
-    // The collection write replaces the typed profile catalog. Activation is
-    // a separate setting below, so importing or editing profiles cannot change
-    // live levels as a side effect.
+    // Replacing definitions never activates a profile as a side effect.
     let state_for_profile_catalog = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/audio-profiles",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_profile_catalog) {
-                return unauthorized(request);
-            }
-            let result = (|| -> Result<()> {
-                let form = form(&mut request)?;
-                let mut catalog: AudioProfileCatalog =
-                    serde_json::from_str(required(&form, "catalog")?)
-                        .map_err(|error| anyhow!("invalid audio profile catalog: {error}"))?;
-                // Collection writes manage definitions only. Preserve the
-                // device's selected profile when it still exists; the
-                // singular endpoint below owns activation.
-                catalog.active_profile_id = None;
-                catalog
-                    .validate(state_for_profile_catalog.board.as_ref())
-                    .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
-                let previous_active = state_for_profile_catalog
-                    .audio_profiles
-                    .lock()
-                    .map_err(|_| anyhow!("audio profile lock poisoned"))?
-                    .active_profile_id
-                    .clone();
-                catalog.active_profile_id = previous_active
-                    .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));
-                let current_audio = state_for_profile_catalog
+    server.handler::<anyhow::Error, _>(api::SET_AUDIO_PROFILES, move |mut request| {
+        if !authorized_for(
+            &request,
+            &state_for_profile_catalog,
+            api::SET_AUDIO_PROFILES,
+        ) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form: api::AudioProfilesSettingsRequest = form(&mut request)?;
+            let mut catalog: AudioProfileCatalog = serde_json::from_str(&form.catalog)
+                .map_err(|error| anyhow!("invalid audio profile catalog: {error}"))?;
+            catalog.active_profile_id = None;
+            catalog
+                .validate(state_for_profile_catalog.board.as_ref())
+                .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
+            let previous_active = state_for_profile_catalog
+                .audio_profiles
+                .lock()
+                .map_err(|_| anyhow!("audio profile lock poisoned"))?
+                .active_profile_id
+                .clone();
+            catalog.active_profile_id = previous_active
+                .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));
+            let current_audio = state_for_profile_catalog
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .audio;
+            catalog.reconcile_active_audio(current_audio);
+            save_audio_profiles(&state_for_profile_catalog, catalog)
+        })();
+        match result {
+            Ok(()) => json_response(request, 200, &api::Ack::ok()),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
+
+    // A stable activation contract also serves external source selectors.
+    let state_for_active_profile = Arc::clone(&state);
+    server.handler::<anyhow::Error, _>(api::SET_AUDIO_PROFILE, move |mut request| {
+        if !authorized_for(&request, &state_for_active_profile, api::SET_AUDIO_PROFILE) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<bool> {
+            let form: api::ActiveAudioProfileRequest = form(&mut request)?;
+            let mut catalog = state_for_active_profile
+                .audio_profiles
+                .lock()
+                .map_err(|_| anyhow!("audio profile lock poisoned"))?
+                .clone();
+            let audio = catalog
+                .activate(Some(&form.profile_id))
+                .map_err(|error| anyhow!("invalid active audio profile: {error:?}"))?;
+            if let Some(audio) = audio {
+                let current = state_for_active_profile
                     .config
                     .lock()
                     .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .audio;
-                catalog.reconcile_active_audio(current_audio);
-                save_audio_profiles(&state_for_profile_catalog, catalog)
-            })();
-            match result {
-                Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-                Err(error) => bad_request(request, error),
-            }
-        },
-    )?;
-
-    // One stable activation contract serves the console and authoritative
-    // external triggers such as Home Assistant or a source-selector GPIO.
-    let state_for_active_profile = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/audio-profile",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_active_profile) {
-                return unauthorized(request);
-            }
-            // Ok(true) means a selected profile was applied live. Selecting an
-            // empty id returns to custom settings without changing levels.
-            let result = (|| -> Result<bool> {
-                let form = form(&mut request)?;
-                let id = form.get("profile_id").map(String::as_str);
-                let mut catalog = state_for_active_profile
-                    .audio_profiles
-                    .lock()
-                    .map_err(|_| anyhow!("audio profile lock poisoned"))?
                     .clone();
-                let audio = catalog
-                    .activate(id)
-                    .map_err(|error| anyhow!("invalid active audio profile: {error:?}"))?;
-                if let Some(audio) = audio {
-                    let current = state_for_active_profile
-                        .config
-                        .lock()
-                        .map_err(|_| anyhow!("configuration lock poisoned"))?
-                        .clone();
-                    save(
-                        &state_for_active_profile,
-                        RuntimeConfig { audio, ..current },
-                    )?;
-                    save_audio_profiles(&state_for_active_profile, catalog)?;
-                    return apply_audio_live(&state_for_active_profile, audio);
-                }
+                save(
+                    &state_for_active_profile,
+                    RuntimeConfig { audio, ..current },
+                )?;
                 save_audio_profiles(&state_for_active_profile, catalog)?;
-                Ok(true)
-            })();
-            match result {
-                Ok(true) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-                Ok(false) => reboot_response(request),
-                Err(error) => bad_request(request, error),
+                return apply_audio_live(&state_for_active_profile, audio);
             }
-        },
-    )?;
+            save_audio_profiles(&state_for_active_profile, catalog)?;
+            Ok(true)
+        })();
+        match result {
+            Ok(true) => json_response(request, 200, &api::Ack::ok()),
+            Ok(false) => reboot_response(request),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
     // The friendly device name only labels the console and browser tab, so it
     // applies immediately — no reboot. Blank clears the name.
     let state_for_name = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/name",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_name) {
-                return unauthorized(request);
-            }
-            let result = (|| -> Result<()> {
-                let form = form(&mut request)?;
-                let mut next = state_for_name
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .clone();
-                next.device_name = form
-                    .get("name")
-                    .map(|value| value.trim().to_owned())
-                    .unwrap_or_default();
-                save(&state_for_name, next.clone())?;
-                refresh_mdns_name(&state_for_name, &next);
-                Ok(())
-            })();
-            match result {
-                Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-                Err(error) => bad_request(request, error),
-            }
-        },
-    )?;
+    server.handler::<anyhow::Error, _>(api::SET_NAME, move |mut request| {
+        if !authorized_for(&request, &state_for_name, api::SET_NAME) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form: api::NameSettingsRequest = form(&mut request)?;
+            let mut next = state_for_name
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            next.device_name = form.name.trim().to_owned();
+            save(&state_for_name, next.clone())?;
+            refresh_mdns_name(&state_for_name, &next);
+            Ok(())
+        })();
+        match result {
+            Ok(()) => json_response(request, 200, &api::Ack::ok()),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
     let state_for_admin_key = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/admin-key",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_admin_key) {
-                return unauthorized(request);
-            }
-            let result = (|| -> Result<()> {
-                let form = form(&mut request)?;
-                let mut next = state_for_admin_key
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .clone();
-                next.admin_secret = required(&form, "admin_secret")?.to_owned();
-                save(&state_for_admin_key, next)
-            })();
-            match result {
-                Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-                Err(error) => bad_request(request, error),
-            }
-        },
-    )?;
+    server.handler::<anyhow::Error, _>(api::SET_ADMIN_KEY, move |mut request| {
+        if !authorized_for(&request, &state_for_admin_key, api::SET_ADMIN_KEY) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form: api::AdminKeySettingsRequest = form(&mut request)?;
+            let mut next = state_for_admin_key
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            next.admin_secret = form.admin_secret;
+            save(&state_for_admin_key, next)
+        })();
+        match result {
+            Ok(()) => json_response(request, 200, &api::Ack::ok()),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
-    // Firmware maintenance is a live policy setting. The boot loop reads the
-    // shared config before each scheduled attempt, so changing it needs no
-    // reboot and the OTA worker remains the single installation path.
     let state_for_firmware = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/settings/firmware",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_firmware) {
-                return unauthorized(request);
-            }
-            let result = (|| -> Result<()> {
-                let form = form(&mut request)?;
-                let auto_update_schedule =
-                    AutoUpdateSchedule::parse(required(&form, "auto_update_schedule")?)
-                        .ok_or_else(|| {
-                            anyhow!("auto_update_schedule must be disabled, daily, or weekly")
-                        })?;
-                let current = state_for_firmware
+    server.handler::<anyhow::Error, _>(api::SET_FIRMWARE, move |mut request| {
+        if !authorized_for(&request, &state_for_firmware, api::SET_FIRMWARE) {
+            return unauthorized(request);
+        }
+        let result = (|| -> Result<()> {
+            let form: api::FirmwareSettingsRequest = form(&mut request)?;
+            let auto_update_schedule = match form.auto_update_schedule {
+                api::AutoUpdateScheduleRequest::Disabled => AutoUpdateSchedule::Disabled,
+                api::AutoUpdateScheduleRequest::Daily => AutoUpdateSchedule::Daily,
+                api::AutoUpdateScheduleRequest::Weekly => AutoUpdateSchedule::Weekly,
+            };
+            let current = state_for_firmware
+                .config
+                .lock()
+                .map_err(|_| anyhow!("configuration lock poisoned"))?
+                .clone();
+            let next = RuntimeConfig {
+                auto_update_schedule,
+                ..current
+            };
+            if state_for_firmware.mode == Mode::Provisioned {
+                save(&state_for_firmware, next)
+            } else {
+                *state_for_firmware
                     .config
                     .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .clone();
-                let next = RuntimeConfig {
-                    auto_update_schedule,
-                    ..current
-                };
-                if state_for_firmware.mode == Mode::Provisioned {
-                    save(&state_for_firmware, next)
-                } else {
-                    *state_for_firmware
-                        .config
-                        .lock()
-                        .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
-                    Ok(())
-                }
-            })();
-            match result {
-                Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
-                Err(error) => bad_request(request, error),
+                    .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
+                Ok(())
             }
-        },
-    )?;
+        })();
+        match result {
+            Ok(()) => json_response(request, 200, &api::Ack::ok()),
+            Err(error) => bad_request(request, error),
+        }
+    })?;
 
     // Check GitHub for a newer release without installing it. The work runs on a
     // background task; clients poll `/api/status` (the `ota` field) for the
     // outcome (`up-to-date` or `update-available`).
     let state_for_check = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/ota/check", Method::Post, move |request| {
-        if !authorized(&request, &state_for_check) {
+    server.handler::<anyhow::Error, _>(api::OTA_CHECK, move |request| {
+        if !authorized_for(&request, &state_for_check, api::OTA_CHECK) {
             return unauthorized(request);
         }
         ota_accepted(request, ota::spawn_check(Arc::clone(&state_for_check.ota)))
@@ -573,43 +586,37 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     // background task; clients poll `/api/status` (the `ota` field) for
     // progress, and the device reboots into the new image on success.
     let state_for_ota = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>(
-        "/api/ota/update",
-        Method::Post,
-        move |mut request| {
-            if !authorized(&request, &state_for_ota) {
-                return unauthorized(request);
-            }
-            let form = match form(&mut request) {
-                Ok(form) => form,
-                Err(error) => return bad_request(request, error),
-            };
-            let source = match update::custom_image_from_form(
-                form.get("url").map(String::as_str),
-                form.get("sha256").map(String::as_str),
-            ) {
+    server.handler::<anyhow::Error, _>(api::OTA_UPDATE, move |mut request| {
+        if !authorized_for(&request, &state_for_ota, api::OTA_UPDATE) {
+            return unauthorized(request);
+        }
+        let form: api::OtaUpdateRequest = match form(&mut request) {
+            Ok(form) => form,
+            Err(error) => return bad_request(request, error),
+        };
+        let source =
+            match update::custom_image_from_form(form.url.as_deref(), form.sha256.as_deref()) {
                 Ok(None) => ota::Source::LatestRelease,
                 Ok(Some(image)) => ota::Source::Custom(image),
                 Err(error) => return bad_request(request, anyhow!(error)),
             };
-            ota_accepted(
-                request,
-                ota::spawn_update(
-                    Arc::clone(&state_for_ota.ota),
-                    Arc::clone(&state_for_ota.store),
-                    source,
-                ),
-            )
-        },
-    )?;
+        ota_accepted(
+            request,
+            ota::spawn_update(
+                Arc::clone(&state_for_ota.ota),
+                Arc::clone(&state_for_ota.store),
+                source,
+            ),
+        )
+    })?;
 
     // Roll back to the previous firmware by booting the other slot — instant and
     // offline, no re-download. Flip the boot selection first so an unavailable
     // rollback returns an error instead of a false "rebooting"; the device then
     // reboots into the previous image, which its boot path re-confirms.
     let state_for_rollback = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/ota/rollback", Method::Post, move |request| {
-        if !authorized(&request, &state_for_rollback) {
+    server.handler::<anyhow::Error, _>(api::OTA_ROLLBACK, move |request| {
+        if !authorized_for(&request, &state_for_rollback, api::OTA_ROLLBACK) {
             return unauthorized(request);
         }
         match ota::select_rollback_slot() {
@@ -621,25 +628,25 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     // Verify an admin key without changing anything, so the console can reject
     // a wrong key at unlock time instead of on the first settings write.
     let state_for_unlock = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/unlock", Method::Post, move |request| {
-        if !authorized(&request, &state_for_unlock) {
+    server.handler::<anyhow::Error, _>(api::UNLOCK, move |request| {
+        if !authorized_for(&request, &state_for_unlock, api::UNLOCK) {
             return unauthorized(request);
         }
-        respond(request, 200, "application/json", r#"{"ok":true}"#)
+        json_response(request, 200, &api::Ack::ok())
     })?;
 
     // Plain reboot with settings intact — recovers a wedged stream without a
     // trip to the power plug.
     let state_for_restart = Arc::clone(&state);
-    server.fn_handler::<anyhow::Error, _>("/api/restart", Method::Post, move |request| {
-        if !authorized(&request, &state_for_restart) {
+    server.handler::<anyhow::Error, _>(api::RESTART, move |request| {
+        if !authorized_for(&request, &state_for_restart, api::RESTART) {
             return unauthorized(request);
         }
         reboot_response(request)
     })?;
 
-    server.fn_handler::<anyhow::Error, _>("/api/factory-reset", Method::Post, move |request| {
-        if !authorized(&request, &state) {
+    server.handler::<anyhow::Error, _>(api::FACTORY_RESET, move |request| {
+        if !authorized_for(&request, &state, api::FACTORY_RESET) {
             return unauthorized(request);
         }
         state
@@ -649,7 +656,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             .clear()?;
         reboot_response(request)
     })?;
-    Ok(server)
+    server.finish()
 }
 
 fn save(state: &ApiState, config: RuntimeConfig) -> Result<()> {
@@ -696,8 +703,7 @@ fn clear_active_profile(state: &ApiState) -> Result<()> {
     Ok(())
 }
 
-/// Apply already-persisted audio settings to the running codec and reset play
-/// detection to the new scale. `false` means setup mode must reboot to apply.
+/// Apply already-persisted settings to the codec and reset play detection.
 fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool> {
     let Some(codec) = &state.codec else {
         return Ok(false);
@@ -731,12 +737,7 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    respond(
-        request,
-        200,
-        "application/json",
-        r#"{"ok":true,"rebooting":true}"#,
-    )?;
+    json_response(request, 200, &api::Ack::rebooting())?;
     // Let the HTTP server flush the response before replacing the process.
     esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
     unsafe { esp_idf_svc::sys::esp_restart() };
@@ -776,20 +777,8 @@ where
     C::Error: std::error::Error + Send + Sync + 'static,
 {
     match spawned {
-        Ok(()) => respond(
-            request,
-            202,
-            "application/json",
-            r#"{"ok":true,"started":true}"#,
-        ),
-        Err(error) => {
-            let body = format!(
-                r#"{{"error":{}}}"#,
-                serde_json::to_string(&error.to_string())
-                    .unwrap_or_else(|_| "\"update unavailable\"".to_owned())
-            );
-            respond(request, 409, "application/json", &body)
-        }
+        Ok(()) => json_response(request, 202, &api::Ack::started()),
+        Err(error) => error_response(request, 409, &error.to_string()),
     }
 }
 
@@ -812,6 +801,17 @@ where
         return true;
     }
     authorized_secret(&secret, request.header("Authorization"))
+}
+
+fn authorized_for<C>(
+    request: &embedded_svc::http::server::Request<C>,
+    state: &ApiState,
+    endpoint: Endpoint,
+) -> bool
+where
+    C: embedded_svc::http::server::Connection,
+{
+    !endpoint.auth || authorized(request, state)
 }
 
 fn authorized_secret(secret: &str, authorization: Option<&str>) -> bool {
@@ -842,12 +842,7 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    respond(
-        request,
-        401,
-        "application/json",
-        r#"{"error":"unauthorized"}"#,
-    )
+    error_response(request, 401, "unauthorized")
 }
 
 fn bad_request<C>(
@@ -858,20 +853,39 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    let message =
-        serde_json::to_string(&error.to_string()).unwrap_or_else(|_| "\"bad request\"".to_owned());
-    respond(
-        request,
-        400,
-        "application/json",
-        &format!(r#"{{"error":{message}}}"#),
-    )
+    error_response(request, 400, &error.to_string())
 }
 
-fn form<C>(request: &mut embedded_svc::http::server::Request<C>) -> Result<BTreeMap<String, String>>
+fn json_response<C, T>(
+    request: embedded_svc::http::server::Request<C>,
+    code: u16,
+    value: &T,
+) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
+    T: Serialize,
+{
+    respond(request, code, "application/json", &serialize(value))
+}
+
+fn error_response<C>(
+    request: embedded_svc::http::server::Request<C>,
+    code: u16,
+    message: &str,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    json_response(request, code, &api::ErrorResponse { error: message })
+}
+
+fn form<C, T>(request: &mut embedded_svc::http::server::Request<C>) -> Result<T>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+    T: DeserializeOwned,
 {
     let length = request.content_len().unwrap_or(0) as usize;
     if length > MAX_REQUEST_BYTES {
@@ -879,63 +893,7 @@ where
     }
     let mut body = vec![0; length];
     request.read_exact(&mut body)?;
-    parse_form(std::str::from_utf8(&body).map_err(|_| anyhow!("form is not UTF-8"))?)
-}
-
-fn parse_form(body: &str) -> Result<BTreeMap<String, String>> {
-    let mut result = BTreeMap::new();
-    for pair in body.split('&').filter(|pair| !pair.is_empty()) {
-        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        result.insert(decode_form(key)?, decode_form(value)?);
-    }
-    Ok(result)
-}
-
-fn decode_form(value: &str) -> Result<String> {
-    let mut bytes = Vec::with_capacity(value.len());
-    let source = value.as_bytes();
-    let mut index = 0;
-    while index < source.len() {
-        match source[index] {
-            b'+' => bytes.push(b' '),
-            b'%' if index + 2 < source.len() => {
-                bytes.push((hex(source[index + 1])? << 4) | hex(source[index + 2])?);
-                index += 2;
-            }
-            b'%' => bail!("incomplete percent escape"),
-            value => bytes.push(value),
-        }
-        index += 1;
-    }
-    String::from_utf8(bytes).map_err(Into::into)
-}
-
-fn hex(value: u8) -> Result<u8> {
-    match value {
-        b'0'..=b'9' => Ok(value - b'0'),
-        b'a'..=b'f' => Ok(value - b'a' + 10),
-        b'A'..=b'F' => Ok(value - b'A' + 10),
-        _ => bail!("invalid percent escape"),
-    }
-}
-
-fn required<'a>(form: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str> {
-    form.get(key)
-        .map(String::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| anyhow!("{key} is required"))
-}
-
-fn parse_u8(form: &BTreeMap<String, String>, key: &str) -> Result<u8> {
-    required(form, key)?
-        .parse()
-        .map_err(|_| anyhow!("{key} must be a number"))
-}
-
-fn parse_u16(form: &BTreeMap<String, String>, key: &str) -> Result<u16> {
-    required(form, key)?
-        .parse()
-        .map_err(|_| anyhow!("{key} must be a number between 1 and 65535"))
+    serde_urlencoded::from_bytes(&body).map_err(|error| anyhow!("invalid form: {error}"))
 }
 
 enum BoardUpdate {
@@ -952,15 +910,13 @@ impl BoardUpdate {
 }
 
 fn board_update_from_form(
-    form: &BTreeMap<String, String>,
+    form: api::BoardSettingsRequest,
     catalog: &[board::Board],
 ) -> Result<BoardUpdate> {
-    let board_id = form
-        .get("board_id")
-        .map(String::as_str)
-        .filter(|id| !id.is_empty());
+    let board_id = form.board_id.as_deref().filter(|id| !id.is_empty());
     let descriptor_json = form
-        .get("descriptor")
+        .descriptor
+        .as_deref()
         .map(|value| value.trim())
         .filter(|value| !value.is_empty());
 
@@ -973,11 +929,11 @@ fn board_update_from_form(
             Ok(BoardUpdate::BuiltIn(board))
         }
         (None, Some(json)) => {
-            if json.len() > MAX_BOARD_DESCRIPTOR_BYTES {
+            if json.len() > board::MAX_DESCRIPTOR_BYTES {
                 bail!(
                     "board descriptor is too large: {} bytes, max {}",
                     json.len(),
-                    MAX_BOARD_DESCRIPTOR_BYTES
+                    board::MAX_DESCRIPTOR_BYTES
                 );
             }
             let board = board::parse_descriptor(json)
@@ -998,218 +954,9 @@ fn board_update_from_form(
     }
 }
 
-#[derive(Serialize)]
-struct ConfigResponse<'a> {
-    device_name: &'a str,
-    ssid: &'a str,
-    target_host: &'a str,
-    target_port: u16,
-    input_line: u8,
-    input_gain: u8,
-    adc_atten_db: u8,
-    auto_update_schedule: &'a str,
-    config_source: &'a str,
-}
-
-#[derive(Serialize)]
-struct BoardCatalogResponse<'a> {
-    selected_board_id: &'a str,
-    selected_board: CapabilitiesStatus<'a>,
-    boards: Vec<CapabilitiesStatus<'a>>,
-}
-
-#[derive(Serialize)]
-struct StatusResponse<'a> {
-    firmware_version: &'a str,
-    device_name: &'a str,
-    mode: &'a str,
-    config_source: &'a str,
-    web_server: bool,
-    configuration_writable: bool,
-    auth_required: bool,
-    capabilities: CapabilitiesStatus<'a>,
-    wifi: WifiStatus<'a>,
-    target: TargetStatus<'a>,
-    audio: AudioStatus,
-    metrics: MetricsStatus,
-    diagnostics: DiagnosticsStatus<'a>,
-    ota: OtaStatus<'a>,
-    indicator: IndicatorStatus,
-    /// Startup health verdict; mirrors `health` in `console/src/lib/api.ts`.
-    health: &'a HealthReport,
-}
-
-/// The resolved board's facts, from its descriptor in [`crate::board`]; the
-/// console renders its audio controls from this. Mirrors `capabilities` in
-/// `console/src/lib/api.ts`.
-#[derive(Serialize)]
-struct CapabilitiesStatus<'a> {
-    board_id: &'a str,
-    board: &'a str,
-    codec: CodecStatus<'a>,
-    pins: PinMapStatus,
-    status_led: Option<StatusLedStatus>,
-    input_lines: Vec<InputLineStatus<'a>>,
-    input_gain_max: u8,
-    adc_atten_max_db: u8,
-}
-
-#[derive(Serialize)]
-struct CodecStatus<'a> {
-    driver: &'a str,
-    i2c_address: u8,
-}
-
-#[derive(Serialize)]
-struct PinMapStatus {
-    i2c: I2cPinsStatus,
-    i2s: I2sPinsStatus,
-}
-
-#[derive(Serialize)]
-struct I2cPinsStatus {
-    sda: u8,
-    scl: u8,
-}
-
-#[derive(Serialize)]
-struct I2sPinsStatus {
-    mclk: u8,
-    bclk: u8,
-    ws: u8,
-    din: u8,
-}
-
-#[derive(Serialize)]
-struct StatusLedStatus {
-    gpio: u8,
-    active_low: bool,
-}
-
-#[derive(Serialize)]
-struct InputLineStatus<'a> {
-    line: u8,
-    label: &'a str,
-}
-
-impl<'a> CapabilitiesStatus<'a> {
-    fn from_board(board: &'a board::Board) -> Self {
-        Self {
-            board_id: board.id.as_str(),
-            board: board.name.as_str(),
-            codec: CodecStatus {
-                driver: board.codec.driver.as_str(),
-                i2c_address: board.codec.i2c_address,
-            },
-            pins: PinMapStatus {
-                i2c: I2cPinsStatus {
-                    sda: board.pins.i2c.sda,
-                    scl: board.pins.i2c.scl,
-                },
-                i2s: I2sPinsStatus {
-                    mclk: board.pins.i2s.mclk,
-                    bclk: board.pins.i2s.bclk,
-                    ws: board.pins.i2s.ws,
-                    din: board.pins.i2s.din,
-                },
-            },
-            status_led: board.status_led.map(|led| StatusLedStatus {
-                gpio: led.gpio,
-                active_low: led.active_low,
-            }),
-            input_lines: board
-                .input_lines
-                .iter()
-                .map(|option| InputLineStatus {
-                    line: option.line,
-                    label: option.label.as_str(),
-                })
-                .collect(),
-            input_gain_max: board.input_gain_max,
-            adc_atten_max_db: board.adc_atten_max_db,
-        }
-    }
-}
-
-/// Post-mortem evidence for boots the user did not watch: why the device is
-/// (or last was) in setup-AP mode, how the last OTA attempt ended, and what
-/// kind of reset produced this boot.
-#[derive(Serialize)]
-struct DiagnosticsStatus<'a> {
-    reset_reason: &'a str,
-    last_fallback: &'a str,
-    last_ota: &'a str,
-}
-
-#[derive(Serialize)]
-struct WifiStatus<'a> {
-    hostname: &'a str,
-    ssid: &'a str,
-    status: &'a str,
-    sta_ip: &'a str,
-    ap_ip: &'a str,
-    rssi: i32,
-}
-
-#[derive(Serialize)]
-struct TargetStatus<'a> {
-    target_host: &'a str,
-    target_port: u16,
-    transport: &'a str,
-}
-
-#[derive(Serialize)]
-struct AudioStatus {
-    input_line: u8,
-    input_gain: u8,
-    adc_atten_db: u8,
-    sample_rate: u32,
-    channels: u8,
-    bits_per_sample: u8,
-}
-
-#[derive(Serialize)]
-struct MetricsStatus {
-    sequence: u32,
-    packets: u64,
-    bytes: u64,
-    read_errors: u64,
-    short_reads: u64,
-    queue_depth: u32,
-    queue_drops_total: u64,
-    network_errors_total: u64,
-    reconnects_total: u64,
-    clip_threshold_abs: u16,
-    peak_abs_left: u32,
-    peak_abs_right: u32,
-    rms_left: u32,
-    rms_right: u32,
-    noise_floor: u32,
-    clipped_samples_total: u64,
-    playing: bool,
-}
-
-#[derive(Serialize)]
-struct OtaStatus<'a> {
-    phase: &'a str,
-    bytes_written: u32,
-    bytes_total: u32,
-    latest_version: &'a str,
-    message: &'a str,
-    busy: bool,
-    rollback_available: bool,
-    rollback_version: &'a str,
-}
-
-#[derive(Serialize)]
-struct IndicatorStatus {
-    available: bool,
-    state: &'static str,
-}
-
 fn config_json(state: &ApiState) -> String {
     let config = state.config.lock().expect("configuration lock poisoned");
-    serialize(&ConfigResponse {
+    serialize(&api::ConfigResponse {
         device_name: &config.device_name,
         ssid: &config.ssid,
         target_host: &config.target_host,
@@ -1217,7 +964,7 @@ fn config_json(state: &ApiState) -> String {
         input_line: config.audio.input_line,
         input_gain: config.audio.input_gain,
         adc_atten_db: config.audio.adc_attenuation_db,
-        auto_update_schedule: config.auto_update_schedule.as_str(),
+        auto_update_schedule: config.auto_update_schedule.into(),
         config_source: "nvs",
     })
 }
@@ -1232,7 +979,7 @@ fn audio_profiles_json(state: &ApiState) -> String {
 
 fn status_json(state: &ApiState) -> String {
     let snapshot = telemetry_snapshot(state);
-    serialize(&StatusResponse::from_snapshot(
+    serialize(&api::StatusResponse::from_snapshot(
         &snapshot,
         state.board.as_ref(),
         state.health.as_ref(),
@@ -1243,11 +990,11 @@ fn board_catalog_json(state: &ApiState) -> String {
     let boards = state
         .board_catalog
         .iter()
-        .map(CapabilitiesStatus::from_board)
+        .map(api::CapabilitiesStatus::from_board)
         .collect();
-    serialize(&BoardCatalogResponse {
+    serialize(&api::BoardCatalogResponse {
         selected_board_id: state.board.id.as_str(),
-        selected_board: CapabilitiesStatus::from_board(state.board.as_ref()),
+        selected_board: api::CapabilitiesStatus::from_board(state.board.as_ref()),
         boards,
     })
 }
@@ -1358,7 +1105,7 @@ fn reset_reason() -> &'static str {
     }
 }
 
-impl<'a> StatusResponse<'a> {
+impl<'a> api::StatusResponse<'a> {
     fn from_snapshot(
         snapshot: &'a TelemetrySnapshot,
         board: &'a board::Board,
@@ -1377,8 +1124,8 @@ impl<'a> StatusResponse<'a> {
             web_server: snapshot.web_server,
             configuration_writable: snapshot.configuration_writable,
             auth_required: snapshot.auth_required,
-            capabilities: CapabilitiesStatus::from_board(board),
-            wifi: WifiStatus {
+            capabilities: api::CapabilitiesStatus::from_board(board),
+            wifi: api::WifiStatus {
                 hostname: &snapshot.wifi.hostname,
                 ssid: &snapshot.wifi.ssid,
                 status: snapshot.wifi.status,
@@ -1386,12 +1133,12 @@ impl<'a> StatusResponse<'a> {
                 ap_ip: &snapshot.wifi.ap_ip,
                 rssi: snapshot.wifi.rssi_dbm,
             },
-            target: TargetStatus {
+            target: api::TargetStatus {
                 target_host: &snapshot.target.host,
                 target_port: snapshot.target.port,
                 transport: snapshot.target.transport,
             },
-            audio: AudioStatus {
+            audio: api::AudioStatus {
                 input_line: snapshot.audio.input_line,
                 input_gain: snapshot.audio.input_gain,
                 adc_atten_db: snapshot.audio.adc_attenuation_db,
@@ -1399,7 +1146,7 @@ impl<'a> StatusResponse<'a> {
                 channels: snapshot.audio.channels,
                 bits_per_sample: snapshot.audio.bits_per_sample,
             },
-            metrics: MetricsStatus {
+            metrics: api::MetricsStatus {
                 sequence: snapshot.stream.sequence,
                 packets: snapshot.stream.packets_total,
                 bytes: snapshot.stream.bytes_total,
@@ -1418,12 +1165,12 @@ impl<'a> StatusResponse<'a> {
                 clipped_samples_total: snapshot.audio.clipped_samples_total,
                 playing: snapshot.audio.playing,
             },
-            diagnostics: DiagnosticsStatus {
+            diagnostics: api::DiagnosticsStatus {
                 reset_reason: snapshot.diagnostics.reset_reason,
                 last_fallback: &snapshot.diagnostics.last_fallback,
                 last_ota: &snapshot.diagnostics.last_ota,
             },
-            ota: OtaStatus {
+            ota: api::OtaStatus {
                 phase: snapshot.ota.phase,
                 bytes_written: snapshot.ota.bytes_written,
                 bytes_total: snapshot.ota.bytes_total,
@@ -1433,7 +1180,7 @@ impl<'a> StatusResponse<'a> {
                 rollback_available: snapshot.ota.rollback_available,
                 rollback_version: &snapshot.ota.rollback_version,
             },
-            indicator: IndicatorStatus {
+            indicator: api::IndicatorStatus {
                 available: board.status_led.is_some(),
                 state: indicator_state.as_str(),
             },
@@ -1450,19 +1197,18 @@ fn serialize<T: Serialize>(value: &T) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::{
-        authorized_secret, board_update_from_form, constant_time_eq, parse_form, serialize,
-        BoardCatalogResponse, BoardUpdate, CapabilitiesStatus,
+        authorized_secret, board_update_from_form, constant_time_eq, serialize, BoardUpdate,
     };
-    use crate::board;
+    use crate::{api, board};
 
     #[test]
     fn decodes_browser_urlencoded_forms() {
-        let form = parse_form("ssid=Studio+WiFi&target_host=bridge%2Elocal").expect("valid form");
-        assert_eq!(form["ssid"], "Studio WiFi");
-        assert_eq!(form["target_host"], "bridge.local");
+        let form: api::WifiSettingsRequest =
+            serde_urlencoded::from_str("ssid=Studio+WiFi&target_host=bridge%2Elocal")
+                .expect("valid form");
+        assert_eq!(form.ssid, "Studio WiFi");
+        assert_eq!(form.target_host.as_deref(), Some("bridge.local"));
     }
 
     #[test]
@@ -1492,23 +1238,25 @@ mod tests {
     fn capabilities_report_a_resolved_board_descriptor() {
         let catalog = board::builtin_catalog().expect("valid catalog");
         let board = board::resolve(&catalog, None).expect("default board");
-        let json = serialize(&CapabilitiesStatus::from_board(board));
+        let json = serialize(&api::CapabilitiesStatus::from_board(board));
         assert!(json.contains(r#""board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
         assert!(json.contains(r#""codec":{"driver":"es8388","i2c_address":16}"#));
         assert!(json.contains(
             r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
         ));
-        assert!(json.contains(r#""status_led":{"gpio":22,"active_low":false}"#));
     }
 
     #[test]
     fn board_catalog_reports_the_active_preset_and_built_ins() {
         let catalog = board::builtin_catalog().expect("valid catalog");
         let selected_board = board::resolve(&catalog, None).expect("default board");
-        let boards = catalog.iter().map(CapabilitiesStatus::from_board).collect();
-        let json = serialize(&BoardCatalogResponse {
+        let boards = catalog
+            .iter()
+            .map(api::CapabilitiesStatus::from_board)
+            .collect();
+        let json = serialize(&api::BoardCatalogResponse {
             selected_board_id: selected_board.id.as_str(),
-            selected_board: CapabilitiesStatus::from_board(selected_board),
+            selected_board: api::CapabilitiesStatus::from_board(selected_board),
             boards,
         });
 
@@ -1521,26 +1269,22 @@ mod tests {
     #[test]
     fn board_update_selects_builtin_presets() {
         let catalog = board::builtin_catalog().expect("valid catalog");
-        let form = parse_form("board_id=ai-thinker-esp32-audio-kit-v2-2-es8388").expect("form");
+        let form = api::BoardSettingsRequest {
+            board_id: Some("ai-thinker-esp32-audio-kit-v2-2-es8388".to_owned()),
+            descriptor: None,
+        };
 
-        let update = board_update_from_form(&form, &catalog).expect("valid board update");
+        let update = board_update_from_form(form, &catalog).expect("valid board update");
 
         assert!(matches!(&update, BoardUpdate::BuiltIn(_)));
         assert_eq!(update.board().id, "ai-thinker-esp32-audio-kit-v2-2-es8388");
     }
 
-    fn descriptor_form(board: &board::Board) -> BTreeMap<String, String> {
-        let descriptor = serde_json::to_string(board).expect("json");
-        parse_form(&format!(
-            "descriptor={}",
-            descriptor
-                .replace('%', "%25")
-                .replace('&', "%26")
-                .replace('=', "%3D")
-                .replace('+', "%2B")
-                .replace(' ', "+")
-        ))
-        .expect("form")
+    fn descriptor_form(board: &board::Board) -> api::BoardSettingsRequest {
+        api::BoardSettingsRequest {
+            board_id: None,
+            descriptor: Some(serde_json::to_string(board).expect("json")),
+        }
     }
 
     #[test]
@@ -1550,7 +1294,7 @@ mod tests {
         custom.id = "custom-akv22".to_owned();
         let form = descriptor_form(&custom);
 
-        let update = board_update_from_form(&form, &catalog).expect("valid board update");
+        let update = board_update_from_form(form, &catalog).expect("valid board update");
 
         assert!(matches!(&update, BoardUpdate::Custom(_)));
         assert_eq!(update.board().id, "custom-akv22");
@@ -1563,7 +1307,7 @@ mod tests {
         let form = descriptor_form(&custom);
 
         let error =
-            board_update_from_form(&form, &catalog).expect_err("built-in id must be rejected");
+            board_update_from_form(form, &catalog).expect_err("built-in id must be rejected");
 
         assert!(error.to_string().contains("built-in"));
     }
@@ -1576,8 +1320,8 @@ mod tests {
         custom.codec.driver = "wm8960".to_owned();
         let form = descriptor_form(&custom);
 
-        let error = board_update_from_form(&form, &catalog)
-            .expect_err("unsupported codec must be rejected");
+        let error =
+            board_update_from_form(form, &catalog).expect_err("unsupported codec must be rejected");
 
         assert!(error.to_string().contains("wm8960"));
     }

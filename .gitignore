@@ -11,6 +11,8 @@ analysis-data/
 dist/
 node_modules/
 .vite/
+# Generated from docs/openapi.json before every console check and build.
+console/src/generated/
 # Firmware bundled into the WebFlasher site at deploy time; never committed.
 webflasher/*.bin
 .DS_Store

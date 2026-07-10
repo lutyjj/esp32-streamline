@@ -16,14 +16,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setTransport((input, init) => fetch(input, init));
+  setTransport((request) => fetch(request));
 });
 
 describe('joinNetwork', () => {
   it('sends the credentials with the generated admin key', async () => {
     let body = '';
-    setTransport(async (_input, init) => {
-      body = String(init?.body);
+    setTransport(async (request) => {
+      body = await request.text();
       return new Response('{"rebooting":true}', { status: 200 });
     });
 

@@ -20,9 +20,9 @@ HTTP consumer can read it too.
 - **Self-hosted bridge** — one Docker container turns the TCP PCM stream into
   a live HTTP WAV stream. A ~1 s playout buffer smooths Wi-Fi jitter and
   conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
-- **Verified OTA updates** — one console button pulls the latest GitHub
-  release over HTTPS, verifies its SHA-256, and rolls back automatically if
-  the new image fails to boot. See [OTA updates](docs/ota.md).
+- **Verified automatic OTA updates** — the device pulls new GitHub releases
+  over HTTPS, verifies their SHA-256, and rolls back automatically if an image
+  fails to boot. See [OTA updates](docs/ota.md).
 
 The device speaks plain HTTP on a trusted LAN. Read the
 [security notes](docs/security.md) before exposing any port.
@@ -106,9 +106,10 @@ monitoring, scrape `http://<esp32-host>/api/metrics`; JSON diagnostics live at
 
 ### 4. Update
 
-Console → **System** → **Check for update**. [OTA updates](docs/ota.md)
-covers the flow, rollback, and the one-time serial reflash that pre-OTA
-devices need.
+Daily automatic updates are enabled by default and wait for idle audio. Console
+→ **System** → **Firmware** can switch to weekly, disable them, check immediately,
+or install manually. [OTA updates](docs/ota.md) covers the flow, rollback, and
+the one-time serial reflash that pre-OTA devices need.
 
 ## Development
 

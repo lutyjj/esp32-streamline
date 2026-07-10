@@ -2,6 +2,8 @@
 //! board descriptor (`crate::board`), so validation stays host-testable
 //! and cannot diverge from what the device advertises.
 
+use std::time::Duration;
+
 use crate::board::Board;
 
 pub const MIN_PORT: u16 = 1;
@@ -14,6 +16,52 @@ pub const MIN_ADMIN_SECRET_LEN: usize = 8;
 /// treated as unconfigured so the device re-commissions rather than booting without
 /// an admin key.
 pub const CONFIG_SCHEMA_VERSION: u8 = 2;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum AutoUpdateSchedule {
+    Disabled = 0,
+    Daily = 1,
+    Weekly = 2,
+}
+
+impl AutoUpdateSchedule {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "disabled" => Some(Self::Disabled),
+            "daily" => Some(Self::Daily),
+            "weekly" => Some(Self::Weekly),
+            _ => None,
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Daily => "daily",
+            Self::Weekly => "weekly",
+        }
+    }
+
+    /// Decode the optional NVS value. Absence means the default for devices
+    /// provisioned before this setting existed; unknown future values fail
+    /// closed if older firmware boots the same NVS.
+    pub const fn from_storage(value: Option<u8>) -> Self {
+        match value {
+            None | Some(1) => Self::Daily,
+            Some(2) => Self::Weekly,
+            Some(0) | Some(_) => Self::Disabled,
+        }
+    }
+
+    pub const fn interval(self) -> Option<Duration> {
+        match self {
+            Self::Disabled => None,
+            Self::Daily => Some(Duration::from_secs(24 * 60 * 60)),
+            Self::Weekly => Some(Duration::from_secs(7 * 24 * 60 * 60)),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AudioSettings {
@@ -104,6 +152,8 @@ pub struct RuntimeConfig {
     /// Friendly name that tells devices apart in the console and browser tab.
     /// Empty means unnamed; clients fall back to the device's address.
     pub device_name: String,
+    /// How often to install newer published releases while provisioned.
+    pub auto_update_schedule: AutoUpdateSchedule,
     pub audio: AudioSettings,
 }
 
@@ -133,7 +183,7 @@ impl RuntimeConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{AudioSettings, ConfigError, NetworkSettings};
+    use super::{AudioSettings, AutoUpdateSchedule, ConfigError, NetworkSettings};
     use crate::board::{self, Board, CodecSpec, I2cPins, I2sPins, InputOption, PinMap};
 
     #[test]
@@ -258,6 +308,7 @@ mod tests {
             target_port: 39_000,
             admin_secret: "console-secret".to_owned(),
             device_name: String::new(),
+            auto_update_schedule: AutoUpdateSchedule::Daily,
             audio: AudioSettings {
                 input_line: 2,
                 input_gain: 0,
@@ -297,6 +348,29 @@ mod tests {
         assert_eq!(
             config.validate(&default_board()),
             Err(ConfigError::WeakAdminSecret)
+        );
+    }
+
+    #[test]
+    fn automatic_update_schedules_have_stable_api_and_storage_names() {
+        for (name, stored, schedule) in [
+            ("disabled", 0, AutoUpdateSchedule::Disabled),
+            ("daily", 1, AutoUpdateSchedule::Daily),
+            ("weekly", 2, AutoUpdateSchedule::Weekly),
+        ] {
+            assert_eq!(AutoUpdateSchedule::parse(name), Some(schedule));
+            assert_eq!(schedule.as_str(), name);
+            assert_eq!(AutoUpdateSchedule::from_storage(Some(stored)), schedule);
+            assert_eq!(schedule as u8, stored);
+        }
+        assert_eq!(
+            AutoUpdateSchedule::from_storage(None),
+            AutoUpdateSchedule::Daily
+        );
+        assert_eq!(AutoUpdateSchedule::parse("0 3 * * *"), None);
+        assert_eq!(
+            AutoUpdateSchedule::from_storage(Some(3)),
+            AutoUpdateSchedule::Disabled
         );
     }
 

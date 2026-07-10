@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use anyhow::Result;
 use esp_idf_svc::{
@@ -19,9 +22,9 @@ use streamline_firmware::{
         time, wifi,
     },
     board::{self, Board},
-    config::{AudioSettings, RuntimeConfig},
+    config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
     health::{BootFacts, HealthReport},
-    identity, runtime,
+    identity, runtime, update,
 };
 
 fn main() -> Result<()> {
@@ -145,9 +148,34 @@ fn main() -> Result<()> {
         health,
         rollback,
     });
-    let _server = http::start(state)?;
+    let _server = http::start(Arc::clone(&state))?;
+    let booted_at = Instant::now();
+    let mut auto_update_timer = update::AutoUpdateTimer::default();
     loop {
         FreeRtos::delay_ms(1_000);
+        if mode != Mode::Provisioned {
+            continue;
+        }
+        let schedule = state
+            .config
+            .lock()
+            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
+            .auto_update_schedule;
+        let audio_idle = state
+            .stream
+            .as_ref()
+            .map(|stream| !stream.snapshot().playing)
+            .unwrap_or(true);
+        if auto_update_timer.take_due(booted_at.elapsed(), schedule, audio_idle) {
+            log::info!("automatic firmware update check started");
+            if let Err(error) = ota::spawn_update(
+                Arc::clone(&state.ota),
+                Arc::clone(&state.store),
+                ota::Source::LatestRelease,
+            ) {
+                log::warn!("automatic firmware update check could not start: {error:#}");
+            }
+        }
     }
 }
 
@@ -248,6 +276,7 @@ fn start_setup(
             // own AP so commissioning can establish one. See `http::authorized`.
             admin_secret: String::new(),
             device_name: String::new(),
+            auto_update_schedule: AutoUpdateSchedule::Daily,
             // Safe line-in baseline: 0 dB PGA (no clipping) on line 2. Adjust per
             // board in setup mode.
             audio: AudioSettings {

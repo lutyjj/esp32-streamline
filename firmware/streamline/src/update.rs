@@ -7,13 +7,52 @@
 //! comparison here makes them host-testable, away from the network and flash
 //! adapters.
 
+use std::time::Duration;
+
 use sha2::{Digest, Sha256};
+
+use crate::config::AutoUpdateSchedule;
 
 /// The application image published for over-the-air updates. Its filename
 /// carries the release version, so one `SHA256SUMS` entry yields everything the
 /// installer needs.
 const OTA_ASSET_SUFFIX: &str = "-ota.bin";
 const ASSET_PREFIX: &str = "streamline-";
+
+/// Let boot, Wi-Fi, SNTP, and the console settle before background maintenance.
+pub const AUTO_UPDATE_INITIAL_DELAY: Duration = Duration::from_secs(10 * 60);
+/// Monotonic schedule for automatic release installs.
+///
+/// The clock stays outside this unit so host tests use plain durations and the
+/// ESP-IDF boot loop supplies its own monotonic elapsed time.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct AutoUpdateTimer {
+    last_attempt: Option<Duration>,
+}
+
+impl AutoUpdateTimer {
+    /// Reserve a due attempt. A due update waits for the audio source to become
+    /// idle, keeping automatic maintenance out of active listening sessions.
+    pub fn take_due(
+        &mut self,
+        now: Duration,
+        schedule: AutoUpdateSchedule,
+        audio_idle: bool,
+    ) -> bool {
+        let Some(interval) = schedule.interval() else {
+            return false;
+        };
+        let due_at = self
+            .last_attempt
+            .map(|last| last.saturating_add(interval))
+            .unwrap_or(AUTO_UPDATE_INITIAL_DELAY);
+        if !audio_idle || now < due_at {
+            return false;
+        }
+        self.last_attempt = Some(now);
+        true
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OtaRelease {
@@ -231,9 +270,12 @@ pub fn hex_lower(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        custom_image_from_form, install_verified, is_newer, parse_release, CustomImage, ImageSink,
-        ImageSource, InstallError, InstallProgress, OtaRelease,
+        custom_image_from_form, install_verified, is_newer, parse_release, AutoUpdateTimer,
+        CustomImage, ImageSink, ImageSource, InstallError, InstallProgress, OtaRelease,
+        AUTO_UPDATE_INITIAL_DELAY,
     };
+    use crate::config::AutoUpdateSchedule;
+    use std::time::Duration;
 
     /// SHA-256 of `b"hello"`, the reference vector the pipeline tests verify against.
     const HELLO_SHA256: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
@@ -449,5 +491,45 @@ mod tests {
         };
         assert!(image("https://bench.local/a.bin").needs_tls());
         assert!(!image("http://bench.local/a.bin").needs_tls());
+    }
+
+    #[test]
+    fn automatic_updates_wait_for_boot_and_repeat_daily() {
+        let mut timer = AutoUpdateTimer::default();
+
+        assert!(!timer.take_due(
+            AUTO_UPDATE_INITIAL_DELAY - Duration::from_secs(1),
+            AutoUpdateSchedule::Daily,
+            true
+        ));
+        assert!(timer.take_due(AUTO_UPDATE_INITIAL_DELAY, AutoUpdateSchedule::Daily, true));
+        assert!(!timer.take_due(
+            AUTO_UPDATE_INITIAL_DELAY + Duration::from_secs(24 * 60 * 60 - 1),
+            AutoUpdateSchedule::Daily,
+            true
+        ));
+        assert!(timer.take_due(
+            AUTO_UPDATE_INITIAL_DELAY + Duration::from_secs(24 * 60 * 60),
+            AutoUpdateSchedule::Daily,
+            true
+        ));
+    }
+
+    #[test]
+    fn due_maintenance_waits_for_idle_audio() {
+        let mut timer = AutoUpdateTimer::default();
+        let overdue = AUTO_UPDATE_INITIAL_DELAY + Duration::from_secs(30);
+
+        assert!(!timer.take_due(overdue, AutoUpdateSchedule::Daily, false));
+        assert!(timer.take_due(overdue, AutoUpdateSchedule::Daily, true));
+    }
+
+    #[test]
+    fn disabled_maintenance_does_not_consume_an_overdue_attempt() {
+        let mut timer = AutoUpdateTimer::default();
+        let overdue = AUTO_UPDATE_INITIAL_DELAY + Duration::from_secs(30);
+
+        assert!(!timer.take_due(overdue, AutoUpdateSchedule::Disabled, true));
+        assert!(timer.take_due(overdue, AutoUpdateSchedule::Weekly, true));
     }
 }

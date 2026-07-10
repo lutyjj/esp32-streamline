@@ -5,7 +5,9 @@ use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
 
 use crate::{
     board::{self, Board, BoardSelection},
-    config::{AudioSettings, ConfigError, RuntimeConfig, CONFIG_SCHEMA_VERSION},
+    config::{
+        AudioSettings, AutoUpdateSchedule, ConfigError, RuntimeConfig, CONFIG_SCHEMA_VERSION,
+    },
 };
 
 const NAMESPACE: &str = "streamline";
@@ -16,6 +18,7 @@ const KEY_TARGET_HOST: &str = "target_host";
 const KEY_TARGET_PORT: &str = "target_port";
 const KEY_ADMIN_SECRET: &str = "admin_secret";
 const KEY_DEVICE_NAME: &str = "device_name";
+const KEY_AUTO_UPDATE: &str = "auto_update";
 const KEY_BOARD_ID: &str = "board_id";
 const KEY_BOARD_DESCRIPTOR: &str = "board_json";
 const KEY_INPUT_LINE: &str = "input_line";
@@ -113,6 +116,11 @@ impl ConfigStore {
             // reads best-effort instead of forcing a schema bump that would
             // re-commission every upgraded device.
             device_name: self.optional_string(KEY_DEVICE_NAME),
+            // Existing provisioned devices predate this optional key. They
+            // adopt the appliance default without a destructive schema bump.
+            auto_update_schedule: AutoUpdateSchedule::from_storage(
+                self.nvs.get_u8(KEY_AUTO_UPDATE)?,
+            ),
             audio: AudioSettings {
                 input_line: self.required_u8(KEY_INPUT_LINE)?,
                 input_gain: self.required_u8(KEY_INPUT_GAIN)?,
@@ -141,6 +149,8 @@ impl ConfigStore {
         self.nvs.set_u16(KEY_TARGET_PORT, config.target_port)?;
         self.nvs.set_str(KEY_ADMIN_SECRET, &config.admin_secret)?;
         self.nvs.set_str(KEY_DEVICE_NAME, &config.device_name)?;
+        self.nvs
+            .set_u8(KEY_AUTO_UPDATE, config.auto_update_schedule as u8)?;
         self.nvs.set_u8(KEY_INPUT_LINE, config.audio.input_line)?;
         self.nvs.set_u8(KEY_INPUT_GAIN, config.audio.input_gain)?;
         self.nvs
@@ -158,6 +168,7 @@ impl ConfigStore {
             KEY_TARGET_PORT,
             KEY_ADMIN_SECRET,
             KEY_DEVICE_NAME,
+            KEY_AUTO_UPDATE,
             KEY_BOARD_ID,
             KEY_BOARD_DESCRIPTOR,
             KEY_INPUT_LINE,

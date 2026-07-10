@@ -22,7 +22,7 @@ use crate::{
         wifi,
     },
     board,
-    config::{AudioSettings, RuntimeConfig},
+    config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
     health::{HealthReport, Severity},
     levels::CLIP_THRESHOLD_ABS,
     metrics::render_prometheus,
@@ -203,6 +203,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     target_port,
                     admin_secret,
                     device_name: current.device_name,
+                    auto_update_schedule: current.auto_update_schedule,
                     audio: current.audio,
                 };
                 save(&state_for_wifi, next)
@@ -402,6 +403,50 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     .clone();
                 next.admin_secret = required(&form, "admin_secret")?.to_owned();
                 save(&state_for_admin_key, next)
+            })();
+            match result {
+                Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
+                Err(error) => bad_request(request, error),
+            }
+        },
+    )?;
+
+    // Firmware maintenance is a live policy setting. The boot loop reads the
+    // shared config before each scheduled attempt, so changing it needs no
+    // reboot and the OTA worker remains the single installation path.
+    let state_for_firmware = Arc::clone(&state);
+    server.fn_handler::<anyhow::Error, _>(
+        "/api/settings/firmware",
+        Method::Post,
+        move |mut request| {
+            if !authorized(&request, &state_for_firmware) {
+                return unauthorized(request);
+            }
+            let result = (|| -> Result<()> {
+                let form = form(&mut request)?;
+                let auto_update_schedule =
+                    AutoUpdateSchedule::parse(required(&form, "auto_update_schedule")?)
+                        .ok_or_else(|| {
+                            anyhow!("auto_update_schedule must be disabled, daily, or weekly")
+                        })?;
+                let current = state_for_firmware
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow!("configuration lock poisoned"))?
+                    .clone();
+                let next = RuntimeConfig {
+                    auto_update_schedule,
+                    ..current
+                };
+                if state_for_firmware.mode == Mode::Provisioned {
+                    save(&state_for_firmware, next)
+                } else {
+                    *state_for_firmware
+                        .config
+                        .lock()
+                        .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
+                    Ok(())
+                }
             })();
             match result {
                 Ok(()) => respond(request, 200, "application/json", r#"{"ok":true}"#),
@@ -817,6 +862,7 @@ struct ConfigResponse<'a> {
     input_line: u8,
     input_gain: u8,
     adc_atten_db: u8,
+    auto_update_schedule: &'a str,
     config_source: &'a str,
 }
 
@@ -1008,6 +1054,7 @@ fn config_json(state: &ApiState) -> String {
         input_line: config.audio.input_line,
         input_gain: config.audio.input_gain,
         adc_atten_db: config.audio.adc_attenuation_db,
+        auto_update_schedule: config.auto_update_schedule.as_str(),
         config_source: "nvs",
     })
 }

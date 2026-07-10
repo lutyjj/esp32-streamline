@@ -152,6 +152,7 @@ export interface DeviceConfig {
   input_line: number;
   input_gain: number;
   adc_atten_db: number;
+  auto_update_schedule: 'disabled' | 'daily' | 'weekly';
   config_source: string;
 }
 

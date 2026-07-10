@@ -24,6 +24,7 @@ use crate::{
     board,
     config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
     health::{HealthReport, Severity},
+    indicator,
     levels::CLIP_THRESHOLD_ABS,
     metrics::render_prometheus,
     profiles::AudioProfileCatalog,
@@ -1033,6 +1034,7 @@ struct StatusResponse<'a> {
     metrics: MetricsStatus,
     diagnostics: DiagnosticsStatus<'a>,
     ota: OtaStatus<'a>,
+    indicator: IndicatorStatus,
     /// Startup health verdict; mirrors `health` in `console/src/lib/api.ts`.
     health: &'a HealthReport,
 }
@@ -1046,6 +1048,7 @@ struct CapabilitiesStatus<'a> {
     board: &'a str,
     codec: CodecStatus<'a>,
     pins: PinMapStatus,
+    status_led: Option<StatusLedStatus>,
     input_lines: Vec<InputLineStatus<'a>>,
     input_gain_max: u8,
     adc_atten_max_db: u8,
@@ -1078,6 +1081,12 @@ struct I2sPinsStatus {
 }
 
 #[derive(Serialize)]
+struct StatusLedStatus {
+    gpio: u8,
+    active_low: bool,
+}
+
+#[derive(Serialize)]
 struct InputLineStatus<'a> {
     line: u8,
     label: &'a str,
@@ -1104,6 +1113,10 @@ impl<'a> CapabilitiesStatus<'a> {
                     din: board.pins.i2s.din,
                 },
             },
+            status_led: board.status_led.map(|led| StatusLedStatus {
+                gpio: led.gpio,
+                active_low: led.active_low,
+            }),
             input_lines: board
                 .input_lines
                 .iter()
@@ -1186,6 +1199,12 @@ struct OtaStatus<'a> {
     busy: bool,
     rollback_available: bool,
     rollback_version: &'a str,
+}
+
+#[derive(Serialize)]
+struct IndicatorStatus {
+    available: bool,
+    state: &'static str,
 }
 
 fn config_json(state: &ApiState) -> String {
@@ -1345,6 +1364,11 @@ impl<'a> StatusResponse<'a> {
         board: &'a board::Board,
         health: &'a HealthReport,
     ) -> Self {
+        let indicator_state = indicator::select(
+            snapshot.mode == "setup",
+            health.status == Severity::Blocking,
+            snapshot.audio.playing,
+        );
         Self {
             firmware_version: snapshot.firmware_version,
             device_name: &snapshot.device_name,
@@ -1409,6 +1433,10 @@ impl<'a> StatusResponse<'a> {
                 rollback_available: snapshot.ota.rollback_available,
                 rollback_version: &snapshot.ota.rollback_version,
             },
+            indicator: IndicatorStatus {
+                available: board.status_led.is_some(),
+                state: indicator_state.as_str(),
+            },
             health,
         }
     }
@@ -1470,6 +1498,7 @@ mod tests {
         assert!(json.contains(
             r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
         ));
+        assert!(json.contains(r#""status_led":{"gpio":22,"active_low":false}"#));
     }
 
     #[test]

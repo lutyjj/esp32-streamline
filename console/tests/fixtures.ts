@@ -34,6 +34,7 @@ export function deviceStatus(
         i2c: { sda: 33, scl: 32 },
         i2s: { mclk: 0, bclk: 27, ws: 25, din: 35 },
       },
+      status_led: { gpio: 22, active_low: false },
       input_lines: [
         { line: 2, label: 'Line 2 — 3.5 mm jack' },
         { line: 1, label: 'Line 1 — header pins' },
@@ -81,6 +82,7 @@ export function deviceStatus(
       ...metrics,
     },
     diagnostics: { reset_reason: 'power-on', last_fallback: '', last_ota: '', ...diagnostics },
+    indicator: { available: true, state: 'ready' },
     ota: {
       phase: 'idle',
       bytes_written: 0,

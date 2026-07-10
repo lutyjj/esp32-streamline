@@ -29,20 +29,21 @@ impl AudioPins<'static> {
     pub fn new(map: PinMap) -> Self {
         Self {
             i2c: I2cBusPins {
-                sda: any_io_pin(map.i2c.sda),
-                scl: any_io_pin(map.i2c.scl),
+                sda: output_pin(map.i2c.sda),
+                scl: output_pin(map.i2c.scl),
             },
             i2s: I2sBusPins {
-                mclk: any_io_pin(map.i2s.mclk),
-                bclk: any_io_pin(map.i2s.bclk),
-                ws: any_io_pin(map.i2s.ws),
+                mclk: output_pin(map.i2s.mclk),
+                bclk: output_pin(map.i2s.bclk),
+                ws: output_pin(map.i2s.ws),
                 din: any_input_pin(map.i2s.din),
             },
         }
     }
 }
 
-fn any_io_pin(gpio: u8) -> AnyIOPin<'static> {
+/// Turn a validated descriptor GPIO into an erased output-capable HAL pin.
+pub fn output_pin(gpio: u8) -> AnyIOPin<'static> {
     // Safety: board descriptors are validated before boot wiring reaches this
     // adapter, and `main` does not retain the generated `Pins` token. No
     // second HAL pin instance is kept or used.

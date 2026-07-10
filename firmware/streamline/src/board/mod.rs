@@ -47,6 +47,16 @@ pub struct I2sPins {
     pub din: u8,
 }
 
+/// Optional single-color status light wired to an ESP32 output GPIO.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct StatusLed {
+    pub gpio: u8,
+    /// `true` when driving the GPIO low lights the LED.
+    #[serde(default)]
+    pub active_low: bool,
+}
+
 /// One selectable input, with the label the console shows for it.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -69,6 +79,9 @@ pub struct Board {
     pub codec: CodecSpec,
     /// ESP32 GPIO wiring for codec control and I2S capture.
     pub pins: PinMap,
+    /// A board-owned light that renders the device's status, when present.
+    #[serde(default)]
+    pub status_led: Option<StatusLed>,
     /// Selectable inputs in console order, never empty; the first entry is
     /// the factory default.
     pub input_lines: Vec<InputOption>,
@@ -134,6 +147,12 @@ impl Board {
         validate_output_gpio(self.pins.i2s.bclk)?;
         validate_output_gpio(self.pins.i2s.ws)?;
         validate_input_gpio(self.pins.i2s.din)?;
+        if let Some(led) = self.status_led {
+            validate_output_gpio(led.gpio)?;
+            if self.gpios().contains(&led.gpio) {
+                return Err(BoardError::DuplicateGpio);
+            }
+        }
         for (i, a) in self.gpios().iter().enumerate() {
             for b in &self.gpios()[i + 1..] {
                 if a == b {
@@ -252,6 +271,7 @@ mod tests {
                     "i2c":{"sda":4,"scl":5},
                     "i2s":{"mclk":12,"bclk":13,"ws":14,"din":35}
                 },
+                "status_led":{"gpio":22},
                 "input_lines":[{"line":7,"label":"only input"}],
                 "input_gain_max":10,
                 "adc_atten_max_db":6
@@ -304,6 +324,7 @@ mod tests {
                     din: 35,
                 },
             },
+            status_led: None,
             input_lines: vec![
                 InputOption {
                     line: 1,
@@ -347,6 +368,18 @@ mod tests {
             ..duplicate_lines.clone()
         };
         assert_eq!(duplicate_gpios.validate(), Err(BoardError::DuplicateGpio));
+
+        let duplicate_led_gpio = Board {
+            status_led: Some(StatusLed {
+                gpio: 14,
+                active_low: false,
+            }),
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(
+            duplicate_led_gpio.validate(),
+            Err(BoardError::DuplicateGpio)
+        );
 
         let invalid_output = Board {
             pins: PinMap {

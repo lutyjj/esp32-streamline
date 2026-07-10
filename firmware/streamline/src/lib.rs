@@ -12,6 +12,7 @@ pub mod config;
 mod counter;
 pub mod health;
 pub mod identity;
+pub mod indicator;
 pub mod levels;
 pub mod metrics;
 pub mod packet;

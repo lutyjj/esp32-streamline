@@ -280,6 +280,7 @@ mod tests {
                     din: 35,
                 },
             },
+            status_led: None,
             input_lines: vec![InputOption {
                 line: 7,
                 label: "test input".to_owned(),

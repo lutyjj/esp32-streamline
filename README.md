@@ -43,6 +43,12 @@ release firmware is a generic ESP32 app image with an embedded official
 descriptor catalog. See
 [design notes](docs/design.md#board-support).
 
+### Status light
+
+A board with a status light flashes once in setup, twice when ready but idle,
+stays lit while streaming, and flashes three times on a startup fault.
+`GET /api/status` reports the selected state under `indicator`.
+
 ## Quick start
 
 ### 1. Flash the firmware

@@ -17,6 +17,9 @@
       "din": 35
     }
   },
+  "status_led": {
+    "gpio": 22
+  },
   "input_lines": [
     {
       "line": 2,

@@ -125,8 +125,12 @@ add its check to the owning component's lint target.
 
 ## A change is ready only when it is clean
 
-A change is ready to commit only when it builds, passes tests, and passes
-formatting and lint. Run `make lint && make test`; CI runs the same.
+A change is ready to commit only when the changed components build, pass tests,
+and pass formatting and lint. Run the matching `make <component>-lint`,
+`make <component>-test`, and build target when one applies. Run `make lint &&
+make test` only for cross-component, CI, release, or integration changes, or
+when explicitly requested. A console or webflasher-only change does not build
+or test firmware.
 
 ## Prove firmware on a device
 

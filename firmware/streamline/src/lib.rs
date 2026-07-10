@@ -7,6 +7,7 @@
 //! concerns from leaking into application logic.
 
 pub mod board;
+pub mod captive_portal;
 pub mod config;
 #[cfg(any(test, target_os = "espidf"))]
 mod counter;

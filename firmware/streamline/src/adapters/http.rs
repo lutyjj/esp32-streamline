@@ -82,8 +82,10 @@ pub struct ApiState {
 }
 
 pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
+    let setup_mode = state.mode == Mode::Setup;
     let mut server = EspHttpServer::new(&Configuration {
         stack_size: 8_192,
+        uri_match_wildcard: setup_mode,
         ..Default::default()
     })?;
     server.fn_handler("/", Method::Get, move |request| {
@@ -492,17 +494,23 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         reboot_response(request)
     })?;
 
+    let state_for_factory_reset = Arc::clone(&state);
     server.fn_handler::<anyhow::Error, _>("/api/factory-reset", Method::Post, move |request| {
-        if !authorized(&request, &state) {
+        if !authorized(&request, &state_for_factory_reset) {
             return unauthorized(request);
         }
-        state
+        state_for_factory_reset
             .store
             .lock()
             .map_err(|_| anyhow!("configuration lock poisoned"))?
             .clear()?;
         reboot_response(request)
     })?;
+    if setup_mode {
+        server.fn_handler::<anyhow::Error, _>("/*", Method::Get, move |request| {
+            captive_portal_redirect(request)
+        })?;
+    }
     Ok(server)
 }
 
@@ -572,6 +580,26 @@ where
             ],
         )?
         .write_all(body.as_bytes())?;
+    Ok(())
+}
+
+fn captive_portal_redirect<C>(request: embedded_svc::http::server::Request<C>) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    log::info!("setup HTTP request redirected to console");
+    request
+        .into_response(
+            302,
+            None,
+            &[
+                ("Content-Type", "text/plain; charset=utf-8"),
+                ("Cache-Control", "no-store"),
+                ("Location", "/"),
+            ],
+        )?
+        .write_all(b"Open the StreamLine setup console.")?;
     Ok(())
 }
 

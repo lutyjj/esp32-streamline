@@ -90,7 +90,8 @@ flags.
 
 ### 3. Configure the device
 
-1. Join the `esp32-streamline-XXXX` Wi-Fi network and open `http://192.168.71.1/`.
+1. Join the `esp32-streamline-XXXX` Wi-Fi network. Your device should open the
+   setup console automatically; if it does not, open `http://192.168.71.1/`.
 2. Enter your Wi-Fi credentials and continue to the generated admin key.
 3. **Save the generated admin key.** The device never shows it again. The key
    unlocks every later settings change; lose it and you must reflash.

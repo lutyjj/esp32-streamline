@@ -8,7 +8,7 @@ use esp_idf_svc::{
 };
 use streamline_firmware::{
     adapters::{
-        codec,
+        captive_portal, codec,
         http::{self, ApiState, Mode},
         i2s::Capture,
         mdns::MdnsAdvertisement,
@@ -58,7 +58,7 @@ fn main() -> Result<()> {
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
 
-    let (mode, config, stream, codec, health) = match persisted {
+    let boot = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
             // Wi-Fi is up, so the device is reachable on the home network and
             // stays provisioned. A bridge target that will not resolve or audio
@@ -91,7 +91,14 @@ fn main() -> Result<()> {
                     "StreamLine provisioned; startup health: {:?}",
                     health.status
                 );
-                (Mode::Provisioned, config, audio.stream, audio.codec, health)
+                BootState {
+                    mode: Mode::Provisioned,
+                    config,
+                    stream: audio.stream,
+                    codec: audio.codec,
+                    health,
+                    setup_network: None,
+                }
             }
             Err(error) => {
                 let reason = format!("Wi-Fi station connection failed: {error:#}");
@@ -102,6 +109,14 @@ fn main() -> Result<()> {
         },
         None => start_setup(&mut wifi, &suffix, board.as_ref())?,
     };
+    let BootState {
+        mode,
+        config,
+        stream,
+        codec,
+        health,
+        mut setup_network,
+    } = boot;
 
     // Reaching the home network with the console up is the signal an
     // over-the-air image booted correctly; confirm the slot so the rollback
@@ -130,7 +145,6 @@ fn main() -> Result<()> {
     } else {
         None
     };
-
     let state = Arc::new(ApiState {
         mode,
         hostname: local_hostname,
@@ -146,6 +160,13 @@ fn main() -> Result<()> {
         rollback,
     });
     let _server = http::start(state)?;
+    if let Some(network) = &mut setup_network {
+        if let Err(error) = captive_portal::start_dns_responder(network.address()) {
+            log::warn!("setup DNS responder failed: {error:#}");
+        }
+        wifi::start_setup_dhcp(network)?;
+        log::info!("setup captive portal ready for {}", network.ssid());
+    }
     loop {
         FreeRtos::delay_ms(1_000);
     }
@@ -222,24 +243,29 @@ impl AudioOutcome {
     }
 }
 
-type SetupState = (
-    Mode,
-    RuntimeConfig,
-    Option<Arc<runtime::StreamStatus>>,
-    Option<Arc<Mutex<codec::CodecControl<'static>>>>,
-    Arc<HealthReport>,
-);
+struct BootState {
+    mode: Mode,
+    config: RuntimeConfig,
+    stream: Option<Arc<runtime::StreamStatus>>,
+    codec: Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    health: Arc<HealthReport>,
+    setup_network: Option<wifi::SetupNetwork>,
+}
 
 fn start_setup(
     wifi: &mut wifi::WifiController<'_>,
     suffix: &str,
     board: &Board,
-) -> Result<SetupState> {
-    let ssid = wifi::start_setup_ap(wifi, suffix)?;
-    log::info!("setup AP started: {ssid}");
-    Ok((
-        Mode::Setup,
-        RuntimeConfig {
+) -> Result<BootState> {
+    let network = wifi::start_setup_ap(wifi, suffix)?;
+    log::info!(
+        "setup AP started: {} at {}",
+        network.ssid(),
+        network.address()
+    );
+    Ok(BootState {
+        mode: Mode::Setup,
+        config: RuntimeConfig {
             ssid: String::new(),
             password: String::new(),
             target_host: String::new(),
@@ -256,9 +282,10 @@ fn start_setup(
                 adc_attenuation_db: 0,
             },
         },
-        None,
-        None,
+        stream: None,
+        codec: None,
         // Nothing to check until the device reaches the home network.
-        Arc::new(HealthReport::healthy()),
-    ))
+        health: Arc::new(HealthReport::healthy()),
+        setup_network: Some(network),
+    })
 }

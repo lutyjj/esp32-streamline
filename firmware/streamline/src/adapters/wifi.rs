@@ -1,8 +1,9 @@
 //! ESP-IDF Wi-Fi ownership and mode transitions.
 
 use core::{convert::TryInto, ffi::CStr};
+use std::{ffi::CString, net::Ipv4Addr};
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use embedded_svc::wifi::{
     AccessPointConfiguration, AuthMethod, ClientConfiguration, Configuration,
 };
@@ -11,15 +12,43 @@ use esp_idf_svc::{
     hal::{delay::FreeRtos, modem::Modem},
     nvs::EspDefaultNvsPartition,
     sys::{
-        esp_netif_get_handle_from_ifkey, esp_netif_get_ip_info, esp_netif_ip_info_t,
-        esp_wifi_sta_get_ap_info, wifi_ap_record_t, ESP_OK,
+        esp_netif_dhcp_option_id_t_ESP_NETIF_CAPTIVEPORTAL_URI,
+        esp_netif_dhcp_option_mode_t_ESP_NETIF_OP_SET, esp_netif_dhcps_option,
+        esp_netif_dhcps_start, esp_netif_dhcps_stop, esp_netif_get_handle_from_ifkey,
+        esp_netif_get_ip_info, esp_netif_ip_info_t, esp_netif_set_ip_info,
+        esp_wifi_sta_get_ap_info, wifi_ap_record_t, EspError,
+        ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED, ESP_OK,
     },
     wifi::{BlockingWifi, EspWifi},
 };
 
-use crate::{config::RuntimeConfig, identity};
+use crate::{captive_portal, config::RuntimeConfig, identity};
 
 pub type WifiController<'d> = BlockingWifi<EspWifi<'d>>;
+
+/// Setup-network facts that remain live while setup-mode services run.
+pub struct SetupNetwork {
+    ssid: String,
+    address: Ipv4Addr,
+    dhcp_started: bool,
+    /// ESP-IDF stores this pointer for DHCP Option 114 instead of copying the
+    /// string, so this owner must live as long as the DHCP server.
+    _captive_portal_uri: CString,
+}
+
+impl SetupNetwork {
+    pub fn ssid(&self) -> &str {
+        &self.ssid
+    }
+
+    pub fn address(&self) -> Ipv4Addr {
+        self.address
+    }
+
+    fn mark_dhcp_started(&mut self) {
+        self.dhcp_started = true;
+    }
+}
 
 pub fn create<'d>(
     modem: Modem<'d>,
@@ -74,7 +103,7 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
 /// Start the physical-presence setup network. It is deliberately open because
 /// initial configuration has no pre-shared secret; HTTP writes are only enabled
 /// in this mode and the AP is never started on a provisioned device.
-pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<String> {
+pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<SetupNetwork> {
     let ssid = format!("esp32-streamline-{suffix}");
     let access_point = Configuration::AccessPoint(AccessPointConfiguration {
         ssid: ssid.as_str().try_into()?,
@@ -85,10 +114,89 @@ pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<Str
         ..Default::default()
     });
 
+    let address = captive_portal::SETUP_ADDRESS;
+    let captive_portal_uri = CString::new(captive_portal::console_url(address))?;
+    prepare_setup_netif(address, &captive_portal_uri)?;
     wifi.set_configuration(&access_point)?;
     wifi.start()?;
     wifi.wait_netif_up()?;
-    Ok(ssid)
+    stop_setup_dhcp(setup_ap_netif()?)?;
+    Ok(SetupNetwork {
+        ssid,
+        address,
+        dhcp_started: false,
+        _captive_portal_uri: captive_portal_uri,
+    })
+}
+
+pub fn start_setup_dhcp(network: &mut SetupNetwork) -> Result<()> {
+    if network.dhcp_started {
+        return Ok(());
+    }
+    let netif = setup_ap_netif()?;
+    match unsafe { esp_netif_dhcps_start(netif) } {
+        ESP_OK | ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED => {
+            network.mark_dhcp_started();
+            log::info!(
+                "setup DHCP advertises captive portal at {}",
+                network._captive_portal_uri.to_string_lossy()
+            );
+            Ok(())
+        }
+        code => esp_error(code).context("start setup DHCP server"),
+    }
+}
+
+fn prepare_setup_netif(address: Ipv4Addr, uri: &CString) -> Result<()> {
+    let netif = setup_ap_netif()?;
+    stop_setup_dhcp(netif)?;
+    let ip_info = setup_ip_info(address);
+    esp_error(unsafe { esp_netif_set_ip_info(netif, &ip_info) }).context("set setup AP address")?;
+    esp_error(unsafe {
+        esp_netif_dhcps_option(
+            netif,
+            esp_netif_dhcp_option_mode_t_ESP_NETIF_OP_SET,
+            esp_netif_dhcp_option_id_t_ESP_NETIF_CAPTIVEPORTAL_URI,
+            uri.as_ptr().cast_mut().cast(),
+            uri.as_bytes().len() as u32,
+        )
+    })
+    .context("set setup DHCP captive portal URI")?;
+    Ok(())
+}
+
+fn setup_ap_netif() -> Result<*mut esp_idf_svc::sys::esp_netif_obj> {
+    let netif = unsafe { esp_netif_get_handle_from_ifkey(c"WIFI_AP_DEF".as_ptr()) };
+    if netif.is_null() {
+        Err(anyhow!("setup AP network interface is unavailable"))
+    } else {
+        Ok(netif)
+    }
+}
+
+fn stop_setup_dhcp(netif: *mut esp_idf_svc::sys::esp_netif_obj) -> Result<()> {
+    match unsafe { esp_netif_dhcps_stop(netif) } {
+        ESP_OK | ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED => Ok(()),
+        code => esp_error(code).context("stop setup DHCP server"),
+    }
+}
+
+fn setup_ip_info(address: Ipv4Addr) -> esp_netif_ip_info_t {
+    let mut info: esp_netif_ip_info_t = unsafe { core::mem::zeroed() };
+    info.ip.addr = u32::from_le_bytes(address.octets());
+    info.gw.addr = u32::from_le_bytes(address.octets());
+    info.netmask.addr = u32::from_le_bytes([255, 255, 255, 0]);
+    info
+}
+
+fn esp_error(code: i32) -> Result<()> {
+    if code == ESP_OK {
+        Ok(())
+    } else {
+        Err(EspError::from(code)
+            .expect("ESP-IDF error code is nonzero")
+            .into())
+    }
 }
 
 /// Current station RSSI in dBm, or `None` when not associated.

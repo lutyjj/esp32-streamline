@@ -104,7 +104,9 @@ is lost.
 
 Promise:
 
-- Updating is one button. Progress is a visible log, and the device either
+- Updating is automatic by default, configurable as daily or weekly, waits for
+  idle audio, and can be disabled. Manual checks and installs remain available.
+  Progress is a visible log, and the device either
   confirms the new version or rolls back by itself. A rollback is narrated
   too — the console names the version still running rather than claiming a
   success — and when the device holds a previous image, one button rolls

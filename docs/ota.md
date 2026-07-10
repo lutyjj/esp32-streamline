@@ -1,7 +1,10 @@
 # Over-the-Air Updates
 
-The device updates itself from GitHub releases: the web console checks for a
-newer release, installs it into the inactive app slot, and reboots into it.
+The device updates itself from GitHub releases. Daily automatic updates are
+enabled by default. After a ten-minute boot delay, the device checks on its
+selected daily or weekly cadence, waits for audio to be idle, installs a newer
+release into the inactive app slot, and reboots into it. System → Firmware can
+change the cadence, disable automatic updates, or start the same flow by hand.
 
 ## Partition layout
 
@@ -36,6 +39,11 @@ background worker and require the admin-key bearer token.
    the write and leaves the running slot untouched.
 5. Progress and result surface in `/api/status` under `ota`, which the console
    polls.
+
+`GET /api/settings` reports the persisted `auto_update_schedule` policy.
+`POST /api/settings/firmware` changes it to `disabled`, `daily`, or `weekly`;
+the setting applies without a reboot. Existing provisioned devices adopt the
+daily default when they first run firmware that supports the setting.
 
 ## Custom image installs (development)
 

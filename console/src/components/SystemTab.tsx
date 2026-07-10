@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { generateAdminKey, isUnlocked, unlockSettings, useAuthEpoch } from '../lib/adminKey';
-import { api, postForm } from '../lib/api';
+import { api, type DeviceConfig, postForm } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, status } from '../state/device';
 import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
@@ -27,9 +27,17 @@ function FirmwareCard() {
   const s = status.value;
   const ota = s?.ota;
   const transact = useTransact();
+  const settingsTransact = useTransact();
   const customTransact = useTransact();
+  const [autoUpdateSchedule, setAutoUpdateSchedule] =
+    useState<DeviceConfig['auto_update_schedule']>('daily');
   const [url, setUrl] = useState('');
   const [sha256, setSha256] = useState('');
+
+  const c = config.value;
+  useEffect(() => {
+    if (c) setAutoUpdateSchedule(c.auto_update_schedule);
+  }, [c]);
 
   const latest = ota?.latest_version || '';
   const rows: [string, string][] = [
@@ -52,6 +60,50 @@ function FirmwareCard() {
     <div class="card gated">
       <span class="lockhint">Unlock to edit</span>
       <h2>Firmware</h2>
+      <p class="lead">
+        Choose how often the device checks for a new release. It waits for audio to be idle, then
+        installs through the same verified rollback-safe flow as a manual update.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          settingsTransact.run(
+            async () => {
+              const data = await postForm('/api/settings/firmware', {
+                auto_update_schedule: autoUpdateSchedule,
+              });
+              if (config.value) {
+                config.value = { ...config.value, auto_update_schedule: autoUpdateSchedule };
+              }
+              return data;
+            },
+            { busyText: 'Saving…', okText: 'Update preference saved' },
+          );
+        }}
+      >
+        <div class="field" style="margin-top:12px;max-width:320px">
+          <label for="auto_update_schedule">Automatic updates</label>
+          <select
+            id="auto_update_schedule"
+            disabled={!writable}
+            value={autoUpdateSchedule}
+            onChange={(e) =>
+              setAutoUpdateSchedule(e.currentTarget.value as DeviceConfig['auto_update_schedule'])
+            }
+          >
+            <option value="daily">Daily when idle</option>
+            <option value="weekly">Weekly when idle</option>
+            <option value="disabled">Off</option>
+          </select>
+          <span class="help">The first check waits ten minutes after startup.</span>
+        </div>
+        <div class="cardfoot">
+          <TransactButton transact={settingsTransact} type="submit" disabled={!writable}>
+            Save preference
+          </TransactButton>
+          <ActionState state={settingsTransact.state} />
+        </div>
+      </form>
       <div class="formgrid" style="margin-top:12px">
         <Kv rows={rows} />
         <div class="log">

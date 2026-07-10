@@ -25,7 +25,8 @@ place, and the standing items we track or have accepted.
 
 - Mutating endpoints (`/api/settings/wifi`, `/api/settings/target`,
   `/api/settings/audio`, `/api/settings/name`, `/api/settings/admin-key`,
-  `/api/settings/board`, `/api/settings/firmware`, `/api/restart`,
+  `/api/settings/board`, `/api/settings/audio-profiles`,
+  `/api/settings/audio-profile`, `/api/settings/firmware`, `/api/restart`,
   `/api/factory-reset`, `/api/ota/check`, `/api/ota/update`,
   `/api/ota/rollback`) and the no-op key
   check (`/api/unlock`) require the

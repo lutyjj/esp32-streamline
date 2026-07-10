@@ -537,6 +537,20 @@ select {
   padding: 0 11px;
   font: 13.5px var(--sans);
 }
+textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--inset);
+  color: var(--text);
+  padding: 10px 11px;
+  font: 12px / 1.45 var(--mono);
+}
+textarea:disabled {
+  opacity: 0.5;
+}
 input:disabled,
 select:disabled {
   opacity: 0.5;
@@ -754,6 +768,24 @@ select:disabled {
   color: var(--bad);
 }
 
+.profilegrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+.profileactions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.profile-share {
+  margin-top: 14px;
+  padding-top: 2px;
+  border-top: 1px solid var(--line-soft);
+}
+
 /* ---------- Switch ---------- */
 .switch {
   display: inline-flex;
@@ -919,6 +951,9 @@ select:disabled {
     grid-template-columns: 1fr 1fr;
   }
   .formgrid {
+    grid-template-columns: 1fr;
+  }
+  .profilegrid {
     grid-template-columns: 1fr;
   }
   .masthead {

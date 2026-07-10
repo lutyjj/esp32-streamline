@@ -156,6 +156,28 @@ export interface DeviceConfig {
   config_source: string;
 }
 
+/** Mirrors `profiles::AudioProfile`. */
+export interface AudioProfile {
+  id: string;
+  name: string;
+  audio: AudioProfileSettings;
+}
+
+/** Mirrors the `config::AudioSettings` nested in a profile. */
+export interface AudioProfileSettings {
+  input_line: number;
+  input_gain: number;
+  adc_attenuation_db: number;
+}
+
+/** Mirrors `profiles::AudioProfileCatalog`. */
+export interface AudioProfileCatalog {
+  schema_version: 1;
+  board_id: string;
+  active_profile_id: string | null;
+  profiles: AudioProfile[];
+}
+
 /** Mutation acknowledgement; `rebooting` marks writes that restart the device. */
 export interface Ack {
   ok?: boolean;
@@ -218,6 +240,14 @@ export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
 export const getStatus = () => api<DeviceStatus>('/api/status');
 
 export const getSettings = () => api<DeviceConfig>('/api/settings');
+
+export const getAudioProfiles = () => api<AudioProfileCatalog>('/api/audio-profiles');
+
+export const setAudioProfiles = (catalog: AudioProfileCatalog) =>
+  postForm('/api/settings/audio-profiles', { catalog: JSON.stringify(catalog) });
+
+export const setActiveAudioProfile = (profile_id: string) =>
+  postForm('/api/settings/audio-profile', { profile_id });
 
 export const getBoards = () => api<BoardCatalog>('/api/boards');
 

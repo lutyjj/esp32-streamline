@@ -17,6 +17,9 @@ HTTP consumer can read it too.
   levels. A per-device admin key gates every write; reads stay open.
 - **Signal-gated streaming** — the device streams while the input plays and
   pauses on sustained silence, so an idle input costs no bandwidth.
+- **Source profiles**: save complete input settings for sources such as CD
+  and vinyl, switch them live from the console or API, and share the versioned
+  board-bound catalog. See [audio profiles](docs/audio-profiles.md).
 - **Self-hosted bridge** — one Docker container turns the TCP PCM stream into
   a live HTTP WAV stream. A ~1 s playout buffer smooths Wi-Fi jitter and
   conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
@@ -97,7 +100,8 @@ flags.
 4. Join. The device reboots onto your network and advertises its console as
    `http://streamline-xxxx.local/`.
 5. Open the station console, then set the bridge host in **Network** and
-   calibrate from **Audio**.
+   calibrate from **Audio**. Save a source profile when several players need
+   different input levels.
 
 Open the console at its `.local` name to tune audio, change settings, or reset
 the device. Use the station IP if your network does not pass mDNS. For
@@ -132,6 +136,7 @@ expose serial devices. Install the tool once: `cargo install espflash`.
 
 Docs: [design](docs/design.md) ·
 [user journey](docs/user-journey.md) ·
+[audio profiles](docs/audio-profiles.md) ·
 [PCM protocol](docs/pcm-protocol.md) ·
 [TCP transport](docs/tcp-transport.md) ·
 [OTA](docs/ota.md) ·

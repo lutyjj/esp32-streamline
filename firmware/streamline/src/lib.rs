@@ -16,6 +16,7 @@ pub mod levels;
 pub mod metrics;
 pub mod packet;
 pub mod play;
+pub mod profiles;
 pub mod protocol;
 pub mod telemetry;
 pub mod update;

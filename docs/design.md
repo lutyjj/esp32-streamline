@@ -170,6 +170,13 @@ input:       board descriptor's line input (NVS configured)
 gain:        0-100 (NVS configured)
 ```
 
+Named audio profiles group the input, gain, and attenuation settings behind a
+versioned board-bound model. The device keeps up to eight short profile records
+in NVS and applies a selected profile live. The waveform does not identify the
+source. An external selector that knows the source state can call the same
+activation API as the console. [Audio profiles](audio-profiles.md) owns the
+contract.
+
 The firmware exports read-only runtime state as JSON at `/api/status` and as
 Prometheus text at `/api/metrics`. Both endpoints read the same in-memory
 identity, network, and streaming counters.
@@ -180,6 +187,7 @@ Endpoint paths follow one rule: nouns for state, verbs for actions.
 
 - Reads are open: `GET /api/status` (runtime), `GET /api/metrics`
   (Prometheus), `GET /api/settings` (persisted settings, no secrets),
+  `GET /api/audio-profiles` (saved profiles and active selection),
   `GET /api/boards` (built-in board catalog and selected descriptor),
   `GET /api/health` (a scriptable startup-health probe: `200` when nothing
   blocks, `503` when a check does).
@@ -187,7 +195,9 @@ Endpoint paths follow one rule: nouns for state, verbs for actions.
   `POST /api/settings/wifi` (network credentials, and the initial stream target
   during commissioning), `/api/settings/target` (stream host and port),
   `/api/settings/audio`, `/api/settings/name`, `/api/settings/admin-key`,
-  `/api/settings/board`, `/api/settings/firmware`.
+  `/api/settings/board`, `/api/settings/audio-profiles` (replace saved profile
+  definitions), `/api/settings/audio-profile` (activate one profile),
+  `/api/settings/firmware`.
 - Device-wide actions are top-level verbs: `POST /api/unlock`,
   `POST /api/restart`, `POST /api/factory-reset`, `POST /api/ota/check`,
   `POST /api/ota/update`, `POST /api/ota/rollback`.

@@ -4,6 +4,8 @@
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::board::Board;
 
 pub const MIN_PORT: u16 = 1;
@@ -63,7 +65,8 @@ impl AutoUpdateSchedule {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AudioSettings {
     /// Selected input, one of the resolved board's advertised lines.
     pub input_line: u8,

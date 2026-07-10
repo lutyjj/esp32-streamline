@@ -8,6 +8,9 @@ use crate::{
     config::{
         AudioSettings, AutoUpdateSchedule, ConfigError, RuntimeConfig, CONFIG_SCHEMA_VERSION,
     },
+    profiles::{
+        AudioProfile, AudioProfileCatalog, AUDIO_PROFILE_SCHEMA_VERSION, MAX_AUDIO_PROFILES,
+    },
 };
 
 const NAMESPACE: &str = "streamline";
@@ -26,11 +29,27 @@ const KEY_INPUT_GAIN: &str = "input_gain";
 const KEY_ADC_ATTENUATION: &str = "adc_attenuation";
 const KEY_LAST_FALLBACK: &str = "last_fallback";
 const KEY_LAST_OTA: &str = "last_ota";
+const KEY_PROFILE_SCHEMA: &str = "prof_schema";
+const KEY_PROFILE_BOARD: &str = "prof_board";
+const KEY_ACTIVE_PROFILE: &str = "prof_active";
+const PROFILE_KEYS: [&str; MAX_AUDIO_PROFILES] = [
+    "profile_0",
+    "profile_1",
+    "profile_2",
+    "profile_3",
+    "profile_4",
+    "profile_5",
+    "profile_6",
+    "profile_7",
+];
 /// Diagnostic notes are trimmed to fit the 256-byte read buffer.
 const MAX_NOTE_BYTES: usize = 240;
 /// Keep custom descriptors comfortably below ESP-IDF's NVS string limit.
 pub const MAX_BOARD_DESCRIPTOR_BYTES: usize = 3_072;
 const MAX_BOARD_DESCRIPTOR_BUFFER_BYTES: usize = MAX_BOARD_DESCRIPTOR_BYTES + 1;
+/// Each profile gets its own short NVS string instead of sharing one large,
+/// fragmentation-prone catalog value.
+const MAX_PROFILE_JSON_BYTES: usize = 384;
 
 /// Owns the NVS namespace and keeps the partition alive for the lifetime of
 /// all reads and writes. The namespace is versioned so future migrations have
@@ -159,6 +178,97 @@ impl ConfigStore {
         Ok(())
     }
 
+    pub fn load_audio_profiles(
+        &self,
+        board: &Board,
+        current_audio: AudioSettings,
+    ) -> Result<AudioProfileCatalog> {
+        let schema = self.nvs.get_u8(KEY_PROFILE_SCHEMA)?;
+        if schema.is_none() {
+            return Ok(AudioProfileCatalog::empty(board));
+        }
+        if schema != Some(AUDIO_PROFILE_SCHEMA_VERSION) {
+            log::warn!("ignoring unsupported audio profile schema {schema:?}");
+            return Ok(AudioProfileCatalog::empty(board));
+        }
+
+        let stored_board = self.optional_string(KEY_PROFILE_BOARD);
+        if stored_board != board.id {
+            log::warn!(
+                "ignoring audio profiles for board '{}'; active board is '{}'",
+                stored_board,
+                board.id
+            );
+            return Ok(AudioProfileCatalog::empty(board));
+        }
+
+        let mut profiles = Vec::new();
+        for key in PROFILE_KEYS {
+            let Some(json) = self.optional_profile(key)? else {
+                continue;
+            };
+            match serde_json::from_str::<AudioProfile>(&json) {
+                Ok(profile) => profiles.push(profile),
+                Err(error) => log::warn!("ignoring unreadable audio profile in {key}: {error}"),
+            }
+        }
+        let active = self.optional_string(KEY_ACTIVE_PROFILE);
+        let mut catalog = AudioProfileCatalog {
+            schema_version: AUDIO_PROFILE_SCHEMA_VERSION,
+            board_id: board.id.clone(),
+            active_profile_id: (!active.is_empty()).then_some(active),
+            profiles,
+        };
+        if let Err(error) = catalog.validate(board) {
+            log::warn!("ignoring invalid audio profile catalog: {error:?}");
+            return Ok(AudioProfileCatalog::empty(board));
+        }
+        catalog.reconcile_active_audio(current_audio);
+        Ok(catalog)
+    }
+
+    pub fn save_audio_profiles(&self, catalog: &AudioProfileCatalog, board: &Board) -> Result<()> {
+        catalog
+            .validate(board)
+            .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
+        for (index, key) in PROFILE_KEYS.iter().enumerate() {
+            let Some(profile) = catalog.profiles.get(index) else {
+                self.nvs.remove(key)?;
+                continue;
+            };
+            let json = serde_json::to_string(profile)?;
+            if json.len() > MAX_PROFILE_JSON_BYTES {
+                bail!(
+                    "audio profile '{}' is too large: {} bytes, max {}",
+                    profile.id,
+                    json.len(),
+                    MAX_PROFILE_JSON_BYTES
+                );
+            }
+            self.nvs.set_str(key, &json)?;
+        }
+        match &catalog.active_profile_id {
+            Some(id) => self.nvs.set_str(KEY_ACTIVE_PROFILE, id)?,
+            None => {
+                self.nvs.remove(KEY_ACTIVE_PROFILE)?;
+            }
+        }
+        self.nvs.set_str(KEY_PROFILE_BOARD, &catalog.board_id)?;
+        self.nvs
+            .set_u8(KEY_PROFILE_SCHEMA, AUDIO_PROFILE_SCHEMA_VERSION)?;
+        Ok(())
+    }
+
+    pub fn clear_audio_profiles(&self) -> Result<()> {
+        for key in PROFILE_KEYS {
+            self.nvs.remove(key)?;
+        }
+        self.nvs.remove(KEY_ACTIVE_PROFILE)?;
+        self.nvs.remove(KEY_PROFILE_BOARD)?;
+        self.nvs.remove(KEY_PROFILE_SCHEMA)?;
+        Ok(())
+    }
+
     pub fn clear(&self) -> Result<()> {
         for key in [
             KEY_SCHEMA,
@@ -179,6 +289,7 @@ impl ConfigStore {
         ] {
             self.nvs.remove(key)?;
         }
+        self.clear_audio_profiles()?;
         Ok(())
     }
 
@@ -224,6 +335,11 @@ impl ConfigStore {
             .get_str(KEY_BOARD_DESCRIPTOR, &mut buffer)?
             .map(str::to_owned)
             .unwrap_or_default())
+    }
+
+    fn optional_profile(&self, key: &str) -> Result<Option<String>> {
+        let mut buffer = [0_u8; MAX_PROFILE_JSON_BYTES + 1];
+        Ok(self.nvs.get_str(key, &mut buffer)?.map(str::to_owned))
     }
 
     fn required_string(&self, key: &str) -> Result<String> {

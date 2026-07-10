@@ -17,6 +17,7 @@ export interface BoardCapabilities {
     i2c: { sda: number; scl: number };
     i2s: { mclk: number; bclk: number; ws: number; din: number };
   };
+  status_led: { gpio: number; active_low: boolean } | null;
   input_lines: { line: number; label: string }[];
   input_gain_max: number;
   adc_atten_max_db: number;
@@ -38,6 +39,7 @@ export interface BoardDescriptor {
     i2c: { sda: number; scl: number };
     i2s: { mclk: number; bclk: number; ws: number; din: number };
   };
+  status_led?: { gpio: number; active_low?: boolean } | null;
   input_lines: { line: number; label: string }[];
   input_gain_max: number;
   adc_atten_max_db: number;
@@ -100,6 +102,11 @@ export interface DeviceStatus {
     reset_reason: string;
     last_fallback: string;
     last_ota: string;
+  };
+  /** Mirrors the status-light policy in `firmware/streamline/src/indicator.rs`. */
+  indicator: {
+    available: boolean;
+    state: 'setup' | 'ready' | 'streaming' | 'fault';
   };
   ota: OtaSnapshot;
   /** The startup health verdict. */

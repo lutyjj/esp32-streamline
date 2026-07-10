@@ -43,6 +43,14 @@ release firmware is a generic ESP32 app image with an embedded official
 descriptor catalog. See
 [design notes](docs/design.md#board-support).
 
+### Status light
+
+The Ai-Thinker board uses LED4 to show device state. A single flash means
+setup mode, two flashes mean ready but idle, steady light means streaming, and
+three flashes mean a startup fault. A custom board can opt in with a
+`status_led` descriptor field (`gpio`, optional `active_low`).
+`GET /api/status` reports the selected state under `indicator`.
+
 ## Quick start
 
 ### 1. Flash the firmware

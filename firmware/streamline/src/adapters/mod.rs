@@ -10,6 +10,7 @@ pub mod mdns;
 pub mod nvs;
 pub mod ota;
 pub mod pins;
+pub mod status_light;
 pub mod tcp;
 pub mod time;
 pub mod wifi;

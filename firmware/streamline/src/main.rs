@@ -18,6 +18,7 @@ use streamline_firmware::{
         nvs::ConfigStore,
         ota,
         pins::AudioPins,
+        status_light,
         tcp::TargetAddress,
         time, wifi,
     },
@@ -158,6 +159,14 @@ fn main() -> Result<()> {
         health,
         rollback,
     });
+    if let Err(error) = status_light::start(
+        state.board.status_led,
+        mode == Mode::Setup,
+        state.health.status,
+        state.stream.clone(),
+    ) {
+        log::warn!("status light unavailable: {error:#}");
+    }
     let _server = http::start(Arc::clone(&state))?;
     let booted_at = Instant::now();
     let mut auto_update_timer = update::AutoUpdateTimer::default();

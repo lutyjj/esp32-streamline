@@ -45,10 +45,8 @@ descriptor catalog. See
 
 ### Status light
 
-The Ai-Thinker board uses LED4 to show device state. A single flash means
-setup mode, two flashes mean ready but idle, steady light means streaming, and
-three flashes mean a startup fault. A custom board can opt in with a
-`status_led` descriptor field (`gpio`, optional `active_low`).
+A board with a status light flashes once in setup, twice when ready but idle,
+stays lit while streaming, and flashes three times on a startup fault.
 `GET /api/status` reports the selected state under `indicator`.
 
 ## Quick start

@@ -1,6 +1,7 @@
 include ../mk/common.mk
 
 DEV_IMAGE := esp32-streamline-console-dev
+WEBFLASHER_DIR := $(abspath ../webflasher)
 # Device the vite dev server proxies /api to; see the `dev` target. Defaults
 # to STREAMLINE_DEVICE from the root .env, else the setup-AP address.
 DEVICE ?= $(or $(call dotenv,STREAMLINE_DEVICE),192.168.71.1)
@@ -8,6 +9,7 @@ HOST_USER := $(shell id -u):$(shell id -g)
 
 CONTAINER_RUN := $(CONTAINER) run --rm \
 	--user "$(HOST_USER)" -v "$(CURDIR):/workspace" \
+	-v "$(WEBFLASHER_DIR):/webflasher:ro" -e STREAMLINE_WEBFLASHER_DIR=/webflasher \
 	-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
 	-e npm_config_update_notifier=false -w /workspace $(DEV_IMAGE)
 
@@ -50,6 +52,7 @@ build: deps
 # then open http://localhost:5173/.
 dev: deps
 	$(CONTAINER) run --rm --user "$(HOST_USER)" -v "$(CURDIR):/workspace" \
+		-v "$(WEBFLASHER_DIR):/webflasher:ro" -e STREAMLINE_WEBFLASHER_DIR=/webflasher \
 		-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
 		-e npm_config_update_notifier=false \
 		-e STREAMLINE_DEVICE=$(DEVICE) -p 5173:5173 -w /workspace \

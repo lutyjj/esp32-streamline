@@ -3,13 +3,17 @@ import { setActiveAudioProfile, setAudioProfiles } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import {
   exportAudioProfileCatalog,
-  MAX_AUDIO_PROFILE_NAME_CHARS,
-  MAX_AUDIO_PROFILES,
   nextProfileId,
   parseAudioProfileCatalog,
   profileFromConfig,
 } from '../lib/profiles';
-import { audioProfiles, config, loadDeviceSettings, status } from '../state/device';
+import {
+  audioProfileLimits,
+  audioProfiles,
+  config,
+  loadDeviceSettings,
+  status,
+} from '../state/device';
 import { Disclosure } from './Disclosure';
 import { ActionState, TransactButton } from './Transact';
 
@@ -19,6 +23,7 @@ export function AudioProfiles() {
   const catalog = audioProfiles.value;
   const applied = config.value;
   const capabilities = status.value?.capabilities;
+  const limits = audioProfileLimits.value;
   const [selectedId, setSelectedId] = useState('');
   const [name, setName] = useState('');
   const [sharedJson, setSharedJson] = useState('');
@@ -31,11 +36,12 @@ export function AudioProfiles() {
     setName(catalog.profiles.find((profile) => profile.id === fallback)?.name ?? '');
   }, [catalog, selectedId]);
 
-  if (!catalog || !applied || !capabilities) return null;
+  if (!catalog || !applied || !capabilities || !limits) return null;
 
   const currentCatalog = catalog;
   const currentConfig = applied;
   const currentCapabilities = capabilities;
+  const currentLimits = limits;
 
   const selected = currentCatalog.profiles.find((profile) => profile.id === selectedId);
   const active = currentCatalog.profiles.find(
@@ -64,16 +70,16 @@ export function AudioProfiles() {
       transact.setState({ text: 'Enter a profile name', cls: 'err' });
       return;
     }
-    if ([...trimmed].length > MAX_AUDIO_PROFILE_NAME_CHARS) {
+    if ([...trimmed].length > currentLimits.nameMaxChars) {
       transact.setState({
-        text: `Profile names are limited to ${MAX_AUDIO_PROFILE_NAME_CHARS} characters`,
+        text: `Profile names are limited to ${currentLimits.nameMaxChars} characters`,
         cls: 'err',
       });
       return;
     }
-    if (currentCatalog.profiles.length >= MAX_AUDIO_PROFILES) {
+    if (currentCatalog.profiles.length >= currentLimits.maxProfiles) {
       transact.setState({
-        text: `This device stores up to ${MAX_AUDIO_PROFILES} profiles`,
+        text: `This device stores up to ${currentLimits.maxProfiles} profiles`,
         cls: 'err',
       });
       return;
@@ -95,7 +101,7 @@ export function AudioProfiles() {
   function updateSelected() {
     if (!selected) return;
     const trimmed = name.trim();
-    if (!trimmed || [...trimmed].length > MAX_AUDIO_PROFILE_NAME_CHARS) {
+    if (!trimmed || [...trimmed].length > currentLimits.nameMaxChars) {
       transact.setState({ text: 'Enter a profile name of 1–32 characters', cls: 'err' });
       return;
     }
@@ -143,7 +149,7 @@ export function AudioProfiles() {
 
   function importCatalog() {
     try {
-      const imported = parseAudioProfileCatalog(sharedJson, currentCapabilities);
+      const imported = parseAudioProfileCatalog(sharedJson, currentCapabilities, currentLimits);
       runCatalogWrite(
         imported,
         `Imported ${imported.profiles.length} profiles — current levels are unchanged`,
@@ -186,7 +192,7 @@ export function AudioProfiles() {
           <input
             id="audio_profile_name"
             type="text"
-            maxlength={MAX_AUDIO_PROFILE_NAME_CHARS}
+            maxlength={currentLimits.nameMaxChars}
             disabled={!writable}
             value={name}
             placeholder="Vinyl"

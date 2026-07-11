@@ -1,6 +1,7 @@
 import createClient, { type Middleware } from 'openapi-fetch';
 import type { components, paths } from '../generated/api';
 import { isUnlocked, lockSettings, storedAdminKey } from './adminKey';
+import type { ApiDocument } from './contract';
 
 export type BoardCapabilities = components['schemas']['CapabilitiesStatus'];
 export type BoardCatalog = components['schemas']['BoardCatalogResponse'];
@@ -76,6 +77,10 @@ export async function unwrap<T, E>(request: Promise<ApiResult<T, E>>): Promise<N
   }
   throw new ApiError(result.response.status, message);
 }
+
+/** The device-served OpenAPI contract; the console renders and validates from it. */
+export const getContract = async (): Promise<ApiDocument> =>
+  (await unwrap(apiClient.GET('/api/openapi.json'))) as ApiDocument;
 
 export const getStatus = () => unwrap(apiClient.GET('/api/status'));
 

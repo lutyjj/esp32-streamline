@@ -858,6 +858,25 @@ mod spec {
             schemas["BoardSettingsRequest"]["properties"]["descriptor"]["maxLength"],
             crate::board::MAX_DESCRIPTOR_BYTES
         );
+        // Profile import limits ride the schema so clients validate against the
+        // contract. These bind the emitted keywords to the model's constants.
+        let profile = &schemas["AudioProfile"]["properties"];
+        assert_eq!(
+            profile["id"]["pattern"],
+            crate::profiles::AUDIO_PROFILE_ID_PATTERN
+        );
+        assert_eq!(
+            profile["id"]["maxLength"],
+            crate::profiles::MAX_AUDIO_PROFILE_ID_CHARS
+        );
+        assert_eq!(
+            profile["name"]["maxLength"],
+            crate::profiles::MAX_AUDIO_PROFILE_NAME_CHARS
+        );
+        assert_eq!(
+            schemas["AudioProfileCatalog"]["properties"]["profiles"]["maxItems"],
+            crate::profiles::MAX_AUDIO_PROFILES
+        );
         document
     }
 }

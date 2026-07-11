@@ -8,8 +8,7 @@
 header = """
 # Changelog
 
-Notable changes per release, grouped by type. Generated from Conventional
-Commits with git-cliff — do not edit by hand.
+Notable changes per release, grouped by type.
 """
 body = """
 {% if version %}\

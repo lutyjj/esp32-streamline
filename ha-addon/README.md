@@ -12,16 +12,9 @@ repository, then install **ESP32 StreamLine Bridge**.
 ## Configure
 
 `source_allow` is optional. Leave it blank to accept any LAN source, or enter a
-comma-separated list of ESP32 IPv4 addresses to admit.
-
-The remaining options match the bridge command-line tuning flags:
-
-- `max_sources`
-- `client_buffer_chunks`
-- `playout_buffer_seconds`
-- `max_repeat_conceal_packets`
-- `max_outage_silence_seconds`
-- `source_idle_timeout_seconds`
+comma-separated list of ESP32 IPv4 addresses to admit. The
+[bridge reference](../docs/bridge.md) owns the option defaults, constraints,
+and source lifecycle contract.
 
 ## Use
 

@@ -1,0 +1,68 @@
+"""Composition of one source's playout and HTTP client fan-out."""
+
+from __future__ import annotations
+
+import threading
+from typing import TYPE_CHECKING
+
+from streamline_bridge.fanout import ClientFanout, ClientStream
+from streamline_bridge.playout import Clock, PlayoutBuffer, PlayoutWorker
+from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
+
+if TYPE_CHECKING:
+    import socket
+
+
+class AudioPipeline:
+    """One independently paced source pipeline."""
+
+    def __init__(
+        self,
+        max_client_chunks: int,
+        playout_buffer_seconds: float,
+        max_repeat_conceal_packets: int,
+        max_outage_silence_seconds: float,
+        pcm_format: PcmFormat = DEFAULT_FORMAT,
+        clock: Clock | None = None,
+        start_worker: bool = True,
+    ) -> None:
+        self.playout = PlayoutBuffer(
+            playout_buffer_seconds,
+            max_repeat_conceal_packets,
+            max_outage_silence_seconds,
+            pcm_format,
+            clock,
+        )
+        now = clock.time if clock is not None else None
+        self.clients = ClientFanout(max_client_chunks, now=now) if now is not None else ClientFanout(max_client_chunks)
+        if start_worker:
+            threading.Thread(target=PlayoutWorker(self.playout, self.clients.publish, clock).run, daemon=True).start()
+
+    def reset_source_session(self) -> None:
+        self.playout.reset_source_session()
+
+    def ingest(self, seq: int, payload: bytes) -> None:
+        self.playout.ingest(seq, payload)
+
+    def note_tcp_connect(self) -> None:
+        self.playout.note_tcp_connect()
+
+    def note_tcp_disconnect(self) -> None:
+        self.playout.note_tcp_disconnect()
+
+    def note_tcp_error(self) -> None:
+        self.playout.note_tcp_error()
+
+    def snapshot(self) -> dict[str, object]:
+        data = self.playout.snapshot()
+        data.update(self.clients.snapshot())
+        return data
+
+    def register_client(self, remote_addr: str, path: str, client_socket: socket.socket) -> ClientStream:
+        return self.clients.register(remote_addr, path, client_socket)
+
+    def unregister_client(self, client_id: int) -> None:
+        self.clients.unregister(client_id)
+
+    def record_client_write(self, client_id: int, byte_count: int, chunk_count: int) -> None:
+        self.clients.record_write(client_id, byte_count, chunk_count)

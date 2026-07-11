@@ -88,7 +88,7 @@ The bridge accepts one persistent TCP connection per source IPv4 address. Each s
 
 The pipeline buffers packets before playout, follows sequence numbers, attenuates repeated audio across short gaps, emits silence for longer gaps, and re-buffers after a sustained outage. Each HTTP client has a bounded output queue; the bridge disconnects a client that cannot keep up. The [PCM protocol](pcm-protocol.md) owns the media and concealment contract.
 
-The standalone container and Home Assistant add-on run the same `streamline-bridge` process. `streamline-ha-addon` only translates Supervisor options into bridge CLI arguments.
+The standalone container and Home Assistant add-on run the same `streamline-bridge` process. `streamline-ha-addon` only translates Supervisor options into bridge CLI arguments. The [bridge reference](bridge.md) owns the runtime endpoints, lifecycle states, and tuning options.
 
 ## State ownership
 
@@ -158,6 +158,7 @@ Use `node` only where an external platform defines that term. Use concrete board
 - [README](../README.md) introduces the product, quick start, development entrypoints, and release procedure.
 - This document owns component and dependency boundaries.
 - [Design notes](design.md) own architectural decisions and integration choices.
+- [Bridge reference](bridge.md) owns bridge endpoints, source lifecycle, and tuning options.
 - [User journey](user-journey.md) owns visible setup, steady-state, and recovery promises.
 - [PCM protocol](pcm-protocol.md) and [TCP transport](tcp-transport.md) own the audio wire and runtime transport contracts.
 - [Audio profiles](audio-profiles.md), [OTA](ota.md), and [security](security.md) own their feature and risk contracts.

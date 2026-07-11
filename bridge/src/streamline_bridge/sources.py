@@ -1,10 +1,4 @@
-"""Producer registry: one independent playout pipeline per source device.
-
-Every producer — keyed by its IPv4 address — owns its own pipeline, so multiple
-ESP32 devices feed one bridge without fighting over a single stream. HTTP
-clients pick a stream with ``?source=<ip>``; a bare request resolves only when
-it is unambiguous (see :meth:`SourceRegistry.select`).
-"""
+"""Source admission, selection, connection ownership, and eviction lifecycle."""
 
 from __future__ import annotations
 
@@ -12,6 +6,7 @@ import contextlib
 import ipaddress
 import socket
 import threading
+import time
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Protocol
@@ -21,22 +16,13 @@ if TYPE_CHECKING:
 
 
 class AudioPipeline(Protocol):
-    """The pipeline surface the source layer drives; implemented by AudioHub."""
-
     def reset_source_session(self) -> None: ...
-
     def ingest(self, seq: int, payload: bytes) -> None: ...
-
     def snapshot(self) -> dict[str, object]: ...
 
 
 class TcpSourceGate[H: AudioPipeline]:
-    """Own the one TCP connection allowed to feed a pipeline.
-
-    A device rebooting reconnects from the same address; the gate hands the
-    pipeline to the newest connection and invalidates the replaced one by
-    generation, so a lingering socket cannot inject stale packets.
-    """
+    """Own the sole TCP connection allowed to feed one source pipeline."""
 
     def __init__(self, hub: H) -> None:
         self._hub = hub
@@ -45,14 +31,12 @@ class TcpSourceGate[H: AudioPipeline]:
         self._generation = 0
 
     def replace(self, conn: socket.socket) -> int:
-        """Make conn the active source and close any replaced source socket."""
         with self._lock:
             previous = self._connection
             self._generation += 1
             generation = self._generation
             self._connection = conn
             self._hub.reset_source_session()
-
         if previous is not None:
             with contextlib.suppress(OSError):
                 previous.shutdown(socket.SHUT_RDWR)
@@ -61,7 +45,6 @@ class TcpSourceGate[H: AudioPipeline]:
         return generation
 
     def ingest(self, generation: int, seq: int, payload: bytes) -> bool:
-        """Ingest only if this connection is still the active source."""
         with self._lock:
             if generation != self._generation:
                 return False
@@ -72,22 +55,28 @@ class TcpSourceGate[H: AudioPipeline]:
         with self._lock:
             return generation == self._generation
 
-    def release(self, generation: int, conn: socket.socket) -> None:
+    def release(self, generation: int, conn: socket.socket) -> bool:
+        """Release the current connection and report whether it was current."""
         with self._lock:
-            if generation == self._generation and conn is self._connection:
-                self._connection = None
+            if generation != self._generation or conn is not self._connection:
+                return False
+            self._connection = None
+            return True
 
 
-@dataclass(frozen=True)
+@dataclass
 class Source[H: AudioPipeline]:
     key: str
     hub: H
     gate: TcpSourceGate[H]
+    allowlisted: bool
+    created_at: float
+    disconnected_at: float
+    connected: bool = False
+    http_clients: int = 0
 
 
 class SourceSelectionError(Exception):
-    """A stream request that cannot resolve to a source, with its HTTP status."""
-
     def __init__(self, status: HTTPStatus, message: str) -> None:
         super().__init__(message)
         self.status = status
@@ -95,23 +84,18 @@ class SourceSelectionError(Exception):
 
 
 class SourceAdmissionError(Exception):
-    """A TCP producer the registry refuses to admit; the message says why."""
+    """A TCP producer the registry refuses to admit."""
 
 
-# A pipeline created for a bare stream request before any producer connected.
-# The first producer from a new address adopts it, so "add the stream URL to
-# the player, then power the device" keeps working.
 PENDING_KEY = "pending"
 
 
 class SourceRegistry[H: AudioPipeline]:
-    """Create, adopt, and look up per-producer pipelines.
+    """Own bounded per-address source pipelines and their lifecycle state.
 
-    The factory owns pipeline construction (and starts its playout thread in
-    production); the registry only decides which pipeline a producer or HTTP
-    client gets. `max_sources` bounds memory on an open LAN; an allowlist
-    pre-creates its pipelines so explicit stream URLs work before any device
-    connects.
+    Dynamic sources remain reusable for ``eviction_idle_seconds`` after a TCP
+    disconnect. Allowlisted sources are permanent addressable slots. Pending
+    bare-WAV requests use a dynamic slot until a producer adopts it.
     """
 
     def __init__(
@@ -119,60 +103,66 @@ class SourceRegistry[H: AudioPipeline]:
         hub_factory: Callable[[], H],
         max_sources: int,
         allowed: frozenset[str] = frozenset(),
+        eviction_idle_seconds: float = 300.0,
+        now: Callable[[], float] = time.monotonic,
     ) -> None:
         if max_sources < 1:
             raise ValueError("max_sources must be at least 1")
         if len(allowed) > max_sources:
             raise ValueError("max_sources is smaller than the source allowlist")
+        if eviction_idle_seconds <= 0:
+            raise ValueError("eviction_idle_seconds must be greater than 0")
         self._hub_factory = hub_factory
         self._max_sources = max_sources
         self._allowed = allowed
+        self._eviction_idle_seconds = eviction_idle_seconds
+        self._now = now
         self._lock = threading.Lock()
-        self._sources: dict[str, Source[H]] = {ip: self._create(ip) for ip in sorted(allowed)}
+        self._sources = {ip: self._create(ip, True) for ip in sorted(allowed)}
 
-    def _create(self, key: str) -> Source[H]:
+    def _create(self, key: str, allowlisted: bool) -> Source[H]:
+        created_at = self._now()
         hub = self._hub_factory()
-        return Source(key=key, hub=hub, gate=TcpSourceGate(hub))
+        return Source(key, hub, TcpSourceGate(hub), allowlisted, created_at, created_at)
 
     def acquire(self, ip: str) -> Source[H]:
-        """Return the pipeline for a producer address, or raise SourceAdmissionError.
-
-        A known address keeps its pipeline across reconnects. A new address
-        adopts the pending pipeline if one is waiting, otherwise gets a fresh
-        one.
-        """
         if self._allowed and ip not in self._allowed:
             raise SourceAdmissionError(f"{ip} is not in --source-allow")
         with self._lock:
+            self._evict_expired_locked()
             existing = self._sources.get(ip)
             if existing is not None:
                 return existing
             pending = self._sources.pop(PENDING_KEY, None)
             if pending is not None:
-                adopted = Source(key=ip, hub=pending.hub, gate=pending.gate)
-                self._sources[ip] = adopted
-                return adopted
+                pending.key = ip
+                self._sources[ip] = pending
+                return pending
             if len(self._sources) >= self._max_sources:
                 raise SourceAdmissionError(f"source limit reached (--max-sources={self._max_sources})")
-            source = self._create(ip)
+            source = self._create(ip, False)
             self._sources[ip] = source
             return source
 
-    def select(self, requested: str | None) -> Source[H]:
-        """Resolve a stream request to a source, or raise SourceSelectionError.
-
-        An explicit ``requested`` address gets its pipeline only if it already
-        exists — created by a producer connection or the allowlist. HTTP
-        clients never create per-address pipelines, so they cannot fill the
-        registry and starve real devices. A bare request resolves to the only
-        source, or to a pending pipeline when none exist yet; with several
-        sources it demands an explicit choice.
-        """
+    def connect(self, source: Source[H], conn: socket.socket) -> int:
         with self._lock:
+            generation = source.gate.replace(conn)
+            source.connected = True
+        return generation
+
+    def disconnect(self, source: Source[H], generation: int, conn: socket.socket) -> None:
+        with self._lock:
+            if source.gate.release(generation, conn):
+                source.connected = False
+                source.disconnected_at = self._now()
+
+    def select(self, requested: str | None) -> Source[H]:
+        with self._lock:
+            self._evict_expired_locked()
             if requested is not None:
-                return self._select_explicit(requested)
+                return self._select_explicit_locked(requested)
             if not self._sources:
-                pending = self._create(PENDING_KEY)
+                pending = self._create(PENDING_KEY, False)
                 self._sources[PENDING_KEY] = pending
                 return pending
             if len(self._sources) == 1:
@@ -183,22 +173,60 @@ class SourceRegistry[H: AudioPipeline]:
                 f"multiple sources; request /streamline.wav?source=<ip> (available: {available})",
             )
 
-    def _select_explicit(self, requested: str) -> Source[H]:
-        """Look up an explicit source address; the caller holds the lock."""
+    def retain_http(self, source: Source[H]) -> None:
+        with self._lock:
+            source.http_clients += 1
+
+    def release_http(self, source: Source[H]) -> None:
+        with self._lock:
+            source.http_clients = max(0, source.http_clients - 1)
+            if source.http_clients == 0 and not source.connected:
+                source.disconnected_at = self._now()
+
+    def snapshot(self) -> dict[str, dict[str, object]]:
+        with self._lock:
+            self._evict_expired_locked()
+            sources = tuple(sorted(self._sources.items()))
+            now = self._now()
+            return {key: self._snapshot_source(source, now) for key, source in sources}
+
+    def _select_explicit_locked(self, requested: str) -> Source[H]:
         try:
             ip = str(ipaddress.IPv4Address(requested))
         except ipaddress.AddressValueError:
             raise SourceSelectionError(HTTPStatus.BAD_REQUEST, "source must be an IPv4 address") from None
-        existing = self._sources.get(ip)
-        if existing is None:
+        source = self._sources.get(ip)
+        if source is None:
             raise SourceSelectionError(
-                HTTPStatus.NOT_FOUND,
-                f"unknown source {ip}; connect the device or list it in --source-allow",
+                HTTPStatus.NOT_FOUND, f"unknown source {ip}; connect the device or list it in --source-allow"
             )
-        return existing
+        return source
 
-    def snapshot(self) -> dict[str, object]:
-        """Per-source pipeline snapshots, keyed by producer address."""
-        with self._lock:
-            sources = dict(self._sources)
-        return {key: source.hub.snapshot() for key, source in sorted(sources.items())}
+    def _evict_expired_locked(self) -> None:
+        now = self._now()
+        for key, source in tuple(self._sources.items()):
+            if source.allowlisted or source.connected or source.http_clients:
+                continue
+            if now - source.disconnected_at >= self._eviction_idle_seconds:
+                del self._sources[key]
+
+    def _snapshot_source(self, source: Source[H], now: float) -> dict[str, object]:
+        data = source.hub.snapshot()
+        if source.key == PENDING_KEY:
+            lifecycle = "pending"
+        elif source.connected:
+            lifecycle = "connected"
+        elif source.http_clients:
+            lifecycle = "http-selected"
+        elif source.allowlisted:
+            lifecycle = "allowlisted"
+        else:
+            lifecycle = "disconnected"
+        data["lifecycle"] = {
+            "state": lifecycle,
+            "dynamic": not source.allowlisted,
+            "http_clients": source.http_clients,
+            "idle_seconds": 0.0 if source.connected or source.http_clients else now - source.disconnected_at,
+            "eviction_idle_seconds": self._eviction_idle_seconds if not source.allowlisted else None,
+        }
+        return data

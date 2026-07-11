@@ -28,6 +28,7 @@ options:
   max_repeat_conceal_packets: 3
   max_outage_silence_seconds: 5.0
   source_idle_timeout_seconds: 5.0
+  source_eviction_idle_seconds: 300.0
 schema:
   source_allow: str
   max_sources: "int(1,)"
@@ -36,3 +37,4 @@ schema:
   max_repeat_conceal_packets: "int(0,)"
   max_outage_silence_seconds: "float(0.001,)"
   source_idle_timeout_seconds: "float(0.001,)"
+  source_eviction_idle_seconds: "float(0.001,)"

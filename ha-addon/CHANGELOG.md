@@ -1,7 +1,6 @@
 # Changelog
 
-Notable changes per release, grouped by type. Generated from Conventional
-Commits with git-cliff — do not edit by hand.
+Notable changes per release, grouped by type.
 ## [0.5.3] - 2026-07-11
 
 ### 🐛 Bug Fixes

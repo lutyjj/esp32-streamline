@@ -1,0 +1,62 @@
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-prepare-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release PR
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: mainline
+          fetch-depth: 0
+
+      - name: Confirm the version is available
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/v$VERSION"; then
+            echo "::error::v$VERSION already exists."
+            exit 1
+          fi
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::GitHub release v$VERSION already exists."
+            exit 1
+          fi
+          if git ls-remote --exit-code --heads origin "release/$VERSION" >/dev/null; then
+            echo "::error::release/$VERSION already exists."
+            exit 1
+          fi
+
+      - name: Create and validate the release snapshot
+        run: |
+          git switch --create "release/$VERSION"
+          make release VERSION="$VERSION"
+
+      - name: Commit and open the release PR
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bridge/pyproject.toml firmware/streamline/Cargo.toml firmware/streamline/Cargo.lock ha-addon/config.yaml ha-addon/CHANGELOG.md
+          git diff --cached --quiet && { echo "::error::release preparation produced no changes."; exit 1; }
+          git commit -m "chore: release $VERSION"
+          git push --set-upstream origin "release/$VERSION"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base mainline --head "release/$VERSION" --draft \
+            --title "chore: release $VERSION" \
+            --body "Prepared and validated by the release workflow. Merging this PR promotes the exact merge commit to v$VERSION."

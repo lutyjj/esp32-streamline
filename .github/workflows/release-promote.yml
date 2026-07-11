@@ -1,0 +1,61 @@
+name: Promote release
+
+on:
+  pull_request:
+    branches: [mainline]
+    types: [closed]
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: release-promote-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Verify, tag, and publish
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Derive and validate the release version
+        id: version
+        run: |
+          version=$(sed -n 's/^version: "\([^"]*\)"/\1/p' ha-addon/config.yaml)
+          test -n "$version"
+          test "$RELEASE_BRANCH" = "release/$version"
+          if git rev-parse --verify --quiet "refs/tags/v$version"; then
+            echo "::error::v$version already exists."
+            exit 1
+          fi
+          printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Re-verify the exact merge commit
+        run: |
+          make release-verify \
+            VERSION=${{ steps.version.outputs.value }} \
+            BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
+
+      - name: Tag the verified release commit
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          git tag "v$VERSION" HEAD
+          git push origin "v$VERSION"
+
+      - name: Dispatch publishing from the tag
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "v$VERSION"

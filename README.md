@@ -151,22 +151,20 @@ Docs: [architecture](docs/architecture.md) ·
 
 ### Releases
 
-Releases are tag-based. Set the same version in `bridge/pyproject.toml`,
-`firmware/streamline/Cargo.toml`, and `ha-addon/config.yaml` through the normal
-PR flow, then:
+Use **Actions → Prepare release** with a stable `X.Y.Z` target version. The workflow creates
+a draft `release/X.Y.Z` PR after it prepares and validates the release snapshot.
+Merging that PR verifies its merge commit again, creates `vX.Y.Z`, and starts
+publishing from the tag.
+
+For a local release snapshot, start from a clean release branch and run:
 
 ```sh
-make changelog CHANGELOG_TAG=v0.6.0   # regenerate ha-addon/CHANGELOG.md
-make changelog-check VERSION=0.6.0    # prove the committed changelog matches git-cliff
-make release VERSION=0.6.0            # validates and builds deliverables; publishes nothing
-git tag v0.6.0
-git push github v0.6.0                # the tag workflow publishes to GitHub and GHCR
+make release VERSION=0.6.0
 ```
 
-`ha-addon/CHANGELOG.md` is generated from Conventional Commits with git-cliff
-(`cliff.toml`); the tag workflow renders the same notes into the GitHub
-release. Commit the generated changelog with the version files. Never edit the
-changelog by hand.
+The command updates the checked-in version files and generated add-on
+changelog, then runs release verification. Commit those changes in a release
+PR. Never edit the changelog by hand.
 
 ## Scope
 

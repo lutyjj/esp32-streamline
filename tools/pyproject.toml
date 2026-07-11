@@ -34,5 +34,5 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 warn_unreachable = true
-files = ["src/streamline_tools"]
+files = ["src/streamline_tools", "tests"]
 mypy_path = ["src"]

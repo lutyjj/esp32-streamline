@@ -19,6 +19,8 @@ class AudioPipeline(Protocol):
     def reset_source_session(self) -> None: ...
     def ingest(self, seq: int, payload: bytes) -> None: ...
     def snapshot(self) -> dict[str, object]: ...
+    def register_packet_tap(self, sink: Callable[[int, bytes], None]) -> int: ...
+    def unregister_packet_tap(self, sink_id: int) -> None: ...
 
 
 class TcpSourceGate[H: AudioPipeline]:
@@ -74,6 +76,7 @@ class Source[H: AudioPipeline]:
     disconnected_at: float
     connected: bool = False
     http_clients: int = 0
+    recording_sessions: int = 0
 
 
 class SourceSelectionError(Exception):
@@ -183,6 +186,16 @@ class SourceRegistry[H: AudioPipeline]:
             if source.http_clients == 0 and not source.connected:
                 source.disconnected_at = self._now()
 
+    def retain_recording(self, source: Source[H]) -> None:
+        with self._lock:
+            source.recording_sessions += 1
+
+    def release_recording(self, source: Source[H]) -> None:
+        with self._lock:
+            source.recording_sessions = max(0, source.recording_sessions - 1)
+            if source.recording_sessions == 0 and source.http_clients == 0 and not source.connected:
+                source.disconnected_at = self._now()
+
     def snapshot(self) -> dict[str, dict[str, object]]:
         with self._lock:
             self._evict_expired_locked()
@@ -205,7 +218,7 @@ class SourceRegistry[H: AudioPipeline]:
     def _evict_expired_locked(self) -> None:
         now = self._now()
         for key, source in tuple(self._sources.items()):
-            if source.allowlisted or source.connected or source.http_clients:
+            if source.allowlisted or source.connected or source.http_clients or source.recording_sessions:
                 continue
             if now - source.disconnected_at >= self._eviction_idle_seconds:
                 del self._sources[key]
@@ -226,7 +239,10 @@ class SourceRegistry[H: AudioPipeline]:
             "state": lifecycle,
             "dynamic": not source.allowlisted,
             "http_clients": source.http_clients,
-            "idle_seconds": 0.0 if source.connected or source.http_clients else now - source.disconnected_at,
+            "recording_sessions": source.recording_sessions,
+            "idle_seconds": 0.0
+            if source.connected or source.http_clients or source.recording_sessions
+            else now - source.disconnected_at,
             "eviction_idle_seconds": self._eviction_idle_seconds if not source.allowlisted else None,
         }
         return data

@@ -1,9 +1,9 @@
 # Bridge reference
 
 The bridge accepts StreamLine PCM on TCP `39000` and serves live WAV on HTTP
-`8088`. It owns packet playout, source lifecycle, and HTTP client fan-out. It
-does not encode audio, retain sources across a restart, or identify a device by
-hostname.
+`8088`. It owns packet playout, source lifecycle, HTTP client fan-out, and an
+optional lossless recording store. It does not retain source pipelines across
+a restart or identify a device by hostname.
 
 ## Endpoints
 
@@ -13,6 +13,8 @@ hostname.
 | `/streamline.wav?source=<ipv4>` | Live WAV from an existing or allowlisted source. |
 | `/status` | Bridge version, per-source playout/client statistics, and lifecycle state. |
 | `/health` | `200 OK` with `ok` while the HTTP process is running. |
+| `/recordings` | Bridge recording page. It reports that recording is disabled when no directory is configured. |
+| `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 
 When more than one source exists, an unqualified `/streamline.wav` request
 returns `409` and lists the available source addresses. Invalid source values
@@ -48,3 +50,13 @@ HTTP client count, current idle duration, and eviction interval.
 Home Assistant exposes the same tuning options. Its add-on adapter normalizes
 `source_allow` before passing it to the bridge and omits settings that the
 Supervisor did not provide.
+
+## Recordings
+
+Recording is disabled unless the deployment supplies writable storage. Set
+`--recordings-dir` and `STREAMLINE_RECORDING_TOKEN` for a standalone bridge, or
+enable recordings and set the token in the Home Assistant add-on options. Open
+`http://<bridge-host>:8088/recordings` to record, download, or delete files.
+
+[Lossless recordings](recordings.md) defines the user flow, API, resource
+limits, timeline reconstruction, and storage lifecycle.

@@ -20,6 +20,7 @@ place, and the standing items we track or have accepted.
 | PCM stream (`:39000`) | Cleartext TCP | LAN sniffer can capture audio |
 | Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access |
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
+| Bridge recording API (`:8088`) | Disabled without writable storage; bearer-token gated when enabled | Token holder can record, list, download, and delete captures |
 
 ## Authentication
 
@@ -60,3 +61,7 @@ place, and the standing items we track or have accepted.
 - Set `--source-allow <ESP32 IPv4>` (or `STREAMLINE_SOURCE_ALLOW`) to reject
   unexpected PCM sources. In the Home Assistant add-on, set `source_allow`.
   This is not a firewall replacement; restrict inbound at the boundary.
+- Recording requires `STREAMLINE_RECORDING_TOKEN`. The bridge page keeps it in
+  browser session storage and sends it as a bearer token. The API never returns
+  it. Keep recordings on trusted storage and terminate TLS at a reverse proxy
+  before crossing a trust boundary.

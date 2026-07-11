@@ -1,6 +1,6 @@
 # Architecture
 
-StreamLine captures analog audio on an ESP32 and publishes it as a live HTTP WAV stream through a self-hosted bridge. The device owns capture, local configuration, and transport. The bridge owns network jitter handling and client delivery. Playback, encoding, storage, and multiroom synchronization stay outside StreamLine.
+StreamLine captures analog audio on an ESP32 and publishes it as a live HTTP WAV stream through a self-hosted bridge. The device owns capture, local configuration, and transport. The bridge owns network jitter handling, client delivery, and optional lossless recordings. Playback, media-library management, and multiroom synchronization stay outside StreamLine.
 
 This document maps component ownership and cross-component contracts. The linked references own protocol details, operations, security, and user behavior.
 
@@ -13,6 +13,7 @@ flowchart LR
   capture --> tcp["ELI1 PCM over TCP"]
   tcp --> bridge["Bridge source registry and playout buffer"]
   bridge --> wav["HTTP WAV clients"]
+  bridge --> recording["Optional lossless recording store"]
 
   browser["Device console"] --> api["Device HTTP API"]
   api --> config["Validated device model"]
@@ -31,8 +32,8 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 |---|---|---|
 | `firmware/streamline` | Board selection, codec and I2S capture, signal gating, device configuration, telemetry, HTTP API, TCP sender, OTA | Jitter buffering, audio encoding, playback |
 | `console` | Device setup and management UI, browser-held admin-key custody, generated API client types | Device facts, validation authority, persistent device state |
-| `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, bridge status | Device configuration, source detection, playback |
-| `ha-addon` | Home Assistant Supervisor metadata and bridge process wiring | Bridge runtime behavior |
+| `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
+| `ha-addon` | Home Assistant Supervisor metadata, writable recording storage mapping, and bridge process wiring | Bridge runtime behavior |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
 | `tools` | Developer-only capture analysis and bounded serial capture | Product runtime behavior |
 | `.github`, root and component Makefiles | Change selection, checks, release assembly, publishing | Component behavior |
@@ -88,6 +89,13 @@ The bridge accepts one persistent TCP connection per source IPv4 address. Each s
 
 The pipeline buffers packets before playout, follows sequence numbers, attenuates repeated audio across short gaps, emits silence for longer gaps, and re-buffers after a sustained outage. Each HTTP client has a bounded output queue; the bridge disconnects a client that cannot keep up. The [PCM protocol](pcm-protocol.md) owns the media and concealment contract.
 
+The optional recording service taps accepted packets before live concealment,
+writes received PCM once, and represents missing sequence positions as silence.
+It owns a bounded writer queue and a failure-atomic recording store. The bridge
+page calls the same authenticated API available to scripts. [Lossless
+recordings](recordings.md) owns the user flow, API, storage lifecycle, and
+integrity contract.
+
 The standalone container and Home Assistant add-on run the same `streamline-bridge` process. `streamline-ha-addon` only translates Supervisor options into bridge CLI arguments. The [bridge reference](bridge.md) owns the runtime endpoints, lifecycle states, and tuning options.
 
 ## State ownership
@@ -99,6 +107,8 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 | Stream counters and level state | Firmware runtime | One boot |
 | OTA progress | Firmware OTA worker | One boot; final diagnostic note persists in NVS |
 | Bridge source pipelines and client queues | Bridge process | One bridge process |
+| Active recording sessions | Bridge recording service | Until stop, a resource limit, or bridge shutdown |
+| WAV recordings and manifests | Bridge recording store | Until an authenticated delete or external storage management |
 | Admin key copy and unlock deadline | Browser session storage, with explicit local-storage opt-in | One tab or browser profile |
 | Built console, firmware images, release notes | Build and release automation | Generated artifact; never source state |
 
@@ -115,6 +125,7 @@ Persistent and cross-boundary values enter business logic only after parsing and
 | Release version | Bridge `pyproject.toml`, firmware `Cargo.toml`, add-on `config.yaml` | `make version-check` requires equality |
 | User-visible stages | [User journey](user-journey.md) | Console and firmware behavior |
 | Security posture | [Security notes](security.md) | Device, bridge, add-on, and deployment guidance |
+| Recording timeline and file lifecycle | [Lossless recordings](recordings.md) | Bridge service, HTTP adapter, page, and deployment adapters |
 
 The PCM frame has two hand-written implementations. Keep changes byte-exact and update the protocol, firmware, bridge, and tests together.
 
@@ -125,7 +136,11 @@ The device always runs the embedded console and API. A bridge runs separately in
 - The standalone container exposes TCP `39000` and HTTP `8088`.
 - The Home Assistant add-on runs the same bridge package with Supervisor-owned options and ports.
 
-HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state; `/health` is the bridge container liveness probe. Music Assistant, Snapcast, Icecast, and other consumers remain downstream systems.
+HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
+`/health` is the bridge container liveness probe. A deployment with writable
+recording storage also serves `/recordings` and its authenticated API. Music
+Assistant, Snapcast, Icecast, editors, and media libraries remain downstream
+systems.
 
 ## Build, CI, and release
 
@@ -159,6 +174,7 @@ Use `node` only where an external platform defines that term. Use concrete board
 - This document owns component and dependency boundaries.
 - [Design notes](design.md) own architectural decisions and integration choices.
 - [Bridge reference](bridge.md) owns bridge endpoints, source lifecycle, and tuning options.
+- [Lossless recordings](recordings.md) owns bridge recording behavior, storage, and API semantics.
 - [User journey](user-journey.md) owns visible setup, steady-state, and recovery promises.
 - [PCM protocol](pcm-protocol.md) and [TCP transport](tcp-transport.md) own the audio wire and runtime transport contracts.
 - [Audio profiles](audio-profiles.md), [OTA](ota.md), and [security](security.md) own their feature and risk contracts.

@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { status } from '../state/device';
 import { beginRebootWait } from '../state/rebootWait';
 import { isUnlocked, useAuthEpoch } from './adminKey';
@@ -39,10 +39,14 @@ export interface TransactOpts {
  */
 export function useTransact(): Transact {
   const [busy, setBusy] = useState(false);
+  // State updates do not synchronously re-render the button. Keep the guard in
+  // a ref as well so two clicks in the same render cannot start two writes.
+  const running = useRef(false);
   const [state, setState] = useState<ActionState>({ text: '', cls: '' });
 
   async function run(work: () => Promise<Ack | undefined>, opts: TransactOpts = {}): Promise<void> {
-    if (busy) return;
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     setState({ text: opts.busyText || 'Working…', cls: '' });
     try {
@@ -56,6 +60,7 @@ export function useTransact(): Transact {
     } catch (error) {
       setState({ text: errorMessage(error), cls: 'err' });
     } finally {
+      running.current = false;
       setBusy(false);
     }
   }

@@ -4,7 +4,6 @@ import { apiClient, type DeviceConfig, unwrap } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, status } from '../state/device';
 import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
-import { beginRebootWait } from '../state/rebootWait';
 import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
@@ -169,9 +168,8 @@ function FirmwareCard() {
               beginOtaSession(`Rolling back to ${target}…`);
               transact.run(() => unwrap(apiClient.POST('/api/ota/rollback')), {
                 busyText: 'Rolling back…',
-                okText: 'Rollback started — the console reconnects by itself',
+                reboots: 'the rollback',
               });
-              beginRebootWait('the rollback', 'Rolling back — the console reconnects by itself');
             }}
           >
             {ota.rollback_version ? `Roll back to v${ota.rollback_version}` : 'Roll back'}
@@ -385,14 +383,10 @@ function ResetCard() {
           kind="secondary"
           disabled={!writable}
           onClick={() =>
-            restart.run(
-              async (): Promise<undefined> => {
-                await unwrap(apiClient.POST('/api/restart'));
-                beginRebootWait('the restart', 'Restarting — the console reconnects by itself');
-                return undefined;
-              },
-              { busyText: 'Restarting…', okText: 'Restarting — back in ~10 s' },
-            )
+            restart.run(() => unwrap(apiClient.POST('/api/restart')), {
+              busyText: 'Restarting…',
+              reboots: 'the restart',
+            })
           }
         >
           Restart device

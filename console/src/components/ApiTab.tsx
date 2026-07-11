@@ -99,7 +99,7 @@ function OperationCard({
         <span class={`api-method ${method.toLowerCase()}`}>{method}</span>
         <code class="api-path">{path}</code>
         <span>{operation.summary ?? words(operation.operationId)}</span>
-        {operation.security && <span class="api-auth">key</span>}
+        <span class="api-auth-slot">{operation.security && <span class="api-auth">key</span>}</span>
       </summary>
       <div class="api-detail">
         {operation.description && <p>{operation.description}</p>}

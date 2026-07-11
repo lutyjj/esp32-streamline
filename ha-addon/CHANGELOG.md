@@ -4,6 +4,7 @@ Notable changes per release, grouped by type.
 ## [0.5.4] - 2026-07-11
 
 ### 🐛 Bug Fixes
+- Fetch full history for release-verify changelog check
 - Align API endpoint descriptions (#141)
 - Arm reboot waits after acknowledgement (#140)
 - Add explicit docker.io registry prefix to container images (#137)
@@ -154,9 +155,6 @@ Notable changes per release, grouped by type.
 
 ## [0.3.0] - 2026-06-22
 
-### 🚀 Features
-- Add verified OTA firmware updates
-
 ### 🐛 Bug Fixes
 - Resolve OTA update issues with SNTP sync and GitHub redirects
 
@@ -165,6 +163,11 @@ Notable changes per release, grouped by type.
 
 ### 📚 Documentation
 - Add core/adapter coding standards to AGENTS.md
+
+## [0.2.2] - 2026-06-20
+
+### 🚀 Features
+- Add verified OTA firmware updates
 
 ## [0.2.1] - 2026-06-20
 

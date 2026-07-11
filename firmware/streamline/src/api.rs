@@ -449,9 +449,9 @@ pub struct BoardSettingsRequest {
 #[serde(deny_unknown_fields)]
 /// Audio values are validated against `/api/status.capabilities`.
 pub struct AudioSettingsRequest {
-    pub line: u8,
-    pub gain: u8,
-    pub atten: u8,
+    pub input_line: u8,
+    pub input_gain: u8,
+    pub adc_attenuation_db: u8,
 }
 
 #[derive(Debug, Deserialize)]
@@ -577,7 +577,7 @@ pub struct ConfigResponse<'a> {
     pub target_port: u16,
     pub input_line: u8,
     pub input_gain: u8,
-    pub adc_atten_db: u8,
+    pub adc_attenuation_db: u8,
     pub auto_update_schedule: AutoUpdateScheduleRequest,
     pub config_source: &'a str,
 }
@@ -740,7 +740,7 @@ pub struct TargetStatus<'a> {
 pub struct AudioStatus {
     pub input_line: u8,
     pub input_gain: u8,
-    pub adc_atten_db: u8,
+    pub adc_attenuation_db: u8,
     pub sample_rate: u32,
     pub channels: u8,
     pub bits_per_sample: u8,
@@ -795,7 +795,7 @@ mod spec {
 
     #[derive(OpenApi)]
     #[openapi(
-        info(title = "StreamLine device API", version = "1.0.0"),
+        info(title = "StreamLine device API", version = "2.0.0"),
         paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_board, set_audio, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
@@ -884,7 +884,7 @@ mod tests {
     #[test]
     fn request_dtos_reject_fields_outside_the_contract() {
         let result = serde_urlencoded::from_str::<AudioSettingsRequest>(
-            "line=2&gain=0&atten=0&unexpected=true",
+            "input_line=2&input_gain=0&adc_attenuation_db=0&unexpected=true",
         );
         assert!(result.is_err());
     }

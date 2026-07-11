@@ -10,7 +10,7 @@ export function profileFromConfig(id: string, name: string, config: DeviceConfig
     audio: {
       input_line: config.input_line,
       input_gain: config.input_gain,
-      adc_attenuation_db: config.adc_atten_db,
+      adc_attenuation_db: config.adc_attenuation_db,
     },
   };
 }

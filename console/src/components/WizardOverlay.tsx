@@ -43,7 +43,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
   const original = useRef<AudioBaseline>({
     line: status.value?.audio.input_line ?? 2,
     gain: status.value?.audio.input_gain ?? 0,
-    atten: status.value?.audio.adc_atten_db ?? 0,
+    atten: status.value?.audio.adc_attenuation_db ?? 0,
   });
   /** Board-reported ceiling; the wizard never walks past what the ADC has. */
   const attenMax = status.value?.capabilities.adc_atten_max_db ?? CAL_ATTEN_MAX;
@@ -66,7 +66,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
           const o = original.current;
           await unwrap(
             apiClient.POST('/api/settings/audio', {
-              body: { line: o.line, gain: o.gain, atten },
+              body: { input_line: o.line, input_gain: o.gain, adc_attenuation_db: atten },
             }),
           );
         },
@@ -148,7 +148,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
       try {
         await unwrap(
           apiClient.POST('/api/settings/audio', {
-            body: { line: o.line, gain: o.gain, atten: o.atten },
+            body: { input_line: o.line, input_gain: o.gain, adc_attenuation_db: o.atten },
           }),
         );
         toast(`Put ADC attenuation back to ${o.atten} dB`, 'ok');

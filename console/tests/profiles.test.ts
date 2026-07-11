@@ -26,7 +26,7 @@ const config: DeviceConfig = {
   auto_update_schedule: 'daily',
   input_line: 2,
   input_gain: 7,
-  adc_atten_db: 12,
+  adc_attenuation_db: 12,
   config_source: 'nvs',
 };
 

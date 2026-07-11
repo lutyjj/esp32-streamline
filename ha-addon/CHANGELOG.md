@@ -2,6 +2,15 @@
 
 Notable changes per release, grouped by type. Generated from Conventional
 Commits with git-cliff — do not edit by hand.
+## [0.5.3] - 2026-07-11
+
+### 🐛 Bug Fixes
+- Enforce generated changelog (#117)
+- Polish API contract layout (#116)
+
+### 📚 Documentation
+- Document architecture and debt audit (#136)
+
 ## [0.5.2] - 2026-07-10
 
 ### 🚀 Features
@@ -132,6 +141,9 @@ Commits with git-cliff — do not edit by hand.
 
 ## [0.3.0] - 2026-06-22
 
+### 🚀 Features
+- Add verified OTA firmware updates
+
 ### 🐛 Bug Fixes
 - Resolve OTA update issues with SNTP sync and GitHub redirects
 
@@ -140,11 +152,6 @@ Commits with git-cliff — do not edit by hand.
 
 ### 📚 Documentation
 - Add core/adapter coding standards to AGENTS.md
-
-## [0.2.2] - 2026-06-20
-
-### 🚀 Features
-- Add verified OTA firmware updates
 
 ## [0.2.1] - 2026-06-20
 
@@ -177,4 +184,5 @@ Commits with git-cliff — do not edit by hand.
 
 ### 🚀 Features
 - 0.1.0
+
 

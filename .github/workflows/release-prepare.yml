@@ -29,6 +29,9 @@ jobs:
           ref: mainline
           fetch-depth: 0
 
+      - name: Set up QEMU for cross-architecture builds
+        uses: docker/setup-qemu-action@v4
+
       - name: Confirm the version is available
         run: |
           if git rev-parse --verify --quiet "refs/tags/v$VERSION"; then

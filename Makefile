@@ -16,7 +16,7 @@ CAP ?=
 
 # Pinned changelog generator. Bump by hand: it lives in a Makefile, so
 # Dependabot's docker ecosystem (Dockerfiles only) does not track it.
-GIT_CLIFF_IMAGE ?= orhunp/git-cliff:2.13.1
+GIT_CLIFF_IMAGE ?= docker.io/orhunp/git-cliff:2.13.1
 CHANGELOG_FILE := ha-addon/CHANGELOG.md
 # Render pending commits under this version instead of "Unreleased" — set it
 # during release prep, e.g. `make changelog CHANGELOG_TAG=v0.6.0`.

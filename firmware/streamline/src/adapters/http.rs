@@ -390,9 +390,9 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                 .map_err(|_| anyhow!("configuration lock poisoned"))?
                 .clone();
             let audio = AudioSettings {
-                input_line: form.line,
-                input_gain: form.gain,
-                adc_attenuation_db: form.atten,
+                input_line: form.input_line,
+                input_gain: form.input_gain,
+                adc_attenuation_db: form.adc_attenuation_db,
             }
             .validate(state_for_audio.board.as_ref())
             .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
@@ -963,7 +963,7 @@ fn config_json(state: &ApiState) -> String {
         target_port: config.target_port,
         input_line: config.audio.input_line,
         input_gain: config.audio.input_gain,
-        adc_atten_db: config.audio.adc_attenuation_db,
+        adc_attenuation_db: config.audio.adc_attenuation_db,
         auto_update_schedule: config.auto_update_schedule.into(),
         config_source: "nvs",
     })
@@ -1141,7 +1141,7 @@ impl<'a> api::StatusResponse<'a> {
             audio: api::AudioStatus {
                 input_line: snapshot.audio.input_line,
                 input_gain: snapshot.audio.input_gain,
-                adc_atten_db: snapshot.audio.adc_attenuation_db,
+                adc_attenuation_db: snapshot.audio.adc_attenuation_db,
                 sample_rate: snapshot.audio.sample_rate_hz,
                 channels: snapshot.audio.channels,
                 bits_per_sample: snapshot.audio.bits_per_sample,

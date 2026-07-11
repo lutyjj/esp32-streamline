@@ -10,7 +10,7 @@ HTTP consumer can read it too.
 
 ## Features
 
-- **Dumb node architecture** — the ESP32 captures and moves packets. Encoding,
+- **Dumb device architecture** — the ESP32 captures and moves packets. Encoding,
   buffering, and syncing live on the bridge. See [design notes](docs/design.md).
 - **Zero-config commissioning** — an unconfigured device opens a setup AP. A
   small web console joins Wi-Fi, then handles the stream target and audio
@@ -91,7 +91,7 @@ services:
 
 The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
 Music Assistant as a radio/URL stream, with audio already playing on the source:
-an idle node sends no audio, and Music Assistant rejects a stream it cannot
+an idle device sends no audio, and Music Assistant rejects a stream it cannot
 probe. With several ESP32 sources, select one with
 `http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>`. `/status` serves
 per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning

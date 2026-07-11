@@ -22,7 +22,7 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
     if (!c) return;
     setLine(String(c.input_line));
     setGain(String(c.input_gain));
-    setAtten(String(c.adc_atten_db));
+    setAtten(String(c.adc_attenuation_db));
   }, [c]);
 
   function save(e: SubmitEvent) {
@@ -31,7 +31,11 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
       async () => {
         const ack = await unwrap(
           apiClient.POST('/api/settings/audio', {
-            body: { line: Number(line), gain: Number(gain), atten: Number(atten) },
+            body: {
+              input_line: Number(line),
+              input_gain: Number(gain),
+              adc_attenuation_db: Number(atten),
+            },
           }),
         );
         if (!ack.rebooting) await loadDeviceSettings();

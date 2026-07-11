@@ -91,7 +91,7 @@ PCM and HTTP `8088` for `/streamline.wav`, `/status`, and `/health`.
 Set each ESP32 TCP target to the bridge host IP and port `39000`. Add
 `http://<bridge-host>:8088/streamline.wav` to Music Assistant as a radio URL, or
 `http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>` to pick one of
-several sources. Start audio on the source before adding the URL: an idle node
+several sources. Start audio on the source before adding the URL: an idle device
 sends no audio, and Music Assistant rejects a stream it cannot probe. To serve a
 client that needs an encoded stream, put Liquidsoap/Icecast after the bridge to
 publish FLAC/MP3/Opus.

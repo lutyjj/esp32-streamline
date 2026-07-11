@@ -32,6 +32,11 @@ utoipa = { version = "5.5.0", optional = true }
 [features]
 api-spec = ["dep:utoipa"]
 
+[dev-dependencies]
+# Host-only: proves the generated id pattern the console imports matches the
+# device's own id validation. Never compiled into the device image.
+regex = "1"
+
 [target.'cfg(target_os = "espidf")'.dependencies]
 anyhow = "1"
 embedded-svc = "0.29"

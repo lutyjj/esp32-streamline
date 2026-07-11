@@ -1,42 +1,19 @@
 import { useEffect, useState } from 'preact/hooks';
 import { copyText } from '../lib/adminKey';
-import { apiClient, unwrap } from '../lib/api';
+import { getContract } from '../lib/api';
+import {
+  type ApiDocument,
+  type ApiPathOperation,
+  type ApiSchema,
+  resolveSchema,
+} from '../lib/contract';
 import { errorMessage } from '../lib/errors';
 import { toast } from '../state/toasts';
 
-type Schema = {
-  $ref?: string;
-  type?: string | string[];
-  description?: string;
-  format?: string;
-  minimum?: number;
-  maximum?: number;
-  minLength?: number;
-  maxLength?: number;
-  pattern?: string;
-  properties?: Record<string, Schema>;
-  required?: string[];
-};
-
-type Operation = {
-  operationId?: string;
-  summary?: string;
-  description?: string;
-  security?: Record<string, string[]>[];
-  requestBody?: { content?: Record<string, { schema?: Schema }> };
-  responses?: Record<string, { description?: string }>;
-};
-
-type ApiDocument = {
-  info?: { title?: string; version?: string; description?: string };
-  paths?: Record<string, { get?: Operation; post?: Operation }>;
-  components?: { schemas?: Record<string, Schema> };
-};
-
-type ApiOperation = {
+type OperationEntry = {
   method: 'GET' | 'POST';
   path: string;
-  operation: Operation;
+  operation: ApiPathOperation;
 };
 
 export function ApiTab() {
@@ -44,8 +21,8 @@ export function ApiTab() {
   const [failure, setFailure] = useState('');
 
   useEffect(() => {
-    unwrap(apiClient.GET('/api/openapi.json'))
-      .then((value) => setDocument(value as ApiDocument))
+    getContract()
+      .then(setDocument)
       .catch((error) => setFailure(errorMessage(error)));
   }, []);
 
@@ -89,7 +66,7 @@ function OperationCard({
   path,
   operation,
   document,
-}: ApiOperation & { document: ApiDocument }) {
+}: OperationEntry & { document: ApiDocument }) {
   const body = requestSchema(operation, document);
   const required = new Set(body?.required ?? []);
   const command = curlCommand(method, path, operation, body);
@@ -153,8 +130,8 @@ function OperationCard({
   );
 }
 
-function collectOperations(document: ApiDocument): ApiOperation[] {
-  const operations: ApiOperation[] = [];
+function collectOperations(document: ApiDocument): OperationEntry[] {
+  const operations: OperationEntry[] = [];
   for (const [path, item] of Object.entries(document.paths ?? {})) {
     if (item.get) operations.push({ method: 'GET', path, operation: item.get });
     if (item.post) operations.push({ method: 'POST', path, operation: item.post });
@@ -164,14 +141,12 @@ function collectOperations(document: ApiDocument): ApiOperation[] {
   );
 }
 
-function requestSchema(operation: Operation, document: ApiDocument): Schema | undefined {
+function requestSchema(operation: ApiPathOperation, document: ApiDocument): ApiSchema | undefined {
   const media = operation.requestBody?.content?.['application/x-www-form-urlencoded'];
-  const schema = media?.schema;
-  const name = schema?.$ref?.split('/').at(-1);
-  return name ? document.components?.schemas?.[name] : schema;
+  return resolveSchema(document, media?.schema);
 }
 
-function constraint(schema: Schema): string {
+function constraint(schema: ApiSchema): string {
   const values = [
     schema.description,
     schema.format,
@@ -184,12 +159,17 @@ function constraint(schema: Schema): string {
   return values.filter(Boolean).join(' · ');
 }
 
-function schemaType(schema: Schema): string {
+function schemaType(schema: ApiSchema): string {
   if (Array.isArray(schema.type)) return schema.type.join(' | ');
   return schema.type ?? 'value';
 }
 
-function curlCommand(method: 'GET' | 'POST', path: string, operation: Operation, body?: Schema) {
+function curlCommand(
+  method: 'GET' | 'POST',
+  path: string,
+  operation: ApiPathOperation,
+  body?: ApiSchema,
+) {
   const origin = window.location.origin;
   const lines = [`curl${method === 'POST' ? ' -X POST' : ''}`];
   if (operation.security) lines.push(`  -H 'Authorization: Bearer $STREAMLINE_ADMIN_KEY'`);

@@ -2,9 +2,9 @@
 
 //! Hardware-independent StreamLine application model.
 //!
-//! ESP-IDF adapters live in the binary crate. Keeping protocol and
-//! configuration here makes them host-testable and prevents board/runtime
-//! concerns from leaking into application logic.
+//! ESP-IDF adapters compile only for the device target. Keeping protocol and
+//! configuration in target-independent modules makes them host-testable and
+//! prevents board/runtime concerns from leaking into application logic.
 
 pub mod api;
 pub mod board;

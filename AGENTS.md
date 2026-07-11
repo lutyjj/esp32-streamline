@@ -29,9 +29,9 @@ lives in git.
 
 ## Keep logic testable; push hardware to the edges
 
-Application logic lives in the crate root (`config`, `levels`, `packet`,
-`play`, `protocol`, `update`) and is tested on the host. ESP-IDF, the
-network, and flash live behind `adapters/`. New logic goes in the core;
+Application logic lives in host-testable crate-root modules. ESP-IDF, the
+network, and flash live behind `adapters/`; `main.rs` remains the composition
+root and `runtime.rs` wires device tasks. New logic goes in the core;
 adapters stay thin wiring. When the core must reach hardware, define a small
 trait it owns and implement that trait in the adapter — never call a concrete
 driver from the core. `update::install_verified` and its adapter in

@@ -34,8 +34,8 @@ imports, out-of-range settings, and names longer than 32 characters.
 
 The Rust types in `firmware/streamline/src/profiles.rs` own this contract.
 NVS and HTTP JSON are storage and transport representations of those validated
-types. The TypeScript interfaces and import parser in `console/src/lib` mirror
-the device contract.
+types. OpenAPI generates the console's TypeScript shape. The console validates
+imported JSON for immediate feedback, and the device validates every write.
 
 NVS stores each profile as a separate short record plus catalog metadata and
 the active ID. This fits NVS's small-value design and avoids requiring one

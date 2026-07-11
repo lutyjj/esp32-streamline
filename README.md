@@ -86,7 +86,7 @@ services:
       - "39000:39000/tcp"
       - "8088:8088/tcp"
     # environment:
-    #   STREAMLINE_SOURCE_ALLOW: 192.168.1.100  # accept PCM only from your ESP32
+    #   STREAMLINE_SOURCE_ALLOW: 192.0.2.100  # accept PCM only from your ESP32
 ```
 
 The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
@@ -140,7 +140,8 @@ make bridge-up                            # run the bridge from source
 Flashing runs on the host because Docker Desktop on macOS cannot reliably
 expose serial devices. Install the tool once: `cargo install espflash`.
 
-Docs: [design](docs/design.md) ·
+Docs: [architecture](docs/architecture.md) ·
+[design](docs/design.md) ·
 [user journey](docs/user-journey.md) ·
 [audio profiles](docs/audio-profiles.md) ·
 [PCM protocol](docs/pcm-protocol.md) ·

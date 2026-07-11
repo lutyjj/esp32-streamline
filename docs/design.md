@@ -1,5 +1,8 @@
 # Design Notes
 
+This document records architectural decisions. [Architecture](architecture.md)
+maps the current components, runtime flows, state ownership, and build topology.
+
 ## Decision
 
 Use a supported ESP32 line-in board as a remote analog-to-network bridge, but

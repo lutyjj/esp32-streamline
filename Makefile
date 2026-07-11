@@ -102,7 +102,7 @@ version-check:
 release-history:
 	@remote="$$(git remote | sed -n '1p')"; \
 		test -n "$$remote" || { echo "a git remote is required for release history" >&2; exit 2; }; \
-		git fetch --quiet --force "$$remote" '+refs/tags/*:refs/tags/*'
+		git fetch --quiet --force --prune --prune-tags "$$remote" '+refs/tags/*:refs/tags/*'
 
 release-prepare: release-history
 	@test -z "$$(git status --porcelain)" || (echo "release preparation requires a clean worktree" >&2; exit 2)

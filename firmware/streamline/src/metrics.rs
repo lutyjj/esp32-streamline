@@ -292,7 +292,7 @@ mod tests {
 streamline_firmware_info{version=\"0.3.3\",mode=\"provisioned\"} 1\n\
 # HELP streamline_wifi_info Wi-Fi identity and address labels.\n\
 # TYPE streamline_wifi_info gauge\n\
-streamline_wifi_info{hostname=\"streamline-a8b2.local\",ssid=\"studio\",status=\"connected\",sta_ip=\"192.168.1.50\",ap_ip=\"\"} 1\n\
+streamline_wifi_info{hostname=\"streamline-a8b2.local\",ssid=\"studio\",status=\"connected\",sta_ip=\"192.0.2.50\",ap_ip=\"\"} 1\n\
 # HELP streamline_wifi_rssi_dbm Station RSSI in dBm.\n\
 # TYPE streamline_wifi_rssi_dbm gauge\n\
 streamline_wifi_rssi_dbm -54\n\
@@ -404,7 +404,7 @@ streamline_ota_busy 0\n"
                 hostname: "streamline-a8b2.local".to_owned(),
                 ssid: "studio".to_owned(),
                 status: "connected",
-                sta_ip: "192.168.1.50".to_owned(),
+                sta_ip: "192.0.2.50".to_owned(),
                 ap_ip: String::new(),
                 rssi_dbm: -54,
             },

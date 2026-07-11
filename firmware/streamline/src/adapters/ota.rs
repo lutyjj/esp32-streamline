@@ -203,8 +203,8 @@ impl OtaProgress {
 
 /// Confirm the running slot so the rollback watchdog accepts this image as good.
 ///
-/// Called once the device has booted far enough to be considered healthy (Wi-Fi
-/// up, streaming started). On a slot that is not pending verification this is a
+/// Called once the device has booted far enough to be manageable (Wi-Fi and the
+/// console are up). On a slot that is not pending verification this is a
 /// no-op, so the normal boot path can call it unconditionally.
 pub fn mark_current_valid() {
     match EspOta::new().and_then(|mut ota| ota.mark_running_slot_valid()) {

@@ -47,7 +47,6 @@ place, and the standing items we track or have accepted.
 | Item | Tracking | Notes |
 |---|---|---|
 | PCM stream is unencrypted | [#12](https://github.com/lutyjj/esp32-streamline/issues/12) | Noise PSK (`Noise_NNpsk0_25519_ChaChaPoly_SHA256`) is the lead — lighter than TLS, no certs, reuses a shared secret. |
-| No signed firmware updates | [#7](https://github.com/lutyjj/esp32-streamline/issues/7) | OTA must verify signed images (Secure Boot v2 scheme, no hardware secure boot), be admin-key gated, pull over HTTPS, and roll back on a failed self-test; needs `ota_0`/`ota_1`/`otadata` partitions that fit flash. |
 | Admin key travels over plain HTTP | by design | No on-device TLS — the cost is the certificate, not the code. Terminate TLS at a reverse proxy with a real cert if ever exposed beyond the LAN. |
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
 | Open setup AP during commissioning | by design | Accepts writes only until the first admin key is set — a brief, physically proximate window. |

@@ -34,7 +34,7 @@ git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
-.PHONY: check help lint test format clean changelog changelog-check release release-prepare release-check release-verify release-package release-notes \
+.PHONY: check help lint test format clean changelog changelog-check release release-history release-prepare release-check release-verify release-package release-notes \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check version-check
 
 check: lint test
@@ -99,7 +99,12 @@ version-check:
 # Prepare the only files that carry the product version, then regenerate the
 # add-on metadata from the same git history the published release will use.
 # Start clean so the release commit contains no unrelated work.
-release-prepare:
+release-history:
+	@remote="$$(git remote | sed -n '1p')"; \
+		test -n "$$remote" || { echo "a git remote is required for release history" >&2; exit 2; }; \
+		git fetch --quiet --force "$$remote" '+refs/tags/*:refs/tags/*'
+
+release-prepare: release-history
 	@test -z "$$(git status --porcelain)" || (echo "release preparation requires a clean worktree" >&2; exit 2)
 	$(MAKE) tools-release-prepare VERSION=$(VERSION)
 	$(MAKE) changelog CHANGELOG_TAG=v$(VERSION)
@@ -129,13 +134,13 @@ release: release-prepare
 # Regenerate ha-addon/CHANGELOG.md from Conventional Commits. During release
 # prep (after the version bump, before tagging) pass CHANGELOG_TAG=vX.Y.Z so the
 # new commits land under that version instead of "Unreleased".
-changelog:
+changelog: release-history
 	$(call git_cliff,$(if $(CHANGELOG_TAG),--tag $(CHANGELOG_TAG) )--output $(CHANGELOG_FILE))
 
 # The versioned release commit carries the exact add-on changelog that
 # Supervisor will render. Render the same tag into stdout and compare it
 # without changing the working tree.
-changelog-check: version-check
+changelog-check: release-history version-check
 	@$(call git_cliff,--tag v$(VERSION)) | diff -u "$(CHANGELOG_FILE)" - || { \
 		status=$$?; \
 		if [ "$$status" -eq 1 ]; then \
@@ -147,5 +152,5 @@ changelog-check: version-check
 
 # Print the newest release's notes only (no header/footer) for the GitHub
 # release body. The release workflow feeds this to `gh release create`.
-release-notes:
+release-notes: release-history
 	@$(call git_cliff,--latest --strip all)

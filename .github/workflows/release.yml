@@ -27,6 +27,7 @@ jobs:
         with:
           # git-cliff needs full history and tags to render the release notes.
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Derive and validate release version
         id: version

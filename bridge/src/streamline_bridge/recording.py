@@ -83,6 +83,21 @@ class RecordingLimits:
 DEFAULT_RECORDING_LIMITS = RecordingLimits()
 
 
+def recording_capabilities(enabled: bool, limits: RecordingLimits = DEFAULT_RECORDING_LIMITS) -> dict[str, object]:
+    return {
+        "enabled": enabled,
+        "format": {
+            "container": "wav",
+            "codec": "pcm_s16le",
+            "sample_rate": DEFAULT_FORMAT.rate,
+            "channels": DEFAULT_FORMAT.channels,
+            "bits_per_sample": DEFAULT_FORMAT.bits,
+            "bytes_per_second": DEFAULT_FORMAT.rate * DEFAULT_FORMAT.channels * DEFAULT_FORMAT.bits // 8,
+        },
+        "limits": asdict(limits),
+    }
+
+
 @dataclass(frozen=True)
 class RecordingPaths:
     recording_id: str
@@ -588,18 +603,7 @@ class RecordingService:
         self._active: dict[str, ActiveRecording] = {}
 
     def capabilities(self) -> dict[str, object]:
-        return {
-            "enabled": True,
-            "format": {
-                "container": "wav",
-                "codec": "pcm_s16le",
-                "sample_rate": DEFAULT_FORMAT.rate,
-                "channels": DEFAULT_FORMAT.channels,
-                "bits_per_sample": DEFAULT_FORMAT.bits,
-                "bytes_per_second": DEFAULT_FORMAT.rate * DEFAULT_FORMAT.channels * DEFAULT_FORMAT.bits // 8,
-            },
-            "limits": asdict(self._limits),
-        }
+        return recording_capabilities(True, self._limits)
 
     def list(self) -> dict[str, object]:
         with self._lock:
@@ -649,6 +653,14 @@ class RecordingService:
             if recording_id in self._active:
                 raise RecordingError("recording-active", "Stop the recording before deleting it.")
         self._store.delete(recording_id)
+
+    def shutdown(self) -> None:
+        with self._lock:
+            recording_ids = tuple(self._active)
+        for recording_id in recording_ids:
+            binding = self._detach(recording_id)
+            if binding is not None:
+                binding.session.stop()
 
     def _session_finished(self, recording_id: str) -> None:
         self._detach(recording_id)

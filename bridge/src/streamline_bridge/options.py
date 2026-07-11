@@ -43,6 +43,13 @@ BRIDGE_OPTIONS = (
     BridgeOption("http_bind", "--http-bind", str, "0.0.0.0", "HTTP bind address"),
     BridgeOption("http_port", "--http-port", int, 8088, "HTTP listen port", minimum=1),
     BridgeOption(
+        "recordings_dir",
+        "--recordings-dir",
+        str,
+        "",
+        "writable directory for lossless recordings; disabled when empty",
+    ),
+    BridgeOption(
         "client_buffer_chunks", "--client-buffer-chunks", int, 2048, "per-client HTTP output queue depth", 1, True
     ),
     BridgeOption(

@@ -8,14 +8,17 @@ import queue
 import struct
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlsplit
 
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
+from streamline_bridge.recording_http import FileResponse, JsonResponse, RecordingHttpController
 from streamline_bridge.sources import SourceRegistry, SourceSelectionError
 
 if TYPE_CHECKING:
     from streamline_bridge.pipeline import AudioPipeline
+    from streamline_bridge.recording import RecordingService
 
 logger = logging.getLogger(__name__)
 HTTP_MAX_BATCH_CHUNKS = 64
@@ -57,8 +60,15 @@ def collect_http_batch(client_queue: queue.Queue[bytes | None]) -> list[bytes] |
     return chunks
 
 
-def make_handler(sources: SourceRegistry[AudioPipeline], bridge_version: str) -> type[BaseHTTPRequestHandler]:
+def make_handler(
+    sources: SourceRegistry[AudioPipeline],
+    bridge_version: str,
+    recordings: RecordingService | None = None,
+    recording_token: str | None = None,
+) -> type[BaseHTTPRequestHandler]:
     """Create a handler class bound to one bridge source registry."""
+
+    recording_http = RecordingHttpController(recordings, recording_token)
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -72,19 +82,71 @@ def make_handler(sources: SourceRegistry[AudioPipeline], bridge_version: str) ->
             elif url.path == "/streamline.wav":
                 self._stream_wav(url.query)
             else:
-                self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                self._dispatch_recording("GET", url.path)
+
+        def do_POST(self) -> None:
+            self._dispatch_recording("POST", urlsplit(self.path).path, self._read_body())
+
+        def do_DELETE(self) -> None:
+            self._dispatch_recording("DELETE", urlsplit(self.path).path)
 
         def log_message(self, fmt: str, *args: object) -> None:
             logger.info("%s - %s", self.address_string(), fmt % args)
 
-        def _send_json(self, data: dict[str, object], status: HTTPStatus = HTTPStatus.OK) -> None:
+        def _send_json(
+            self,
+            data: dict[str, object],
+            status: HTTPStatus = HTTPStatus.OK,
+            extra_headers: dict[str, str] | None = None,
+        ) -> None:
             body = json.dumps(data, sort_keys=True).encode() + b"\n"
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            for name, value in (extra_headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
+
+        def _read_body(self) -> bytes:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = 0
+            if length > 4096:
+                return b""
+            return self.rfile.read(max(0, length))
+
+        def _dispatch_recording(self, method: str, path: str, body: bytes = b"") -> None:
+            response = recording_http.handle(method, path, self.headers.get("Authorization"), body)
+            if response is None:
+                self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+            elif isinstance(response, JsonResponse):
+                self._send_json(response.data, response.status, response.headers)
+            else:
+                self._send_file(response)
+
+        def _send_file(self, response: FileResponse) -> None:
+            path = Path(response.path)
+            try:
+                size = path.stat().st_size
+                source = path.open("rb")
+            except OSError:
+                self._send_json(
+                    {"error": {"code": "not-found", "message": "Recording file is no longer available."}},
+                    HTTPStatus.NOT_FOUND,
+                )
+                return
+            with source:
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "audio/wav")
+                self.send_header("Content-Length", str(size))
+                self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
+                self.send_header("Cache-Control", "private, no-store")
+                self.end_headers()
+                while chunk := source.read(64 * 1024):
+                    self.wfile.write(chunk)
 
         def _send_text(self, body_text: str) -> None:
             body = body_text.encode()

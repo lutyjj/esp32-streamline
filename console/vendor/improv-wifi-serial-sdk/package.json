@@ -1,0 +1,10 @@
+{
+  "name": "improv-wifi-serial-sdk",
+  "version": "2.5.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./dist/const": "./dist/const.js",
+    "./dist/serial": "./dist/serial.js"
+  }
+}

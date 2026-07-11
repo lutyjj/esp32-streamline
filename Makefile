@@ -14,9 +14,8 @@ ADDON_IMAGE ?=
 REF ?=
 CAP ?=
 
-# Pinned changelog generator. Bump by hand: it lives in a Makefile, so
-# Dependabot's docker ecosystem (Dockerfiles only) does not track it.
-GIT_CLIFF_IMAGE ?= docker.io/orhunp/git-cliff:2.13.1
+# The root Dockerfile keeps the changelog generator pinned and Dependabot-managed.
+GIT_CLIFF_IMAGE := esp32-streamline-release-tools
 CHANGELOG_FILE := ha-addon/CHANGELOG.md
 # Render pending commits under this version instead of "Unreleased" — set it
 # during release prep, e.g. `make changelog CHANGELOG_TAG=v0.6.0`.
@@ -34,7 +33,7 @@ git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
-.PHONY: check help lint test format clean changelog changelog-check release release-prepare release-verify release-notes \
+.PHONY: check help lint test format clean release-tools-image changelog changelog-check release release-prepare release-verify release-notes \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check version-check
 
 check: lint test
@@ -49,6 +48,9 @@ help:
 	@echo "  make release VERSION=X.Y.Z           prepare and verify a release snapshot"
 
 format: bridge-format console-format firmware-format tools-format ha-addon-format
+
+release-tools-image:
+	$(CONTAINER) build -f Dockerfile.release-tools -t $(GIT_CLIFF_IMAGE) .
 
 lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
 
@@ -119,13 +121,13 @@ release: release-prepare
 # Regenerate ha-addon/CHANGELOG.md from Conventional Commits. During release
 # prep (after the version bump, before tagging) pass CHANGELOG_TAG=vX.Y.Z so the
 # new commits land under that version instead of "Unreleased".
-changelog:
+changelog: release-tools-image
 	$(call git_cliff,$(if $(CHANGELOG_TAG),--tag $(CHANGELOG_TAG) )--output $(CHANGELOG_FILE))
 
 # The versioned release commit carries the exact add-on changelog that
 # Supervisor will render. Render the same tag into stdout and compare it
 # without changing the working tree.
-changelog-check: version-check
+changelog-check: release-tools-image version-check
 	@$(call git_cliff,--tag v$(VERSION)) | diff -u "$(CHANGELOG_FILE)" - || { \
 		status=$$?; \
 		if [ "$$status" -eq 1 ]; then \
@@ -137,5 +139,5 @@ changelog-check: version-check
 
 # Print the newest release's notes only (no header/footer) for the GitHub
 # release body. The release workflow feeds this to `gh release create`.
-release-notes:
+release-notes: release-tools-image
 	@$(call git_cliff,--latest --strip all)

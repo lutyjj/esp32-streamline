@@ -1,15 +1,25 @@
 # Weekly dependency PRs for every ecosystem in the repository, grouped by the
-# component that owns the build contract.
+# component that owns the build contract. GitHub Actions stay pinned to commit
+# SHAs with upstream version comments, and Dependabot updates both together.
 version: 2
 
 multi-ecosystem-groups:
   bridge:
     schedule:
       interval: weekly
+  console:
+    schedule:
+      interval: weekly
   firmware:
     schedule:
       interval: weekly
+  ha-addon:
+    schedule:
+      interval: weekly
   tools:
+    schedule:
+      interval: weekly
+  webflasher:
     schedule:
       interval: weekly
 
@@ -30,7 +40,7 @@ updates:
       - "*"
     multi-ecosystem-group: firmware
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /bridge
     patterns:
       - "*"
@@ -48,7 +58,19 @@ updates:
       - "*"
     multi-ecosystem-group: firmware
 
-  - package-ecosystem: pip
+  - package-ecosystem: npm
+    directory: /console
+    patterns:
+      - "*"
+    multi-ecosystem-group: console
+
+  - package-ecosystem: docker
+    directory: /console
+    patterns:
+      - "*"
+    multi-ecosystem-group: console
+
+  - package-ecosystem: uv
     directory: /tools
     patterns:
       - "*"
@@ -59,3 +81,22 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: tools
+
+  - package-ecosystem: docker
+    directory: /ha-addon
+    patterns:
+      - "*"
+    multi-ecosystem-group: ha-addon
+
+  - package-ecosystem: docker
+    directory: /webflasher
+    patterns:
+      - "*"
+    multi-ecosystem-group: webflasher
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    patterns:
+      - "*"

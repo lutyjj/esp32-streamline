@@ -29,7 +29,7 @@ deps: node_modules/.package-lock.json
 
 # Refresh package-lock.json in the same pinned Node container used for checks.
 lock: dev-image
-	$(CONTAINER_RUN) npm install --package-lock-only --ignore-scripts --force
+	$(CONTAINER_RUN) npm install --package-lock-only --ignore-scripts
 
 generate: deps
 	$(CONTAINER_RUN) npx openapi-typescript ../docs/openapi.json -o src/generated/api.ts

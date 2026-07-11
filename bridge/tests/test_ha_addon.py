@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -81,7 +82,10 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
             bridge_argv({"not_a_bridge_option": True})
 
     def test_supervisor_config_matches_the_bridge_owned_option_contract(self) -> None:
-        config = (Path(__file__).parents[2] / "ha-addon" / "config.yaml").read_text(encoding="utf-8")
+        config_path = Path(
+            os.environ.get("STREAMLINE_ADDON_CONFIG", Path(__file__).parents[2] / "ha-addon" / "config.yaml")
+        )
+        config = config_path.read_text(encoding="utf-8")
         options = self._yaml_section(config, "options")
         schema = self._yaml_section(config, "schema")
         contract = {option.name: option for option in addon_options()}

@@ -11,8 +11,9 @@ BRIDGE_PORTS ?= -p 39000:39000 -p 8088:8088
 # Run a check in the dev image with the source mounted and the shared ruff/mypy
 # cache volume attached.
 CONTAINER_RUN := $(CONTAINER) run --rm \
-	-v "$(CURDIR):/workspace" -v "$(PYTHON_CACHE_VOLUME):/cache" \
+	-v "$(CURDIR):/workspace" -v "$(CURDIR)/..:/repo:ro" -v "$(PYTHON_CACHE_VOLUME):/cache" \
 	-e RUFF_CACHE_DIR=/cache/ruff -e MYPY_CACHE_DIR=/cache/mypy \
+	-e STREAMLINE_ADDON_CONFIG=/repo/ha-addon/config.yaml \
 	-w /workspace $(DEV_IMAGE)
 
 .PHONY: dev-image format lint test image run up

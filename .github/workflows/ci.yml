@@ -153,6 +153,14 @@ jobs:
           path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
 
+  release-verify:
+    name: Release snapshot
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: make release-verify
+
   # Single stable status the whole workflow rolls up into. Mark THIS as the
   # required check in branch protection: it passes when the relevant jobs pass
   # and treats skipped (unchanged) components as a pass, so path-filtering never
@@ -161,16 +169,16 @@ jobs:
   ci-complete:
     name: CI complete
     if: ${{ always() }}
-    needs: [changes, checks, firmware]
+    needs: [changes, checks, firmware, release-verify]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
         run: |
-          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }}"
+          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }} release=${{ needs.release-verify.result }}"
           if [ "${{ needs.changes.result }}" != "success" ]; then
             echo "::error::change detection failed"; exit 1
           fi
-          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}"; do
+          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}" "${{ needs.release-verify.result }}"; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a required job did not pass ($r)"; exit 1 ;;

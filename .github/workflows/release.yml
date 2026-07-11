@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -62,7 +63,7 @@ jobs:
 
       - name: Build release deliverables
         run: |
-          make release \
+          make release-verify \
             VERSION=${{ steps.version.outputs.value }} \
             BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
@@ -98,10 +99,7 @@ jobs:
           docker tag "$BRIDGE_IMAGE:$VERSION" "$BRIDGE_IMAGE:latest"
           docker push "$BRIDGE_IMAGE:$VERSION"
           docker push "$BRIDGE_IMAGE:latest"
-          for spec in "amd64 linux/amd64" "aarch64 linux/arm64"; do
-            set -- $spec
-            arch="$1"
-            platform="$2"
+          while read -r arch platform; do
             image="${ADDON_IMAGE_BASE%/*}/${arch}-${ADDON_IMAGE_BASE##*/}"
             docker buildx build \
               --platform "$platform" \
@@ -112,7 +110,10 @@ jobs:
               -t "$image:latest" \
               --push \
               .
-          done
+          done <<'EOF'
+          amd64 linux/amd64
+          aarch64 linux/arm64
+          EOF
 
       # Same git-cliff source as ha-addon/CHANGELOG.md, so the GitHub release
       # notes and the add-on changelog read identically.

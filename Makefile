@@ -34,8 +34,8 @@ git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
-.PHONY: check help lint test format clean changelog changelog-check release-notes \
-	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check version-check release
+.PHONY: check help lint test format clean changelog changelog-check release release-prepare release-verify release-notes \
+	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check version-check
 
 check: lint test
 
@@ -46,7 +46,7 @@ help:
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
 	@echo "                                        e.g. firmware-flash PORT=..., bridge-run, bridge-up"
 	@echo "  make changelog[-check] VERSION=X.Y.Z  generate or validate the add-on changelog"
-	@echo "  make release VERSION=X.Y.Z           build local release deliverables"
+	@echo "  make release VERSION=X.Y.Z           prepare and verify a release snapshot"
 
 format: bridge-format console-format firmware-format tools-format ha-addon-format
 
@@ -64,7 +64,7 @@ clean: firmware-clean
 bridge-check: bridge-lint bridge-test bridge-image ;
 console-check: console-lint console-test console-build ;
 firmware-check: firmware-lint firmware-test firmware-openapi-check firmware-build ;
-tools-check: tools-lint ;
+tools-check: tools-lint tools-test ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;
 
@@ -93,9 +93,28 @@ version-check:
 	@test "$(VERSION)" = "$(PROJECT_VERSION)" || (echo "VERSION=$(VERSION) does not match bridge/pyproject.toml ($(PROJECT_VERSION))" >&2; exit 2)
 	@test "$(VERSION)" = "$(FIRMWARE_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.toml ($(FIRMWARE_VERSION))" >&2; exit 2)
 	@test "$(VERSION)" = "$(ADDON_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(ADDON_VERSION))" >&2; exit 2)
-	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$$' || (echo "VERSION must be a semantic version" >&2; exit 2)
+	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || (echo "VERSION must be a stable X.Y.Z release version" >&2; exit 2)
 
-release: changelog-check check firmware-artifacts bridge-image ha-addon-image
+# Prepare the only files that carry the product version, then regenerate the
+# add-on metadata from the same git history the published release will use.
+# Start clean so the release commit contains no unrelated work.
+release-prepare:
+	@test -z "$$(git status --porcelain)" || (echo "release preparation requires a clean worktree" >&2; exit 2)
+	$(MAKE) tools-release-prepare VERSION=$(VERSION)
+	$(MAKE) changelog CHANGELOG_TAG=v$(VERSION)
+	$(MAKE) version-check VERSION=$(VERSION)
+	$(MAKE) changelog-check VERSION=$(VERSION)
+
+# Verify a prepared release without changing its files. The tag workflow and
+# release-promotion workflow both use this target against a fixed commit.
+release-verify: changelog-check check firmware-artifacts bridge-image
+	$(MAKE) ha-addon-image BUILD_ARCH=aarch64 VERSION=$(VERSION)
+	$(MAKE) ha-addon-image BUILD_ARCH=amd64 VERSION=$(VERSION)
+
+# A local release command leaves a complete, validated release snapshot ready
+# for review. Publishing remains a separate, protected CI action.
+release: release-prepare
+	$(MAKE) release-verify VERSION=$(VERSION)
 
 # Regenerate ha-addon/CHANGELOG.md from Conventional Commits. During release
 # prep (after the version bump, before tagging) pass CHANGELOG_TAG=vX.Y.Z so the

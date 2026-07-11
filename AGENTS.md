@@ -173,11 +173,11 @@ and secrets (`.env`) stay out of git. See `.gitignore`; extend it if needed.
 ## Releases are tag-based
 
 The version in `bridge/pyproject.toml`, `firmware/streamline/Cargo.toml`, and
-`ha-addon/config.yaml` is the checked-in product version. Before tagging,
-regenerate `ha-addon/CHANGELOG.md` with `make changelog CHANGELOG_TAG=vX.Y.Z`
-(git-cliff, never hand-edited). Create the matching `vX.Y.Z` tag only after
-`make release VERSION=X.Y.Z` passes; the tag workflow publishes and renders the
-same notes into the GitHub release. See the
+`ha-addon/config.yaml` is the checked-in product version. `make release
+VERSION=X.Y.Z` prepares all version files and the git-cliff-generated
+`ha-addon/CHANGELOG.md`, then validates the release snapshot. Commit the result
+in a `release/X.Y.Z` PR. After merge, release promotion revalidates the merge
+commit, tags it, and dispatches publishing from that tag. See the
 [README release steps](README.md#releases).
 
 ## Docs win on conflict

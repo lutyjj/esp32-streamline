@@ -156,6 +156,7 @@ PR flow, then:
 
 ```sh
 make changelog CHANGELOG_TAG=v0.6.0   # regenerate ha-addon/CHANGELOG.md
+make changelog-check VERSION=0.6.0    # prove the committed changelog matches git-cliff
 make release VERSION=0.6.0            # validates and builds deliverables; publishes nothing
 git tag v0.6.0
 git push github v0.6.0                # the tag workflow publishes to GitHub and GHCR
@@ -163,8 +164,8 @@ git push github v0.6.0                # the tag workflow publishes to GitHub and
 
 `ha-addon/CHANGELOG.md` is generated from Conventional Commits with git-cliff
 (`cliff.toml`); the tag workflow renders the same notes into the GitHub
-release, so the release page and the add-on changelog stay identical. Never
-edit the changelog by hand.
+release. Commit the generated changelog with the version files. Never edit the
+changelog by hand.
 
 ## Scope
 

@@ -2,6 +2,30 @@
 
 Notable changes per release, grouped by type. Generated from Conventional
 Commits with git-cliff — do not edit by hand.
+## [0.5.2] - 2026-07-10
+
+### 🚀 Features
+- Derive device contract and console client (#115)
+- Add status light (#114)
+
+## [0.5.1] - 2026-07-10
+
+### 🚀 Features
+- Add source audio profiles (#111)
+- Add automatic update schedules (#98)
+- Share the console build (#95)
+- Log source connect/disconnect via the logging module
+
+### 🐛 Bug Fixes
+- Serve manifest during development (#97)
+- Don't report an OTA rollback before the device reboots (#94)
+
+### 🚜 Refactor
+- Simplify issue templates (#101)
+
+### 📚 Documentation
+- Lead with the Home Assistant add-on to Music Assistant path
+
 ## [0.5.0] - 2026-07-07
 
 ### 🚀 Features
@@ -153,5 +177,4 @@ Commits with git-cliff — do not edit by hand.
 
 ### 🚀 Features
 - 0.1.0
-
 

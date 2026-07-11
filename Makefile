@@ -21,18 +21,20 @@ CHANGELOG_FILE := ha-addon/CHANGELOG.md
 # Render pending commits under this version instead of "Unreleased" — set it
 # during release prep, e.g. `make changelog CHANGELOG_TAG=v0.6.0`.
 CHANGELOG_TAG ?=
+GIT_COMMON_DIR := $(abspath $(shell git rev-parse --git-common-dir))
 
 # $(call git_cliff,ARGS) runs the pinned generator over the repo as the host
 # user, so generated files stay editable and the repo reads as owned (git-cliff
 # is pure-Rust and needs no git binary).
 git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
+	-v "$(GIT_COMMON_DIR):$(GIT_COMMON_DIR)" \
 	-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(GIT_CLIFF_IMAGE) $(1)
 
 # Reach the component sub-makes through the environment so the `<component>-%`
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
-.PHONY: check help lint test format clean changelog release-notes \
+.PHONY: check help lint test format clean changelog changelog-check release-notes \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check version-check release
 
 check: lint test
@@ -43,6 +45,7 @@ help:
 	@echo "  make <c>-check                       c = bridge | console | firmware | tools | webflasher | ha-addon"
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
 	@echo "                                        e.g. firmware-flash PORT=..., bridge-run, bridge-up"
+	@echo "  make changelog[-check] VERSION=X.Y.Z  generate or validate the add-on changelog"
 	@echo "  make release VERSION=X.Y.Z           build local release deliverables"
 
 format: bridge-format console-format firmware-format tools-format ha-addon-format
@@ -92,13 +95,26 @@ version-check:
 	@test "$(VERSION)" = "$(ADDON_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(ADDON_VERSION))" >&2; exit 2)
 	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$$' || (echo "VERSION must be a semantic version" >&2; exit 2)
 
-release: version-check check firmware-artifacts bridge-image ha-addon-image
+release: changelog-check check firmware-artifacts bridge-image ha-addon-image
 
 # Regenerate ha-addon/CHANGELOG.md from Conventional Commits. During release
 # prep (after the version bump, before tagging) pass CHANGELOG_TAG=vX.Y.Z so the
 # new commits land under that version instead of "Unreleased".
 changelog:
 	$(call git_cliff,$(if $(CHANGELOG_TAG),--tag $(CHANGELOG_TAG) )--output $(CHANGELOG_FILE))
+
+# The versioned release commit carries the exact add-on changelog that
+# Supervisor will render. Render the same tag into stdout and compare it
+# without changing the working tree.
+changelog-check: version-check
+	@$(call git_cliff,--tag v$(VERSION)) | diff -u "$(CHANGELOG_FILE)" - || { \
+		status=$$?; \
+		if [ "$$status" -eq 1 ]; then \
+			echo "$(CHANGELOG_FILE) does not match git-cliff for v$(VERSION)." >&2; \
+			echo "Run 'make changelog CHANGELOG_TAG=v$(VERSION)' and commit the result." >&2; \
+		fi; \
+		exit "$$status"; \
+	}
 
 # Print the newest release's notes only (no header/footer) for the GitHub
 # release body. The release workflow feeds this to `gh release create`.

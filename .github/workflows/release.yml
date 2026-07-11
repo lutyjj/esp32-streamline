@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          make version-check VERSION="$version"
+          make changelog-check VERSION="$version"
           printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       # Restore-only: CI owns these caches (see ci.yml); reusing them turns the

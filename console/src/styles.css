@@ -231,7 +231,7 @@ button {
 }
 .api-operation > summary {
   display: grid;
-  grid-template-columns: 54px minmax(210px, 1fr) minmax(120px, 1fr) auto;
+  grid-template-columns: 54px minmax(210px, 1fr) minmax(120px, 1fr) 34px;
   gap: 10px;
   align-items: center;
   padding: 11px 13px;
@@ -241,7 +241,7 @@ button {
 .api-operation > summary::-webkit-details-marker {
   display: none;
 }
-.api-operation > summary > span:not(.api-method, .api-auth) {
+.api-operation > summary > span:not(.api-method, .api-auth, .api-auth-slot) {
   color: var(--muted);
 }
 .api-operation > summary > :is(code, span) {
@@ -249,6 +249,11 @@ button {
 }
 .api-path {
   overflow-wrap: anywhere;
+}
+.api-auth-slot {
+  display: flex;
+  width: 34px;
+  justify-content: flex-end;
 }
 .api-method {
   border-radius: 4px;
@@ -1136,7 +1141,7 @@ select:disabled {
   .api-operation > summary {
     grid-template-columns: 54px 1fr auto;
   }
-  .api-operation > summary > span:not(.api-method, .api-auth) {
+  .api-operation > summary > span:not(.api-method, .api-auth, .api-auth-slot) {
     display: none;
   }
   .api-field {

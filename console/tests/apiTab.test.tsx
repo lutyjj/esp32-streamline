@@ -11,6 +11,12 @@ describe('ApiTab', () => {
       Response.json({
         info: { title: 'StreamLine device API', version: '1.0.0' },
         paths: {
+          '/api/status': {
+            get: {
+              summary: 'Read device status',
+              responses: { 200: {} },
+            },
+          },
           '/api/settings/name': {
             post: {
               summary: 'Set device name',
@@ -47,5 +53,6 @@ describe('ApiTab', () => {
     expect(host.textContent).toContain('required');
     expect(host.querySelector('.api-auth')?.textContent).toBe('key');
     expect(host.querySelector('.api-copy')?.className).toContain('btn secondary');
+    expect(host.querySelectorAll('.api-operation > summary > .api-auth-slot')).toHaveLength(2);
   });
 });

@@ -42,7 +42,7 @@ test: image
 	$(CONTAINER) run --rm --platform $(PLATFORM) \
 		-v "$$volume:/data" \
 		-v "$$stub_dir:/test-bin:ro" \
-		-e PATH="/test-bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
+		-e PATH="/test-bin:/opt/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
 		"$(IMAGE):$(VERSION)"
 
 image: lint

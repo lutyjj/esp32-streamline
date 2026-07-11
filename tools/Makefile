@@ -1,6 +1,8 @@
 include ../mk/common.mk
 
 IMAGE := esp32-streamline-tools
+DEV_IMAGE := esp32-streamline-tools-dev
+UV_IMAGE := esp32-streamline-tools-uv
 REF ?=
 CAP ?=
 
@@ -9,7 +11,9 @@ CAP ?=
 CONTAINER_RUN := $(CONTAINER) run --rm \
 	-v "$(CURDIR):/workspace" -v "$(PYTHON_CACHE_VOLUME):/cache" \
 	-e RUFF_CACHE_DIR=/cache/ruff-tools -e MYPY_CACHE_DIR=/cache/mypy-tools \
-	-w /workspace $(IMAGE)
+	-w /workspace $(DEV_IMAGE)
+UV_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
+	-e UV_CACHE_DIR=/workspace/.cache/uv -v "$(CURDIR):/workspace" -w /workspace $(UV_IMAGE) uv
 
 # Mount only the directories holding the two input files, read-only, at their
 # host paths so the arguments pass through unchanged. `sort` deduplicates when
@@ -17,18 +21,30 @@ CONTAINER_RUN := $(CONTAINER) run --rm \
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
-.PHONY: image format lint test analyze release-prepare
+.PHONY: uv-image dev-image image format lint lock lock-check test analyze release-prepare
 
-image:
+uv-image:
+	$(CONTAINER) build --target uv -t $(UV_IMAGE) .
+
+lock: uv-image
+	$(UV_RUN) lock --upgrade
+
+lock-check: uv-image
+	$(UV_RUN) lock --check
+
+dev-image: lock-check
+	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
+
+image: lock-check
 	$(CONTAINER) build -f Dockerfile -t $(IMAGE) .
 
-format: image
+format: dev-image
 	$(CONTAINER_RUN) sh -c 'ruff check --select I --fix src tests && ruff format src tests'
 
-lint: image
+lint: dev-image
 	$(CONTAINER_RUN) sh -c 'ruff format --check src tests && ruff check src tests && mypy'
 
-test: image
+test: dev-image
 	$(CONTAINER_RUN) sh -c 'PYTHONPATH=/workspace/src python3 -m unittest discover -s tests -v'
 
 analyze: image

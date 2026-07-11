@@ -63,10 +63,10 @@ clean: firmware-clean
 # Per-component check aggregates. The trailing `;` gives each an empty recipe so
 # the `<component>-%` forwarding rules do not also fire a `check` sub-target. CI
 # fans out over these by name.
-bridge-check: bridge-lint bridge-test bridge-image ;
+bridge-check: bridge-lock-check bridge-lint bridge-test bridge-image ;
 console-check: console-lint console-test console-build ;
 firmware-check: firmware-lint firmware-test firmware-openapi-check firmware-build ;
-tools-check: tools-lint tools-test ;
+tools-check: tools-lock-check tools-lint tools-test tools-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;
 

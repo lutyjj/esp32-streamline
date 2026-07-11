@@ -1,7 +1,7 @@
 include ../mk/common.mk
 
 DEV_IMAGE := esp32-streamline-bridge-dev
-UV_IMAGE := esp32-streamline-bridge-uv
+LOCK_IMAGE := esp32-streamline-bridge-lock
 # The release flow injects the published name as BRIDGE_IMAGE; local builds
 # fall back to the plain name. `:=` keeps stray IMAGE environment variables out.
 IMAGE := $(or $(BRIDGE_IMAGE),esp32-streamline-bridge)
@@ -16,21 +16,22 @@ CONTAINER_RUN := $(CONTAINER) run --rm \
 	-e RUFF_CACHE_DIR=/cache/ruff -e MYPY_CACHE_DIR=/cache/mypy \
 	-e STREAMLINE_ADDON_CONFIG=/repo/ha-addon/config.yaml \
 	-w /workspace $(DEV_IMAGE)
-UV_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
-	-e UV_CACHE_DIR=/workspace/.cache/uv -v "$(CURDIR):/workspace" -w /workspace $(UV_IMAGE) uv
+LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
+	-v "$(CURDIR):/workspace" -e UV_CACHE_DIR=/tmp/uv-cache \
+	-w /workspace $(LOCK_IMAGE) uv
 
-.PHONY: uv-image dev-image format lint lock lock-check test image run up
+.PHONY: lock-image dev-image format lint lock lock-check test image run up
 
-uv-image:
-	$(CONTAINER) build --target uv -t $(UV_IMAGE) .
+lock-image:
+	$(CONTAINER) build -f Dockerfile.dev --target lock-tool -t $(LOCK_IMAGE) .
 
-lock: uv-image
-	$(UV_RUN) lock --upgrade
+lock: lock-image
+	$(LOCK_RUN) lock --upgrade
 
-lock-check: uv-image
-	$(UV_RUN) lock --check
+lock-check: lock-image
+	$(LOCK_RUN) lock --check
 
-dev-image: lock-check
+dev-image:
 	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
 
 format: dev-image
@@ -42,7 +43,7 @@ lint: dev-image
 test: dev-image
 	$(CONTAINER_RUN) sh -c 'PYTHONPATH=/workspace/src python3 -m unittest discover -s tests -v'
 
-image: lock-check
+image:
 	$(CONTAINER) build -f Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) .
 
 run: image

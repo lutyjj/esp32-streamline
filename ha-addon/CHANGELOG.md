@@ -1,6 +1,20 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.5.4] - 2026-07-11
+
+### 🐛 Bug Fixes
+- Align API endpoint descriptions (#141)
+- Arm reboot waits after acknowledgement (#140)
+- Add explicit docker.io registry prefix to container images (#137)
+
+### 🚜 Refactor
+- Normalize audio-setting vocabulary and derive console import constraints (#143)
+- Separate playout and source contracts (#142)
+
+### 📚 Documentation
+- Remove internal note from customer-facing changelog (#138)
+
 ## [0.5.3] - 2026-07-11
 
 ### 🐛 Bug Fixes

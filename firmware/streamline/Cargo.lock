@@ -1346,6 +1346,7 @@ dependencies = [
  "embuild",
  "esp-idf-svc",
  "log",
+ "regex",
  "serde",
  "serde_json",
  "serde_urlencoded",

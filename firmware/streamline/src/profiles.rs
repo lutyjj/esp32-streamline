@@ -14,11 +14,23 @@ pub const MAX_AUDIO_PROFILES: usize = 8;
 pub const MAX_AUDIO_PROFILE_ID_CHARS: usize = 32;
 pub const MAX_AUDIO_PROFILE_NAME_CHARS: usize = 32;
 
+/// Regex a profile id must match, mirroring the character rule in
+/// [`AudioProfile::validate`]: an ASCII lowercase letter or digit, then
+/// lowercase letters, digits, and hyphens. Length is bounded separately by
+/// [`MAX_AUDIO_PROFILE_ID_CHARS`]. It rides the OpenAPI schema as the `pattern`
+/// keyword so clients validate imports against it without restating the rule.
+pub const AUDIO_PROFILE_ID_PATTERN: &str = "^[a-z0-9][a-z0-9-]*$";
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AudioProfile {
+    #[cfg_attr(
+        feature = "api-spec",
+        schema(pattern = "^[a-z0-9][a-z0-9-]*$", max_length = 32)
+    )]
     pub id: String,
+    #[cfg_attr(feature = "api-spec", schema(max_length = 32))]
     pub name: String,
     pub audio: AudioSettings,
 }
@@ -30,6 +42,7 @@ pub struct AudioProfileCatalog {
     pub schema_version: u8,
     pub board_id: String,
     pub active_profile_id: Option<String>,
+    #[cfg_attr(feature = "api-spec", schema(max_items = 8))]
     pub profiles: Vec<AudioProfile>,
 }
 
@@ -143,7 +156,10 @@ pub enum AudioProfileError {
 
 #[cfg(test)]
 mod tests {
-    use super::{AudioProfile, AudioProfileCatalog, AudioProfileError, MAX_AUDIO_PROFILES};
+    use super::{
+        AudioProfile, AudioProfileCatalog, AudioProfileError, AUDIO_PROFILE_ID_PATTERN,
+        MAX_AUDIO_PROFILES, MAX_AUDIO_PROFILE_ID_CHARS,
+    };
     use crate::{board, config::AudioSettings};
 
     fn board() -> board::Board {
@@ -257,5 +273,28 @@ mod tests {
         catalog.reconcile_active_audio(profile("vinyl", "Vinyl", 3).audio);
 
         assert_eq!(catalog.active_profile_id, None);
+    }
+
+    #[test]
+    fn generated_id_pattern_matches_device_validation() {
+        let board = board();
+        let pattern = regex::Regex::new(AUDIO_PROFILE_ID_PATTERN).expect("valid id pattern");
+        for id in [
+            "a",
+            "cd",
+            "vinyl-2",
+            "",
+            "-lead",
+            "trailing-",
+            "Upper",
+            "sp ace",
+            "wave_form",
+            "0start",
+            &"x".repeat(MAX_AUDIO_PROFILE_ID_CHARS + 1),
+        ] {
+            let accepted = profile(id, "Source", 0).validate(&board).is_ok();
+            let allowed = pattern.is_match(id) && id.len() <= MAX_AUDIO_PROFILE_ID_CHARS;
+            assert_eq!(accepted, allowed, "id {id:?}");
+        }
     }
 }

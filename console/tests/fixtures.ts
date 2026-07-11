@@ -55,7 +55,7 @@ export function deviceStatus(
     audio: {
       input_line: 2,
       input_gain: 0,
-      adc_atten_db: 9,
+      adc_attenuation_db: 9,
       sample_rate: 44100,
       channels: 2,
       bits_per_sample: 16,

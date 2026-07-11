@@ -9,9 +9,12 @@ import {
   type DeviceConfig,
   type DeviceStatus,
   getAudioProfiles,
+  getContract,
   getSettings,
   getStatus,
 } from '../lib/api';
+import { type ApiDocument, audioProfileConstraints } from '../lib/contract';
+import type { AudioProfileImportLimits } from '../lib/profiles';
 import { rebootWaitTick } from './rebootWait';
 
 export const POLL_MS = 1500;
@@ -22,6 +25,19 @@ export const status = signal<DeviceStatus | null>(null);
 export const config = signal<DeviceConfig | null>(null);
 /** Device-owned named audio profiles, stored separately from raw settings. */
 export const audioProfiles = signal<AudioProfileCatalog | null>(null);
+/** The device-served OpenAPI contract; the console validates imports from it. */
+export const contract = signal<ApiDocument | null>(null);
+/**
+ * Audio-profile import limits: structural bounds declared on the contract plus
+ * the catalog schema version the device currently speaks. Both come from the
+ * device, so the console never hardcodes either.
+ */
+export const audioProfileLimits = computed<AudioProfileImportLimits | null>(() => {
+  const doc = contract.value;
+  const catalog = audioProfiles.value;
+  if (!doc || !catalog) return null;
+  return { ...audioProfileConstraints(doc), schemaVersion: catalog.schema_version };
+});
 /** True when polls fail outside an expected reboot window. */
 export const unreachable = signal(false);
 /** Counts failed polls so subsystems (OTA) can react to the device vanishing. */
@@ -90,9 +106,14 @@ export async function loadDeviceSettings(): Promise<void> {
   await Promise.all([loadConfig(), loadAudioProfiles()]);
 }
 
+/** The contract is static for a firmware build, so it loads once at startup. */
+export async function loadContract(): Promise<void> {
+  contract.value = await getContract();
+}
+
 /** Wire the poll loop and the initial settings read; called once from main. */
 export function startPolling(): void {
-  Promise.all([loadDeviceSettings(), refresh()]).catch(() => {
+  Promise.all([loadDeviceSettings(), loadContract(), refresh()]).catch(() => {
     unreachable.value = true;
   });
   setInterval(refresh, POLL_MS);

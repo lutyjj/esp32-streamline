@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from streamline_bridge.ha_addon import bridge_argv, load_options, normalize_source_allow
+from streamline_bridge.options import addon_options
 
 
 class HomeAssistantAddonOptionTests(unittest.TestCase):
@@ -18,6 +19,7 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
                 "max_repeat_conceal_packets": 4,
                 "max_outage_silence_seconds": 3.5,
                 "source_idle_timeout_seconds": 8.0,
+                "source_eviction_idle_seconds": 120.0,
             }
         )
 
@@ -27,8 +29,6 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
                 "streamline-bridge",
                 "--source-allow",
                 "192.0.2.10,198.51.100.20",
-                "--max-sources",
-                "2",
                 "--client-buffer-chunks",
                 "1024",
                 "--playout-buffer-seconds",
@@ -39,6 +39,10 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
                 "3.5",
                 "--source-idle-timeout-seconds",
                 "8.0",
+                "--source-eviction-idle-seconds",
+                "120.0",
+                "--max-sources",
+                "2",
             ],
         )
 
@@ -71,3 +75,31 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
 
             with self.assertRaises(SystemExit):
                 load_options(path)
+
+    def test_unknown_supervisor_options_fail_clearly(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "unknown Home Assistant option"):
+            bridge_argv({"not_a_bridge_option": True})
+
+    def test_supervisor_config_matches_the_bridge_owned_option_contract(self) -> None:
+        config = (Path(__file__).parents[2] / "ha-addon" / "config.yaml").read_text(encoding="utf-8")
+        options = self._yaml_section(config, "options")
+        schema = self._yaml_section(config, "schema")
+        contract = {option.name: option for option in addon_options()}
+        self.assertEqual(set(options), set(contract))
+        self.assertEqual(set(schema), set(contract))
+        for name, option in contract.items():
+            self.assertEqual(options[name], str(option.default).lower())
+            self.assertEqual(schema[name], option.supervisor_schema)
+
+    @staticmethod
+    def _yaml_section(config: str, name: str) -> dict[str, str]:
+        lines = config.splitlines()
+        start = lines.index(f"{name}:") + 1
+        result: dict[str, str] = {}
+        for line in lines[start:]:
+            if line and not line.startswith("  "):
+                break
+            if line.startswith("  "):
+                key, value = line.strip().split(": ", 1)
+                result[key] = value.strip('"')
+        return result

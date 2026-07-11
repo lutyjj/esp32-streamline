@@ -28,3 +28,6 @@ validates immediately.
 
 Leave `source_allow` blank to accept any LAN source. Set it to a comma-separated
 list of ESP32 IPv4 addresses to reject unexpected PCM producers.
+
+The [bridge reference](../docs/bridge.md) defines every add-on tuning option,
+its default, and its validation rule.

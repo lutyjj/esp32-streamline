@@ -7,17 +7,10 @@ import os
 from pathlib import Path
 from typing import NoReturn
 
+from streamline_bridge.options import addon_options, option_value
+
 BRIDGE_EXECUTABLE = "streamline-bridge"
 OPTIONS_PATH = Path("/data/options.json")
-
-BRIDGE_OPTION_FLAGS = (
-    ("max_sources", "--max-sources"),
-    ("client_buffer_chunks", "--client-buffer-chunks"),
-    ("playout_buffer_seconds", "--playout-buffer-seconds"),
-    ("max_repeat_conceal_packets", "--max-repeat-conceal-packets"),
-    ("max_outage_silence_seconds", "--max-outage-silence-seconds"),
-    ("source_idle_timeout_seconds", "--source-idle-timeout-seconds"),
-)
 
 
 def load_options(path: Path = OPTIONS_PATH) -> dict[str, object]:
@@ -34,16 +27,19 @@ def load_options(path: Path = OPTIONS_PATH) -> dict[str, object]:
 
 
 def bridge_argv(options: dict[str, object]) -> list[str]:
+    known_options = {option.name for option in addon_options()}
+    unknown_options = sorted(set(options) - known_options)
+    if unknown_options:
+        raise SystemExit(f"unknown Home Assistant option(s): {', '.join(unknown_options)}")
     argv = [BRIDGE_EXECUTABLE]
 
     source_allow = normalize_source_allow(options.get("source_allow", ""))
     if source_allow:
         argv.extend(("--source-allow", source_allow))
 
-    for option_name, flag in BRIDGE_OPTION_FLAGS:
-        value = options.get(option_name)
-        if value is not None:
-            argv.extend((flag, str(value)))
+    for option in addon_options():
+        if option.name != "source_allow" and option.name in options:
+            argv.extend((option.flag, option_value(options, option)))
 
     return argv
 

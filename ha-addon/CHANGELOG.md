@@ -4,7 +4,6 @@ Notable changes per release, grouped by type.
 ## [0.5.4] - 2026-07-11
 
 ### 🐛 Bug Fixes
-- Fetch full history for release-verify changelog check
 - Align API endpoint descriptions (#141)
 - Arm reboot waits after acknowledgement (#140)
 - Add explicit docker.io registry prefix to container images (#137)

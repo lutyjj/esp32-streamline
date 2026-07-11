@@ -43,7 +43,7 @@ sort_commits = "newest"
 # "what changed for me?" — they are skipped.
 commit_parsers = [
     { message = "^feat", group = "<!-- 0 -->🚀 Features" },
-    { message = "^fix\\(ci\\)", skip = true },
+    { message = "^fix\\((ci|release)\\)", skip = true },
     { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
     { message = "^perf", group = "<!-- 2 -->⚡ Performance" },
     { message = "^refactor", group = "<!-- 3 -->🚜 Refactor" },

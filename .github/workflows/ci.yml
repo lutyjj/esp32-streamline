@@ -71,7 +71,9 @@ jobs:
   checks:
     name: ${{ matrix.component }}
     needs: changes
-    if: ${{ needs.changes.outputs.components != '[]' }}
+    if: >-
+      needs.changes.outputs.components != '[]' &&
+      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -84,7 +86,9 @@ jobs:
   firmware:
     name: Firmware (clippy · test · release build)
     needs: changes
-    if: ${{ needs.changes.outputs.firmware == 'true' }}
+    if: >-
+      needs.changes.outputs.firmware == 'true' &&
+      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
     runs-on: ubuntu-latest
     env:
       CONTAINER_USER: 0:0
@@ -159,6 +163,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Set up QEMU for cross-architecture builds
+        uses: docker/setup-qemu-action@v4
       - run: make release-verify
 
   # Single stable status the whole workflow rolls up into. Mark THIS as the

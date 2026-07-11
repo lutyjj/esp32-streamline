@@ -28,6 +28,7 @@ jobs:
         with:
           ref: mainline
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up QEMU for cross-architecture builds
         uses: docker/setup-qemu-action@v4

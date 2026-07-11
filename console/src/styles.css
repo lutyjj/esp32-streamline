@@ -244,6 +244,12 @@ button {
 .api-operation > summary > span:not(.api-method, .api-auth) {
   color: var(--muted);
 }
+.api-operation > summary > :is(code, span) {
+  min-width: 0;
+}
+.api-path {
+  overflow-wrap: anywhere;
+}
 .api-method {
   border-radius: 4px;
   padding: 2px 6px;
@@ -285,17 +291,51 @@ button {
 }
 .api-field {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 70px 64px minmax(160px, 2fr);
-  gap: 8px;
+  grid-template-columns: minmax(150px, 1fr) minmax(76px, 0.55fr) 76px minmax(240px, 1.8fr);
+  gap: 8px 12px;
   align-items: baseline;
+  min-width: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.api-field > * {
+  min-width: 0;
 }
 .api-field > span,
 .api-field > small {
   color: var(--muted);
 }
-.api-field > strong {
-  color: var(--warn);
+.api-field > small {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.api-field > code {
+  overflow-wrap: anywhere;
+}
+.api-field-required,
+.api-field-optional {
   font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.api-field-required {
+  color: var(--warn);
+}
+.api-field-optional {
+  color: var(--faint);
+}
+.api-field-header {
+  padding: 4px 0 5px;
+  border-bottom-color: var(--line);
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.api-field-header > span {
+  color: inherit;
 }
 .api-responses {
   display: flex;
@@ -309,7 +349,13 @@ button {
 }
 .api-example > div {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+}
+.api-copy {
+  height: 28px;
+  padding-inline: 10px;
+  font-size: 12px;
 }
 .api-example pre {
   overflow-x: auto;
@@ -1095,6 +1141,9 @@ select:disabled {
   }
   .api-field {
     grid-template-columns: 1fr auto;
+  }
+  .api-field-header {
+    display: none;
   }
   .api-field > small {
     grid-column: 1 / -1;

@@ -30,7 +30,7 @@ describe('ApiTab', () => {
           schemas: {
             NameSettingsRequest: {
               type: 'object',
-              properties: { name: { type: 'string', maxLength: 32 } },
+              properties: { name: { type: ['string', 'null'], maxLength: 32 } },
               required: ['name'],
             },
           },
@@ -43,6 +43,9 @@ describe('ApiTab', () => {
     await vi.waitFor(() => expect(host.textContent).toContain('/api/settings/name'));
     expect(host.textContent).toContain('Set device name');
     expect(host.textContent).toContain('max length 32');
+    expect(host.textContent).toContain('string | null');
+    expect(host.textContent).toContain('required');
     expect(host.querySelector('.api-auth')?.textContent).toBe('key');
+    expect(host.querySelector('.api-copy')?.className).toContain('btn secondary');
   });
 });

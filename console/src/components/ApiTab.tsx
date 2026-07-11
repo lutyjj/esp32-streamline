@@ -6,7 +6,7 @@ import { toast } from '../state/toasts';
 
 type Schema = {
   $ref?: string;
-  type?: string;
+  type?: string | string[];
   description?: string;
   format?: string;
   minimum?: number;
@@ -97,7 +97,7 @@ function OperationCard({
     <details class="api-operation">
       <summary>
         <span class={`api-method ${method.toLowerCase()}`}>{method}</span>
-        <code>{path}</code>
+        <code class="api-path">{path}</code>
         <span>{operation.summary ?? words(operation.operationId)}</span>
         {operation.security && <span class="api-auth">key</span>}
       </summary>
@@ -106,11 +106,19 @@ function OperationCard({
         {body?.properties && (
           <div class="api-fields">
             <h3>Form fields</h3>
+            <div class="api-field api-field-header" aria-hidden="true">
+              <span>Parameter</span>
+              <span>Type</span>
+              <span>Presence</span>
+              <span>Description</span>
+            </div>
             {Object.entries(body.properties).map(([name, schema]) => (
               <div class="api-field" key={name}>
                 <code>{name}</code>
-                <span>{schema.type ?? 'value'}</span>
-                {required.has(name) && <strong>required</strong>}
+                <span>{schemaType(schema)}</span>
+                <span class={required.has(name) ? 'api-field-required' : 'api-field-optional'}>
+                  {required.has(name) ? 'required' : 'optional'}
+                </span>
                 <small>{constraint(schema)}</small>
               </div>
             ))}
@@ -126,7 +134,7 @@ function OperationCard({
           <div>
             <h3>curl</h3>
             <button
-              class="copylink"
+              class="btn secondary api-copy"
               type="button"
               onClick={() =>
                 copyText(command).then(
@@ -174,6 +182,11 @@ function constraint(schema: Schema): string {
     schema.pattern ? `pattern ${schema.pattern}` : '',
   ];
   return values.filter(Boolean).join(' · ');
+}
+
+function schemaType(schema: Schema): string {
+  if (Array.isArray(schema.type)) return schema.type.join(' | ');
+  return schema.type ?? 'value';
 }
 
 function curlCommand(method: 'GET' | 'POST', path: string, operation: Operation, body?: Schema) {

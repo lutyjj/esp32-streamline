@@ -5,7 +5,7 @@
   "type": "module",
   "dependencies": {
     "@preact/signals": "^2.0.0",
-    "esp-web-tools": "10.0.1",
+    "esp-web-tools": "10.2.1",
     "openapi-fetch": "0.17.0",
     "preact": "^10.28.0"
   },

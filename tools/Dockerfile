@@ -1,6 +1,37 @@
-FROM python:3.14-slim
+FROM ghcr.io/astral-sh/uv:0.11.28@sha256:0f36cb9361a3346885ca3677e3767016687b5a170c1a6b88465ec14aefec90aa AS uv
 
-ENV PIP_NO_CACHE_DIR=1 \
+FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS lock-tool
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_PYTHON_DOWNLOADS=0
+
+COPY --from=uv /uv /usr/local/bin/uv
+
+FROM lock-tool AS development
+
+WORKDIR /workspace
+
+COPY pyproject.toml uv.lock /workspace/
+RUN uv sync --locked --no-editable --no-install-project
+COPY src /workspace/src
+RUN uv sync --locked --no-editable
+
+FROM lock-tool AS build
+
+ENV UV_NO_DEV=1
+
+WORKDIR /workspace
+
+COPY pyproject.toml uv.lock /workspace/
+RUN uv sync --locked --no-editable --no-install-project
+COPY src /workspace/src
+RUN uv sync --locked --no-editable
+
+FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS runtime
+
+ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1
 
 RUN apt-get update \
@@ -9,6 +40,4 @@ RUN apt-get update \
 
 WORKDIR /workspace
 
-COPY pyproject.toml /workspace/pyproject.toml
-COPY src /workspace/src
-RUN pip install --no-cache-dir '.[dev]'
+COPY --from=build /opt/venv /opt/venv

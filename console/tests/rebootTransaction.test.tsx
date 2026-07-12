@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiClient, setTransport, unwrap } from '../src/lib/api';
+import { restart, setTransport } from '../src/lib/api';
 import { useTransact } from '../src/lib/hooks';
 import { rebootWait } from '../src/state/rebootWait';
 import { toasts } from '../src/state/toasts';
@@ -18,7 +18,7 @@ function RestartTransaction() {
       <button
         type="button"
         onClick={() =>
-          transact.run(() => unwrap(apiClient.POST('/api/restart')), {
+          transact.run(() => restart(), {
             busyText: 'Restarting…',
             reboots: 'the restart',
           })

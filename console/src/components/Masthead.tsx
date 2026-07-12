@@ -11,7 +11,7 @@ import {
 } from '../lib/adminKey';
 import { verifyAdminKey } from '../lib/api';
 import { errorMessage } from '../lib/errors';
-import { setupMode, status } from '../state/device';
+import { setupMode, status, unreachable } from '../state/device';
 import { toast } from '../state/toasts';
 import { Button } from './Button';
 import { RememberSwitch } from './RememberSwitch';
@@ -56,7 +56,10 @@ export function Masthead() {
           </h1>
           {s?.device_name && <div class="devname">{s.device_name}</div>}
           <div class="chips">
-            <span class="chip">v{s?.firmware_version ?? '—'}</span>
+            <span class="chip">
+              <span class={`statusdot ${!s ? '' : unreachable.value ? 'bad' : 'good'}`} />v
+              {s?.firmware_version ?? '—'}
+            </span>
             <span class="chip">
               {s ? `${s.audio.sample_rate / 1000} kHz / ${s.audio.bits_per_sample}-bit` : '— Hz'}
             </span>

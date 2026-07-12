@@ -36,7 +36,7 @@ export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IM
 .PHONY: check help lint test format clean release-tools-image changelog changelog-check release release-history release-prepare release-check release-verify release-package release-notes \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check version-check
 
-check: lint test
+check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check
 
 help:
 	@echo "Cross-project targets:"
@@ -55,7 +55,7 @@ release-tools-image:
 
 lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
 
-test: bridge-test console-test firmware-test firmware-build ha-addon-test
+test: bridge-test console-test firmware-test firmware-build tools-test ha-addon-test
 
 # Only the firmware writes build artifacts onto the host; every other component
 # builds inside containers and leaves nothing to clean.

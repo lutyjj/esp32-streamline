@@ -202,18 +202,19 @@ name = "streamline-bridge"
 version = "0.5.4"
 source = { editable = "." }
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "mypy" },
     { name = "ruff" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "mypy", marker = "extra == 'dev'", specifier = "==2.2.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.15.21" },
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy" },
+    { name = "ruff" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "typing-extensions"

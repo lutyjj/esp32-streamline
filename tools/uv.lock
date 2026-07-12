@@ -256,19 +256,20 @@ dependencies = [
     { name = "numpy" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "mypy" },
     { name = "ruff" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "mypy", marker = "extra == 'dev'", specifier = "==2.2.0" },
-    { name = "numpy", specifier = ">=2.2.6,<3" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.15.21" },
+requires-dist = [{ name = "numpy", specifier = ">=2.2.6,<3" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy" },
+    { name = "ruff" },
 ]
-provides-extras = ["dev"]
 
 [[package]]
 name = "typing-extensions"

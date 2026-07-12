@@ -45,13 +45,6 @@ jobs:
             tools:
               - *shared
               - 'tools/**'
-              - '.github/dependabot.yml'
-              - '.github/workflows/**'
-              - 'Dockerfile*'
-              - '**/Dockerfile*'
-              - '**/package.json'
-              - '**/Cargo.toml'
-              - '**/uv.lock'
             webflasher:
               - *shared
               - 'webflasher/**'

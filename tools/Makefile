@@ -9,9 +9,8 @@ CAP ?=
 # Run a check in the tools image with the source mounted and the shared
 # ruff/mypy cache volume attached.
 CONTAINER_RUN := $(CONTAINER) run --rm \
-	-v "$(CURDIR):/workspace" -v "$(CURDIR)/..:/repo:ro" -v "$(PYTHON_CACHE_VOLUME):/cache" \
+	-v "$(CURDIR):/workspace" -v "$(PYTHON_CACHE_VOLUME):/cache" \
 	-e RUFF_CACHE_DIR=/cache/ruff-tools -e MYPY_CACHE_DIR=/cache/mypy-tools \
-	-e STREAMLINE_REPO_ROOT=/repo \
 	-w /workspace $(DEV_IMAGE)
 LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 	-v "$(CURDIR):/workspace" -e UV_CACHE_DIR=/tmp/uv-cache \
@@ -26,7 +25,7 @@ INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 .PHONY: lock-image dev-image image format lint lock lock-check test analyze release-prepare
 
 lock-image:
-	$(CONTAINER) build -f Dockerfile.dev --target lock-tool -t $(LOCK_IMAGE) .
+	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
 
 lock: lock-image
 	$(LOCK_RUN) lock --upgrade
@@ -35,7 +34,7 @@ lock-check: lock-image
 	$(LOCK_RUN) lock --check
 
 dev-image:
-	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
+	$(CONTAINER) build -f Dockerfile --target development -t $(DEV_IMAGE) .
 
 image:
 	$(CONTAINER) build -f Dockerfile -t $(IMAGE) .

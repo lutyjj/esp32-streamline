@@ -37,7 +37,11 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | `tools` | Developer-only capture analysis and bounded serial capture | Product runtime behavior |
 | `.github`, root and component Makefiles | Change selection, checks, release assembly, publishing | Component behavior |
 
-Each component builds from a public base and owns its dependency and tool configuration. The firmware embeds the console build. The Home Assistant add-on packages the bridge. These are deliberate build-time dependencies, not shared runtime state.
+Each component builds from a public base and owns its dependency and tool
+configuration. Register every new component or dependency surface in
+`.github/dependabot.yml` in the same change. The firmware embeds the console
+build. The Home Assistant add-on packages the bridge. These are deliberate
+build-time dependencies, not shared runtime state.
 
 ## Firmware boundaries
 

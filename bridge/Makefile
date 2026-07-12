@@ -23,7 +23,7 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 .PHONY: lock-image dev-image format lint lock lock-check test image run up
 
 lock-image:
-	$(CONTAINER) build -f Dockerfile.dev --target lock-tool -t $(LOCK_IMAGE) .
+	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
 
 lock: lock-image
 	$(LOCK_RUN) lock --upgrade
@@ -32,7 +32,7 @@ lock-check: lock-image
 	$(LOCK_RUN) lock --check
 
 dev-image:
-	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
+	$(CONTAINER) build -f Dockerfile --target development -t $(DEV_IMAGE) .
 
 format: dev-image
 	$(CONTAINER_RUN) sh -c 'ruff check --select I --fix src tests && ruff format src tests'

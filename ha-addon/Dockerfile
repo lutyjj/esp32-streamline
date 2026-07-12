@@ -14,7 +14,7 @@ RUN uv sync --locked --no-editable --no-install-project
 COPY bridge/src ./src
 RUN uv sync --locked --no-editable
 
-FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9
+FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS runtime
 
 ARG BUILD_VERSION=dev
 ARG BUILD_ARCH=amd64

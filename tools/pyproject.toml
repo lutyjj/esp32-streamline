@@ -11,6 +11,9 @@ requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
   "numpy>=2.2.6,<3",
+  "pytest>=8.4,<9",
+  "pytest-embedded>=2.8,<3",
+  "pytest-embedded-qemu>=2.8,<3",
 ]
 
 [project.scripts]
@@ -35,5 +38,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 warn_unreachable = true
-files = ["src/streamline_tools", "tests"]
+files = ["src/streamline_tools", "tests", "smoke"]
 mypy_path = ["src"]
+
+# pytest-embedded ships no py.typed marker; its DUT objects stay dynamically
+# typed at the fixture boundary while our own check logic remains strictly typed.
+[[tool.mypy.overrides]]
+module = ["pytest_embedded.*", "pytest_embedded_qemu.*"]
+ignore_missing_imports = true

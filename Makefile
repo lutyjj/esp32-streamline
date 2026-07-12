@@ -2,6 +2,10 @@ include mk/common.mk
 
 PROJECT_VERSION := $(call toml_version,bridge/pyproject.toml)
 FIRMWARE_VERSION := $(call toml_version,firmware/streamline/Cargo.toml)
+FIRMWARE_LOCK_VERSION := $(shell awk '\
+  /^\[\[package\]\]$$/ { package = 0 } \
+  /^name = "streamline-firmware"$$/ { package = 1; next } \
+  package && /^version = "/ { split($$0, fields, "\""); print fields[2]; exit }' firmware/streamline/Cargo.lock)
 ADDON_VERSION := $(shell sed -n 's/^version: "\([^"]*\)"/\1/p' ha-addon/config.yaml)
 VERSION ?= $(PROJECT_VERSION)
 PORT ?= /dev/cu.usbserial-0001
@@ -33,7 +37,7 @@ git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
-.PHONY: check help lint test format clean release-tools-image changelog changelog-check release release-history release-prepare release-check release-verify release-package release-notes \
+.PHONY: check help lint test format clean release-tools-image changelog changelog-check release release-history release-prepare release-lock-check release-check release-verify release-package release-notes \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check version-check
 
 check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check
@@ -45,6 +49,7 @@ help:
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
 	@echo "                                        e.g. firmware-flash PORT=..., bridge-run, bridge-up"
 	@echo "  make changelog[-check] VERSION=X.Y.Z  generate or validate the add-on changelog"
+	@echo "  make release-lock-check VERSION=X.Y.Z validate release-owned lockfiles"
 	@echo "  make release VERSION=X.Y.Z           prepare and verify a release snapshot"
 	@echo "  make release-package VERSION=X.Y.Z   build verified release assets for publishing"
 
@@ -66,7 +71,7 @@ clean: firmware-clean
 # fans out over these by name.
 bridge-check: bridge-lock-check bridge-lint bridge-test bridge-image ;
 console-check: console-lint console-test console-build ;
-firmware-check: firmware-lint firmware-test firmware-openapi-check firmware-build ;
+firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-build ;
 tools-check: tools-lock-check tools-lint tools-test tools-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;
@@ -95,6 +100,7 @@ version-check:
 	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
 	@test "$(VERSION)" = "$(PROJECT_VERSION)" || (echo "VERSION=$(VERSION) does not match bridge/pyproject.toml ($(PROJECT_VERSION))" >&2; exit 2)
 	@test "$(VERSION)" = "$(FIRMWARE_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.toml ($(FIRMWARE_VERSION))" >&2; exit 2)
+	@test "$(VERSION)" = "$(FIRMWARE_LOCK_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.lock ($(FIRMWARE_LOCK_VERSION))" >&2; exit 2)
 	@test "$(VERSION)" = "$(ADDON_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(ADDON_VERSION))" >&2; exit 2)
 	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || (echo "VERSION must be a stable X.Y.Z release version" >&2; exit 2)
 
@@ -109,9 +115,15 @@ release-history:
 release-prepare: release-history
 	@test -z "$$(git status --porcelain)" || (echo "release preparation requires a clean worktree" >&2; exit 2)
 	$(MAKE) tools-release-prepare VERSION=$(VERSION)
+	$(MAKE) bridge-lock
+	$(MAKE) release-lock-check VERSION=$(VERSION)
 	$(MAKE) changelog CHANGELOG_TAG=v$(VERSION)
 	$(MAKE) version-check VERSION=$(VERSION)
 	$(MAKE) changelog-check VERSION=$(VERSION)
+
+# A release version changes the bridge package metadata, which uv records in
+# bridge/uv.lock. Cargo.lock carries the firmware package version directly.
+release-lock-check: version-check bridge-lock-check firmware-lock-check ;
 
 # Run all release checks without compiling the firmware twice: the artifact
 # target below performs the cross build that ordinary `make test` would do.
@@ -119,14 +131,14 @@ release-check: lint bridge-test console-test firmware-test ha-addon-test
 
 # Verify a prepared release without changing its files. Release PRs and
 # promotion use this target against a fixed commit.
-release-verify: changelog-check release-check firmware-artifacts bridge-image
+release-verify: changelog-check release-lock-check release-check firmware-artifacts bridge-image
 	$(MAKE) ha-addon-image BUILD_ARCH=aarch64 VERSION=$(VERSION)
 	$(MAKE) ha-addon-image BUILD_ARCH=amd64 VERSION=$(VERSION)
 
 # Promotion verifies this exact commit before publishing. Publishing needs the
 # distributable firmware and bridge image; Buildx publishes the two add-on
 # images directly in the release workflow.
-release-package: changelog-check firmware-artifacts bridge-image
+release-package: changelog-check release-lock-check firmware-artifacts bridge-image
 
 # A local release command leaves a complete, validated release snapshot ready
 # for review. Publishing remains a separate, protected CI action.

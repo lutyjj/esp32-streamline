@@ -42,7 +42,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint build test openapi openapi-check flash monitor capture clean artifacts
+.PHONY: image console-asset format lint lock-check build test openapi openapi-check flash monitor capture clean artifacts
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -53,26 +53,29 @@ console-asset:
 format: image
 	$(CONTAINER_RUN) cargo fmt --all
 
+lock-check: image
+	$(CONTAINER_RUN) cargo metadata --locked --no-deps --format-version 1 > /dev/null
+
 # clippy runs `--lib` on the host target: the crate core is host-buildable while
 # the `cfg(espidf)` adapters and binary only compile in the cross build, which
 # `build` exercises with warnings intact.
 lint: image console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
-	$(CONTAINER_RUN) cargo clippy --lib -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --lib -- -D warnings
 
 build: image console-asset
-	$(CONTAINER_RUN) cargo build --release --target $(TARGET)
+	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET)
 
 test: image console-asset
-	$(CONTAINER_RUN) cargo test --lib
+	$(CONTAINER_RUN) cargo test --locked --lib
 
 # Rust DTOs and endpoint declarations are the API source. The host-only
 # `api-spec` feature keeps utoipa out of the device image.
 openapi: image
-	$(CONTAINER_RUN) cargo run --quiet --features api-spec --bin streamline-openapi -- $(CONTAINER_WORKSPACE)/docs/openapi.json
+	$(CONTAINER_RUN) cargo run --locked --quiet --features api-spec --bin streamline-openapi -- $(CONTAINER_WORKSPACE)/docs/openapi.json
 
 openapi-check: image
-	$(CONTAINER_RUN) bash -c 'cargo run --quiet --features api-spec --bin streamline-openapi -- /tmp/openapi.json && diff -u $(CONTAINER_WORKSPACE)/docs/openapi.json /tmp/openapi.json'
+	$(CONTAINER_RUN) bash -c 'cargo run --locked --quiet --features api-spec --bin streamline-openapi -- /tmp/openapi.json && diff -u $(CONTAINER_WORKSPACE)/docs/openapi.json /tmp/openapi.json'
 
 # Serial devices are host resources; Docker Desktop on macOS cannot expose the
 # /dev/cu.* device reliably. Install espflash on the host for these two targets.

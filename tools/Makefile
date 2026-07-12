@@ -22,12 +22,15 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
-.PHONY: lock-image dev-image image format lint lock lock-check test analyze release-prepare
+.PHONY: lock-image dev-image image format lint lock lock-upgrade lock-check test analyze release-prepare
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
 
 lock: lock-image
+	$(LOCK_RUN) lock
+
+lock-upgrade: lock-image
 	$(LOCK_RUN) lock --upgrade
 
 lock-check: lock-image

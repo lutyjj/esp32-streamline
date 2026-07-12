@@ -20,12 +20,15 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 	-v "$(CURDIR):/workspace" -e UV_CACHE_DIR=/tmp/uv-cache \
 	-w /workspace $(LOCK_IMAGE) uv
 
-.PHONY: lock-image dev-image format lint lock lock-check test image run up
+.PHONY: lock-image dev-image format lint lock lock-upgrade lock-check test image run up
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
 
 lock: lock-image
+	$(LOCK_RUN) lock
+
+lock-upgrade: lock-image
 	$(LOCK_RUN) lock --upgrade
 
 lock-check: lock-image

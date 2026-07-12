@@ -81,7 +81,12 @@ class RecordingServiceTests(unittest.TestCase):
         self.assertEqual(saved["state"], "interrupted")
         self.assertIn("timeline moved backwards", str(saved["error"]))
         self.store.ensure_file(started["id"])
-        lifecycle = cast("dict[str, object]", self.sources.snapshot()["192.0.2.10"]["lifecycle"])
+        deadline = time.monotonic() + 1
+        while True:
+            lifecycle = cast("dict[str, object]", self.sources.snapshot()["192.0.2.10"]["lifecycle"])
+            if lifecycle["recording_sessions"] == 0 or time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
         self.assertEqual(lifecycle["recording_sessions"], 0)
 
     def test_gap_larger_than_one_write_batch_preserves_the_full_timeline(self) -> None:

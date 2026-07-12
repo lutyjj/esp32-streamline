@@ -20,4 +20,23 @@ export default defineConfig({
       target: './src/generated/api.ts',
     },
   },
+  bridge: {
+    input: {
+      target: '../docs/bridge-openapi.json',
+    },
+    output: {
+      client: 'fetch',
+      mode: 'single',
+      override: {
+        fetch: {
+          includeHttpResponseReturnType: false,
+        },
+        mutator: {
+          name: 'bridgeFetch',
+          path: './src/bridge/http.ts',
+        },
+      },
+      target: './src/generated/bridge.ts',
+    },
+  },
 });

@@ -3,7 +3,7 @@ import preact from '@preact/preset-vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { defineConfig } from 'vitest/config';
 
-const flasherBuild = process.env.STREAMLINE_BUILD === 'flasher';
+const buildTarget = process.env.STREAMLINE_BUILD || 'device';
 const webflasherDir =
   process.env.STREAMLINE_WEBFLASHER_DIR || resolve(import.meta.dirname, '../webflasher');
 
@@ -19,10 +19,11 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: flasherBuild ? 'dist/flasher' : 'dist',
-    rollupOptions: flasherBuild
-      ? { input: resolve(import.meta.dirname, 'flasher.html') }
-      : undefined,
+    outDir: buildTarget === 'device' ? 'dist' : `dist/${buildTarget}`,
+    rollupOptions:
+      buildTarget === 'device'
+        ? undefined
+        : { input: resolve(import.meta.dirname, `${buildTarget}.html`) },
   },
   test: {
     environment: 'happy-dom',

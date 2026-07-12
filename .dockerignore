@@ -10,7 +10,8 @@ firmware/streamline/target
 captures
 analysis-data
 dist
-node_modules
+**/node_modules
+console/dist
 .vite
 webflasher/*.bin
 .DS_Store

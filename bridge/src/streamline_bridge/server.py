@@ -8,7 +8,9 @@ import threading
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from streamline_bridge.http import BoundedThreadingHTTPServer, make_handler
+import uvicorn
+
+from streamline_bridge.http import make_app
 from streamline_bridge.options import parse_args, validate_args
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.recording import RecordingService, RecordingStore
@@ -58,19 +60,22 @@ def main() -> int:
         max_connections=args.max_sources * 2,
     )
     threading.Thread(target=tcp_server.serve_forever, daemon=True).start()
-    server = BoundedThreadingHTTPServer(
-        (args.http_bind, args.http_port),
-        make_handler(sources, bridge_version(), recordings, recording_token),
-        max_connections=args.max_http_connections,
-        request_timeout_seconds=args.http_request_timeout_seconds,
+    server = uvicorn.Server(
+        uvicorn.Config(
+            make_app(sources, bridge_version(), recordings, recording_token),
+            host=args.http_bind,
+            port=args.http_port,
+            log_config=None,
+            limit_concurrency=args.max_http_connections,
+            timeout_keep_alive=args.http_request_timeout_seconds,
+        )
     )
     logger.info("serving HTTP WAV on http://%s:%s/streamline.wav", args.http_bind, args.http_port)
     try:
-        server.serve_forever()
+        server.run()
     except KeyboardInterrupt:
         logger.info("stopped")
     finally:
-        server.server_close()
         if recordings is not None:
             recordings.shutdown()
     return 0

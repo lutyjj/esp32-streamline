@@ -15,7 +15,7 @@ CONTAINER_RUN := $(CONTAINER) run --rm \
 	-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
 	-e npm_config_update_notifier=false -w $(WORKSPACE)/console $(DEV_IMAGE)
 
-.PHONY: dev-image deps lock generate format lint test build dev
+.PHONY: dev-image deps lock generate format lint test build build-bridge dev
 
 dev-image:
 	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
@@ -51,6 +51,10 @@ test: generate
 build: generate
 	$(CONTAINER_RUN) npx vite build
 	$(CONTAINER_RUN) sh -c 'STREAMLINE_BUILD=flasher npx vite build'
+	$(CONTAINER_RUN) sh -c 'STREAMLINE_BUILD=bridge npx vite build'
+
+build-bridge: generate
+	$(CONTAINER_RUN) sh -c 'STREAMLINE_BUILD=bridge npx vite build'
 
 # Live-reload UI development against a real device:
 # `make dev DEVICE=192.0.2.10` (or set STREAMLINE_DEVICE in the root .env),

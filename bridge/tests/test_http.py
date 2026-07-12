@@ -1,26 +1,19 @@
 from __future__ import annotations
 
-import http.client
 import json
-import socket
 import tempfile
-import threading
-import time
 import unittest
 from pathlib import Path
 from typing import cast
 from urllib.parse import urlsplit
 
-from streamline_bridge.http import BoundedThreadingHTTPServer, make_handler, wav_header
+from fastapi.testclient import TestClient
+
+from streamline_bridge.http import make_app, stream_wav_body, wav_header
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT
 from streamline_bridge.recording import RecordingService, RecordingStore
-from streamline_bridge.recording_http import (
-    MAX_DOWNLOAD_TICKETS,
-    FileResponse,
-    JsonResponse,
-    RecordingHttpController,
-)
+from streamline_bridge.recording_http import MAX_DOWNLOAD_TICKETS, RecordingHttpService
 from streamline_bridge.sources import SourceRegistry
 
 
@@ -28,151 +21,81 @@ def make_pipeline() -> AudioPipeline:
     return AudioPipeline(4, 0.001, 1, 1.0, start_worker=False)
 
 
-class HttpAdapterTests(unittest.TestCase):
+class HttpContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.sources = SourceRegistry(make_pipeline, max_sources=2)
-        self.server = BoundedThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.sources, "test"))
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
+        self.client = TestClient(make_app(self.sources, "test"))
 
-    def tearDown(self) -> None:
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join()
+    def test_health_status_and_errors_have_stable_contracts(self) -> None:
+        health = self.client.get("/health")
+        status = self.client.get("/status")
+        malformed = self.client.get("/streamline.wav?source=bridge.local")
+        missing = self.client.get("/streamline.wav?source=192.0.2.10")
 
-    def request(self, path: str, headers: dict[str, str] | None = None) -> tuple[int, dict[str, str], bytes]:
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=1)
-        conn.request("GET", path, headers=headers or {})
-        response = conn.getresponse()
-        body = response.read()
-        response_headers = dict(response.getheaders())
-        conn.close()
-        return response.status, response_headers, body
+        self.assertEqual((health.status_code, health.text), (200, "ok\n"))
+        self.assertEqual(status.json(), {"bridge_version": "test", "sources": {}})
+        self.assertEqual(malformed.status_code, 400)
+        self.assertIn("IPv4", malformed.json()["error"]["message"])
+        self.assertEqual(missing.status_code, 404)
+        self.assertIn("unknown source", missing.json()["error"]["message"])
 
-    @staticmethod
-    def lifecycle(snapshot: dict[str, object]) -> dict[str, object]:
-        return cast("dict[str, object]", snapshot["lifecycle"])
-
-    def test_wav_header_uses_declared_pcm_format(self) -> None:
-        header = wav_header()
-        self.assertEqual(header[:4], b"RIFF")
-        self.assertEqual(header[8:12], b"WAVE")
-        self.assertEqual(len(header), 44)
-
-    def test_health_status_and_source_errors_have_stable_http_contracts(self) -> None:
-        health, _, body = self.request("/health")
-        status, headers, status_body = self.request("/status")
-        malformed, _, malformed_body = self.request("/streamline.wav?source=bridge.local")
-        missing, _, missing_body = self.request("/streamline.wav?source=192.0.2.10")
-        unknown, _, _ = self.request("/missing")
-        capabilities, _, capabilities_body = self.request("/api/recordings/capabilities")
-        recordings_page, recordings_headers, recordings_body = self.request("/recordings")
-        self.assertEqual((health, body), (200, b"ok\n"))
-        self.assertEqual(status, 200)
-        self.assertEqual(headers["Content-Type"], "application/json")
-        self.assertEqual(json.loads(status_body), {"bridge_version": "test", "sources": {}})
-        self.assertEqual(malformed, 400)
-        self.assertIn("IPv4", malformed_body.decode())
-        self.assertEqual(missing, 404)
-        self.assertIn("unknown source", missing_body.decode())
-        self.assertEqual(unknown, 404)
-        self.assertEqual(capabilities, 200)
-        self.assertFalse(json.loads(capabilities_body)["enabled"])
-        self.assertEqual(recordings_page, 200)
-        self.assertEqual(recordings_headers["Content-Type"], "text/html; charset=utf-8")
-        self.assertIn(b"Bridge console", recordings_body)
-        self.assertIn(b"Live level", recordings_body)
-        self.assertNotIn(b'if (recState === "unlocked") await refreshRecordings()', recordings_body)
-        self.assertIn(b"if (recordings.active.length)", recordings_body)
-        self.assertIn(b"Download completed recordings you want to keep", recordings_body)
-        csp = recordings_headers["Content-Security-Policy"]
-        self.assertNotIn("unsafe-inline", csp)
-        nonce = csp.split("script-src 'nonce-", 1)[1].split("'", 1)[0]
-        self.assertIn(f'<style nonce="{nonce}">'.encode(), recordings_body)
-        self.assertIn(f'<script nonce="{nonce}">'.encode(), recordings_body)
-
-    def test_root_serves_the_console_for_ingress_landing(self) -> None:
-        status, headers, body = self.request("/")
-        self.assertEqual(status, 200)
-        self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
-        self.assertIn(b"Bridge console", body)
-
-    def test_status_exposes_latest_per_source_audio_levels(self) -> None:
+    def test_status_exposes_validated_per_source_audio_levels(self) -> None:
         source = self.sources.acquire("192.0.2.10")
         source.hub.ingest(1, bytes.fromhex("10270000f0d80080"))
 
-        status, _, body = self.request("/status")
-        levels = json.loads(body)["sources"]["192.0.2.10"]["levels"]
+        response = self.client.get("/status")
 
-        self.assertEqual(status, 200)
-        self.assertEqual(levels, {"peak_left": 10000, "peak_right": 32768, "rms_left": 10000, "rms_right": 23170})
-
-    def test_ingress_path_header_scopes_console_requests(self) -> None:
-        status, _, body = self.request("/", {"X-Ingress-Path": "/api/hassio_ingress/abc-1_2"})
-        self.assertEqual(status, 200)
-        self.assertIn(b'content="/api/hassio_ingress/abc-1_2"', body)
-
-    def test_spoofed_ingress_path_header_is_rejected(self) -> None:
-        status, _, body = self.request("/recordings", {"X-Ingress-Path": "not a path<script>alert(1)</script>"})
-        self.assertEqual(status, 200)
-        self.assertIn(b'content=""', body)
-        self.assertNotIn(b"<script>alert(1)</script>", body)
-
-    def test_http_connection_count_and_idle_reads_are_bounded(self) -> None:
-        server = BoundedThreadingHTTPServer(
-            ("127.0.0.1", 0),
-            make_handler(self.sources, "test"),
-            max_connections=1,
-            request_timeout_seconds=0.1,
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["sources"]["192.0.2.10"]["levels"],
+            {"peak_left": 10000, "peak_right": 32768, "rms_left": 10000, "rms_right": 23170},
         )
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        stalled = socket.create_connection(("127.0.0.1", server.server_port), timeout=1)
-        try:
-            stalled.sendall(b"GET /health HTTP/1.1\r\nHost: bridge\r\n")
-            time.sleep(0.02)
-            rejected = socket.create_connection(("127.0.0.1", server.server_port), timeout=1)
-            with rejected:
-                rejected.sendall(b"GET /health HTTP/1.1\r\nHost: bridge\r\n\r\n")
-                try:
-                    received = rejected.recv(1)
-                except ConnectionResetError:
-                    received = b""
-                self.assertEqual(received, b"")
-            time.sleep(0.15)
-            status = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=1)
-            status.request("GET", "/health")
-            self.assertEqual(status.getresponse().status, 200)
-            status.close()
-        finally:
-            stalled.close()
-            server.shutdown()
-            server.server_close()
-            thread.join()
 
-    def test_stream_cleanup_releases_http_source_lifecycle(self) -> None:
+    def test_openapi_is_generated_from_runtime_routes_and_auth(self) -> None:
+        document = self.client.get("/api/openapi.json").json()
+
+        self.assertEqual(document["info"]["title"], "StreamLine bridge API")
+        self.assertEqual(document["paths"]["/status"]["get"]["operationId"], "getBridgeStatus")
+        self.assertEqual(document["paths"]["/api/recordings"]["post"]["operationId"], "startRecording")
+        self.assertEqual(
+            document["paths"]["/api/recordings"]["get"]["security"],
+            [{"bearer_auth": []}],
+        )
+        self.assertNotIn("security", document["paths"]["/api/recordings/capabilities"]["get"])
+        validation_responses = document["paths"]["/api/recordings"]["post"]["responses"]
+        self.assertIn("400", validation_responses)
+        self.assertNotIn("422", validation_responses)
+
+    def test_console_routes_inject_ingress_base_and_csp_nonce(self) -> None:
+        root = self.client.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/abc-1_2"})
+        alias = self.client.get("/recordings")
+        spoofed = self.client.get("/", headers={"X-Ingress-Path": "<script>bad</script>"})
+
+        self.assertIn("Bridge console", root.text)
+        self.assertIn('content="/api/hassio_ingress/abc-1_2"', root.text)
+        self.assertIn("StreamLine bridge", alias.text)
+        self.assertIn('content=""', spoofed.text)
+        csp = root.headers["Content-Security-Policy"]
+        self.assertNotIn("unsafe-inline", csp)
+        nonce = csp.split("script-src 'nonce-", 1)[1].split("'", 1)[0]
+        self.assertIn(f'<script nonce="{nonce}"', root.text)
+
+    def test_wav_stream_releases_client_lifecycle_when_consumer_closes(self) -> None:
         source = self.sources.acquire("192.0.2.10")
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=1)
-        conn.request("GET", "/streamline.wav?source=192.0.2.10")
-        response = conn.getresponse()
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response.read(44), wav_header())
-        source.hub.clients.publish(b"x")
-        self.assertEqual(response.read(1), b"x")
-        response.close()
-        conn.close()
-        for _ in range(100):
-            source.hub.clients.publish(bytes(64 * 1024))
-        deadline = time.monotonic() + 1
-        while time.monotonic() < deadline:
-            lifecycle = self.lifecycle(self.sources.snapshot()["192.0.2.10"])
-            if lifecycle["http_clients"] == 0:
-                break
-            time.sleep(0.01)
-        self.assertEqual(self.lifecycle(self.sources.snapshot()["192.0.2.10"])["http_clients"], 0)
+        body = stream_wav_body(self.sources, source, "192.0.2.20", "/streamline.wav")
+        self.assertEqual(next(body), wav_header())
+        source.hub.clients.publish(b"pcm")
+        self.assertEqual(next(body), b"pcm")
+
+        body.close()
+
+        snapshot = self.sources.snapshot()["192.0.2.10"]
+        lifecycle = cast("dict[str, object]", snapshot["lifecycle"])
+        self.assertEqual(snapshot["clients"], 0)
+        self.assertEqual(lifecycle["http_clients"], 0)
 
 
-class RecordingHttpTests(unittest.TestCase):
+class RecordingApiTests(unittest.TestCase):
     token = "test-recording-token"
 
     def setUp(self) -> None:
@@ -180,126 +103,81 @@ class RecordingHttpTests(unittest.TestCase):
         self.sources = SourceRegistry(make_pipeline, max_sources=2)
         self.source = self.sources.acquire("192.0.2.10")
         self.recordings = RecordingService(self.sources, RecordingStore(Path(self.temp.name)))
-        self.server = BoundedThreadingHTTPServer(
-            ("127.0.0.1", 0), make_handler(self.sources, "test", self.recordings, self.token)
-        )
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
+        self.client = TestClient(make_app(self.sources, "test", self.recordings, self.token))
+        self.headers = {"Authorization": f"Bearer {self.token}"}
 
     def tearDown(self) -> None:
         self.recordings.shutdown()
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join()
         self.temp.cleanup()
 
-    def request(
-        self,
-        method: str,
-        path: str,
-        body: dict[str, object] | None = None,
-        token: str | None = token,
-    ) -> tuple[int, dict[str, str], bytes]:
-        encoded = json.dumps(body).encode() if body is not None else None
-        headers = {"Content-Type": "application/json"}
-        if token is not None:
-            headers["Authorization"] = f"Bearer {token}"
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=1)
-        conn.request(method, path, body=encoded, headers=headers)
-        response = conn.getresponse()
-        response_body = response.read()
-        response_headers = dict(response.getheaders())
-        conn.close()
-        return response.status, response_headers, response_body
+    def test_recording_api_requires_bearer_authentication(self) -> None:
+        missing = self.client.get("/api/recordings")
+        wrong = self.client.get("/api/recordings", headers={"Authorization": "Bearer wrong"})
+        capabilities = self.client.get("/api/recordings/capabilities")
 
-    def test_recording_api_requires_the_bridge_token(self) -> None:
-        unauthorized, headers, body = self.request("GET", "/api/recordings", token=None)
-        wrong, _, _ = self.request("GET", "/api/recordings", token="wrong")
+        self.assertEqual(missing.status_code, 401)
+        self.assertEqual(wrong.status_code, 401)
+        self.assertEqual(missing.json()["error"]["code"], "unauthorized")
+        self.assertIn("Bearer", missing.headers["WWW-Authenticate"])
+        self.assertTrue(capabilities.json()["enabled"])
 
-        self.assertEqual(unauthorized, 401)
-        self.assertEqual(wrong, 401)
-        self.assertIn("Bearer", headers["WWW-Authenticate"])
-        self.assertEqual(json.loads(body)["error"]["code"], "unauthorized")
-        raw_token = RecordingHttpController(self.recordings, self.token).handle("GET", "/api/recordings", self.token)
-        self.assertIsInstance(raw_token, JsonResponse)
-        self.assertEqual(cast("JsonResponse", raw_token).status, 401)
-
-    def test_api_drives_record_download_and_delete_end_to_end(self) -> None:
-        started_status, _, started_body = self.request(
-            "POST", "/api/recordings", {"source": "192.0.2.10", "title": "Rare album"}
-        )
-        started = json.loads(started_body)["recording"]
-        self.source.hub.ingest(4, bytes(DEFAULT_FORMAT.payload_bytes))
-        stopped_status, _, stopped_body = self.request("POST", f"/api/recordings/{started['id']}/stop")
-        listed_status, _, listed_body = self.request("GET", "/api/recordings")
-        ticket_status, _, ticket_body = self.request("POST", f"/api/recordings/{started['id']}/download-ticket")
-        ticket_url = json.loads(ticket_body)["url"]
-        file_status, file_headers, file_body = self.request("GET", ticket_url, token=None)
-        reused_ticket_status, _, _ = self.request("GET", ticket_url, token=None)
-        deleted_status, _, _ = self.request("DELETE", f"/api/recordings/{started['id']}")
-        missing_status, _, _ = self.request("GET", f"/api/recordings/{started['id']}/file")
-
-        self.assertEqual(started_status, 201)
-        self.assertEqual(json.loads(stopped_body)["recording"]["state"], "complete")
-        self.assertEqual(stopped_status, 200)
-        self.assertEqual(listed_status, 200)
-        self.assertEqual(len(json.loads(listed_body)["saved"]), 1)
-        self.assertEqual(ticket_status, 201)
-        self.assertEqual(file_status, 200)
-        self.assertEqual(file_headers["Content-Type"], "audio/wav")
-        self.assertEqual(file_body[:4], b"RIFF")
-        self.assertEqual(reused_ticket_status, 401)
-        self.assertEqual(deleted_status, 200)
-        self.assertEqual(missing_status, 404)
-
-    def test_invalid_requests_name_the_correction(self) -> None:
-        missing_field, _, missing_field_body = self.request("POST", "/api/recordings", {"title": "Album"})
-        unknown_source, _, unknown_source_body = self.request(
-            "POST", "/api/recordings", {"source": "192.0.2.11", "title": "Album"}
-        )
-        wrong_method, wrong_method_headers, _ = self.request("DELETE", "/api/recordings")
-
-        self.assertEqual(missing_field, 400)
-        self.assertIn("source and title", json.loads(missing_field_body)["error"]["message"])
-        self.assertEqual(unknown_source, 400)
-        self.assertIn("unknown source", json.loads(unknown_source_body)["error"]["message"])
-        self.assertEqual(wrong_method, 405)
-        self.assertEqual(wrong_method_headers["Allow"], "GET, POST")
-
-    def test_download_ticket_storage_is_bounded(self) -> None:
-        started_status, _, started_body = self.request(
-            "POST", "/api/recordings", {"source": "192.0.2.10", "title": "Ticket bound"}
-        )
-        self.assertEqual(started_status, 201)
-        recording_id = json.loads(started_body)["recording"]["id"]
-        self.source.hub.ingest(1, bytes(DEFAULT_FORMAT.payload_bytes))
-        self.request("POST", f"/api/recordings/{recording_id}/stop")
-        controller = RecordingHttpController(self.recordings, self.token)
-        urls: list[str] = []
-        for _ in range(MAX_DOWNLOAD_TICKETS + 1):
-            response = controller.handle(
-                "POST",
-                f"/api/recordings/{recording_id}/download-ticket",
-                f"Bearer {self.token}",
-            )
-            self.assertIsInstance(response, JsonResponse)
-            urls.append(cast("str", cast("JsonResponse", response).data["url"]))
-
-        first = urlsplit(urls[0])
-        evicted = controller.handle("GET", first.path, None, query=first.query)
-        last = urlsplit(urls[-1])
-        accepted = controller.handle("GET", last.path, None, query=last.query)
-
-        self.assertEqual(cast("JsonResponse", evicted).status, 401)
-        self.assertIsInstance(accepted, FileResponse)
-        cast("FileResponse", accepted).source.close()
-
-    def test_oversized_request_is_rejected_before_json_parsing(self) -> None:
-        status, _, body = self.request(
-            "POST",
+    def test_api_records_downloads_and_deletes_end_to_end(self) -> None:
+        started = self.client.post(
             "/api/recordings",
-            {"source": "192.0.2.10", "title": "x" * 5000},
+            headers=self.headers,
+            json={"source": "192.0.2.10", "title": "Rare album"},
+        )
+        recording_id = started.json()["recording"]["id"]
+        self.source.hub.ingest(4, bytes(DEFAULT_FORMAT.payload_bytes))
+        stopped = self.client.post(f"/api/recordings/{recording_id}/stop", headers=self.headers)
+        listed = self.client.get("/api/recordings", headers=self.headers)
+        ticket = self.client.post(f"/api/recordings/{recording_id}/download-ticket", headers=self.headers)
+        download = self.client.get(ticket.json()["url"])
+        reused = self.client.get(ticket.json()["url"])
+        deleted = self.client.delete(f"/api/recordings/{recording_id}", headers=self.headers)
+
+        self.assertEqual(started.status_code, 201)
+        self.assertEqual(stopped.json()["recording"]["state"], "complete")
+        self.assertEqual(len(listed.json()["saved"]), 1)
+        self.assertEqual(ticket.status_code, 201)
+        self.assertEqual(download.content[:4], b"RIFF")
+        self.assertEqual(reused.status_code, 401)
+        self.assertEqual(deleted.json(), {"deleted": recording_id})
+
+    def test_invalid_and_oversized_requests_name_the_problem(self) -> None:
+        missing = self.client.post("/api/recordings", headers=self.headers, json={"title": "Album"})
+        unknown = self.client.post(
+            "/api/recordings",
+            headers=self.headers,
+            json={"source": "192.0.2.11", "title": "Album"},
+        )
+        oversized = self.client.post(
+            "/api/recordings",
+            headers={**self.headers, "Content-Type": "application/json"},
+            content=json.dumps({"source": "192.0.2.10", "title": "x" * 5000}),
         )
 
-        self.assertEqual(status, 413)
-        self.assertEqual(json.loads(body)["error"]["code"], "request-too-large")
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(unknown.status_code, 400)
+        self.assertIn("unknown source", unknown.json()["error"]["message"])
+        self.assertEqual(oversized.status_code, 413)
+        self.assertEqual(oversized.json()["error"]["code"], "request-too-large")
+
+    def test_download_ticket_storage_is_bounded_and_one_use(self) -> None:
+        started = self.client.post(
+            "/api/recordings",
+            headers=self.headers,
+            json={"source": "192.0.2.10", "title": "Ticket bound"},
+        )
+        recording_id = started.json()["recording"]["id"]
+        self.source.hub.ingest(1, bytes(DEFAULT_FORMAT.payload_bytes))
+        self.client.post(f"/api/recordings/{recording_id}/stop", headers=self.headers)
+        service = RecordingHttpService(self.recordings, self.token)
+        urls = [service.issue_download(recording_id)["url"] for _ in range(MAX_DOWNLOAD_TICKETS + 1)]
+
+        first = urlsplit(cast("str", urls[0]))
+        last = urlsplit(cast("str", urls[-1]))
+        with self.assertRaisesRegex(Exception, "new recording download"):
+            service.open_download(recording_id, first.query.removeprefix("ticket="))
+        opened = service.open_download(recording_id, last.query.removeprefix("ticket="))
+        opened.source.close()

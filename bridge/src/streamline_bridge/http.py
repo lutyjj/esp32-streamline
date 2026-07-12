@@ -1,91 +1,86 @@
-"""HTTP WAV, status, and health adapter."""
+"""FastAPI adapter for bridge control, recordings, and WAV delivery."""
 
 from __future__ import annotations
 
-import json
-import logging
 import queue
 import re
 import secrets
 import struct
-import threading
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
-from typing import TYPE_CHECKING
-from urllib.parse import parse_qs, urlsplit
+from typing import TYPE_CHECKING, Annotated, Any
 
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+
+from streamline_bridge.api_models import (
+    BridgeStatus,
+    DeleteRecordingResult,
+    DownloadTicket,
+    ErrorDetail,
+    ErrorResponse,
+    RecordingCapabilities,
+    RecordingList,
+    RecordingResult,
+    StartRecordingRequest,
+)
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
-from streamline_bridge.recording_http import FileResponse, JsonResponse, RecordingHttpController
-from streamline_bridge.sources import SourceRegistry, SourceSelectionError
+from streamline_bridge.recording import RecordingError
+from streamline_bridge.recording_http import RecordingHttpService
+from streamline_bridge.sources import Source, SourceRegistry, SourceSelectionError
 
 if TYPE_CHECKING:
-    import socket
+    from collections.abc import Generator, Iterator, Mapping
 
     from streamline_bridge.pipeline import AudioPipeline
     from streamline_bridge.recording import RecordingService
 
-logger = logging.getLogger(__name__)
 HTTP_MAX_BATCH_CHUNKS = 64
 HTTP_MAX_JSON_BODY_BYTES = 4096
 DEFAULT_MAX_HTTP_CONNECTIONS = 32
 DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS = 10.0
 CONSOLE_PAGE = files("streamline_bridge").joinpath("console.html").read_bytes()
-# Home Assistant ingress forwards requests with an X-Ingress-Path prefix the
-# console must resolve its own requests against. Accept only a plain URL path so
-# a spoofed header on the published port cannot inject markup into the page.
 INGRESS_BASE_PATTERN = re.compile(r"(?:/[A-Za-z0-9._~-]+)*")
+RECORDING_ID_PATTERN = r"^[a-zA-Z0-9-]+$"
+RecordingId = Annotated[str, Path(pattern=RECORDING_ID_PATTERN)]
+bearer = HTTPBearer(auto_error=False, scheme_name="bearer_auth")
 
 
-class BoundedThreadingHTTPServer(ThreadingHTTPServer):
-    """Serve a fixed maximum of timeout-bound HTTP connections."""
+class BridgeApi(FastAPI):
+    """Publish the adapter's 400 validation envelope in generated OpenAPI."""
 
-    daemon_threads = True
-    block_on_close = False
+    def openapi(self) -> dict[str, Any]:
+        schema = super().openapi()
+        for path in schema.get("paths", {}).values():
+            for operation in path.values():
+                responses = operation.get("responses")
+                if not isinstance(responses, dict) or "422" not in responses:
+                    continue
+                responses.pop("422")
+                responses.setdefault(
+                    "400",
+                    {
+                        "description": "Invalid request",
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}},
+                    },
+                )
+        return schema
 
-    def __init__(
-        self,
-        server_address: tuple[str, int],
-        handler: type[BaseHTTPRequestHandler],
-        max_connections: int = DEFAULT_MAX_HTTP_CONNECTIONS,
-        request_timeout_seconds: float = DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
-    ) -> None:
-        if max_connections < 1 or request_timeout_seconds <= 0:
-            raise ValueError("HTTP connection limits must be positive")
-        self._connection_slots = threading.BoundedSemaphore(max_connections)
-        self._request_timeout_seconds = request_timeout_seconds
-        super().__init__(server_address, handler)
 
-    def get_request(self) -> tuple[socket.socket, tuple[str, int]]:
-        request, client_address = super().get_request()
-        request.settimeout(self._request_timeout_seconds)
-        return request, client_address
+class BodyLimitMiddleware(BaseHTTPMiddleware):
+    """Reject declared request bodies above the bridge resource bound."""
 
-    def process_request(
-        self, request: socket.socket | tuple[bytes, socket.socket], client_address: tuple[str, int]
-    ) -> None:
-        if not self._connection_slots.acquire(blocking=False):
-            logger.warning("rejected HTTP connection from %s: connection limit reached", client_address[0])
-            self.shutdown_request(request)
-            return
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        raw_length = request.headers.get("content-length")
         try:
-            super().process_request(request, client_address)
-        except BaseException:
-            self._connection_slots.release()
-            raise
-
-    def process_request_thread(
-        self, request: socket.socket | tuple[bytes, socket.socket], client_address: tuple[str, int]
-    ) -> None:
-        try:
-            super().process_request_thread(request, client_address)
-        finally:
-            self._connection_slots.release()
-
-    def handle_error(
-        self, request: socket.socket | tuple[bytes, socket.socket], client_address: tuple[str, int]
-    ) -> None:
-        logger.debug("HTTP connection from %s ended with a socket error", client_address[0])
+            length = int(raw_length) if raw_length is not None else 0
+        except ValueError:
+            length = HTTP_MAX_JSON_BODY_BYTES + 1
+        if length > HTTP_MAX_JSON_BODY_BYTES:
+            return error_response(413, "request-too-large", "Request bodies must not exceed 4096 bytes.")
+        return await call_next(request)
 
 
 def wav_header(pcm_format: PcmFormat = DEFAULT_FORMAT) -> bytes:
@@ -124,158 +119,256 @@ def collect_http_batch(client_queue: queue.Queue[bytes | None]) -> list[bytes] |
     return chunks
 
 
-def make_handler(
+def error_response(status: int, code: str, message: str, headers: Mapping[str, str] | None = None) -> JSONResponse:
+    return JSONResponse(
+        ErrorResponse(error=ErrorDetail(code=code, message=message)).model_dump(),
+        status_code=status,
+        headers=headers,
+    )
+
+
+def recording_error(exc: RecordingError) -> JSONResponse:
+    status = {
+        "invalid-request": 400,
+        "invalid-title": 400,
+        "invalid-source": 400,
+        "unauthorized": 401,
+        "not-found": 404,
+        "not-active": 409,
+        "source-busy": 409,
+        "recording-active": 409,
+        "recording-disabled": 503,
+        "storage-full": 507,
+        "storage-unavailable": 507,
+    }.get(exc.code, 500)
+    return error_response(status, exc.code, exc.message)
+
+
+def stream_wav_body(
+    sources: SourceRegistry[AudioPipeline], source: Source[AudioPipeline], remote_addr: str, path: str
+) -> Generator[bytes, None, None]:
+    """Yield one WAV client stream and release all lifecycle state on close."""
+    sources.retain_http(source)
+    stream = source.hub.register_client(remote_addr, path)
+    try:
+        yield wav_header()
+        while (chunks := collect_http_batch(stream.queue)) is not None:
+            body = b"".join(chunks)
+            yield body
+            source.hub.record_client_write(stream.stats.id, len(body), len(chunks))
+    finally:
+        source.hub.unregister_client(stream.stats.id)
+        sources.release_http(source)
+
+
+def make_app(
     sources: SourceRegistry[AudioPipeline],
     bridge_version: str,
     recordings: RecordingService | None = None,
     recording_token: str | None = None,
-) -> type[BaseHTTPRequestHandler]:
-    """Create a handler class bound to one bridge source registry."""
+) -> FastAPI:
+    """Build the runtime app whose routes and models own the OpenAPI contract."""
+    app = BridgeApi(
+        title="StreamLine bridge API",
+        version="1.0.0",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url="/api/openapi.json",
+    )
+    app.add_middleware(BodyLimitMiddleware)
+    recording_api = RecordingHttpService(recordings, recording_token)
 
-    recording_http = RecordingHttpController(recordings, recording_token)
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        message = exc.errors()[0].get("msg", "Request does not match the API contract.")
+        return error_response(400, "invalid-request", str(message))
 
-    class Handler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-        server_version = "StreamLine"
-        sys_version = ""
-
-        def do_GET(self) -> None:
-            url = urlsplit(self.path)
-            if url.path == "/status":
-                self._send_json({"bridge_version": bridge_version, "sources": sources.snapshot()})
-            elif url.path in {"/", "/recordings", "/recordings/"}:
-                self._send_recordings_page()
-            elif url.path == "/health":
-                self._send_text("ok\n")
-            elif url.path == "/streamline.wav":
-                self._stream_wav(url.query)
-            else:
-                self._dispatch_recording("GET", url.path, query=url.query)
-
-        def do_POST(self) -> None:
-            body = self._read_body()
-            if body is None:
-                self.close_connection = True
-                self._send_json(
-                    {"error": {"code": "request-too-large", "message": "Request bodies must not exceed 4096 bytes."}},
-                    HTTPStatus(413),
-                )
-                return
-            self._dispatch_recording("POST", urlsplit(self.path).path, body)
-
-        def do_DELETE(self) -> None:
-            self._dispatch_recording("DELETE", urlsplit(self.path).path)
-
-        def log_message(self, fmt: str, *args: object) -> None:
-            logger.info("%s - %s", self.address_string(), fmt % args)
-
-        def _send_json(
-            self,
-            data: dict[str, object],
-            status: HTTPStatus = HTTPStatus.OK,
-            extra_headers: dict[str, str] | None = None,
-        ) -> None:
-            body = json.dumps(data, sort_keys=True).encode() + b"\n"
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            for name, value in (extra_headers or {}).items():
-                self.send_header(name, value)
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _read_body(self) -> bytes | None:
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                return None
-            if not 0 <= length <= HTTP_MAX_JSON_BODY_BYTES:
-                return None
-            return self.rfile.read(length)
-
-        def _dispatch_recording(self, method: str, path: str, body: bytes = b"", query: str = "") -> None:
-            response = recording_http.handle(method, path, self.headers.get("Authorization"), body, query)
-            if response is None:
-                self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
-            elif isinstance(response, JsonResponse):
-                self._send_json(response.data, response.status, response.headers)
-            else:
-                self._send_file(response)
-
-        def _send_file(self, response: FileResponse) -> None:
-            with response.source:
-                try:
-                    self.send_response(HTTPStatus.OK)
-                    self.send_header("Content-Type", "audio/wav")
-                    self.send_header("Content-Length", str(response.size))
-                    self.send_header("Content-Disposition", f'attachment; filename="{response.name}"')
-                    self.send_header("Cache-Control", "private, no-store")
-                    self.end_headers()
-                    while chunk := response.source.read(64 * 1024):
-                        self.wfile.write(chunk)
-                except OSError:
-                    pass
-
-        def _send_text(self, body_text: str) -> None:
-            body = body_text.encode()
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/plain")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _ingress_base(self) -> str:
-            base = self.headers.get("X-Ingress-Path", "")
-            return base if INGRESS_BASE_PATTERN.fullmatch(base) else ""
-
-        def _send_recordings_page(self) -> None:
-            nonce = secrets.token_urlsafe(18)
-            body = CONSOLE_PAGE.replace(b"__CSP_NONCE__", nonce.encode()).replace(
-                b"__INGRESS_BASE__", self._ingress_base().encode()
+    def authorize(
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)],
+    ) -> None:
+        if (
+            credentials is None
+            or credentials.scheme != "Bearer"
+            or not recording_api.authorize(credentials.credentials)
+        ):
+            raise HTTPException(
+                status_code=401,
+                detail={"code": "unauthorized", "message": "Enter the recording token configured on this bridge."},
+                headers={"WWW-Authenticate": 'Bearer realm="StreamLine recordings"'},
             )
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-            self.send_header(
-                "Content-Security-Policy",
-                f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
-                "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'self'",
-            )
-            self.end_headers()
-            self.wfile.write(body)
 
-        def _stream_wav(self, query: str) -> None:
-            requested = parse_qs(query).get("source", [None])[0]
-            try:
-                source = sources.select(requested)
-            except SourceSelectionError as exc:
-                self._send_json({"error": exc.message}, exc.status)
-                return
-            sources.retain_http(source)
-            stream = source.hub.register_client(self.client_address[0], self.path, self.connection)
-            try:
-                self.send_response(HTTPStatus.OK)
-                self.send_header("Content-Type", "audio/wav")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Connection", "close")
-                self.end_headers()
-                self.wfile.write(wav_header())
-                self.wfile.flush()
-                while (chunks := collect_http_batch(stream.queue)) is not None:
-                    body = b"".join(chunks)
-                    self.wfile.write(body)
-                    self.wfile.flush()
-                    source.hub.record_client_write(stream.stats.id, len(body), len(chunks))
-            except OSError:
-                pass
-            finally:
-                source.hub.unregister_client(stream.stats.id)
-                sources.release_http(source)
+    @app.exception_handler(HTTPException)
+    async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
+        raw_detail: object = exc.detail
+        detail = raw_detail if isinstance(raw_detail, dict) else {"code": "http-error", "message": str(raw_detail)}
+        return error_response(exc.status_code, str(detail["code"]), str(detail["message"]), exc.headers)
 
-    return Handler
+    @app.get(
+        "/status",
+        response_model=BridgeStatus,
+        operation_id="getBridgeStatus",
+        summary="Read bridge and source status",
+    )
+    def get_status() -> BridgeStatus:
+        return BridgeStatus.model_validate({"bridge_version": bridge_version, "sources": sources.snapshot()})
+
+    @app.get("/health", response_class=PlainTextResponse, operation_id="getBridgeHealth", summary="Check bridge health")
+    def get_health() -> str:
+        return "ok\n"
+
+    @app.get(
+        "/streamline.wav",
+        response_class=StreamingResponse,
+        responses={200: {"content": {"audio/wav": {}}}, 400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+        operation_id="streamWav",
+        summary="Stream live PCM as WAV",
+    )
+    def stream_wav(request: Request, source: str | None = Query(default=None)) -> Response:
+        try:
+            selected = sources.select(source)
+        except SourceSelectionError as exc:
+            return error_response(int(exc.status), "invalid-source", exc.message)
+        remote = request.client.host if request.client is not None else "unknown"
+        return StreamingResponse(
+            stream_wav_body(sources, selected, remote, str(request.url.path)),
+            media_type="audio/wav",
+            headers={"Cache-Control": "no-store", "Connection": "close"},
+        )
+
+    @app.get(
+        "/api/recordings/capabilities",
+        response_model=RecordingCapabilities,
+        operation_id="getRecordingCapabilities",
+        summary="Read recording availability and limits",
+    )
+    def get_recording_capabilities() -> RecordingCapabilities:
+        return RecordingCapabilities.model_validate(recording_api.capabilities())
+
+    authenticated = [Depends(authorize)]
+
+    @app.get(
+        "/api/recordings",
+        response_model=RecordingList,
+        dependencies=authenticated,
+        operation_id="getRecordings",
+        summary="List active and saved recordings",
+    )
+    def get_recordings() -> Response | RecordingList:
+        try:
+            return RecordingList.model_validate(recording_api.list())
+        except RecordingError as exc:
+            return recording_error(exc)
+
+    @app.post(
+        "/api/recordings",
+        response_model=RecordingResult,
+        status_code=201,
+        dependencies=authenticated,
+        operation_id="startRecording",
+        summary="Start a recording",
+    )
+    def start_recording(body: StartRecordingRequest) -> Response | RecordingResult:
+        try:
+            return RecordingResult.model_validate(recording_api.start(body.source, body.title))
+        except RecordingError as exc:
+            return recording_error(exc)
+
+    @app.post(
+        "/api/recordings/{recording_id}/stop",
+        response_model=RecordingResult,
+        dependencies=authenticated,
+        operation_id="stopRecording",
+        summary="Stop and finalize a recording",
+    )
+    def stop_recording(recording_id: RecordingId) -> Response | RecordingResult:
+        try:
+            return RecordingResult.model_validate(recording_api.stop(recording_id))
+        except RecordingError as exc:
+            return recording_error(exc)
+
+    @app.post(
+        "/api/recordings/{recording_id}/download-ticket",
+        response_model=DownloadTicket,
+        status_code=201,
+        dependencies=authenticated,
+        operation_id="createRecordingDownloadTicket",
+        summary="Create a one-use download ticket",
+    )
+    def create_download_ticket(recording_id: RecordingId) -> Response | DownloadTicket:
+        try:
+            return DownloadTicket.model_validate(recording_api.issue_download(recording_id))
+        except RecordingError as exc:
+            return recording_error(exc)
+
+    @app.get(
+        "/api/recordings/{recording_id}/file",
+        response_class=StreamingResponse,
+        responses={200: {"content": {"audio/wav": {}}}, 401: {"model": ErrorResponse}},
+        operation_id="downloadRecording",
+        summary="Download a recording with a one-use ticket",
+    )
+    def download_recording(recording_id: RecordingId, ticket: str = Query(min_length=1)) -> Response:
+        try:
+            opened = recording_api.open_download(recording_id, ticket)
+        except RecordingError as exc:
+            return recording_error(exc)
+
+        def file_body() -> Iterator[bytes]:
+            with opened.source:
+                while chunk := opened.source.read(64 * 1024):
+                    yield chunk
+
+        return StreamingResponse(
+            file_body(),
+            media_type="audio/wav",
+            headers={
+                "Content-Length": str(opened.size),
+                "Content-Disposition": f'attachment; filename="{opened.name}"',
+                "Cache-Control": "private, no-store",
+            },
+        )
+
+    @app.delete(
+        "/api/recordings/{recording_id}",
+        response_model=DeleteRecordingResult,
+        dependencies=authenticated,
+        operation_id="deleteRecording",
+        summary="Delete a saved recording",
+    )
+    def delete_recording(recording_id: RecordingId) -> Response | DeleteRecordingResult:
+        try:
+            return DeleteRecordingResult.model_validate(recording_api.delete(recording_id))
+        except RecordingError as exc:
+            return recording_error(exc)
+
+    def console_response(request: Request) -> HTMLResponse:
+        raw_base = request.headers.get("X-Ingress-Path", "")
+        ingress_base = raw_base if INGRESS_BASE_PATTERN.fullmatch(raw_base) else ""
+        nonce = secrets.token_urlsafe(18)
+        body = CONSOLE_PAGE.replace(b"__INGRESS_BASE__", ingress_base.encode())
+        body = body.replace(b"<script", f'<script nonce="{nonce}"'.encode())
+        body = body.replace(b"<style", f'<style nonce="{nonce}"'.encode())
+        return HTMLResponse(
+            body,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "no-referrer",
+                "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+                "Content-Security-Policy": (
+                    f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+                    "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'self'"
+                ),
+            },
+        )
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def root_console(request: Request) -> HTMLResponse:
+        return console_response(request)
+
+    @app.get("/recordings", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/recordings/", response_class=HTMLResponse, include_in_schema=False)
+    def recordings_console(request: Request) -> HTMLResponse:
+        return console_response(request)
+
+    return app

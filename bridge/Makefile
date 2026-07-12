@@ -8,6 +8,7 @@ IMAGE := $(or $(BRIDGE_IMAGE),esp32-streamline-bridge)
 VERSION ?= $(call toml_version,pyproject.toml)
 BRIDGE_ARGS ?=
 BRIDGE_PORTS ?= -p 39000:39000 -p 8088:8088
+CONSOLE_ASSET := src/streamline_bridge/console.html
 
 # Run a check in the dev image with the source mounted and the shared ruff/mypy
 # cache volume attached.
@@ -16,11 +17,14 @@ CONTAINER_RUN := $(CONTAINER) run --rm \
 	-e RUFF_CACHE_DIR=/cache/ruff -e MYPY_CACHE_DIR=/cache/mypy \
 	-e STREAMLINE_ADDON_CONFIG=/repo/ha-addon/config.yaml \
 	-w /workspace $(DEV_IMAGE)
+OPENAPI_RUN := $(CONTAINER) run --rm \
+	-v "$(CURDIR):/workspace" -v "$(CURDIR)/../docs:/repo/docs" \
+	-w /workspace $(DEV_IMAGE)
 LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 	-v "$(CURDIR):/workspace" -e UV_CACHE_DIR=/tmp/uv-cache \
 	-w /workspace $(LOCK_IMAGE) uv
 
-.PHONY: lock-image dev-image format lint lock lock-upgrade lock-check test image run up
+.PHONY: lock-image console-asset dev-image format lint lock lock-upgrade lock-check test openapi openapi-check image run up
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
@@ -34,7 +38,11 @@ lock-upgrade: lock-image
 lock-check: lock-image
 	$(LOCK_RUN) lock --check
 
-dev-image:
+console-asset:
+	$(MAKE) -C ../console build-bridge
+	cp ../console/dist/bridge/bridge.html $(CONSOLE_ASSET)
+
+dev-image: console-asset
 	$(CONTAINER) build -f Dockerfile --target development -t $(DEV_IMAGE) .
 
 format: dev-image
@@ -46,7 +54,13 @@ lint: dev-image
 test: dev-image
 	$(CONTAINER_RUN) sh -c 'PYTHONPATH=/workspace/src python3 -m unittest discover -s tests -v'
 
-image:
+openapi: dev-image
+	$(OPENAPI_RUN) python3 -m streamline_bridge.openapi /repo/docs/bridge-openapi.json
+
+openapi-check: dev-image
+	$(CONTAINER_RUN) sh -c 'python3 -m streamline_bridge.openapi /tmp/bridge-openapi.json && diff -u /repo/docs/bridge-openapi.json /tmp/bridge-openapi.json'
+
+image: console-asset
 	$(CONTAINER) build -f Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) .
 
 run: image

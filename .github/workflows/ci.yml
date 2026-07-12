@@ -39,9 +39,13 @@ jobs:
             bridge:
               - *shared
               - 'bridge/**'
+              - 'console/**'
+              - 'docs/bridge-openapi.json'
             console:
               - *shared
               - 'console/**'
+              - 'bridge/**'
+              - 'docs/bridge-openapi.json'
             tools:
               - *shared
               - 'tools/**'
@@ -51,6 +55,7 @@ jobs:
             ha-addon:
               - *shared
               - 'ha-addon/**'
+              - 'console/**'
               - 'repository.yaml'
               - 'bridge/pyproject.toml'
               - 'bridge/uv.lock'

@@ -13,6 +13,7 @@ a restart or identify a device by hostname.
 | `/streamline.wav?source=<ipv4>` | Live WAV from an existing or allowlisted source. |
 | `/status` | Bridge version, per-source playout/client statistics, latest PCM levels, and lifecycle state. |
 | `/health` | `200 OK` with `ok` while the HTTP process is running. |
+| `/api/openapi.json` | OpenAPI 3.1 contract generated from the running bridge routes and Pydantic models. |
 | `/` and `/recordings` | Bridge console with live sources and optional recordings. The Home Assistant add-on serves it through ingress. |
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 
@@ -38,6 +39,9 @@ Each source snapshot also includes `levels`, the peak and RMS absolute sample
 values for the latest accepted 16-bit stereo PCM packet. Each channel ranges
 from `0` (silence) through `32768` (full scale). The bridge console polls this
 open JSON contract once per second and renders the values as a live meter.
+
+The bridge owns [its OpenAPI artifact](bridge-openapi.json). Console checks use
+that artifact to generate a typed client; do not edit generated client files.
 
 ## Tuning options
 

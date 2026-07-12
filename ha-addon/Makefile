@@ -51,6 +51,7 @@ test: image
 		"$(IMAGE):$(VERSION)"
 
 image: lint
+	$(MAKE) -C ../bridge console-asset
 	$(CONTAINER) build --platform $(PLATFORM) -f Dockerfile \
 		--build-arg BUILD_VERSION=$(VERSION) \
 		--build-arg BUILD_ARCH=$(BUILD_ARCH) \

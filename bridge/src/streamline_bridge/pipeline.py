@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
 
 from streamline_bridge.fanout import ClientFanout, ClientStream
 from streamline_bridge.levels import AudioLevels
 from streamline_bridge.packet_tap import PacketSink, PacketTapFanout
 from streamline_bridge.playout import Clock, PlayoutBuffer, PlayoutWorker
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
-
-if TYPE_CHECKING:
-    import socket
 
 
 class AudioPipeline:
@@ -66,8 +62,8 @@ class AudioPipeline:
         data["levels"] = self.levels.snapshot()
         return data
 
-    def register_client(self, remote_addr: str, path: str, client_socket: socket.socket) -> ClientStream:
-        return self.clients.register(remote_addr, path, client_socket)
+    def register_client(self, remote_addr: str, path: str) -> ClientStream:
+        return self.clients.register(remote_addr, path)
 
     def unregister_client(self, client_id: int) -> None:
         self.clients.unregister(client_id)

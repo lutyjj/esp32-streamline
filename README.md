@@ -23,6 +23,9 @@ HTTP consumer can read it too.
 - **Self-hosted bridge** — one Docker container turns the TCP PCM stream into
   a live HTTP WAV stream. A ~1 s playout buffer smooths Wi-Fi jitter and
   conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
+- **Lossless recording**: an optional bridge page and API preserve one source
+  as a finite 48 kHz, 16-bit stereo WAV, with sequence gaps measured and
+  represented as silence. See [lossless recordings](docs/recordings.md).
 - **Verified automatic OTA updates** — the device pulls new GitHub releases
   over HTTPS, verifies their SHA-256, and rolls back automatically if an image
   fails to boot. See [OTA updates](docs/ota.md).
@@ -97,6 +100,20 @@ probe. With several ESP32 sources, select one with
 per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning
 flags.
 
+To record, enable the bridge's writable volume and set a token of at least 16
+characters before `docker compose up -d`:
+
+```sh
+export STREAMLINE_RECORDINGS_DIR=/recordings
+export STREAMLINE_RECORDING_TOKEN=<private-recording-token>
+```
+
+Open `http://<bridge-host>:8088/recordings`. The named Docker volume owns the
+files; recording stays disabled when `STREAMLINE_RECORDINGS_DIR` is empty. The
+Home Assistant add-on exposes the same opt-in flow in its configuration. This
+focused bridge page manages stored files; the device console continues to own
+audio, network, and firmware settings.
+
 ### 3. Configure the device
 
 1. Join the `esp32-streamline-XXXX` Wi-Fi network and open `http://192.168.71.1/`.
@@ -142,6 +159,7 @@ expose serial devices. Install the tool once: `cargo install espflash`.
 
 Docs: [architecture](docs/architecture.md) ·
 [bridge reference](docs/bridge.md) ·
+[lossless recordings](docs/recordings.md) ·
 [design](docs/design.md) ·
 [user journey](docs/user-journey.md) ·
 [audio profiles](docs/audio-profiles.md) ·

@@ -12,7 +12,7 @@ startup: services
 boot: auto
 stage: experimental
 image: "ghcr.io/lutyjj/{arch}-esp32-streamline-bridge-addon"
-webui: "http://[HOST]:[PORT:8088]/status"
+webui: "http://[HOST]:[PORT:8088]/recordings"
 watchdog: "http://[HOST]:[PORT:8088]/health"
 ports:
   39000/tcp: 39000
@@ -20,6 +20,8 @@ ports:
 ports_description:
   39000/tcp: ESP32 PCM input
   8088/tcp: HTTP WAV stream and status API
+map:
+  - share:rw
 options:
   source_allow: ""
   max_sources: 8
@@ -29,6 +31,8 @@ options:
   max_outage_silence_seconds: 5.0
   source_idle_timeout_seconds: 5.0
   source_eviction_idle_seconds: 300.0
+  recordings_enabled: false
+  recording_token: ""
 schema:
   source_allow: str
   max_sources: "int(1,)"
@@ -38,3 +42,5 @@ schema:
   max_outage_silence_seconds: "float(0.001,)"
   source_idle_timeout_seconds: "float(0.001,)"
   source_eviction_idle_seconds: "float(0.001,)"
+  recordings_enabled: bool
+  recording_token: password

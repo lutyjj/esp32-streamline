@@ -16,6 +16,10 @@ comma-separated list of ESP32 IPv4 addresses to admit. The
 [bridge reference](../docs/bridge.md) owns the option defaults, constraints,
 and source lifecycle contract.
 
+Set `recordings_enabled` and a private `recording_token` of at least 16
+characters to enable lossless WAV recording. The add-on stores files under
+`/share/streamline-recordings` and exposes the recording flow as its Web UI.
+
 ## Use
 
 Point each ESP32 device at the Home Assistant host on port `39000`. Music

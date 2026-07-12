@@ -9,6 +9,8 @@ services:
     restart: unless-stopped
     environment:
       STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
+      STREAMLINE_RECORDINGS_DIR: ${STREAMLINE_RECORDINGS_DIR:-}
+      STREAMLINE_RECORDING_TOKEN: ${STREAMLINE_RECORDING_TOKEN:-}
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -16,6 +18,11 @@ services:
       - ALL
     tmpfs:
       - /tmp
+    volumes:
+      - recordings:/recordings
     ports:
       - "39000:39000/tcp"
       - "8088:8088/tcp"
+
+volumes:
+  recordings:

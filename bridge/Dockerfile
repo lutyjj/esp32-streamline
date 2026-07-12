@@ -10,7 +10,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 COPY pyproject.toml /app/pyproject.toml
 COPY src /app/src
 RUN pip install --no-cache-dir . \
-    && useradd --uid 10001 --no-create-home streamline
+    && useradd --uid 10001 --no-create-home streamline \
+    && mkdir /recordings \
+    && chown streamline:streamline /recordings
 
 USER streamline
 

@@ -9,6 +9,18 @@ This is an analog recording path, not a bit-perfect CD extraction. It does not
 read a disc table of contents, fetch metadata, or split tracks. A user can
 record a whole disc or create one file per track.
 
+## Surface boundary
+
+`/recordings` is a focused bridge page, not a second device console. Each
+device console manages capture hardware, audio settings, Wi-Fi, and its PCM
+target. The bridge page manages sessions and files owned by one bridge.
+
+Serving bridge controls from a device would require the device page to discover
+the bridge's separate HTTP address, cross browser origins, hold a second token,
+and present files from sources other than that device. Keeping the API and page
+on the bridge preserves one origin and one owner. Home Assistant opens the page
+as the add-on Web UI; standalone users open the documented bridge URL.
+
 ## User flow
 
 1. The operator enables recordings and assigns a recording token in the bridge
@@ -83,7 +95,8 @@ requires `Authorization: Bearer <recording-token>`.
 | `GET /api/recordings` | List active and saved recordings plus storage availability. |
 | `POST /api/recordings` | Start `{ "source": "192.0.2.10", "title": "Album disc 1" }`. One session may run per source. |
 | `POST /api/recordings/{id}/stop` | Detach the packet tap, drain its queue, and finalize or discard the session. |
-| `GET /api/recordings/{id}/file` | Download a finalized or interrupted WAV. |
+| `POST /api/recordings/{id}/download-ticket` | Create a one-use download URL that expires after 60 seconds. |
+| `GET /api/recordings/{id}/file` | Download with bearer authentication or a valid one-use ticket. |
 | `DELETE /api/recordings/{id}` | Delete an inactive WAV and its manifest. |
 
 The service returns named states: `waiting-for-audio`, `recording`,
@@ -94,18 +107,21 @@ and a message that names the next action.
 
 Standalone containers enable the feature with `--recordings-dir`; the path
 must be a writable mounted directory. `STREAMLINE_RECORDING_TOKEN` must be set
-when the directory is configured. The default container remains read-only and
-recording stays disabled.
+to at least 16 characters when the directory is configured. Compose owns the
+writable `/recordings` volume while the rest of the container stays read-only.
+Recording stays disabled when `STREAMLINE_RECORDINGS_DIR` is empty.
 
 The Home Assistant add-on exposes an opt-in `recordings_enabled` option and a
 password-type `recording_token` option. It maps `share:rw` and stores files in
 `/share/streamline-recordings`, outside the add-on image and its backup payload.
 
 The recording page stores the token in `sessionStorage`, never in a URL,
-cookie, file name, status response, or log. Bearer authentication protects file
-names, downloads, starts, stops, and deletes. The bridge still serves plain
-HTTP on a trusted LAN; a reverse proxy must terminate TLS before access from
-another trust zone.
+cookie, file name, status response, or log. A bearer-authenticated request
+creates each one-use, 60-second download ticket, so the browser can stream a
+large WAV through its native download path without exposing the recording
+token or buffering the file in page memory. Bearer authentication protects all
+other recording operations. The bridge still serves plain HTTP on a trusted
+LAN; a reverse proxy must terminate TLS before access from another trust zone.
 
 ## Non-goals
 

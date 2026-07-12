@@ -63,5 +63,6 @@ place, and the standing items we track or have accepted.
   This is not a firewall replacement; restrict inbound at the boundary.
 - Recording requires `STREAMLINE_RECORDING_TOKEN`. The bridge page keeps it in
   browser session storage and sends it as a bearer token. The API never returns
-  it. Keep recordings on trusted storage and terminate TLS at a reverse proxy
-  before crossing a trust boundary.
+  it. An authenticated request can mint a one-use download ticket that expires
+  after 60 seconds. Keep recordings on trusted storage and terminate TLS at a
+  reverse proxy before crossing a trust boundary.

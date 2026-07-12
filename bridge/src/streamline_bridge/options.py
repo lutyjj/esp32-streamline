@@ -29,6 +29,15 @@ class BridgeOption:
         return f"{type_name}({self.minimum},)"
 
 
+@dataclass(frozen=True)
+class AddonControlOption:
+    """An add-on-only setting consumed before the bridge process starts."""
+
+    name: str
+    default: bool | str
+    supervisor_schema: str
+
+
 BRIDGE_OPTIONS = (
     BridgeOption("tcp_bind", "--tcp-bind", str, "0.0.0.0", "TCP bind address"),
     BridgeOption("tcp_port", "--tcp-port", int, 39000, "TCP listen port", minimum=1),
@@ -101,6 +110,10 @@ BRIDGE_OPTIONS = (
 )
 
 OPTIONS_BY_NAME = {option.name: option for option in BRIDGE_OPTIONS}
+ADDON_CONTROL_OPTIONS = (
+    AddonControlOption("recordings_enabled", False, "bool"),
+    AddonControlOption("recording_token", "", "password"),
+)
 
 
 def addon_options() -> tuple[BridgeOption, ...]:
@@ -121,7 +134,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 help=option.help,
             )
         else:
-            parser.add_argument(option.flag, type=option.value_type, default=option.default, help=option.help)
+            default = (
+                os.environ.get("STREAMLINE_RECORDINGS_DIR", str(option.default))
+                if option.name == "recordings_dir"
+                else option.default
+            )
+            parser.add_argument(option.flag, type=option.value_type, default=default, help=option.help)
     return parser.parse_args(argv)
 
 

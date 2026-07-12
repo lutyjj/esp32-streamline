@@ -54,9 +54,12 @@ Supervisor did not provide.
 ## Recordings
 
 Recording is disabled unless the deployment supplies writable storage. Set
-`--recordings-dir` and `STREAMLINE_RECORDING_TOKEN` for a standalone bridge, or
-enable recordings and set the token in the Home Assistant add-on options. Open
-`http://<bridge-host>:8088/recordings` to record, download, or delete files.
+`--recordings-dir` (or `STREAMLINE_RECORDINGS_DIR`) and a
+`STREAMLINE_RECORDING_TOKEN` of at least 16 characters for a standalone
+bridge. For Compose, set the directory to `/recordings`; its named volume owns
+the files. Home Assistant users enable recordings and set the token in the
+add-on options. Open `http://<bridge-host>:8088/recordings` to record,
+download, or delete files.
 
 [Lossless recordings](recordings.md) defines the user flow, API, resource
 limits, timeline reconstruction, and storage lifecycle.

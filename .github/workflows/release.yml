@@ -40,30 +40,15 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
-      # Restore-only: CI owns these caches (see ci.yml); reusing them turns the
-      # cold ESP-IDF + cargo build into an incremental one.
-      - name: Restore ESP-IDF build (.embuild)
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      # CI owns cache writes. Publishing restores the same cache lifecycle and
+      # leaves its contents reusable by the next firmware verification.
+      - name: Restore firmware caches
+        uses: ./.github/actions/firmware-cache
         with:
-          path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
-          key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
-
-      - name: Restore firmware Cargo home
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
-          key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
-          restore-keys: |
-            fw-cargo-v1-
-
-      - name: Hand firmware caches to toolchain container
-        run: |
-          mkdir -p "$FIRMWARE_CARGO_CACHE_PATH"
-          for path in "$FIRMWARE_EMBUILD_CACHE_PATH" "$FIRMWARE_CARGO_CACHE_PATH"; do
-            if [ -e "$path" ]; then
-              sudo chown -R "$CONTAINER_USER" "$path"
-            fi
-          done
+          operation: restore
+          container-user: ${{ env.CONTAINER_USER }}
+          cargo-cache-path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
+          embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
       - name: Build release assets
         run: |
@@ -74,12 +59,11 @@ jobs:
 
       - name: Reclaim firmware caches
         if: always()
-        run: |
-          for path in "$FIRMWARE_EMBUILD_CACHE_PATH" "$FIRMWARE_CARGO_CACHE_PATH"; do
-            if [ -e "$path" ]; then
-              sudo chown -R "$(id -u):$(id -g)" "$path"
-            fi
-          done
+        uses: ./.github/actions/firmware-cache
+        with:
+          operation: reclaim
+          cargo-cache-path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
+          embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4

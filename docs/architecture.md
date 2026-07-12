@@ -158,7 +158,7 @@ systems.
 
 Make is the public command interface. Each component Makefile exposes the verbs that apply to it, and the root Makefile forwards `make <component>-<verb>`. Keep build mechanics behind these targets so local runs and CI execute the same commands.
 
-CI detects changed components and runs their `<component>-check` target. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. A single `CI complete` job rolls skipped and executed component checks into the branch-protection status.
+CI detects changed components and runs their `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. A single `CI complete` job rolls skipped and executed component checks into the branch-protection status.
 
 Tag builds call the same release target used locally, then publish firmware artifacts, bridge images, architecture-specific add-on images, release notes, and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
 

@@ -1,6 +1,12 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.5.6] - 2026-07-12
+
+### 🐛 Bug Fixes
+- Show the firmware version with a live status dot
+- Rebuild the recordings console and serve it through HA ingress
+
 ## [0.5.5] - 2026-07-12
 
 ### 🚀 Features

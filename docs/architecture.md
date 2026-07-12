@@ -106,8 +106,7 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 
 | State | Owner | Lifetime |
 |---|---|---|
-| Wi-Fi, target, audio, admin key, board selection | Firmware NVS adapter | Across reboots and firmware updates; factory reset clears it |
-| Audio profile catalog | Firmware profile model, represented as bounded NVS records | Across reboots; bound to one board descriptor |
+| Wi-Fi, target, audio, admin key, board selection, audio profile catalog | Firmware NVS adapter | Across reboots and firmware updates; the adapter commits a complete inactive generation, then switches one active marker; factory reset selects an empty generation |
 | Stream counters and level state | Firmware runtime | One boot |
 | OTA progress | Firmware OTA worker | One boot; final diagnostic note persists in NVS |
 | Bridge source pipelines and client queues | Bridge process | One bridge process |

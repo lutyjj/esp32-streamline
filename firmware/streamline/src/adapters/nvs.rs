@@ -11,6 +11,7 @@ use crate::{
     profiles::{
         AudioProfile, AudioProfileCatalog, AUDIO_PROFILE_SCHEMA_VERSION, MAX_AUDIO_PROFILES,
     },
+    state::{GenerationStorage, PersistentState, StateStore},
 };
 
 const NAMESPACE: &str = "streamline";
@@ -50,6 +51,34 @@ const MAX_BOARD_DESCRIPTOR_BUFFER_BYTES: usize = crate::board::MAX_DESCRIPTOR_BY
 /// fragmentation-prone catalog value.
 const MAX_PROFILE_JSON_BYTES: usize = 384;
 
+/// Typed access to the two durable generations. The ESP-IDF adapter remains
+/// small: portable `StateStore` owns the write ordering and recovery rule.
+struct NvsGenerationStorage<'a> {
+    nvs: &'a EspDefaultNvs,
+}
+
+impl GenerationStorage for NvsGenerationStorage<'_> {
+    type Error = anyhow::Error;
+
+    fn get(&self, key: &str) -> Result<Option<String>, Self::Error> {
+        let capacity = match key {
+            "gen_a_config" | "gen_b_config" | "gen_a_board" | "gen_b_board" | "active_gen" => {
+                crate::state::MAX_CONFIG_RECORD_BYTES + 1
+            }
+            "gen_a_desc" | "gen_b_desc" => MAX_BOARD_DESCRIPTOR_BUFFER_BYTES,
+            "gen_a_profiles" | "gen_b_profiles" => crate::state::MAX_PROFILE_RECORD_BYTES + 1,
+            _ => return Err(anyhow!("unknown generated-state key: {key}")),
+        };
+        let mut buffer = vec![0_u8; capacity];
+        Ok(self.nvs.get_str(key, &mut buffer)?.map(str::to_owned))
+    }
+
+    fn set(&self, key: &str, value: &str) -> Result<(), Self::Error> {
+        self.nvs.set_str(key, value)?;
+        Ok(())
+    }
+}
+
 /// Owns the NVS namespace and keeps the partition alive for the lifetime of
 /// all reads and writes. The namespace is versioned so future migrations have
 /// an explicit decision point rather than silently accepting incompatible data.
@@ -64,7 +93,122 @@ impl ConfigStore {
         })
     }
 
+    fn state_store(&self) -> StateStore<NvsGenerationStorage<'_>> {
+        StateStore::new(NvsGenerationStorage { nvs: &self.nvs })
+    }
+
+    fn load_state(&self) -> Result<Option<PersistentState>> {
+        self.state_store()
+            .load()
+            .map_err(|error| anyhow!("could not load generated state: {error:?}"))
+    }
+
+    fn write_state(&self, state: PersistentState) -> Result<()> {
+        self.state_store()
+            .save(&state)
+            .map_err(|error| anyhow!("could not commit generated state: {error:?}"))
+    }
+
+    /// Read the current complete generation, or assemble the prior key layout
+    /// for its first atomic rewrite. The legacy values remain the active
+    /// source until the generation marker is committed.
+    fn current_state(&self, board: &Board) -> Result<PersistentState> {
+        if let Some(state) = self.load_state()? {
+            return Ok(state);
+        }
+        let board_id = self.optional_string(KEY_BOARD_ID);
+        let board_descriptor = self.optional_board_descriptor()?;
+        let config = self.load_legacy(board)?;
+        let profiles = match config.as_ref() {
+            Some(config) => Some(self.load_legacy_audio_profiles(board, config.audio)?),
+            None => None,
+        };
+        Ok(PersistentState {
+            config,
+            board_id: (!board_id.is_empty()).then_some(board_id),
+            board_descriptor: (!board_descriptor.is_empty()).then_some(board_descriptor),
+            profiles,
+        })
+    }
+
+    /// Move a valid pre-generation installation into the atomic layout. An
+    /// interrupted migration leaves the old schema selected because the new
+    /// active marker is still absent.
+    pub fn migrate_legacy(&self, board: &Board) -> Result<()> {
+        if self.load_state()?.is_none() {
+            let state = self.current_state(board)?;
+            if state.config.is_some() {
+                self.write_state(state)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Commit the main configuration and profile metadata together. Profile
+    /// activation changes both records, so they share the generation marker.
+    pub fn save_configuration_and_profiles(
+        &self,
+        config: &RuntimeConfig,
+        profiles: &AudioProfileCatalog,
+        board: &Board,
+    ) -> Result<()> {
+        config.validate(board).map_err(config_error)?;
+        profiles
+            .validate(board)
+            .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
+        let mut state = self.current_state(board)?;
+        state.config = Some(config.clone());
+        state.profiles = Some(profiles.clone());
+        if state.board_id.is_none() {
+            state.board_id = Some(board.id.clone());
+        }
+        self.write_state(state)
+    }
+
+    /// Select a board, reset its board-bound profiles, and persist any valid
+    /// configuration in one generation. `None` config keeps first-time setup
+    /// unprovisioned while retaining the selected board.
+    pub fn save_board_state(
+        &self,
+        board: &Board,
+        custom: bool,
+        config: Option<&RuntimeConfig>,
+    ) -> Result<()> {
+        board::validate_descriptor(board.clone())
+            .map_err(|error| anyhow!("invalid board descriptor '{}': {error}", board.id))?;
+        if let Some(config) = config {
+            config.validate(board).map_err(config_error)?;
+        }
+        let board_descriptor = if custom {
+            let descriptor = serde_json::to_string(board)?;
+            if descriptor.len() > crate::board::MAX_DESCRIPTOR_BYTES {
+                bail!(
+                    "board descriptor is too large: {} bytes, max {}",
+                    descriptor.len(),
+                    crate::board::MAX_DESCRIPTOR_BYTES
+                );
+            }
+            Some(descriptor)
+        } else {
+            None
+        };
+        self.write_state(PersistentState {
+            config: config.cloned(),
+            board_id: Some(board.id.clone()),
+            board_descriptor,
+            profiles: Some(AudioProfileCatalog::empty(board)),
+        })
+    }
+
     pub fn load_board_selection(&self, catalog: &[Board]) -> Result<BoardSelection> {
+        if let Some(state) = self.load_state()? {
+            return board::select(
+                catalog,
+                state.board_id.as_deref(),
+                state.board_descriptor.as_deref(),
+            )
+            .map_err(Into::into);
+        }
         let stored = self.optional_string(KEY_BOARD_ID);
         let custom_json = self.optional_board_descriptor().unwrap_or_else(|error| {
             log::warn!("stored custom board descriptor is unreadable: {error:#}");
@@ -82,20 +226,21 @@ impl ConfigStore {
     }
 
     pub fn save_built_in_board(&self, board: &Board) -> Result<()> {
-        board
-            .validate()
-            .map_err(|error| anyhow!("invalid board descriptor '{}': {error:?}", board.id))?;
-        self.nvs.set_str(KEY_BOARD_ID, &board.id)?;
-        self.nvs.remove(KEY_BOARD_DESCRIPTOR)?;
-        Ok(())
+        board::validate_descriptor(board.clone())
+            .map_err(|error| anyhow!("invalid board descriptor '{}': {error}", board.id))?;
+        let state = self.current_state(board)?;
+        self.write_state(PersistentState {
+            board_id: Some(board.id.clone()),
+            board_descriptor: None,
+            ..state
+        })
     }
 
     /// Persist a validated custom board in its canonical serialization, so the
     /// stored bytes are exactly what boot will parse back.
     pub fn save_custom_board(&self, board: &Board) -> Result<()> {
-        board
-            .validate()
-            .map_err(|error| anyhow!("invalid board descriptor '{}': {error:?}", board.id))?;
+        board::validate_descriptor(board.clone())
+            .map_err(|error| anyhow!("invalid board descriptor '{}': {error}", board.id))?;
         let descriptor_json = serde_json::to_string(board)?;
         if descriptor_json.len() > crate::board::MAX_DESCRIPTOR_BYTES {
             bail!(
@@ -104,12 +249,33 @@ impl ConfigStore {
                 crate::board::MAX_DESCRIPTOR_BYTES
             );
         }
-        self.nvs.set_str(KEY_BOARD_DESCRIPTOR, &descriptor_json)?;
-        self.nvs.set_str(KEY_BOARD_ID, &board.id)?;
-        Ok(())
+        let state = self.current_state(board)?;
+        self.write_state(PersistentState {
+            board_id: Some(board.id.clone()),
+            board_descriptor: Some(descriptor_json),
+            ..state
+        })
     }
 
     pub fn load(&self, board: &Board) -> Result<Option<RuntimeConfig>> {
+        if let Some(state) = self.load_state()? {
+            return match state.config {
+                Some(config) if config.validate(board).is_ok() => Ok(Some(config)),
+                Some(config) => {
+                    log::warn!(
+                        "stored configuration is invalid for board descriptor '{}': {:?}; re-commissioning",
+                        board.id,
+                        config.validate(board).expect_err("checked above")
+                    );
+                    Ok(None)
+                }
+                None => Ok(None),
+            };
+        }
+        self.load_legacy(board)
+    }
+
+    fn load_legacy(&self, board: &Board) -> Result<Option<RuntimeConfig>> {
         let schema = self.nvs.get_u8(KEY_SCHEMA)?;
         if schema.is_none() {
             return Ok(None);
@@ -161,23 +327,36 @@ impl ConfigStore {
 
     pub fn save(&self, config: &RuntimeConfig, board: &Board) -> Result<()> {
         config.validate(board).map_err(config_error)?;
-        self.nvs.set_str(KEY_SSID, &config.ssid)?;
-        self.nvs.set_str(KEY_PASSWORD, &config.password)?;
-        self.nvs.set_str(KEY_TARGET_HOST, &config.target_host)?;
-        self.nvs.set_u16(KEY_TARGET_PORT, config.target_port)?;
-        self.nvs.set_str(KEY_ADMIN_SECRET, &config.admin_secret)?;
-        self.nvs.set_str(KEY_DEVICE_NAME, &config.device_name)?;
-        self.nvs
-            .set_u8(KEY_AUTO_UPDATE, config.auto_update_schedule as u8)?;
-        self.nvs.set_u8(KEY_INPUT_LINE, config.audio.input_line)?;
-        self.nvs.set_u8(KEY_INPUT_GAIN, config.audio.input_gain)?;
-        self.nvs
-            .set_u8(KEY_ADC_ATTENUATION, config.audio.adc_attenuation_db)?;
-        self.nvs.set_u8(KEY_SCHEMA, CONFIG_SCHEMA_VERSION)?;
-        Ok(())
+        let mut state = self.current_state(board)?;
+        state.config = Some(config.clone());
+        if state.board_id.is_none() {
+            state.board_id = Some(board.id.clone());
+        }
+        self.write_state(state)
     }
 
     pub fn load_audio_profiles(
+        &self,
+        board: &Board,
+        current_audio: AudioSettings,
+    ) -> Result<AudioProfileCatalog> {
+        if let Some(state) = self.load_state()? {
+            return match state.profiles {
+                Some(catalog) if catalog.validate(board).is_ok() => Ok(catalog),
+                Some(catalog) => {
+                    log::warn!(
+                        "ignoring invalid audio profile catalog: {:?}",
+                        catalog.validate(board).expect_err("checked above")
+                    );
+                    Ok(AudioProfileCatalog::empty(board))
+                }
+                None => Ok(AudioProfileCatalog::empty(board)),
+            };
+        }
+        self.load_legacy_audio_profiles(board, current_audio)
+    }
+
+    fn load_legacy_audio_profiles(
         &self,
         board: &Board,
         current_audio: AudioSettings,
@@ -230,65 +409,24 @@ impl ConfigStore {
         catalog
             .validate(board)
             .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
-        for (index, key) in PROFILE_KEYS.iter().enumerate() {
-            let Some(profile) = catalog.profiles.get(index) else {
-                self.nvs.remove(key)?;
-                continue;
-            };
-            let json = serde_json::to_string(profile)?;
-            if json.len() > MAX_PROFILE_JSON_BYTES {
-                bail!(
-                    "audio profile '{}' is too large: {} bytes, max {}",
-                    profile.id,
-                    json.len(),
-                    MAX_PROFILE_JSON_BYTES
-                );
-            }
-            self.nvs.set_str(key, &json)?;
-        }
-        match &catalog.active_profile_id {
-            Some(id) => self.nvs.set_str(KEY_ACTIVE_PROFILE, id)?,
-            None => {
-                self.nvs.remove(KEY_ACTIVE_PROFILE)?;
-            }
-        }
-        self.nvs.set_str(KEY_PROFILE_BOARD, &catalog.board_id)?;
-        self.nvs
-            .set_u8(KEY_PROFILE_SCHEMA, AUDIO_PROFILE_SCHEMA_VERSION)?;
-        Ok(())
+        let mut state = self.current_state(board)?;
+        state.profiles = Some(catalog.clone());
+        self.write_state(state)
     }
 
     pub fn clear_audio_profiles(&self) -> Result<()> {
-        for key in PROFILE_KEYS {
-            self.nvs.remove(key)?;
-        }
-        self.nvs.remove(KEY_ACTIVE_PROFILE)?;
-        self.nvs.remove(KEY_PROFILE_BOARD)?;
-        self.nvs.remove(KEY_PROFILE_SCHEMA)?;
-        Ok(())
+        let mut state = self.load_state()?.unwrap_or_else(PersistentState::empty);
+        state.profiles = None;
+        self.write_state(state)
     }
 
     pub fn clear(&self) -> Result<()> {
-        for key in [
-            KEY_SCHEMA,
-            KEY_SSID,
-            KEY_PASSWORD,
-            KEY_TARGET_HOST,
-            KEY_TARGET_PORT,
-            KEY_ADMIN_SECRET,
-            KEY_DEVICE_NAME,
-            KEY_AUTO_UPDATE,
-            KEY_BOARD_ID,
-            KEY_BOARD_DESCRIPTOR,
-            KEY_INPUT_LINE,
-            KEY_INPUT_GAIN,
-            KEY_ADC_ATTENUATION,
-            KEY_LAST_FALLBACK,
-            KEY_LAST_OTA,
-        ] {
-            self.nvs.remove(key)?;
+        self.write_state(PersistentState::empty())?;
+        for key in [KEY_LAST_FALLBACK, KEY_LAST_OTA] {
+            if let Err(error) = self.nvs.remove(key) {
+                log::warn!("could not clear reset diagnostic {key}: {error:#}");
+            }
         }
-        self.clear_audio_profiles()?;
         Ok(())
     }
 

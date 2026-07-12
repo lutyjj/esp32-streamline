@@ -23,11 +23,11 @@ use streamline_firmware::{
         time, wifi,
     },
     board::{self, Board},
-    config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
+    config::RuntimeConfig,
     health::{BootFacts, HealthReport},
     identity,
     profiles::AudioProfileCatalog,
-    runtime, update,
+    recovery, runtime, update,
 };
 
 fn main() -> Result<()> {
@@ -66,6 +66,16 @@ fn main() -> Result<()> {
             .load_audio_profiles(board.as_ref(), config.audio)?,
         None => AudioProfileCatalog::empty(board.as_ref()),
     };
+    if persisted.is_some() {
+        match store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
+            .migrate_legacy(board.as_ref())
+        {
+            Ok(()) => {}
+            Err(error) => log::warn!("could not migrate legacy configuration: {error:#}"),
+        }
+    }
     let mut wifi = wifi::create(modem, event_loop, nvs_partition)?;
     let suffix = wifi::device_suffix()?;
     let mdns_hostname = wifi::mdns_hostname()?;
@@ -110,10 +120,10 @@ fn main() -> Result<()> {
                 let reason = format!("Wi-Fi station connection failed: {error:#}");
                 log::warn!("{reason}; opening setup AP");
                 note_fallback(&store, &reason);
-                start_setup(&mut wifi, &suffix, board.as_ref())?
+                start_setup(&mut wifi, &suffix, board.as_ref(), Some(config))?
             }
         },
-        None => start_setup(&mut wifi, &suffix, board.as_ref())?,
+        None => start_setup(&mut wifi, &suffix, board.as_ref(), None)?,
     };
 
     // Reaching the home network with the console up is the signal an
@@ -281,29 +291,17 @@ fn start_setup(
     wifi: &mut wifi::WifiController<'_>,
     suffix: &str,
     board: &Board,
+    persisted: Option<RuntimeConfig>,
 ) -> Result<SetupState> {
     let ssid = wifi::start_setup_ap(wifi, suffix)?;
     log::info!("setup AP started: {ssid}");
     Ok((
-        Mode::Setup,
-        RuntimeConfig {
-            ssid: String::new(),
-            password: String::new(),
-            target_host: String::new(),
-            target_port: 39_000,
-            // No admin key yet: an unprovisioned device accepts setup writes over its
-            // own AP so commissioning can establish one. See `http::authorized`.
-            admin_secret: String::new(),
-            device_name: String::new(),
-            auto_update_schedule: AutoUpdateSchedule::Daily,
-            // Safe line-in baseline: 0 dB PGA (no clipping) on line 2. Adjust per
-            // board in setup mode.
-            audio: AudioSettings {
-                input_line: board.default_line(),
-                input_gain: 0,
-                adc_attenuation_db: 0,
-            },
+        if persisted.is_some() {
+            Mode::Recovery
+        } else {
+            Mode::Setup
         },
+        recovery::setup_baseline(board, persisted),
         None,
         None,
         // Nothing to check until the device reaches the home network.

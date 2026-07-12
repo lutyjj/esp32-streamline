@@ -19,7 +19,7 @@ pub const MIN_ADMIN_SECRET_LEN: usize = 8;
 /// an admin key.
 pub const CONFIG_SCHEMA_VERSION: u8 = 2;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[repr(u8)]
 pub enum AutoUpdateSchedule {
     Disabled = 0,
@@ -141,7 +141,7 @@ pub enum ConfigError {
 /// The configuration is intentionally independent of ESP-IDF types. Hardware
 /// adapters translate it only at their boundary, so validation can be tested
 /// on the host and used by both the setup HTTP service and boot path.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RuntimeConfig {
     pub ssid: String,
     pub password: String,

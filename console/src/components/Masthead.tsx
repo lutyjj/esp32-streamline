@@ -15,6 +15,7 @@ import { setupMode, status, unreachable } from '../state/device';
 import { toast } from '../state/toasts';
 import { Button } from './Button';
 import { RememberSwitch } from './RememberSwitch';
+import { ThemeSwitch } from './ThemeSwitch';
 
 export function Masthead() {
   useAuthEpoch();
@@ -68,11 +69,14 @@ export function Masthead() {
             </span>
           </div>
         </div>
-        <button class={`lockchip ${chip.cls}`} type="button" onClick={onChipClick}>
-          <span class="dot" />
-          <span>{chip.text}</span>
-          <small>{chip.sub}</small>
-        </button>
+        <div class="masthead-actions">
+          <ThemeSwitch />
+          <button class={`lockchip ${chip.cls}`} type="button" onClick={onChipClick}>
+            <span class="dot" />
+            <span>{chip.text}</span>
+            <small>{chip.sub}</small>
+          </button>
+        </div>
       </header>
       {panelOpen && !isUnlocked() && <UnlockPanel onDone={() => setPanelOpen(false)} />}
     </>

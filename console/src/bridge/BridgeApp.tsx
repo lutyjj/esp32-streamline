@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { MeterRow } from '../components/Meter';
+import { ThemeSwitch } from '../components/ThemeSwitch';
 import type { RecordingSnapshot, SourceSnapshot } from '../generated/bridge';
 import { dbfs } from '../lib/format';
 import { bridgeBase } from './http';
@@ -26,11 +27,14 @@ export function BridgeApp() {
             </span>
           </div>
         </div>
-        {bridge.recordingState.value === 'unlocked' && (
-          <Button className="bridge-lock" onClick={() => bridge.lock()}>
-            Lock recordings
-          </Button>
-        )}
+        <div class="masthead-actions">
+          <ThemeSwitch />
+          {bridge.recordingState.value === 'unlocked' && (
+            <Button className="bridge-lock" onClick={() => bridge.lock()}>
+              Lock recordings
+            </Button>
+          )}
+        </div>
       </header>
       {bridge.error.value && <div class="notice error">{bridge.error.value}</div>}
       <section class="bridge-group">

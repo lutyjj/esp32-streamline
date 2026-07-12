@@ -1,9 +1,38 @@
 /* StreamLine console design system.
    Tokens first; every component reads them. One button height, three variants.
-   One label voice: sentence case, units inside the field. Dark by identity —
-   this is an audio appliance console. */
+   One label voice: sentence case, units inside the field. */
 
 :root {
+  color-scheme: light;
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-2: #eef2f6;
+  --inset: #f8fafc;
+  --line: #94a3b8;
+  --line-soft: #cbd5e1;
+  --text: #1e293b;
+  --muted: #475569;
+  --faint: #64748b;
+  --accent: #0969ba;
+  --primary-bg: #0969ba;
+  --primary-line: #075a9e;
+  --primary-hover: #075a9e;
+  --primary-text: #ffffff;
+  --secondary-hover: #e2e8f0;
+  --tab-hover: #eef2f6;
+  --good: #167a3f;
+  --bad: #c62828;
+  --warn: #9a5b00;
+  --focus: rgba(9, 105, 186, 0.35);
+  --motion-fast: 140ms;
+  --motion-panel: 180ms;
+  --motion-disclosure-max: min(70vh, 720px);
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #101214;
   --surface: #181b1f;
@@ -17,6 +46,10 @@
   --accent: #6db7ff;
   --primary-bg: #153a5c;
   --primary-line: #245b8f;
+  --primary-hover: #1a4870;
+  --primary-text: #e7e9ec;
+  --secondary-hover: #262c33;
+  --tab-hover: rgba(255, 255, 255, 0.025);
   --good: #51d88a;
   --bad: #ff6b6b;
   --warn: #f4c95d;
@@ -27,6 +60,32 @@
   --motion-ease: cubic-bezier(0.2, 0, 0, 1);
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #101214;
+    --surface: #181b1f;
+    --surface-2: #20252b;
+    --inset: #0c0e11;
+    --line: #2b3138;
+    --line-soft: #22272d;
+    --text: #e7e9ec;
+    --muted: #97a0aa;
+    --faint: #667077;
+    --accent: #6db7ff;
+    --primary-bg: #153a5c;
+    --primary-line: #245b8f;
+    --primary-hover: #1a4870;
+    --primary-text: #e7e9ec;
+    --secondary-hover: #262c33;
+    --tab-hover: rgba(255, 255, 255, 0.025);
+    --good: #51d88a;
+    --bad: #ff6b6b;
+    --warn: #f4c95d;
+    --focus: rgba(109, 183, 255, 0.35);
+  }
 }
 
 * {
@@ -79,6 +138,13 @@ button {
 }
 .masthead > div {
   min-width: 0;
+}
+.masthead-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .wordmark {
   margin: 0;
@@ -147,6 +213,39 @@ button {
   font-weight: 500;
 }
 
+.theme-switch {
+  display: inline-flex;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px;
+  background: var(--surface);
+}
+.theme-switch label {
+  position: relative;
+  cursor: pointer;
+}
+.theme-switch input {
+  position: absolute;
+  opacity: 0;
+}
+.theme-switch span {
+  display: block;
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.theme-switch input:checked + span {
+  background: var(--primary-bg);
+  color: var(--primary-text);
+}
+.theme-switch input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
 /* Unlock panel, revealed by the lock chip while locked. */
 .unlockpanel {
   display: flex;
@@ -211,7 +310,7 @@ button {
 }
 .tabs a:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--tab-hover);
 }
 .view.active {
   display: grid;
@@ -811,10 +910,10 @@ select:disabled {
 .btn.primary {
   background: var(--primary-bg);
   border-color: var(--primary-line);
-  color: var(--text);
+  color: var(--primary-text);
 }
 .btn.primary:hover:not(:disabled) {
-  background: #1a4870;
+  background: var(--primary-hover);
 }
 .btn.secondary {
   background: var(--surface-2);
@@ -822,7 +921,7 @@ select:disabled {
   color: var(--text);
 }
 .btn.secondary:hover:not(:disabled) {
-  background: #262c33;
+  background: var(--secondary-hover);
 }
 .btn.danger {
   background: transparent;
@@ -1203,6 +1302,9 @@ select:disabled {
   }
   .masthead {
     flex-direction: column;
+  }
+  .masthead-actions {
+    justify-content: flex-start;
   }
   .kv {
     grid-template-columns: 130px 1fr;

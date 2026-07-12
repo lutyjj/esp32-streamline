@@ -1,10 +1,12 @@
 import { render } from 'preact';
 import { App } from './app';
 import { startPolling } from './state/device';
+import { initializeThemePreference } from './state/theme';
 // Imported for its effects: OTA phase narration on the status stream.
 import './state/ota';
 import './styles.css';
 
+initializeThemePreference();
 startPolling();
 
 const root = document.getElementById('app');

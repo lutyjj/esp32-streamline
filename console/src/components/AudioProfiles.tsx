@@ -14,6 +14,8 @@ import {
   loadDeviceSettings,
   status,
 } from '../state/device';
+import { Button } from './Button';
+import { Card } from './Card';
 import { Disclosure } from './Disclosure';
 import { ActionState, TransactButton } from './Transact';
 
@@ -163,12 +165,15 @@ export function AudioProfiles() {
   }
 
   return (
-    <div class="card gated">
-      <span class="lockhint">Unlock to edit</span>
-      <h2>Source profiles</h2>
-      <p class="lead">
-        Switch all input settings together. Active: <b>{active?.name ?? 'Custom settings'}</b>.
-      </p>
+    <Card
+      gated
+      title="Source profiles"
+      lead={
+        <>
+          Switch all input settings together. Active: <b>{active?.name ?? 'Custom settings'}</b>.
+        </>
+      }
+    >
       <div class="profilegrid">
         <div class="field">
           <label for="audio_profile">Saved profile</label>
@@ -243,24 +248,17 @@ export function AudioProfiles() {
           onInput={(event) => setSharedJson(event.currentTarget.value)}
         />
         <div class="profileactions">
-          <button
-            class="btn secondary"
-            type="button"
+          <Button
             disabled={!writable}
             onClick={() => setSharedJson(exportAudioProfileCatalog(currentCatalog))}
           >
             Show export
-          </button>
-          <button
-            class="btn secondary"
-            type="button"
-            disabled={!writable || !sharedJson.trim()}
-            onClick={importCatalog}
-          >
+          </Button>
+          <Button disabled={!writable || !sharedJson.trim()} onClick={importCatalog}>
             Import
-          </button>
+          </Button>
         </div>
       </Disclosure>
-    </div>
+    </Card>
   );
 }

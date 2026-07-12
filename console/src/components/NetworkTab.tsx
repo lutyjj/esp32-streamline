@@ -5,6 +5,8 @@ import { config, noBridge, packetsMoving, setupMode, status } from '../state/dev
 import { handoffMessage, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
+import { Button } from './Button';
+import { Card, CardFooter, CardStack } from './Card';
 import { KeyReveal } from './KeyReveal';
 import { ActionState, TransactButton } from './Transact';
 
@@ -94,17 +96,18 @@ export function NetworkTab() {
   const playing = s?.metrics.playing ?? false;
 
   return (
-    <div style="display:grid;gap:14px">
-      <div class="card gated">
-        <span class="lockhint">Unlock to edit</span>
-        <h2>Wi-Fi</h2>
-        <p class="lead">
-          {setup
+    <CardStack>
+      <Card
+        gated
+        title="Wi-Fi"
+        lead={
+          setup
             ? 'Not configured yet — join the device to your home network.'
             : s
               ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi} dBm · ${s.wifi.sta_ip}`
-              : '—'}
-        </p>
+              : '—'
+        }
+      >
         <div class="formgrid">
           <div class="field">
             <label for="ssid">Network name</label>
@@ -132,9 +135,7 @@ export function NetworkTab() {
                 onInput={(e) => setPassword(e.currentTarget.value)}
               />
               {!firstSetup && (
-                <button
-                  class="btn secondary"
-                  type="button"
+                <Button
                   disabled={!writable}
                   onClick={() => {
                     setEditingPassword(!editingPassword);
@@ -142,7 +143,7 @@ export function NetworkTab() {
                   }}
                 >
                   {editingPassword ? 'Keep current' : 'Change'}
-                </button>
+                </Button>
               )}
             </div>
             <span class="help">
@@ -152,18 +153,19 @@ export function NetworkTab() {
             </span>
           </div>
         </div>
-        <div class="cardfoot">
+        <CardFooter>
           <TransactButton transact={wifiTransact} disabled={!writable} onClick={saveWifi}>
             Save &amp; restart
           </TransactButton>
           <ActionState state={wifiTransact.state} />
-        </div>
-      </div>
+        </CardFooter>
+      </Card>
 
-      <div class="card gated">
-        <span class="lockhint">Unlock to edit</span>
-        <h2>Stream target</h2>
-        <p class="lead">Where the audio goes — your bridge or Home Assistant add-on.</p>
+      <Card
+        gated
+        title="Stream target"
+        lead="Where the audio goes: your bridge or Home Assistant add-on."
+      >
         <div class="formgrid">
           <div class="field">
             <label for="target_host">Host or IP</label>
@@ -193,14 +195,14 @@ export function NetworkTab() {
         {firstSetup && setupKey.value && (
           <div class="keypanel">
             <p>
-              <strong style="color:var(--text)">Your admin key.</strong> It unlocks settings after
-              setup and is shown only once — copy it somewhere safe now.
+              <strong class="strong">Your admin key.</strong> It unlocks settings after setup and is
+              shown only once — copy it somewhere safe now.
             </p>
             <KeyReveal secret={setupKey.value} remember={rememberKey} onRemember={setRememberKey} />
           </div>
         )}
 
-        <div class="cardfoot">
+        <CardFooter>
           <TransactButton transact={targetTransact} disabled={!writable} onClick={saveTarget}>
             Save &amp; restart
           </TransactButton>
@@ -217,8 +219,8 @@ export function NetworkTab() {
               </span>
             </span>
           )}
-        </div>
-      </div>
-    </div>
+        </CardFooter>
+      </Card>
+    </CardStack>
   );
 }

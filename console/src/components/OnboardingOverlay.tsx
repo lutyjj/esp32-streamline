@@ -2,6 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { errorMessage } from '../lib/errors';
 import { expectedHostname, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
+import { Button } from './Button';
+import { DialogSheet } from './DialogSheet';
 import { KeyReveal } from './KeyReveal';
 
 /** Seconds the device takes to restart onto the home network. */
@@ -53,87 +55,74 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div class="overlay">
-      <div class="sheet" role="dialog" aria-modal="true" aria-label="First-run setup">
-        <div class="stepline">
-          FIRST-RUN SETUP
-          <span class="stepdots">
-            {ONBOARDING_STEPS.map((name, i) => (
-              <i key={name} class={i <= ONBOARDING_STEPS.indexOf(step) ? 'on' : ''} />
-            ))}
-          </span>
-        </div>
-
-        {step === 'wifi' && (
-          <div>
-            <h3>Welcome — let’s put StreamLine on your network</h3>
-            <div class="body">
-              <p>
-                You’re connected to the device’s own setup network. Pick your home Wi-Fi and
-                StreamLine will join it and restart.
-              </p>
-            </div>
-            <div class="formgrid" style="grid-template-columns:1fr">
-              <div class="field">
-                <label for="ob_ssid">Your Wi-Fi network</label>
-                <input
-                  id="ob_ssid"
-                  type="text"
-                  autocomplete="off"
-                  value={ssid}
-                  onInput={(e) => setSsid(e.currentTarget.value)}
-                />
-              </div>
-              <div class="field">
-                <label for="ob_password">Wi-Fi password</label>
-                <input
-                  id="ob_password"
-                  type="password"
-                  autocomplete="new-password"
-                  value={password}
-                  onInput={(e) => setPassword(e.currentTarget.value)}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {step === 'key' && (
-          <div>
-            <h3>Save your admin key</h3>
-            <div class="body">
-              <p>
-                This key unlocks settings later. It is shown{' '}
-                <strong style="color:var(--text)">only once</strong> — copy it somewhere safe now.
-              </p>
-            </div>
-            <KeyReveal secret={setupKey.value} remember={remember} onRemember={setRemember} />
-          </div>
-        )}
-
-        {step === 'joining' && <JoiningStep ssid={ssid.trim()} />}
-
-        <div class="sheetfoot">
-          <button class="btn secondary" type="button" onClick={onClose}>
-            {step === 'joining' ? 'Close' : 'Cancel'}
-          </button>
-          <div class="row" style="align-items:center">
-            <span class="actionstate err">{error}</span>
+    <DialogSheet
+      label="First-run setup"
+      steps={ONBOARDING_STEPS}
+      currentStep={step}
+      onDismiss={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>{step === 'joining' ? 'Close' : 'Cancel'}</Button>
+          <div class="sheetfoot-row">
+            <output class="actionstate err">{error}</output>
             {step !== 'joining' && (
-              <button
-                class={`btn primary${busy ? ' busy' : ''}`}
-                type="button"
-                disabled={busy}
-                onClick={next}
-              >
-                <span class="spin" />
-                {step === 'wifi' ? 'Continue' : 'I saved my key — join network'}
-              </button>
+              <Button kind="primary" busy={busy} onClick={next}>
+                {step === 'wifi' ? 'Continue' : 'I saved my key, join network'}
+              </Button>
             )}
           </div>
+        </>
+      }
+    >
+      {step === 'wifi' && (
+        <div>
+          <h3>Welcome — let’s put StreamLine on your network</h3>
+          <div class="body">
+            <p>
+              You’re connected to the device’s own setup network. Pick your home Wi-Fi and
+              StreamLine will join it and restart.
+            </p>
+          </div>
+          <div class="formgrid formgrid-single">
+            <div class="field">
+              <label for="ob_ssid">Your Wi-Fi network</label>
+              <input
+                id="ob_ssid"
+                type="text"
+                autocomplete="off"
+                value={ssid}
+                onInput={(e) => setSsid(e.currentTarget.value)}
+              />
+            </div>
+            <div class="field">
+              <label for="ob_password">Wi-Fi password</label>
+              <input
+                id="ob_password"
+                type="password"
+                autocomplete="new-password"
+                value={password}
+                onInput={(e) => setPassword(e.currentTarget.value)}
+              />
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      {step === 'key' && (
+        <div>
+          <h3>Save your admin key</h3>
+          <div class="body">
+            <p>
+              This key unlocks settings later. It is shown <strong class="strong">only once</strong>
+              . Copy it somewhere safe now.
+            </p>
+          </div>
+          <KeyReveal secret={setupKey.value} remember={remember} onRemember={setRemember} />
+        </div>
+      )}
+
+      {step === 'joining' && <JoiningStep ssid={ssid.trim()} />}
+    </DialogSheet>
   );
 }
 
@@ -162,7 +151,7 @@ function JoiningStep({ ssid }: { ssid: string }) {
         </p>
       </div>
       <div class="bigread">
-        <span class="n" style="font-size:17px">{`http://${hostname}/`}</span>
+        <span class="n bigread-address">{`http://${hostname}/`}</span>
       </div>
       <div class="progress">
         <i style={{ width: `${Math.min(100, (elapsed / ONBOARDING_REBOOT_SECS) * 100)}%` }} />
@@ -174,7 +163,7 @@ function JoiningStep({ ssid }: { ssid: string }) {
             : `Restarting — about ${ONBOARDING_REBOOT_SECS - elapsed} s…`}
         </p>
       </div>
-      <div class="body" style="margin-top:4px">
+      <div class="body body-spaced">
         <p>Two steps left once you’re back in the console:</p>
         <ol class="checklist">
           <li>

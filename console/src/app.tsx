@@ -11,26 +11,21 @@ import { WizardOverlay } from './components/WizardOverlay';
 import { useWritable } from './lib/hooks';
 import { setupMode, status, unreachable } from './state/device';
 import { handoff, handoffMessage } from './state/join';
+import {
+  CONSOLE_NAVIGATION,
+  type ConsoleView,
+  navigateTo,
+  useConsoleView,
+  viewHref,
+} from './state/navigation';
 import { toast } from './state/toasts';
 
-const VIEWS = ['overview', 'audio', 'network', 'system', 'api'] as const;
-type View = (typeof VIEWS)[number];
-
-const VIEW_LABELS: Record<View, string> = {
-  overview: 'Overview',
-  audio: 'Audio',
-  network: 'Network',
-  system: 'System',
-  api: 'API',
-};
-
 export function App() {
-  const [view, setView] = useState<View>('overview');
+  const view = useConsoleView();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingSeen, setOnboardingSeen] = useState(false);
   const writable = useWritable();
-  const viewIndex = VIEWS.indexOf(view);
 
   // An unconfigured device goes straight into first-run onboarding, once.
   const setup = setupMode.value;
@@ -56,8 +51,23 @@ export function App() {
 
   /** Clip-callout action: land on the audio tab; calibrate when unlocked. */
   function calibrateFromCallout() {
-    setView('audio');
+    navigateTo('audio');
     if (writable) openWizard();
+  }
+
+  function activeView(selected: ConsoleView) {
+    switch (selected) {
+      case 'overview':
+        return <OverviewTab onCalibrate={calibrateFromCallout} />;
+      case 'audio':
+        return <AudioTab onCalibrate={openWizard} />;
+      case 'network':
+        return <NetworkTab />;
+      case 'system':
+        return <SystemTab />;
+      case 'api':
+        return <ApiTab />;
+    }
   }
 
   return (
@@ -70,38 +80,21 @@ export function App() {
         unreachable.value && <div class="connbanner">Device unreachable — retrying…</div>
       )}
 
-      <div
-        class="tabs"
-        role="tablist"
-        style={`--tab-count:${VIEWS.length};--tab-index:${viewIndex}`}
-      >
-        {VIEWS.map((v) => (
-          <button
-            key={v}
-            role="tab"
-            type="button"
-            aria-selected={view === v}
-            onClick={() => setView(v)}
+      <nav class="tabs" aria-label="Console">
+        {CONSOLE_NAVIGATION.map(({ view: destination, label }) => (
+          <a
+            id={`nav-${destination}`}
+            key={destination}
+            href={viewHref(destination)}
+            aria-current={view === destination ? 'page' : undefined}
           >
-            {VIEW_LABELS[v]}
-          </button>
+            {label}
+          </a>
         ))}
-      </div>
+      </nav>
 
-      <section class={`view${view === 'overview' ? ' active' : ''}`}>
-        {view === 'overview' && <OverviewTab onCalibrate={calibrateFromCallout} />}
-      </section>
-      <section class={`view${view === 'audio' ? ' active' : ''}`}>
-        {view === 'audio' && <AudioTab onCalibrate={openWizard} />}
-      </section>
-      <section class={`view${view === 'network' ? ' active' : ''}`}>
-        {view === 'network' && <NetworkTab />}
-      </section>
-      <section class={`view${view === 'system' ? ' active' : ''}`}>
-        {view === 'system' && <SystemTab />}
-      </section>
-      <section class={`view${view === 'api' ? ' active' : ''}`}>
-        {view === 'api' && <ApiTab />}
+      <section class="view active" aria-labelledby={`nav-${view}`} key={view}>
+        {activeView(view)}
       </section>
 
       {wizardOpen && <WizardOverlay onClose={() => setWizardOpen(false)} />}
@@ -109,7 +102,7 @@ export function App() {
         <OnboardingOverlay
           onClose={() => {
             setOnboardingOpen(false);
-            setView('network');
+            navigateTo('network');
           }}
         />
       )}

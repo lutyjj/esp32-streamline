@@ -2,6 +2,8 @@ import { dbfs } from '../lib/format';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import { noBridge, packetsMoving, setupMode, status } from '../state/device';
 import { blockingHealth } from '../state/health';
+import { Button } from './Button';
+import { Card } from './Card';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
 import { Meter } from './Meter';
@@ -58,12 +60,8 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
             </span>
           </div>
           <div class="actions">
-            <button class="btn secondary" type="button" onClick={onCalibrate}>
-              Calibrate levels
-            </button>
-            <button class="btn secondary" type="button" onClick={dismissClipCallout}>
-              Dismiss
-            </button>
+            <Button onClick={onCalibrate}>Calibrate levels</Button>
+            <Button onClick={dismissClipCallout}>Dismiss</Button>
           </div>
         </div>
       )}
@@ -137,18 +135,17 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
         </div>
       </div>
 
-      <div class="card">
-        <h2>Input level</h2>
-        <div style="margin-top:12px">
+      <Card title="Input level">
+        <div class="card-section">
           <Meter foot />
         </div>
-      </div>
+      </Card>
 
-      <div class="card">
+      <Card>
         <Disclosure title="Diagnostics">
           <Kv rows={diagRows} />
         </Disclosure>
-      </div>
+      </Card>
     </>
   );
 }

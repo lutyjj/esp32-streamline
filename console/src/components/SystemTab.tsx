@@ -4,6 +4,8 @@ import { apiClient, type DeviceConfig, unwrap } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, status } from '../state/device';
 import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
+import { Button } from './Button';
+import { Card, CardFooter } from './Card';
 import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
@@ -56,13 +58,11 @@ function FirmwareCard() {
   const installing = OTA_INSTALLING_PHASES.includes(ota?.phase ?? '');
 
   return (
-    <div class="card gated">
-      <span class="lockhint">Unlock to edit</span>
-      <h2>Firmware</h2>
-      <p class="lead">
-        Choose how often the device checks for a new release. It waits for audio to be idle, then
-        installs through the same verified rollback-safe flow as a manual update.
-      </p>
+    <Card
+      gated
+      title="Firmware"
+      lead="Choose how often the device checks for a new release. It waits for idle audio, then uses the same verified, rollback-safe flow as a manual update."
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -82,7 +82,7 @@ function FirmwareCard() {
           );
         }}
       >
-        <div class="field" style="margin-top:12px;max-width:320px">
+        <div class="field field-narrow card-section">
           <label for="auto_update_schedule">Automatic updates</label>
           <select
             id="auto_update_schedule"
@@ -98,14 +98,14 @@ function FirmwareCard() {
           </select>
           <span class="help">The first check waits ten minutes after startup.</span>
         </div>
-        <div class="cardfoot">
+        <CardFooter>
           <TransactButton transact={settingsTransact} type="submit" disabled={!writable}>
             Save preference
           </TransactButton>
           <ActionState state={settingsTransact.state} />
-        </div>
+        </CardFooter>
       </form>
-      <div class="formgrid" style="margin-top:12px">
+      <div class="formgrid card-section">
         <Kv rows={rows} />
         <div class="log">
           {otaLog.value.length === 0 && (
@@ -121,7 +121,7 @@ function FirmwareCard() {
           ))}
         </div>
       </div>
-      <div class="cardfoot">
+      <CardFooter>
         <TransactButton
           transact={transact}
           kind="secondary"
@@ -152,9 +152,9 @@ function FirmwareCard() {
           </TransactButton>
         )}
         {installing && (
-          <button class="btn primary" type="button" disabled>
+          <Button kind="primary" disabled>
             Installing
-          </button>
+          </Button>
         )}
         {ota?.rollback_available && !installing && (
           <TransactButton
@@ -176,7 +176,7 @@ function FirmwareCard() {
           </TransactButton>
         )}
         <ActionState state={transact.state} />
-      </div>
+      </CardFooter>
       <Disclosure title="Developer — install a custom image" className="disclosure-offset">
         <form
           onSubmit={(e) => {
@@ -193,7 +193,7 @@ function FirmwareCard() {
             );
           }}
         >
-          <div class="formgrid" style="margin-top:12px">
+          <div class="formgrid card-section">
             <div class="field">
               <label for="ota_url">Image URL</label>
               <input
@@ -219,7 +219,7 @@ function FirmwareCard() {
               />
             </div>
           </div>
-          <div class="cardfoot">
+          <CardFooter>
             <TransactButton
               transact={customTransact}
               kind="secondary"
@@ -229,10 +229,10 @@ function FirmwareCard() {
               Install custom image
             </TransactButton>
             <ActionState state={customTransact.state} />
-          </div>
+          </CardFooter>
         </form>
       </Disclosure>
-    </div>
+    </Card>
   );
 }
 
@@ -249,10 +249,11 @@ function NameCard() {
   }, [c]);
 
   return (
-    <div class="card gated">
-      <span class="lockhint">Unlock to edit</span>
-      <h2>Device name</h2>
-      <p class="lead">Shown in the console header and browser tab so you can tell devices apart.</p>
+    <Card
+      gated
+      title="Device name"
+      lead="Shown in the console header and browser tab so you can tell devices apart."
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -278,14 +279,14 @@ function NameCard() {
             <span class="help">Leave blank to show only the address.</span>
           </div>
         </div>
-        <div class="cardfoot">
+        <CardFooter>
           <TransactButton transact={transact} type="submit" disabled={!writable}>
             Save
           </TransactButton>
           <ActionState state={transact.state} />
-        </div>
+        </CardFooter>
       </form>
-    </div>
+    </Card>
   );
 }
 
@@ -312,32 +313,25 @@ function AccessCard() {
   }
 
   return (
-    <div class="card gated">
-      <span class="lockhint">Unlock to edit</span>
-      <h2>Access</h2>
-      <p class="lead">
-        One admin key protects every change. Reads are open on your network; unlocking lasts 15
-        minutes.
-      </p>
+    <Card
+      gated
+      title="Access"
+      lead="One admin key protects every change. Reads are open on your network; unlocking lasts 15 minutes."
+    >
       <form onSubmit={save}>
         {!staged && (
-          <div class="cardfoot" style="border:0;padding:0;margin-top:12px">
-            <button
-              class="btn secondary"
-              type="button"
-              disabled={!manageable}
-              onClick={() => setStaged(generateAdminKey())}
-            >
+          <CardFooter flush>
+            <Button disabled={!manageable} onClick={() => setStaged(generateAdminKey())}>
               Replace admin key
-            </button>
+            </Button>
             <span class="actionstate">The new key is shown once before it takes effect.</span>
-          </div>
+          </CardFooter>
         )}
         {staged && (
           <div class="keypanel">
             <p>
-              <strong style="color:var(--text)">Your new admin key.</strong> Copy it before saving —
-              it is shown only this once.
+              <strong class="strong">Your new admin key.</strong> Copy it before saving. it is shown
+              only this once.
             </p>
             <KeyReveal
               secret={staged}
@@ -346,24 +340,19 @@ function AccessCard() {
               disabled={!manageable}
               copiedToast="New admin key copied"
             />
-            <div class="cardfoot">
+            <CardFooter>
               <TransactButton transact={transact} type="submit" disabled={!manageable}>
                 Save
               </TransactButton>
-              <button
-                class="btn secondary"
-                type="button"
-                disabled={!manageable}
-                onClick={() => setStaged('')}
-              >
+              <Button disabled={!manageable} onClick={() => setStaged('')}>
                 Cancel
-              </button>
+              </Button>
               <ActionState state={transact.state} />
-            </div>
+            </CardFooter>
           </div>
         )}
       </form>
-    </div>
+    </Card>
   );
 }
 
@@ -374,10 +363,8 @@ function ResetCard() {
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <div class="card gated">
-      <span class="lockhint">Unlock to edit</span>
-      <h2>Reset</h2>
-      <div class="cardfoot" style="border:0;padding:0;margin-top:10px">
+    <Card gated title="Reset">
+      <CardFooter flush compact>
         <TransactButton
           transact={restart}
           kind="secondary"
@@ -391,16 +378,11 @@ function ResetCard() {
         >
           Restart device
         </TransactButton>
-        <button
-          class="btn danger"
-          type="button"
-          disabled={!writable}
-          onClick={() => setConfirming(true)}
-        >
+        <Button kind="danger" disabled={!writable} onClick={() => setConfirming(true)}>
           Factory reset
-        </button>
+        </Button>
         <ActionState state={factory.state} />
-      </div>
+      </CardFooter>
       {confirming && (
         <div class="confirmbox">
           <span>
@@ -425,29 +407,25 @@ function ResetCard() {
             >
               Erase everything
             </TransactButton>
-            <button class="btn secondary" type="button" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
+            <Button onClick={() => setConfirming(false)}>Cancel</Button>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 function RawStatusCard() {
   return (
-    <div class="card">
+    <Card>
       <Disclosure title="Developer — raw status">
-        <div class="log apidump" style="margin-top:12px">
-          {JSON.stringify(status.value, null, 2)}
-        </div>
-        <div class="cardfoot" style="border:0;padding:6px 0 0">
+        <div class="log apidump card-section">{JSON.stringify(status.value, null, 2)}</div>
+        <CardFooter flush compact>
           <span class="actionstate">
             Full JSON at <code>/api/status</code> · Prometheus at <code>/api/metrics</code>
           </span>
-        </div>
+        </CardFooter>
       </Disclosure>
-    </div>
+    </Card>
   );
 }

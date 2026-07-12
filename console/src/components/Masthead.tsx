@@ -13,6 +13,7 @@ import { verifyAdminKey } from '../lib/api';
 import { errorMessage } from '../lib/errors';
 import { setupMode, status } from '../state/device';
 import { toast } from '../state/toasts';
+import { Button } from './Button';
 import { RememberSwitch } from './RememberSwitch';
 
 export function Masthead() {
@@ -118,14 +119,11 @@ function UnlockPanel({ onDone }: { onDone: () => void }) {
         }}
       />
       <RememberSwitch checked={remember} onChange={setRemember} />
-      <button class={`btn primary${busy ? ' busy' : ''}`} type="button" onClick={unlock}>
-        <span class="spin" />
+      <Button kind="primary" busy={busy} onClick={unlock}>
         Unlock
-      </button>
+      </Button>
       {Boolean(storedAdminKey()) && (
-        <button
-          class="btn secondary"
-          type="button"
+        <Button
           onClick={() => {
             forgetAdminKey();
             setSecret('');
@@ -133,7 +131,7 @@ function UnlockPanel({ onDone }: { onDone: () => void }) {
           }}
         >
           Forget saved key
-        </button>
+        </Button>
       )}
     </div>
   );

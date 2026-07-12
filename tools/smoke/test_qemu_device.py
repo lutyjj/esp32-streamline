@@ -1,54 +1,47 @@
-"""Smoke tests for the QEMU-emulated device: boot, HTTP API, provisioning cycle.
+"""Emulated-device smoke: boot markers and the provisioning cycle.
 
-The QEMU image variant reaches the network over emulated Ethernet, so these
-tests prove the same contracts a hardware device offers short of the radio
-and audio path: clean boot, the read-only API surface, and a commissioning
-write that must survive a reboot through the NVS generation machinery.
+These tests need what only the QEMU target offers — a fresh unprovisioned
+flash and serial boot expectations — so they carry the `emulated` marker and
+skip on hardware targets. The device-agnostic API contract lives in
+`test_device_api.py`.
 """
 
 import json
 from collections.abc import Callable
 
-from conftest import EmulatedDevice
+import pytest
+from conftest import API_TIMEOUT, BOOT_TIMEOUT, EmulatedDevice
 
 from streamline_tools.smoke import wait_for_api
-from streamline_tools.smoke_checks import api_checks
 
-_BOOT_TIMEOUT = 120
-_API_TIMEOUT = 60
-
-
-def _status(device: EmulatedDevice) -> dict[str, object]:
-    code, body = device.api.fetch("/api/status")
-    assert code == 200, f"GET /api/status returned HTTP {code}"
-    status = json.loads(body)
-    assert isinstance(status, dict)
-    return status
+pytestmark = pytest.mark.emulated
 
 
 def _expect_api_up(device: EmulatedDevice) -> None:
-    ready = wait_for_api(device.api.fetch, _API_TIMEOUT)
+    ready = wait_for_api(device.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
 
 
-def test_fresh_boot_reaches_setup_console(device: EmulatedDevice) -> None:
-    device.dut.expect_exact("using board descriptor '", timeout=_BOOT_TIMEOUT)
+def _mode(device: EmulatedDevice) -> str:
+    code, body = device.api.fetch("/api/status")
+    assert code == 200, f"GET /api/status returned HTTP {code}"
+    mode = json.loads(body)["mode"]
+    assert isinstance(mode, str)
+    return mode
+
+
+def test_fresh_boot_reaches_setup_console(boot_device: Callable[..., EmulatedDevice]) -> None:
+    device = boot_device()
+    device.dut.expect_exact("using board descriptor '", timeout=BOOT_TIMEOUT)
     device.dut.expect_exact("emulated ethernet up", timeout=30)
     device.dut.expect_exact("setup console started", timeout=30)
-
-
-def test_api_serves_status_and_contract(device: EmulatedDevice) -> None:
-    device.dut.expect_exact("setup console started", timeout=_BOOT_TIMEOUT)
     _expect_api_up(device)
-    results = api_checks(device.api.fetch)
-    failed = [result for result in results if not result.passed]
-    assert not failed, failed
-    assert _status(device)["mode"] == "setup"
+    assert _mode(device) == "setup"
 
 
 def test_provisioning_persists_across_reboot(boot_device: Callable[..., EmulatedDevice]) -> None:
     first_boot = boot_device()
-    first_boot.dut.expect_exact("setup console started", timeout=_BOOT_TIMEOUT)
+    first_boot.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
     _expect_api_up(first_boot)
 
     # First commissioning must establish an admin key; this one is synthetic
@@ -67,8 +60,6 @@ def test_provisioning_persists_across_reboot(boot_device: Callable[..., Emulated
     # commissioning write survived the reboot in NVS, not process memory.
     first_boot.dut.qemu.wait(timeout=60)
     second_boot = boot_device(flash=first_boot.flash)
-    second_boot.dut.expect_exact("StreamLine provisioned", timeout=_BOOT_TIMEOUT)
+    second_boot.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
     _expect_api_up(second_boot)
-    status = _status(second_boot)
-    assert status["mode"] == "provisioned"
-    assert isinstance(status["firmware_version"], str) and status["firmware_version"]
+    assert _mode(second_boot) == "provisioned"

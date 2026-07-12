@@ -18,8 +18,9 @@ and source lifecycle contract.
 
 Set `recordings_enabled` and a private `recording_token` of at least 16
 characters to enable lossless WAV recording. The add-on stores files in its
-dedicated public configuration folder and exposes the recording flow as its
-Web UI.
+private working directory and exposes the recording flow as its Web UI.
+Recordings survive restarts and updates, but backups exclude them and a restore
+or uninstall removes them. Download every completed WAV you want to keep.
 
 ## Use
 

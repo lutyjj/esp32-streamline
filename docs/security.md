@@ -53,7 +53,7 @@ place, and the standing items we track or have accepted.
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
 | Open setup AP during commissioning | by design | Accepts writes only until the first admin key is set — a brief, physically proximate window. |
 | Bridge WAV stream is unauthenticated | by design | Front it with an authenticating reverse proxy before sharing beyond a trusted LAN. |
-| Home Assistant recording files join add-on backups | by design | Large WAV libraries make backups large. Download recordings and delete bridge copies that do not need backup protection. |
+| Home Assistant recordings are working data, not backup data | by design | Recordings survive restarts and updates, but restore or uninstall removes them. Download every WAV that must be retained. |
 
 ## Bridge
 
@@ -84,10 +84,11 @@ place, and the standing items we track or have accepted.
   Compose configuration makes the image filesystem read-only, drops every
   Linux capability, sets `no-new-privileges`, and mounts only `/tmp` and the
   recording volume writable.
-- The Home Assistant add-on uses Supervisor-owned `/data` for options and maps
-  only its dedicated `addon_config` folder read/write at `/config`. It does not
-  request host networking, devices, privileged mode, the Docker socket, Home
-  Assistant configuration, or the host-wide shared folder.
+- The Home Assistant add-on uses Supervisor-owned `/data` for options and
+  recordings. It maps no additional writable host folder and does not request
+  host networking, devices, privileged mode, the Docker socket, Home Assistant
+  configuration, or the host-wide shared and media folders. Supervisor backups
+  exclude `recordings`; restore and uninstall may therefore remove those files.
 - Runtime images pin their Python base image by digest. Dependabot owns digest
   updates so reviewed dependency changes remain mechanical.
 - The bridge media path does not invoke a shell, start subprocesses, deserialize

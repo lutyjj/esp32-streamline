@@ -14,14 +14,14 @@ stage: experimental
 image: "ghcr.io/lutyjj/{arch}-esp32-streamline-bridge-addon"
 webui: "http://[HOST]:[PORT:8088]/recordings"
 watchdog: "http://[HOST]:[PORT:8088]/health"
+backup_exclude:
+  - recordings
 ports:
   39000/tcp: 39000
   8088/tcp: 8088
 ports_description:
   39000/tcp: ESP32 PCM input
   8088/tcp: HTTP WAV stream and status API
-map:
-  - addon_config:rw
 options:
   source_allow: ""
   max_sources: 8

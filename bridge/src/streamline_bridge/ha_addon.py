@@ -11,7 +11,7 @@ from streamline_bridge.options import ADDON_CONTROL_OPTIONS, addon_options, opti
 
 BRIDGE_EXECUTABLE = "streamline-bridge"
 OPTIONS_PATH = Path("/data/options.json")
-RECORDINGS_DIR = "/config/recordings"
+RECORDINGS_DIR = "/data/recordings"
 RECORDING_TOKEN_ENV = "STREAMLINE_RECORDING_TOKEN"
 
 

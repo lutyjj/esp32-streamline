@@ -31,6 +31,10 @@ utoipa = { version = "5.5.0", optional = true }
 
 [features]
 api-spec = ["dep:utoipa"]
+# QEMU image variant: network over the emulated OpenCores Ethernet MAC
+# instead of Wi-Fi, audio bring-up skipped. Built by `make -C firmware
+# qemu-artifacts`; never part of a hardware release image.
+qemu = []
 
 [dev-dependencies]
 # Host-only: proves the generated id pattern the console imports matches the

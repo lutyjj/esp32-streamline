@@ -207,3 +207,21 @@ Endpoint paths use nouns for state and verbs for actions. Reads are open. Every
 write requires the admin key ([security.md](security.md)). Responses carry
 `rebooting: true` when a change restarts the device, so clients react to the
 response instead of assuming.
+
+## QEMU Image Variant
+
+Espressif's QEMU fork emulates the ESP32 but no Wi-Fi PHY, I2S, or codec, so
+the production image can boot under emulation only until Wi-Fi bring-up. The
+`qemu` cargo feature builds a variant that reaches the network through the
+emulated OpenCores Ethernet MAC (`-nic user,model=open_eth`) and skips audio
+bring-up; everything else — bootloader, partition table, NVS, board
+resolution, the HTTP API, the embedded console — is the shared code the
+hardware image runs. `make -C firmware qemu-artifacts` builds it, and
+`make tools-smoke-qemu` runs the emulated-device test suite against it.
+
+Two limits bound what emulation can prove. Radio, capture, and codec behavior
+exist only on hardware, so the device smoke stays the release gate. And a
+software restart is out of contract under QEMU — the emulated NIC survives a
+warm CPU reset that real hardware would clear, and its stale interrupt
+crashes the next boot — so the test suite runs QEMU with `-no-reboot` and
+treats each boot as one process over the persistent flash file.

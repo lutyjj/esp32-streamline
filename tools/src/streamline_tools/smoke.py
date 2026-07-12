@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Boot and API smoke runner for QEMU-emulated and USB-connected devices.
+"""Boot and API smoke runner for the USB-connected device.
 
-`streamline-smoke qemu` boots a merged flash image (`streamline-*-full.bin`)
-in Espressif's QEMU and verifies the transcript up to the emulation frontier:
-QEMU emulates no Wi-Fi PHY, so a StreamLine boot is provable only up to
-board-descriptor resolution before `esp_phy_enable` aborts. `streamline-smoke
-device` resets the USB-connected board over serial, verifies the same
+`streamline-smoke device` resets the board over serial, verifies the boot
 transcript through Wi-Fi mode resolution, then exercises the read-only HTTP
-API. Stdlib-only so the system `python3` can run the device flow on the host,
-where the serial port lives.
+API. Stdlib-only so the system `python3` can run it on the host, where the
+serial port lives; the emulated-device smoke is the pytest suite in
+`tools/smoke/`, which shares this module's flash-padding, polling, and check
+helpers.
 """
 
 import argparse
@@ -17,21 +15,16 @@ import json
 import queue
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
-from pathlib import Path
 
 from streamline_tools.smoke_checks import CheckResult, api_checks, boot_checks, strip_ansi
 
-# Boot-complete markers mirror log lines owned by firmware/streamline/src/main.rs
-# and the ESP-IDF Wi-Fi bring-up; renaming a line there must update this table.
-# QEMU stops at the board descriptor because the Wi-Fi PHY assert is the known
-# emulation frontier; a real board must resolve its mode (provisioned or setup).
-QEMU_BOOT_COMPLETE = ("using board descriptor '",)
+# Boot-complete markers mirror log lines owned by firmware/streamline/src/main.rs;
+# renaming a line there must update this table.
 DEVICE_BOOT_COMPLETE = ("StreamLine provisioned", "setup AP started:")
 
 # The ESP32 bootloader sits at 0x1000 in a merged flash image; its image
@@ -43,7 +36,6 @@ _IMAGE_MAGIC = 0xE9
 _FLASH_SIZE_MEGABYTES = {0x1: 2, 0x2: 4, 0x3: 8, 0x4: 16}
 _ERASED_FLASH_BYTE = b"\xff"
 
-_QEMU_BOOT_TIMEOUT = 60.0
 # Worst case before a real board resolves its mode: three Wi-Fi attempts of up
 # to ~30 s each (connect plus netif timeouts), then the setup-AP fallback.
 _DEVICE_BOOT_TIMEOUT = 150.0
@@ -126,29 +118,6 @@ def _pump_process(command: Sequence[str], markers: Sequence[str], timeout: float
         process.wait()
 
 
-def qemu_boot(flash_image: Path, qemu_binary: str, timeout: float) -> tuple[str, str | None]:
-    """Boot a merged flash image in QEMU and capture serial output to the frontier.
-
-    `-no-reboot` turns the reboot-after-panic into a QEMU exit, so a panicking
-    image fails fast with the panic in the transcript instead of looping until
-    the timeout.
-    """
-    padded = pad_flash_image(flash_image.read_bytes())
-    with tempfile.NamedTemporaryFile(suffix=".bin") as flash:
-        flash.write(padded)
-        flash.flush()
-        command = (
-            qemu_binary,
-            "-machine",
-            "esp32",
-            "-nographic",
-            "-no-reboot",
-            "-drive",
-            f"file={flash.name},if=mtd,format=raw",
-        )
-        return _pump_process(command, QEMU_BOOT_COMPLETE, timeout)
-
-
 def serial_boot(port: str, timeout: float) -> tuple[str, str | None]:
     """Reset the USB-connected board and capture one boot over serial.
 
@@ -192,11 +161,6 @@ def _boot_completed(matched: str | None, timeout: float) -> CheckResult:
     return CheckResult("boot-completed", False, f"no boot-complete marker within {timeout:.0f}s")
 
 
-def run_qemu(flash_image: Path, qemu_binary: str, timeout: float) -> tuple[list[CheckResult], str]:
-    transcript, matched = qemu_boot(flash_image, qemu_binary, timeout)
-    return [_boot_completed(matched, timeout), *boot_checks(transcript)], transcript
-
-
 def run_device(port: str, url: str | None, boot_timeout: float, api_timeout: float) -> tuple[list[CheckResult], str]:
     transcript, matched = serial_boot(port, boot_timeout)
     results = [_boot_completed(matched, boot_timeout), *boot_checks(transcript)]
@@ -235,11 +199,6 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="print a JSON report instead of text")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    qemu = commands.add_parser("qemu", help="boot a merged flash image in QEMU and check the transcript")
-    qemu.add_argument("--flash-image", type=Path, required=True, help="merged image (streamline-*-full.bin)")
-    qemu.add_argument("--qemu", default="qemu-system-xtensa", help="QEMU binary (Espressif fork)")
-    qemu.add_argument("--boot-timeout", type=float, default=_QEMU_BOOT_TIMEOUT)
-
     device = commands.add_parser("device", help="reset the USB-connected board, check boot, then the HTTP API")
     device.add_argument("--port", required=True, help="serial port, e.g. /dev/cu.usbserial-0001")
     device.add_argument("--url", help="device base URL for API checks, e.g. http://192.0.2.10")
@@ -248,10 +207,7 @@ def main() -> int:
 
     args = parser.parse_args()
     try:
-        if args.command == "qemu":
-            results, transcript = run_qemu(args.flash_image, args.qemu, args.boot_timeout)
-        else:
-            results, transcript = run_device(args.port, args.url, args.boot_timeout, args.api_timeout)
+        results, transcript = run_device(args.port, args.url, args.boot_timeout, args.api_timeout)
     except FileNotFoundError as error:
         print(f"missing prerequisite: {error}", file=sys.stderr)
         return 2

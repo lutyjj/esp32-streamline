@@ -4,23 +4,24 @@ use std::{
 };
 
 use anyhow::Result;
+#[cfg(not(feature = "qemu"))]
+use esp_idf_svc::hal::{i2c::I2C0, i2s::I2S0};
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
-    hal::{delay::FreeRtos, i2c::I2C0, i2s::I2S0, peripherals::Peripherals},
+    hal::{delay::FreeRtos, peripherals::Peripherals},
     nvs::EspDefaultNvsPartition,
 };
+#[cfg(feature = "qemu")]
+use streamline_firmware::adapters::openeth;
+#[cfg(not(feature = "qemu"))]
+use streamline_firmware::adapters::{i2s::Capture, pins::AudioPins, tcp::TargetAddress};
 use streamline_firmware::{
     adapters::{
         codec,
         http::{self, ApiState, Mode},
-        i2s::Capture,
         mdns::MdnsAdvertisement,
         nvs::ConfigStore,
-        ota,
-        pins::AudioPins,
-        status_light,
-        tcp::TargetAddress,
-        time, wifi,
+        ota, status_light, time, wifi,
     },
     board::{self, Board},
     config::RuntimeConfig,
@@ -35,9 +36,7 @@ fn main() -> Result<()> {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    let Peripherals {
-        modem, i2c0, i2s0, ..
-    } = Peripherals::take()?;
+    let peripherals = Peripherals::take()?;
     let event_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let store = Arc::new(Mutex::new(ConfigStore::open(nvs_partition.clone())?));
@@ -76,11 +75,52 @@ fn main() -> Result<()> {
             Err(error) => log::warn!("could not migrate legacy configuration: {error:#}"),
         }
     }
-    let mut wifi = wifi::create(modem, event_loop, nvs_partition)?;
+    // The setup-AP SSID suffix only exists on hardware; the QEMU variant has
+    // no AP to name.
+    #[cfg(not(feature = "qemu"))]
     let suffix = wifi::device_suffix()?;
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
 
+    // The network is the one seam between the hardware image and the QEMU
+    // image: Wi-Fi station/setup-AP on hardware, emulated Ethernet under
+    // QEMU (no PHY to drive, no AP to open). Everything after mode
+    // resolution is shared.
+    #[cfg(not(feature = "qemu"))]
+    let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
+    #[cfg(feature = "qemu")]
+    let _ethernet = openeth::start(peripherals.mac, event_loop)?;
+
+    #[cfg(feature = "qemu")]
+    let (mode, config, stream, codec, health): SetupState = match persisted {
+        Some(config) => {
+            // No I2S or codec exists under emulation, and a probe against
+            // missing hardware stalls instead of failing fast, so emulated
+            // boots skip audio and surface the fault through health.
+            let health = Arc::new(HealthReport::assess(&BootFacts {
+                audio: Some(Err("audio capture is not emulated".to_string())),
+                bridge_configured: !config.target_host.is_empty(),
+                board_name: board.name.clone(),
+            }));
+            log::info!(
+                "StreamLine provisioned; startup health: {:?}",
+                health.status
+            );
+            (Mode::Provisioned, config, None, None, health)
+        }
+        None => {
+            log::info!("setup console started");
+            (
+                Mode::Setup,
+                recovery::setup_baseline(board.as_ref(), None),
+                None,
+                None,
+                Arc::new(HealthReport::healthy()),
+            )
+        }
+    };
+
+    #[cfg(not(feature = "qemu"))]
     let (mode, config, stream, codec, health) = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
             // Wi-Fi is up, so the device is reachable on the home network and
@@ -101,7 +141,13 @@ fn main() -> Result<()> {
                         None
                     }
                 };
-                let audio = start_audio(i2c0, i2s0, board.as_ref(), &config, target);
+                let audio = start_audio(
+                    peripherals.i2c0,
+                    peripherals.i2s0,
+                    board.as_ref(),
+                    &config,
+                    target,
+                );
                 if let Err(reason) = &audio.result {
                     log::warn!("{reason}; staying provisioned so the fault is reachable");
                 }
@@ -211,6 +257,7 @@ fn main() -> Result<()> {
 /// Persist why this boot fell back to the setup AP, tagged with the running
 /// version so a post-rollback reading still tells which image failed.
 /// Best-effort: diagnostics must never take the boot down.
+#[cfg(not(feature = "qemu"))]
 fn note_fallback(store: &Arc<Mutex<ConfigStore>>, reason: &str) {
     let note = format!("v{}: {reason}", env!("CARGO_PKG_VERSION"));
     match store.lock() {
@@ -225,6 +272,7 @@ fn note_fallback(store: &Arc<Mutex<ConfigStore>>, reason: &str) {
 
 /// The stream target for a provisioned boot: `None` when no bridge is
 /// configured yet, so capture runs without a network task.
+#[cfg(not(feature = "qemu"))]
 fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
     if config.target_host.is_empty() {
         return Ok(None);
@@ -235,6 +283,7 @@ fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
 /// Audio bring-up outcome: the live handles when everything came up, plus the
 /// single fact the health check reads. A fault leaves `stream`/`codec` `None`
 /// and the device reachable, rather than tearing the boot down.
+#[cfg(not(feature = "qemu"))]
 struct AudioOutcome {
     stream: Option<Arc<runtime::StreamStatus>>,
     codec: Option<Arc<Mutex<codec::CodecControl<'static>>>>,
@@ -243,6 +292,7 @@ struct AudioOutcome {
     result: Result<(), String>,
 }
 
+#[cfg(not(feature = "qemu"))]
 fn start_audio(
     i2c0: I2C0<'static>,
     i2s0: I2S0<'static>,
@@ -269,6 +319,7 @@ fn start_audio(
     }
 }
 
+#[cfg(not(feature = "qemu"))]
 impl AudioOutcome {
     fn failed(reason: String) -> Self {
         Self {
@@ -287,6 +338,7 @@ type SetupState = (
     Arc<HealthReport>,
 );
 
+#[cfg(not(feature = "qemu"))]
 fn start_setup(
     wifi: &mut wifi::WifiController<'_>,
     suffix: &str,

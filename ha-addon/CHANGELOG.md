@@ -1,18 +1,42 @@
 # Changelog
 
 Notable changes per release, grouped by type.
-## [0.5.4] - 2026-07-11
+## [0.5.5] - 2026-07-12
+
+### 🚀 Features
+- Unify navigation and design system
 
 ### 🐛 Bug Fixes
+- Keep recordings out of backups
+
+### 🚜 Refactor
+- Generate API client with Orval
+- Simplify dependency ownership
+
+## [0.5.4] - 2026-07-11
+
+### 🚀 Features
+- Configure recording storage
+- Add recording workspace
+- Expose recording API
+- Add lossless recording core
+
+### 🐛 Bug Fixes
+- Preserve the upstream dependency contract
+- Enforce runtime validation invariants
+- Secure host-facing boundaries
+- Harden recording writes
 - Align API endpoint descriptions (#141)
 - Arm reboot waits after acknowledgement (#140)
 - Add explicit docker.io registry prefix to container images (#137)
 
 ### 🚜 Refactor
+- Keep uv out of runtime images
 - Normalize audio-setting vocabulary and derive console import constraints (#143)
 - Separate playout and source contracts (#142)
 
 ### 📚 Documentation
+- Design lossless bridge recordings
 - Remove internal note from customer-facing changelog (#138)
 
 ## [0.5.3] - 2026-07-11

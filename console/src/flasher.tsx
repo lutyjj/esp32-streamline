@@ -1,7 +1,7 @@
 import 'esp-web-tools/dist/web/install-button.js';
 import { render } from 'preact';
 import { WebFlasher } from './components/WebFlasher';
-import { initializeThemePreference } from './lib/theme';
+import { initializeThemePreference } from './state/theme';
 import './styles.css';
 
 initializeThemePreference();

@@ -1,11 +1,5 @@
-import { useState } from 'preact/hooks';
-import {
-  isThemePreference,
-  saveThemePreference,
-  storedThemePreference,
-  THEME_PREFERENCES,
-  type ThemePreference,
-} from '../lib/theme';
+import { THEME_PREFERENCES, type ThemePreference } from '../lib/preferences';
+import { useThemePreference } from '../state/theme';
 
 const LABELS: Record<ThemePreference, string> = {
   system: 'System',
@@ -13,15 +7,8 @@ const LABELS: Record<ThemePreference, string> = {
   dark: 'Dark',
 };
 
-/** Browser-local color preference shared by console pages on the same origin. */
 export function ThemeSwitch() {
-  const [preference, setPreference] = useState(storedThemePreference);
-
-  function selectTheme(value: string) {
-    if (!isThemePreference(value)) return;
-    saveThemePreference(value);
-    setPreference(value);
-  }
+  const { preference, selectThemePreference } = useThemePreference();
 
   return (
     <fieldset class="theme-switch" aria-label="Theme">
@@ -33,7 +20,7 @@ export function ThemeSwitch() {
             name="theme"
             value={option}
             checked={preference === option}
-            onChange={(event) => selectTheme(event.currentTarget.value)}
+            onChange={(event) => selectThemePreference(event.currentTarget.value)}
           />
           <span>{LABELS[option]}</span>
         </label>

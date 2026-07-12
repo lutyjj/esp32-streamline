@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { BridgeApp } from './bridge/BridgeApp';
 import { startBridgePolling } from './bridge/state';
-import { initializeThemePreference } from './lib/theme';
+import { initializeThemePreference } from './state/theme';
 import './styles.css';
 import './bridge/styles.css';
 

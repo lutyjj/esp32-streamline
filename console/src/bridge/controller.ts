@@ -119,6 +119,7 @@ export class BridgeController {
       this.updateRecordings(await this.api.recordings());
     } catch (error) {
       this.error.value = message(error);
+      if (this.recordings.value?.active.length) this.scheduleRecordingRefresh();
     }
   }
 
@@ -149,9 +150,12 @@ export class BridgeController {
     if (this.recordingTimer !== undefined) this.cancel(this.recordingTimer);
     this.recordingTimer = undefined;
     this.recordings.value = recordings;
-    if (recordings.active.length > 0) {
-      this.recordingTimer = this.schedule(() => void this.refreshRecordings(), 1000);
-    }
+    if (recordings.active.length > 0) this.scheduleRecordingRefresh();
+  }
+
+  private scheduleRecordingRefresh(): void {
+    if (this.recordingTimer !== undefined) this.cancel(this.recordingTimer);
+    this.recordingTimer = this.schedule(() => void this.refreshRecordings(), 1000);
   }
 
   private async runRecordingAction(action: () => Promise<void>): Promise<boolean> {

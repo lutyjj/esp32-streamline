@@ -48,6 +48,10 @@ RecordingId = Annotated[str, Path(pattern=RECORDING_ID_PATTERN)]
 bearer = HTTPBearer(auto_error=False, scheme_name="bearer_auth")
 
 
+def error_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
+    return {status: {"model": ErrorResponse} for status in statuses}
+
+
 class BridgeApi(FastAPI):
     """Publish the adapter's 400 validation envelope in generated OpenAPI."""
 
@@ -249,6 +253,7 @@ def make_app(
     @app.get(
         "/api/recordings",
         response_model=RecordingList,
+        responses=error_responses(401, 503),
         dependencies=authenticated,
         operation_id="getRecordings",
         summary="List active and saved recordings",
@@ -262,6 +267,7 @@ def make_app(
     @app.post(
         "/api/recordings",
         response_model=RecordingResult,
+        responses=error_responses(400, 401, 409, 503, 507),
         status_code=201,
         dependencies=authenticated,
         operation_id="startRecording",
@@ -276,6 +282,7 @@ def make_app(
     @app.post(
         "/api/recordings/{recording_id}/stop",
         response_model=RecordingResult,
+        responses=error_responses(400, 401, 409, 503),
         dependencies=authenticated,
         operation_id="stopRecording",
         summary="Stop and finalize a recording",
@@ -289,6 +296,7 @@ def make_app(
     @app.post(
         "/api/recordings/{recording_id}/download-ticket",
         response_model=DownloadTicket,
+        responses=error_responses(400, 401, 404, 503),
         status_code=201,
         dependencies=authenticated,
         operation_id="createRecordingDownloadTicket",
@@ -303,7 +311,13 @@ def make_app(
     @app.get(
         "/api/recordings/{recording_id}/file",
         response_class=StreamingResponse,
-        responses={200: {"content": {"audio/wav": {}}}, 401: {"model": ErrorResponse}},
+        responses={
+            200: {"content": {"audio/wav": {}}},
+            400: {"model": ErrorResponse},
+            401: {"model": ErrorResponse},
+            404: {"model": ErrorResponse},
+            503: {"model": ErrorResponse},
+        },
         operation_id="downloadRecording",
         summary="Download a recording with a one-use ticket",
     )
@@ -331,6 +345,7 @@ def make_app(
     @app.delete(
         "/api/recordings/{recording_id}",
         response_model=DeleteRecordingResult,
+        responses=error_responses(400, 401, 404, 409, 503),
         dependencies=authenticated,
         operation_id="deleteRecording",
         summary="Delete a saved recording",

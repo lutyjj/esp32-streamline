@@ -83,6 +83,32 @@ describe('bridge controller', () => {
     await vi.waitFor(() => expect(api.recordings).toHaveBeenCalledTimes(2));
   });
 
+  it('keeps polling an active recording after a transient list failure', async () => {
+    const active = {
+      ...emptyRecordings,
+      active: [{ id: 'one' } as RecordingList['active'][number]],
+    };
+    const recordings = vi
+      .fn<BridgeApi['recordings']>()
+      .mockResolvedValueOnce(active)
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValue(emptyRecordings);
+    const scheduled: Array<() => void> = [];
+    const controller = new BridgeController(fakeApi({ recordings }), (callback) => {
+      scheduled.push(callback);
+      return scheduled.length;
+    });
+
+    await controller.unlock('recording-token');
+    scheduled.shift()?.();
+    await vi.waitFor(() => expect(recordings).toHaveBeenCalledTimes(2));
+
+    expect(scheduled).toHaveLength(1);
+    scheduled.shift()?.();
+    await vi.waitFor(() => expect(recordings).toHaveBeenCalledTimes(3));
+    expect(scheduled).toHaveLength(0);
+  });
+
   it('forgets a rejected token and remains locked', async () => {
     const api = fakeApi({
       recordings: vi.fn(async () => Promise.reject(new Error('unauthorized'))),

@@ -65,6 +65,10 @@ class HttpContractTests(unittest.TestCase):
         validation_responses = document["paths"]["/api/recordings"]["post"]["responses"]
         self.assertIn("400", validation_responses)
         self.assertNotIn("422", validation_responses)
+        self.assertEqual(
+            set(document["paths"]["/api/recordings"]["get"]["responses"]),
+            {"200", "401", "503"},
+        )
 
     def test_console_routes_inject_ingress_base_and_csp_nonce(self) -> None:
         root = self.client.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/abc-1_2"})

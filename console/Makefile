@@ -32,7 +32,7 @@ lock: dev-image
 	$(CONTAINER_RUN) npm install --package-lock-only --ignore-scripts
 
 generate: deps
-	$(CONTAINER_RUN) npx openapi-typescript ../docs/openapi.json -o src/generated/api.ts
+	$(CONTAINER_RUN) npx orval --fail-on-warnings
 
 format: generate
 	$(CONTAINER_RUN) npx biome check --write .

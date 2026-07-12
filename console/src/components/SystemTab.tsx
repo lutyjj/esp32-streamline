@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'preact/hooks';
 import { generateAdminKey, isUnlocked, unlockSettings, useAuthEpoch } from '../lib/adminKey';
-import { apiClient, type DeviceConfig, unwrap } from '../lib/api';
+import {
+  type DeviceConfig,
+  factoryReset,
+  otaCheck,
+  otaRollback,
+  otaUpdate,
+  restart as restartDevice,
+  setAdminKey,
+  setName as setDeviceName,
+  setFirmware,
+} from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, status } from '../state/device';
 import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
@@ -68,11 +78,7 @@ function FirmwareCard() {
           e.preventDefault();
           settingsTransact.run(
             async () => {
-              const data = await unwrap(
-                apiClient.POST('/api/settings/firmware', {
-                  body: { auto_update_schedule: autoUpdateSchedule },
-                }),
-              );
+              const data = await setFirmware({ auto_update_schedule: autoUpdateSchedule });
               if (config.value) {
                 config.value = { ...config.value, auto_update_schedule: autoUpdateSchedule };
               }
@@ -128,7 +134,7 @@ function FirmwareCard() {
           disabled={!writable || ota?.busy}
           onClick={() => {
             beginOtaSession('Checking GitHub for a newer release…');
-            transact.run(() => unwrap(apiClient.POST('/api/ota/check')), {
+            transact.run(() => otaCheck(), {
               busyText: 'Checking…',
               okText: '',
             });
@@ -142,7 +148,7 @@ function FirmwareCard() {
             disabled={!writable || ota.busy}
             onClick={() => {
               beginOtaSession(`Installing ${latest ? `v${latest}` : 'the latest release'}…`);
-              transact.run(() => unwrap(apiClient.POST('/api/ota/update', { body: {} })), {
+              transact.run(() => otaUpdate({}), {
                 busyText: 'Installing…',
                 okText: 'Install started — progress below',
               });
@@ -166,7 +172,7 @@ function FirmwareCard() {
                 ? `v${ota.rollback_version}`
                 : 'the previous version';
               beginOtaSession(`Rolling back to ${target}…`);
-              transact.run(() => unwrap(apiClient.POST('/api/ota/rollback')), {
+              transact.run(() => otaRollback(), {
                 busyText: 'Rolling back…',
                 reboots: 'the rollback',
               });
@@ -182,15 +188,10 @@ function FirmwareCard() {
           onSubmit={(e) => {
             e.preventDefault();
             beginOtaSession(`Installing custom image from ${url.trim()}…`);
-            customTransact.run(
-              () =>
-                unwrap(
-                  apiClient.POST('/api/ota/update', {
-                    body: { url: url.trim(), sha256: sha256.trim() },
-                  }),
-                ),
-              { busyText: 'Installing…', okText: 'Install started — progress below' },
-            );
+            customTransact.run(() => otaUpdate({ url: url.trim(), sha256: sha256.trim() }), {
+              busyText: 'Installing…',
+              okText: 'Install started — progress below',
+            });
           }}
         >
           <div class="formgrid" style="margin-top:12px">
@@ -256,7 +257,7 @@ function NameCard() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          transact.run(() => unwrap(apiClient.POST('/api/settings/name', { body: { name } })), {
+          transact.run(() => setDeviceName({ name }), {
             busyText: 'Saving…',
             okText: 'Saved',
           });
@@ -302,7 +303,7 @@ function AccessCard() {
     transact.run(
       async (): Promise<undefined> => {
         if (!isUnlocked()) throw new Error('unlock settings before replacing the admin key');
-        await unwrap(apiClient.POST('/api/settings/admin-key', { body: { admin_secret: staged } }));
+        await setAdminKey({ admin_secret: staged });
         unlockSettings(staged, remember);
         setStaged('');
         return undefined;
@@ -383,7 +384,7 @@ function ResetCard() {
           kind="secondary"
           disabled={!writable}
           onClick={() =>
-            restart.run(() => unwrap(apiClient.POST('/api/restart')), {
+            restart.run(() => restartDevice(), {
               busyText: 'Restarting…',
               reboots: 'the restart',
             })
@@ -415,7 +416,7 @@ function ResetCard() {
               onClick={() =>
                 factory.run(
                   async () => {
-                    const data = await unwrap(apiClient.POST('/api/factory-reset'));
+                    const data = await factoryReset();
                     setConfirming(false);
                     return data;
                   },

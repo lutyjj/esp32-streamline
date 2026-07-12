@@ -196,10 +196,12 @@ from the Rust module. `make firmware-openapi` refreshes the checked-in artifact;
 `make firmware-openapi-check` fails when it is stale. The device serves the same
 artifact at `GET /api/openapi.json`.
 
-The console runs `openapi-typescript` before lint, test, and build, then uses
-`openapi-fetch` against the generated paths. TypeScript rejects an unknown path,
-method, form field, or response shape. The console's API tab renders the served
-contract, so integrations and the UI inspect the same document.
+The console runs Orval before lint, test, and build. Orval generates types and
+operation-named Fetch functions from the contract. The hand-written
+`deviceFetch` adapter owns admin-key injection, error normalization, and the
+replaceable transport used by tests. TypeScript rejects an unknown operation,
+form field, or response shape. The console's API tab renders the served contract,
+so integrations and the UI inspect the same document.
 
 Endpoint paths use nouns for state and verbs for actions. Reads are open. Every
 write requires the admin key ([security.md](security.md)). Responses carry

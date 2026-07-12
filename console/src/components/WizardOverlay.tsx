@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
-import { apiClient, getStatus, unwrap } from '../lib/api';
+import { getStatus, setAudio } from '../lib/api';
 import {
   CAL_ATTEN_MAX,
   CAL_ATTEN_STEP,
@@ -64,11 +64,11 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
         },
         applyAttenuation: async (atten) => {
           const o = original.current;
-          await unwrap(
-            apiClient.POST('/api/settings/audio', {
-              body: { input_line: o.line, input_gain: o.gain, adc_attenuation_db: atten },
-            }),
-          );
+          await setAudio({
+            input_line: o.line,
+            input_gain: o.gain,
+            adc_attenuation_db: atten,
+          });
         },
         delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         log: (text, cls = '') => setLog((lines) => [...lines, { text, cls }]),
@@ -146,11 +146,11 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
     onClose();
     if (restore && applied !== null && applied !== o.atten) {
       try {
-        await unwrap(
-          apiClient.POST('/api/settings/audio', {
-            body: { input_line: o.line, input_gain: o.gain, adc_attenuation_db: o.atten },
-          }),
-        );
+        await setAudio({
+          input_line: o.line,
+          input_gain: o.gain,
+          adc_attenuation_db: o.atten,
+        });
         toast(`Put ADC attenuation back to ${o.atten} dB`, 'ok');
         loadDeviceSettings().catch(() => {});
       } catch (error) {

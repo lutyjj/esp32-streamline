@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { apiClient, unwrap } from '../lib/api';
+import { setAudio } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, loadDeviceSettings, status } from '../state/device';
 import { AudioProfiles } from './AudioProfiles';
@@ -29,15 +29,11 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
     e.preventDefault();
     transact.run(
       async () => {
-        const ack = await unwrap(
-          apiClient.POST('/api/settings/audio', {
-            body: {
-              input_line: Number(line),
-              input_gain: Number(gain),
-              adc_attenuation_db: Number(atten),
-            },
-          }),
-        );
+        const ack = await setAudio({
+          input_line: Number(line),
+          input_gain: Number(gain),
+          adc_attenuation_db: Number(atten),
+        });
         if (!ack.rebooting) await loadDeviceSettings();
         return ack;
       },

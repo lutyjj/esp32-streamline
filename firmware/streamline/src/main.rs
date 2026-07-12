@@ -75,102 +75,20 @@ fn main() -> Result<()> {
             Err(error) => log::warn!("could not migrate legacy configuration: {error:#}"),
         }
     }
-    // The setup-AP SSID suffix only exists on hardware; the QEMU variant has
-    // no AP to name.
-    #[cfg(not(feature = "qemu"))]
-    let suffix = wifi::device_suffix()?;
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
 
     // The network is the one seam between the hardware image and the QEMU
-    // image: Wi-Fi station/setup-AP on hardware, emulated Ethernet under
-    // QEMU (no PHY to drive, no AP to open). Everything after mode
-    // resolution is shared.
-    #[cfg(not(feature = "qemu"))]
-    let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
-    #[cfg(feature = "qemu")]
-    let _ethernet = openeth::start(peripherals.mac, event_loop)?;
-
-    #[cfg(feature = "qemu")]
-    let (mode, config, stream, codec, health): SetupState = match persisted {
-        Some(config) => {
-            // No I2S or codec exists under emulation, and a probe against
-            // missing hardware stalls instead of failing fast, so emulated
-            // boots skip audio and surface the fault through health.
-            let health = Arc::new(HealthReport::assess(&BootFacts {
-                audio: Some(Err("audio capture is not emulated".to_string())),
-                bridge_configured: !config.target_host.is_empty(),
-                board_name: board.name.clone(),
-            }));
-            log::info!(
-                "StreamLine provisioned; startup health: {:?}",
-                health.status
-            );
-            (Mode::Provisioned, config, None, None, health)
-        }
-        None => {
-            log::info!("setup console started");
-            (
-                Mode::Setup,
-                recovery::setup_baseline(board.as_ref(), None),
-                None,
-                None,
-                Arc::new(HealthReport::healthy()),
-            )
-        }
-    };
-
-    #[cfg(not(feature = "qemu"))]
-    let (mode, config, stream, codec, health) = match persisted {
-        Some(config) => match wifi::connect_station(&mut wifi, &config) {
-            // Wi-Fi is up, so the device is reachable on the home network and
-            // stays provisioned. A bridge target that will not resolve or audio
-            // that will not initialize is a fault to surface through the health
-            // check, not a reason to drop to the setup AP — that recovery is for
-            // no network. Staying provisioned also lets `mark_current_valid`
-            // confirm the slot below, so an audio fault can never trigger a
-            // rollback.
-            Ok(()) => {
-                let target = match resolve_target(&config) {
-                    Ok(target) => target,
-                    Err(error) => {
-                        log::warn!(
-                            "TCP target resolution failed: {error:#}; \
-                             staying provisioned without a stream"
-                        );
-                        None
-                    }
-                };
-                let audio = start_audio(
-                    peripherals.i2c0,
-                    peripherals.i2s0,
-                    board.as_ref(),
-                    &config,
-                    target,
-                );
-                if let Err(reason) = &audio.result {
-                    log::warn!("{reason}; staying provisioned so the fault is reachable");
-                }
-                let health = Arc::new(HealthReport::assess(&BootFacts {
-                    audio: Some(audio.result),
-                    bridge_configured: !config.target_host.is_empty(),
-                    board_name: board.name.clone(),
-                }));
-                log::info!(
-                    "StreamLine provisioned; startup health: {:?}",
-                    health.status
-                );
-                (Mode::Provisioned, config, audio.stream, audio.codec, health)
-            }
-            Err(error) => {
-                let reason = format!("Wi-Fi station connection failed: {error:#}");
-                log::warn!("{reason}; opening setup AP");
-                note_fallback(&store, &reason);
-                start_setup(&mut wifi, &suffix, board.as_ref(), Some(config))?
-            }
-        },
-        None => start_setup(&mut wifi, &suffix, board.as_ref(), None)?,
-    };
+    // image; exactly one `network_boot` variant below compiles into each,
+    // and nothing after this call knows which network the device is on.
+    let (_network, (mode, config, stream, codec, health)) = network_boot(
+        peripherals,
+        event_loop,
+        nvs_partition,
+        &store,
+        &board,
+        persisted,
+    )?;
 
     // Reaching the home network with the console up is the signal an
     // over-the-air image booted correctly; confirm the slot so the rollback
@@ -252,6 +170,129 @@ fn main() -> Result<()> {
             }
         }
     }
+}
+
+/// What every `network_boot` variant delivers: the live network link, which
+/// the composition root holds for the life of the process, and the resolved
+/// boot state everything downstream consumes.
+type NetworkBoot = (NetworkLink, SetupState);
+
+#[cfg(not(feature = "qemu"))]
+type NetworkLink = wifi::WifiController<'static>;
+#[cfg(feature = "qemu")]
+type NetworkLink = openeth::EthConnection;
+
+// ---------------------------------------------------------------------------
+// Hardware image: Wi-Fi station with the setup-AP fallback, audio bring-up.
+// ---------------------------------------------------------------------------
+
+#[cfg(not(feature = "qemu"))]
+fn network_boot(
+    peripherals: Peripherals,
+    event_loop: EspSystemEventLoop,
+    nvs_partition: EspDefaultNvsPartition,
+    store: &Arc<Mutex<ConfigStore>>,
+    board: &Arc<Board>,
+    persisted: Option<RuntimeConfig>,
+) -> Result<NetworkBoot> {
+    let suffix = wifi::device_suffix()?;
+    let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
+    let state = match persisted {
+        Some(config) => match wifi::connect_station(&mut wifi, &config) {
+            // Wi-Fi is up, so the device is reachable on the home network and
+            // stays provisioned. A bridge target that will not resolve or audio
+            // that will not initialize is a fault to surface through the health
+            // check, not a reason to drop to the setup AP — that recovery is for
+            // no network. Staying provisioned also lets `mark_current_valid`
+            // confirm the slot, so an audio fault can never trigger a rollback.
+            Ok(()) => {
+                let target = match resolve_target(&config) {
+                    Ok(target) => target,
+                    Err(error) => {
+                        log::warn!(
+                            "TCP target resolution failed: {error:#}; \
+                             staying provisioned without a stream"
+                        );
+                        None
+                    }
+                };
+                let audio = start_audio(
+                    peripherals.i2c0,
+                    peripherals.i2s0,
+                    board.as_ref(),
+                    &config,
+                    target,
+                );
+                if let Err(reason) = &audio.result {
+                    log::warn!("{reason}; staying provisioned so the fault is reachable");
+                }
+                let health = Arc::new(HealthReport::assess(&BootFacts {
+                    audio: Some(audio.result),
+                    bridge_configured: !config.target_host.is_empty(),
+                    board_name: board.name.clone(),
+                }));
+                log::info!(
+                    "StreamLine provisioned; startup health: {:?}",
+                    health.status
+                );
+                (Mode::Provisioned, config, audio.stream, audio.codec, health)
+            }
+            Err(error) => {
+                let reason = format!("Wi-Fi station connection failed: {error:#}");
+                log::warn!("{reason}; opening setup AP");
+                note_fallback(store, &reason);
+                start_setup(&mut wifi, &suffix, board.as_ref(), Some(config))?
+            }
+        },
+        None => start_setup(&mut wifi, &suffix, board.as_ref(), None)?,
+    };
+    Ok((wifi, state))
+}
+
+// ---------------------------------------------------------------------------
+// QEMU image: emulated Ethernet, no radio and no audio hardware to probe.
+// The firmware never depends on this variant; deleting it and the `qemu`
+// feature leaves the hardware image untouched.
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "qemu")]
+fn network_boot(
+    peripherals: Peripherals,
+    event_loop: EspSystemEventLoop,
+    _nvs_partition: EspDefaultNvsPartition,
+    _store: &Arc<Mutex<ConfigStore>>,
+    board: &Arc<Board>,
+    persisted: Option<RuntimeConfig>,
+) -> Result<NetworkBoot> {
+    let ethernet = openeth::start(peripherals.mac, event_loop)?;
+    let state = match persisted {
+        Some(config) => {
+            // No I2S or codec exists under emulation, and a probe against
+            // missing hardware stalls instead of failing fast, so emulated
+            // boots skip audio and surface the fault through health.
+            let health = Arc::new(HealthReport::assess(&BootFacts {
+                audio: Some(Err("audio capture is not emulated".to_string())),
+                bridge_configured: !config.target_host.is_empty(),
+                board_name: board.name.clone(),
+            }));
+            log::info!(
+                "StreamLine provisioned; startup health: {:?}",
+                health.status
+            );
+            (Mode::Provisioned, config, None, None, health)
+        }
+        None => {
+            log::info!("setup console started");
+            (
+                Mode::Setup,
+                recovery::setup_baseline(board.as_ref(), None),
+                None,
+                None,
+                Arc::new(HealthReport::healthy()),
+            )
+        }
+    };
+    Ok((ethernet, state))
 }
 
 /// Persist why this boot fell back to the setup AP, tagged with the running

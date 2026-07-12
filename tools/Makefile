@@ -79,12 +79,18 @@ smoke-qemu: qemu-image
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_QEMU_IMAGE=/flash.bin \
 		$(QEMU_IMAGE) pytest smoke -v
 
-# Reset the USB-connected board, sanity-check its boot over serial, then its
-# HTTP API. Serial and espflash are host resources, so this runs the module
-# with the system python3, like `make firmware-capture`.
-smoke-device:
+# Reset the USB-connected board, sanity-check its boot over serial, then run
+# the same device-agnostic API suite the QEMU run uses against the live
+# board. Serial and espflash are host resources, so the boot capture runs
+# with the system python3, like `make firmware-capture`; the API suite runs
+# in the pytest runner image and skips emulated-only tests.
+smoke-device: qemu-image
 	PYTHONPATH=src python3 -m streamline_tools.smoke device --port "$(PORT)" \
 		$(if $(DEVICE),--url "http://$(DEVICE)")
+	$(if $(DEVICE),$(CONTAINER) run --rm \
+		-v "$(CURDIR):/workspace" -w /workspace \
+		-e PYTHONPATH=/workspace/src -e STREAMLINE_SMOKE_TARGET="http://$(DEVICE)" \
+		$(QEMU_IMAGE) pytest smoke -v,@echo "DEVICE is unset: skipping the API contract suite")
 
 release-prepare: image
 	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)

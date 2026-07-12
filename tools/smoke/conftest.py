@@ -1,10 +1,12 @@
-"""Fixtures for the QEMU smoke suite.
+"""Fixtures for the device smoke suite.
 
-Each test boots its own copy of the QEMU firmware image
-(`make -C firmware qemu-artifacts`, path in `STREAMLINE_QEMU_IMAGE`), so NVS
-writes never leak between tests. The emulated device reaches the network
-through QEMU's user-mode NIC; `api` talks to the device HTTP server through a
-per-test host-forwarded port.
+The suite runs against two targets and the tests do not care which:
+`STREAMLINE_SMOKE_TARGET` is either unset/`qemu` — each test boots its own
+flash copy of the QEMU image variant (`make -C firmware qemu-artifacts`,
+path in `STREAMLINE_QEMU_IMAGE`) — or a real device's base URL such as
+`http://192.0.2.10`. Tests that need an emulated device (a fresh
+unprovisioned flash, serial boot markers) carry the `emulated` marker and
+are skipped on hardware targets.
 """
 
 import os
@@ -20,9 +22,30 @@ from typing import Any
 import pytest
 from pytest_embedded.dut_factory import DutFactory
 
-from streamline_tools.smoke import http_fetch, pad_flash_image
+from streamline_tools.smoke import http_fetch, pad_flash_image, wait_for_api
 
+BOOT_TIMEOUT = 120.0
+API_TIMEOUT = 60.0
 _HTTP_TIMEOUT = 10.0
+
+
+def _hardware_url() -> str | None:
+    """The real-device base URL, or None when the target is QEMU."""
+    target = os.environ.get("STREAMLINE_SMOKE_TARGET", "qemu")
+    return None if target in ("", "qemu") else target.rstrip("/")
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "emulated: requires the QEMU-emulated device")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if _hardware_url() is None:
+        return
+    skip = pytest.mark.skip(reason="requires the QEMU-emulated device; this run targets real hardware")
+    for item in items:
+        if "emulated" in item.keywords:
+            item.add_marker(skip)
 
 
 @pytest.fixture(scope="session")
@@ -45,7 +68,7 @@ def _free_port() -> int:
 
 @dataclass(frozen=True)
 class DeviceApi:
-    """The emulated device's HTTP surface through the forwarded port."""
+    """One device's HTTP surface, hardware and emulated alike."""
 
     base_url: str
 
@@ -102,5 +125,20 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Callable[..., EmulatedDev
 
 
 @pytest.fixture
-def device(boot_device: Callable[..., EmulatedDevice]) -> EmulatedDevice:
-    return boot_device()
+def device_api(request: pytest.FixtureRequest) -> DeviceApi:
+    """The device under test, reduced to what every target offers: its API.
+
+    Hardware target: the configured base URL. QEMU target: a freshly booted
+    emulated device. Tests using only this fixture run identically on both.
+    """
+    url = _hardware_url()
+    if url is not None:
+        api = DeviceApi(base_url=url)
+    else:
+        boot: Callable[..., EmulatedDevice] = request.getfixturevalue("boot_device")
+        device = boot()
+        device.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
+        api = device.api
+    ready = wait_for_api(api.fetch, API_TIMEOUT)
+    assert ready.passed, ready.detail
+    return api

@@ -131,7 +131,9 @@ jobs:
           # latest stable release.
           prerelease=
           case "$VERSION" in *-*) prerelease=--prerelease ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/firmware/* --notes-file release-notes.md $prerelease
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            dist/firmware/* --notes-file release-notes.md $prerelease
 
   # Refresh the GitHub Pages WebFlasher so it serves the firmware just released.
   # Chained explicitly because releases created with GITHUB_TOKEN don't emit a

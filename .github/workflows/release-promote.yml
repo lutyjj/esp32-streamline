@@ -29,6 +29,10 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up QEMU for cross-architecture builds
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       - name: Derive and validate the release version
         id: version

@@ -24,7 +24,8 @@ class BridgeOption:
     def supervisor_schema(self) -> str:
         if self.value_type is str:
             return "str"
-        assert self.minimum is not None
+        if self.minimum is None:
+            raise ValueError(f"numeric option {self.name} requires a minimum")
         type_name = "int" if self.value_type is int else "float"
         return f"{type_name}({self.minimum},)"
 

@@ -167,7 +167,8 @@ class RecordingManifest:
         created_at = _manifest_timestamp(data, "created_at", required=True)
         audio_started_at = _manifest_timestamp(data, "audio_started_at", required=False)
         finished_at = _manifest_timestamp(data, "finished_at", required=True)
-        assert created_at is not None and finished_at is not None
+        if created_at is None or finished_at is None:
+            raise ValueError("saved recording timestamps are required")
         if (
             _manifest_int(data, "sample_rate") != pcm_format.rate
             or _manifest_int(data, "channels") != pcm_format.channels

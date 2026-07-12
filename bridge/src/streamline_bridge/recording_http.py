@@ -95,22 +95,27 @@ class RecordingHttpController:
         if self._service is None:
             return self._recording_disabled()
         try:
-            return self._handle_enabled(method, path, body)
+            return self._handle_enabled(self._service, method, path, body)
         except RecordingError as exc:
             return self._recording_error(exc)
 
-    def _handle_enabled(self, method: str, path: str, body: bytes) -> RecordingResponse:
-        assert self._service is not None
+    def _handle_enabled(
+        self,
+        service: RecordingService,
+        method: str,
+        path: str,
+        body: bytes,
+    ) -> RecordingResponse:
         if path == RECORDINGS_PATH:
             if method == "GET":
-                return JsonResponse(HTTPStatus.OK, self._service.list())
+                return JsonResponse(HTTPStatus.OK, service.list())
             if method == "POST":
                 data = self._json_object(body)
                 source = data.get("source")
                 title = data.get("title")
                 if not isinstance(source, str) or not isinstance(title, str):
                     raise RecordingError("invalid-request", "Provide string fields named source and title.")
-                return JsonResponse(HTTPStatus.CREATED, {"recording": self._service.start(source, title)})
+                return JsonResponse(HTTPStatus.CREATED, {"recording": service.start(source, title)})
             return self._method_not_allowed("GET, POST")
         action = RECORDING_ACTION.fullmatch(path)
         if action is not None:
@@ -118,11 +123,11 @@ class RecordingHttpController:
             if operation == "stop":
                 if method != "POST":
                     return self._method_not_allowed("POST")
-                return JsonResponse(HTTPStatus.OK, {"recording": self._service.stop(recording_id)})
+                return JsonResponse(HTTPStatus.OK, {"recording": service.stop(recording_id)})
             if operation == "download-ticket":
                 if method != "POST":
                     return self._method_not_allowed("POST")
-                self._service.ensure_file(recording_id)
+                service.ensure_file(recording_id)
                 ticket = self._issue_download_ticket(recording_id)
                 return JsonResponse(
                     HTTPStatus.CREATED,
@@ -133,14 +138,14 @@ class RecordingHttpController:
                 )
             if method != "GET":
                 return self._method_not_allowed("GET")
-            opened = self._service.open_file(recording_id)
+            opened = service.open_file(recording_id)
             return FileResponse(opened.name, opened.size, opened.source)
         item = RECORDING_ITEM.fullmatch(path)
         if item is not None:
             if method != "DELETE":
                 return self._method_not_allowed("DELETE")
             recording_id = item.group(1)
-            self._service.delete(recording_id)
+            service.delete(recording_id)
             return JsonResponse(HTTPStatus.OK, {"deleted": recording_id})
         return self._error(HTTPStatus.NOT_FOUND, "not-found", "Recording endpoint not found. Refresh the page.")
 

@@ -170,6 +170,18 @@ class RecordingRecoveryTests(unittest.TestCase):
             self.assertEqual(saved[0]["frames"], DEFAULT_FORMAT.frames_per_packet)
             self.assertIn("manifest was missing", str(saved[0]["error"]))
 
+    def test_repeated_directory_scans_see_new_recordings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = RecordingStore(root, now=FixedTime())
+            self.assertEqual(store.list_saved(), [])
+            recording_id = "20260711T120000Z-rare-album-abcdef"
+            (root / f"{recording_id}.wav").write_bytes(wav_header(DEFAULT_FORMAT.payload_bytes) + payload(123))
+
+            store.recover()
+
+            self.assertEqual(len(store.list_saved()), 1)
+
     def test_store_refuses_a_symlink_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

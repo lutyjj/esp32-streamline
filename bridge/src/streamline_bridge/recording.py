@@ -573,16 +573,21 @@ class RecordingStore:
 
     def _entry_names(self, *, prefix: str = "", suffix: str) -> list[str]:
         names: list[str] = []
-        with os.scandir(self._directory) as entries:
-            for index, entry in enumerate(entries):
-                if index >= MAX_STORE_SCAN_ENTRIES:
-                    break
-                if (
-                    entry.name.startswith(prefix)
-                    and entry.name.endswith(suffix)
-                    and entry.is_file(follow_symlinks=False)
-                ):
-                    names.append(entry.name)
+        flags = os.O_RDONLY | _os_flag("O_DIRECTORY") | _os_flag("O_NOFOLLOW") | _os_flag("O_CLOEXEC")
+        directory = os.open(".", flags, dir_fd=self._directory)
+        try:
+            with os.scandir(directory) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= MAX_STORE_SCAN_ENTRIES:
+                        break
+                    if (
+                        entry.name.startswith(prefix)
+                        and entry.name.endswith(suffix)
+                        and entry.is_file(follow_symlinks=False)
+                    ):
+                        names.append(entry.name)
+        finally:
+            os.close(directory)
         return names
 
     def _sync(self) -> None:

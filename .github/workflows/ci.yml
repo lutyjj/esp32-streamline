@@ -26,8 +26,8 @@ jobs:
       components: ${{ steps.matrix.outputs.components }}
       firmware: ${{ steps.filter.outputs.firmware }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: dorny/paths-filter@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         id: filter
         with:
           # A change to the shared build entrypoints re-runs every component.
@@ -53,6 +53,7 @@ jobs:
               - 'ha-addon/**'
               - 'repository.yaml'
               - 'bridge/pyproject.toml'
+              - 'bridge/uv.lock'
               - 'bridge/src/**'
               - 'bridge/tests/**'
             firmware:
@@ -71,20 +72,24 @@ jobs:
   checks:
     name: ${{ matrix.component }}
     needs: changes
-    if: ${{ needs.changes.outputs.components != '[]' }}
+    if: >-
+      needs.changes.outputs.components != '[]' &&
+      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         component: ${{ fromJSON(needs.changes.outputs.components) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - run: make ${{ matrix.component }}-check
 
   firmware:
     name: Firmware (clippy · test · release build)
     needs: changes
-    if: ${{ needs.changes.outputs.firmware == 'true' }}
+    if: >-
+      needs.changes.outputs.firmware == 'true' &&
+      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
     runs-on: ubuntu-latest
     env:
       CONTAINER_USER: 0:0
@@ -92,7 +97,7 @@ jobs:
       FIRMWARE_CARGO_CACHE_PATH: firmware/streamline/.cargo-home
       FIRMWARE_EMBUILD_CACHE_PATH: firmware/streamline/.embuild
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       # esp-idf-sys compiles the whole ESP-IDF into .embuild (~4 GB); it only
       # changes when the toolchain or esp-idf-sys version does, so it gets a
@@ -102,14 +107,14 @@ jobs:
       # ~6 min cold build into ~1-2 min. Bump the v1 prefix to invalidate keys.
       - name: Restore ESP-IDF build (.embuild)
         id: embuild
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
       - name: Restore firmware Cargo home
         id: cargo-home
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
@@ -141,14 +146,14 @@ jobs:
 
       - name: Save ESP-IDF build (.embuild)
         if: ${{ success() && steps.embuild.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
       - name: Save firmware Cargo home
         if: ${{ success() && steps.cargo-home.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
@@ -158,7 +163,12 @@ jobs:
     if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Set up QEMU for cross-architecture builds
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
       - run: make release-verify
 
   # Single stable status the whole workflow rolls up into. Mark THIS as the

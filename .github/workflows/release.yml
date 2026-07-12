@@ -1,8 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  # Promotion dispatches this workflow at the verified release tag. Do not
+  # publish directly from an arbitrary tag push: that could bypass promotion.
   workflow_dispatch:
 
 permissions:
@@ -23,10 +23,11 @@ jobs:
       FIRMWARE_CARGO_CACHE_PATH: firmware/streamline/.cargo-home
       FIRMWARE_EMBUILD_CACHE_PATH: firmware/streamline/.embuild
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           # git-cliff needs full history and tags to render the release notes.
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Derive and validate release version
         id: version
@@ -36,16 +37,19 @@ jobs:
           make changelog-check VERSION="$version"
           printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+
       # Restore-only: CI owns these caches (see ci.yml); reusing them turns the
       # cold ESP-IDF + cargo build into an incremental one.
       - name: Restore ESP-IDF build (.embuild)
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
           key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
       - name: Restore firmware Cargo home
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
@@ -61,9 +65,9 @@ jobs:
             fi
           done
 
-      - name: Build release deliverables
+      - name: Build release assets
         run: |
-          make release-verify \
+          make release-package \
             VERSION=${{ steps.version.outputs.value }} \
             BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
@@ -78,17 +82,14 @@ jobs:
           done
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Publish container images
         env:
@@ -130,7 +131,9 @@ jobs:
           # latest stable release.
           prerelease=
           case "$VERSION" in *-*) prerelease=--prerelease ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/firmware/* --notes-file release-notes.md $prerelease
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            dist/firmware/* --notes-file release-notes.md $prerelease
 
   # Refresh the GitHub Pages WebFlasher so it serves the firmware just released.
   # Chained explicitly because releases created with GITHUB_TOKEN don't emit a

@@ -109,12 +109,13 @@ Makefile, and a filter entry in `.github/workflows/ci.yml`.
 
 Every component builds standalone: its Dockerfile starts `FROM` a public
 image and its pins live in its own files. Accept small pin duplication —
-Dependabot refreshes it. Do not introduce local base images or hidden include
-chains; a contributor must understand any one component without tracing build
-plumbing. Deliberate exceptions own their wiring locally: the firmware embeds
-the console's built `dist/index.html`, so firmware targets build the console
-first; the Home Assistant add-on packages `bridge/`, so `ha-addon/Makefile`
-builds its image from the repository root.
+Dependabot refreshes it according to the dependency boundary in
+[`docs/architecture.md`](docs/architecture.md#components). Do not introduce
+local base images or hidden include chains; a contributor must understand any
+one component without tracing build plumbing. Deliberate exceptions own their
+wiring locally: the firmware embeds the console's built `dist/index.html`, so
+firmware targets build the console first; the Home Assistant add-on packages
+`bridge/`, so `ha-addon/Makefile` builds its image from the repository root.
 
 ## No unchecked code
 

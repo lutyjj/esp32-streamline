@@ -6,6 +6,7 @@ import threading
 from typing import TYPE_CHECKING
 
 from streamline_bridge.fanout import ClientFanout, ClientStream
+from streamline_bridge.levels import AudioLevels
 from streamline_bridge.packet_tap import PacketSink, PacketTapFanout
 from streamline_bridge.playout import Clock, PlayoutBuffer, PlayoutWorker
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
@@ -37,14 +38,17 @@ class AudioPipeline:
         now = clock.time if clock is not None else None
         self.clients = ClientFanout(max_client_chunks, now=now) if now is not None else ClientFanout(max_client_chunks)
         self.packet_taps = PacketTapFanout()
+        self.levels = AudioLevels()
         if start_worker:
             threading.Thread(target=PlayoutWorker(self.playout, self.clients.publish, clock).run, daemon=True).start()
 
     def reset_source_session(self) -> None:
         self.playout.reset_source_session()
+        self.levels.reset()
 
     def ingest(self, seq: int, payload: bytes) -> None:
         self.playout.ingest(seq, payload)
+        self.levels.update(payload)
         self.packet_taps.publish(seq, payload)
 
     def note_tcp_connect(self) -> None:
@@ -59,6 +63,7 @@ class AudioPipeline:
     def snapshot(self) -> dict[str, object]:
         data = self.playout.snapshot()
         data.update(self.clients.snapshot())
+        data["levels"] = self.levels.snapshot()
         return data
 
     def register_client(self, remote_addr: str, path: str, client_socket: socket.socket) -> ClientStream:

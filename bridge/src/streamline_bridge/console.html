@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="ingress-base" content="__INGRESS_BASE__">
-  <title>StreamLine recordings</title>
+  <title>StreamLine bridge</title>
   <style nonce="__CSP_NONCE__">
     /* StreamLine bridge console. Shares the device console design system:
        one set of tokens, one button height with three variants, one label
-       voice. Dark by identity — this is an audio appliance console. */
+       voice. Dark by identity — this is an audio appliance console. Sources
+       is the open live view; recordings is one token-gated section. */
     :root {
       color-scheme: dark;
       --bg: #101214;
@@ -70,16 +71,20 @@
     .notice { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--surface); color: var(--muted); padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
     .notice.error { border-left-color: var(--bad); color: #ffd5d5; }
 
-    /* ---------- Cards ---------- */
+    /* ---------- Groups and cards ---------- */
+    .stack { display: grid; gap: 20px; }
+    .group { display: grid; gap: 12px; }
+    .grouplead { margin: -2px 0 2px; color: var(--muted); font-size: 13px; }
     .card { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 10px; padding: 18px; }
     .cardstack { display: grid; gap: 14px; }
-    .card > h2 { margin: 0 0 4px; font-size: 15px; font-weight: 650; }
+    .card > h3 { margin: 0 0 4px; font-size: 15px; font-weight: 650; }
     .card .lead { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
     .fine { margin: 12px 0 0; color: var(--faint); font-size: 11.5px; line-height: 1.55; }
     .eyebrow { color: var(--faint); font-size: 10.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 0 0 12px; }
-    .section-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+    .section-head h2 { margin: 0; font-size: 16px; font-weight: 700; }
+    .section-head h3 { margin: 0; font-size: 15px; font-weight: 650; }
 
     /* ---------- Forms ---------- */
     .formgrid { display: grid; gap: 14px 16px; }
@@ -113,24 +118,43 @@
     .tile .val { font: 600 15px / 1.3 var(--sans); }
     .tile .sub { margin-top: 4px; color: var(--muted); font: 12px var(--mono); }
 
-    /* ---------- Recording list ---------- */
+    /* ---------- Source and recording cards ---------- */
     .list { display: grid; gap: 10px; }
+    .source-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .source-head h3 { margin: 0; font: 650 14px var(--mono); overflow-wrap: anywhere; }
+    .streamrow { display: flex; align-items: baseline; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .streamlabel { color: var(--faint); font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; }
+    .stream { user-select: all; overflow-wrap: anywhere; }
+    .meter { display: grid; gap: 7px; margin-top: 14px; }
+    .meter-head { display: flex; justify-content: space-between; color: var(--faint); font: 10.5px var(--mono); }
+    .meterrow { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; }
+    .meterrow .chn { color: var(--muted); font: 600 11px var(--mono); text-align: center; }
+    .track { position: relative; height: 14px; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--inset); }
+    .track::before, .track .fill { position: absolute; inset: 0; content: ""; background: linear-gradient(90deg, #4f8f63 0 78%, #c8963e 78% 94%, #c05548 94%); }
+    .track::before { opacity: 0.13; }
+    .track .fill { clip-path: inset(0 var(--empty) 0 0); }
+    .peak { position: absolute; inset-block: 0; left: calc(var(--peak) - 1px); width: 2px; background: #dbe6f2; }
+    .meter-value { min-width: 58px; color: var(--muted); font: 11px var(--mono); text-align: right; }
     .recording { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 10px; padding: 14px 16px; }
     .recording h3 { margin: 0 0 5px; font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
-    .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font: 12.5px var(--mono); }
+    .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; color: var(--muted); font: 12.5px var(--mono); }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .state-actions { margin-bottom: 8px; }
     .recording-error { margin-top: 7px; color: var(--warn); font-size: 12.5px; }
-    .empty { color: var(--muted); padding: 14px 0; font-size: 13px; }
-    .pill { display: inline-flex; align-items: center; border: 1px solid var(--line-soft); border-radius: 999px; padding: 2px 9px; color: var(--muted); font: 650 11px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; }
+    .empty { color: var(--muted); padding: 14px 16px; font-size: 13px; border: 1px dashed var(--line-soft); border-radius: 10px; }
+    .pill { display: inline-flex; align-items: center; border: 1px solid var(--line-soft); border-radius: 999px; padding: 2px 9px; color: var(--muted); font: 650 11px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+    .pill.disconnected { color: var(--faint); }
     .pill.recording { color: var(--bad); border-color: #6b3434; }
-    .pill.waiting-for-audio, .pill.interrupted { color: var(--warn); border-color: #6b5a2a; }
-    .pill.finalizing { color: var(--accent); border-color: var(--primary-line); }
-    .pill.complete { color: var(--good); border-color: #2f5d47; }
+    .pill.waiting-for-audio, .pill.interrupted, .pill.pending { color: var(--warn); border-color: #6b5a2a; }
+    .pill.finalizing, .pill.http-selected { color: var(--accent); border-color: var(--primary-line); }
+    .pill.complete, .pill.connected { color: var(--good); border-color: #2f5d47; }
+    .pill.allowlisted { color: var(--muted); }
     .pill.empty { color: var(--faint); }
 
     @media (prefers-reduced-motion: no-preference) {
       .card, .notice, .recording { animation: panel-in 180ms var(--motion-ease) both; }
+      .track .fill { transition: clip-path 0.35s linear; }
+      .peak { transition: left 0.35s linear; }
       @keyframes panel-in { from { opacity: 0; transform: translateY(4px); } }
     }
     @media (max-width: 700px) {
@@ -150,7 +174,7 @@
     <header class="masthead">
       <div>
         <h1 class="wordmark">Stream<span>Line</span></h1>
-        <div class="devname">Bridge recordings</div>
+        <div class="devname">Bridge console</div>
         <div class="chips">
           <span class="chip"><span id="bridge-dot" class="statusdot"></span><span id="bridge-status">Checking…</span></span>
         </div>
@@ -164,61 +188,71 @@
 
     <div id="message" class="notice hidden" role="alert"></div>
 
-    <section id="disabled" class="card hidden">
-      <h2>Recording is off</h2>
-      <p class="lead">Configure a writable recording directory and a recording token, then restart the bridge. Live WAV streaming continues while recording is disabled.</p>
-      <p class="fine">Standalone: set <code>--recordings-dir</code> and <code>STREAMLINE_RECORDING_TOKEN</code>. Home Assistant: enable recordings in the add-on configuration and set its token.</p>
-    </section>
-
-    <section id="unlock" class="card hidden">
-      <h2>Unlock recordings</h2>
-      <p class="lead">Enter the recording token configured on this bridge. It stays in this browser tab.</p>
-      <form id="unlock-form" class="unlockform">
-        <input id="token" type="password" required autocomplete="current-password" placeholder="recording token">
-        <button class="btn primary" type="submit">Unlock</button>
-      </form>
-    </section>
-
-    <div id="workspace" class="cardstack hidden">
-      <div class="grid">
-        <section class="card">
-          <h2>New recording</h2>
-          <p class="lead">Start first, then play the source. The file begins with the first audio packet and stops at the last received packet. This is an analog recording, not a bit-perfect CD extraction.</p>
-          <form id="start-form" class="formgrid">
-            <div class="field">
-              <label for="source">Source</label>
-              <select id="source" required></select>
-              <div id="source-help" class="help"></div>
-            </div>
-            <div class="field">
-              <label for="title">Title</label>
-              <input id="title" maxlength="80" placeholder="Album, side, or track" required>
-            </div>
-            <div class="field field-action">
-              <button id="start" class="btn primary" type="submit">Start recording</button>
-            </div>
-          </form>
-        </section>
-        <section class="card">
-          <h2>Storage</h2>
-          <p class="lead">WAV uses about 11 MiB per minute.</p>
-          <div class="storagestrip">
-            <div class="tile"><div class="val" id="free">—</div><div class="sub">free</div></div>
-            <div class="tile"><div class="val">4 h</div><div class="sub">file limit</div></div>
-            <div class="tile"><div class="val">5 min</div><div class="sub">gap limit</div></div>
-          </div>
-          <p class="fine">Sequence gaps become silence and stay visible in each result. A source restart or resource limit preserves the partial file as interrupted. Download completed recordings you want to keep; bridge storage is working storage.</p>
-        </section>
-      </div>
-
-      <section class="card">
-        <div class="section-head"><h2>Active</h2><span class="eyebrow">Updates every second</span></div>
-        <div id="active" class="list"></div>
+    <div class="stack">
+      <section class="group">
+        <div class="section-head"><h2>Sources</h2><span class="eyebrow">Live · updates every second</span></div>
+        <p class="grouplead">Devices streaming PCM to this bridge. Add a source's stream URL to Music Assistant to play it.</p>
+        <div id="sources" class="list"></div>
       </section>
 
-      <section class="card">
-        <div class="section-head"><h2>Saved</h2><span id="saved-count" class="eyebrow"></span></div>
-        <div id="saved" class="list"></div>
+      <section class="group">
+        <div class="section-head"><h2>Recordings</h2><span id="rec-badge" class="eyebrow"></span></div>
+
+        <div id="rec-disabled" class="card hidden">
+          <p class="lead">Recording is off. Configure a writable recording directory and a recording token, then restart the bridge. Live streaming continues while recording is disabled.</p>
+          <p class="fine">Standalone: set <code>--recordings-dir</code> and <code>STREAMLINE_RECORDING_TOKEN</code>. Home Assistant: enable recordings in the add-on configuration and set its token.</p>
+        </div>
+
+        <div id="rec-unlock" class="card hidden">
+          <p class="lead">Unlock with the recording token configured on this bridge to record, download, or delete files. It stays in this browser tab.</p>
+          <form id="unlock-form" class="unlockform">
+            <input id="token" type="password" required autocomplete="current-password" placeholder="recording token">
+            <button class="btn primary" type="submit">Unlock</button>
+          </form>
+        </div>
+
+        <div id="workspace" class="cardstack hidden">
+          <div class="grid">
+            <section class="card">
+              <h3>New recording</h3>
+              <p class="lead">Start first, then play the source. The file begins with the first audio packet and stops at the last received packet. This is an analog recording, not a bit-perfect CD extraction.</p>
+              <form id="start-form" class="formgrid">
+                <div class="field">
+                  <label for="source">Source</label>
+                  <select id="source" required></select>
+                  <div id="source-help" class="help"></div>
+                </div>
+                <div class="field">
+                  <label for="title">Title</label>
+                  <input id="title" maxlength="80" placeholder="Album, side, or track" required>
+                </div>
+                <div class="field field-action">
+                  <button id="start" class="btn primary" type="submit">Start recording</button>
+                </div>
+              </form>
+            </section>
+            <section class="card">
+              <h3>Storage</h3>
+              <p class="lead">WAV uses about 11 MiB per minute.</p>
+              <div class="storagestrip">
+                <div class="tile"><div class="val" id="free">—</div><div class="sub">free</div></div>
+                <div class="tile"><div class="val">4 h</div><div class="sub">file limit</div></div>
+                <div class="tile"><div class="val">5 min</div><div class="sub">gap limit</div></div>
+              </div>
+              <p class="fine">Sequence gaps become silence and stay visible in each result. A source restart or resource limit preserves the partial file as interrupted. Download completed recordings you want to keep; bridge storage is working storage.</p>
+            </section>
+          </div>
+
+          <section class="card">
+            <div class="section-head"><h3>Active</h3><span class="eyebrow">Updates every second</span></div>
+            <div id="active" class="list"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-head"><h3>Saved</h3><span id="saved-count" class="eyebrow"></span></div>
+            <div id="saved" class="list"></div>
+          </section>
+        </div>
       </section>
     </div>
   </main>
@@ -233,7 +267,9 @@
     })();
     const url = (path) => ROOT + path;
     let token = sessionStorage.getItem(TOKEN_KEY) || "";
-    let pollTimer;
+    let recState = "checking";
+    let recordingTimer;
+    let statusTimer;
 
     const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[char]);
     const formatBytes = (bytes) => {
@@ -250,6 +286,8 @@
       const secs = total % 60;
       return hours ? `${hours}:${String(minutes).padStart(2,"0")}:${String(secs).padStart(2,"0")}` : `${minutes}:${String(secs).padStart(2,"0")}`;
     };
+    const dbfs = (value) => value ? (20 * Math.log10(value / 32768)).toFixed(1) : "-inf";
+    const meterPct = (value) => value ? Math.max(0, Math.min(100, ((20 * Math.log10(value / 32768) + 60) / 60) * 100)) : 0;
     const showMessage = (text, error = false) => {
       $("message").textContent = text;
       $("message").className = `notice${error ? " error" : ""}`;
@@ -261,15 +299,20 @@
       $("bridge-dot").className = `statusdot${state ? ` ${state}` : ""}`;
     }
 
-    function setLocked(locked) {
+    // Recordings is one gated section: off, locked, or unlocked. The masthead
+    // lock chip reflects that state and locks nothing else on the page.
+    function setRecState(state) {
+      recState = state;
+      $("rec-disabled").classList.toggle("hidden", state !== "disabled");
+      $("rec-unlock").classList.toggle("hidden", state !== "locked");
+      $("workspace").classList.toggle("hidden", state !== "unlocked");
       const chip = $("lock");
-      chip.classList.remove("hidden");
-      chip.classList.toggle("locked", locked);
-      chip.classList.toggle("unlocked", !locked);
-      $("lock-label").textContent = locked ? "Locked" : "Unlocked";
-      $("lock-sub").textContent = locked ? "· enter token below" : "· click to lock";
-      $("unlock").classList.toggle("hidden", !locked);
-      $("workspace").classList.toggle("hidden", locked);
+      chip.classList.toggle("hidden", state !== "locked" && state !== "unlocked");
+      chip.classList.toggle("locked", state !== "unlocked");
+      chip.classList.toggle("unlocked", state === "unlocked");
+      $("lock-label").textContent = state === "unlocked" ? "Unlocked" : "Locked";
+      $("lock-sub").textContent = state === "unlocked" ? "· click to lock" : "· recordings";
+      $("rec-badge").textContent = state === "disabled" ? "off" : state;
     }
 
     async function request(path, options = {}) {
@@ -287,34 +330,60 @@
     function lock() {
       token = "";
       sessionStorage.removeItem(TOKEN_KEY);
-      clearTimeout(pollTimer);
+      clearTimeout(recordingTimer);
       $("token").value = "";
-      setLocked(true);
+      setRecState("locked");
     }
 
-    async function refresh() {
+    async function pollStatus() {
       try {
-        const [recordings, status] = await Promise.all([request("/api/recordings"), fetch(url("/status"), {cache:"no-store"}).then((response) => response.json())]);
+        const status = await fetch(url("/status"), {cache: "no-store"}).then((response) => response.json());
         setBridgeStatus(`Bridge ${status.bridge_version}`, "good");
-        renderSources(status.sources || {});
-        renderRecordings(recordings);
-      } catch (error) {
-        showMessage(error.message, true);
+        renderSourceList(status.sources || {});
+        renderSourceOptions(status.sources || {});
+      } catch {
+        setBridgeStatus("Bridge unavailable", "bad");
       }
+      statusTimer = setTimeout(pollStatus, 1000);
     }
 
-    function renderSources(sources) {
-      const previous = $("source").value;
+    function sourceCard(ip, source) {
+      const life = source.lifecycle || {};
+      const state = escapeHtml(life.state || "known");
+      const received = `${formatDuration((source.frames || 0) / (source.rate || 48000))} · ${formatBytes(source.bytes || 0)}`;
+      const clients = source.clients || 0;
+      const recordings = life.recording_sessions || 0;
+      const listeners = `${clients} listener${clients === 1 ? "" : "s"}${recordings ? ` · ${recordings} recording` : ""}`;
+      const health = (source.lost || source.underruns) ? `${(source.lost || 0).toLocaleString()} lost` : "clean";
+      const stream = `http://${location.hostname}:8088/streamline.wav?source=${encodeURIComponent(ip)}`;
+      const levels = source.levels || {};
+      const meter = [
+        ["L", levels.rms_left || 0, levels.peak_left || 0],
+        ["R", levels.rms_right || 0, levels.peak_right || 0],
+      ].map(([channel, rms, peak]) => `<div class="meterrow"><span class="chn">${channel}</span><div class="track" style="--empty:${100 - meterPct(rms)}%;--peak:${meterPct(peak)}%"><div class="fill"></div><div class="peak"></div></div><span class="meter-value">${dbfs(rms)} dBFS</span></div>`).join("");
+      return `<article class="card"><div class="source-head"><h3>${escapeHtml(ip)}</h3><span class="pill ${state}">${state.replaceAll("-", " ")}</span></div><div class="meta"><span>Received ${received}</span><span>${listeners}</span><span>${health}</span><span>up ${formatDuration(source.uptime_seconds)}</span></div><div class="meter"><div class="meter-head"><span>Live level</span><span>RMS · peak marker</span></div>${meter}</div><div class="streamrow"><span class="streamlabel">Stream URL</span><code class="stream">${escapeHtml(stream)}</code></div></article>`;
+    }
+
+    function renderSourceList(sources) {
       const entries = Object.entries(sources).filter(([key]) => key !== "pending");
-      $("source").replaceChildren(...entries.map(([key, value]) => {
+      $("sources").innerHTML = entries.length
+        ? entries.map(([ip, source]) => sourceCard(ip, source)).join("")
+        : '<div class="empty">No source is connected. Point a StreamLine device at this bridge on TCP port 39000 and start playback.</div>';
+    }
+
+    function renderSourceOptions(sources) {
+      const select = $("source");
+      const previous = select.value;
+      const entries = Object.entries(sources).filter(([key]) => key !== "pending");
+      select.replaceChildren(...entries.map(([key, value]) => {
         const option = document.createElement("option");
         option.value = key;
         option.textContent = `${key} · ${value.lifecycle?.state || "known"}`;
         return option;
       }));
-      if (entries.some(([key]) => key === previous)) $("source").value = previous;
+      if (entries.some(([key]) => key === previous)) select.value = previous;
       $("start").disabled = entries.length === 0;
-      $("source-help").textContent = entries.length ? "Choose the device feeding this bridge." : "No source is known. Start playback once or add the device to the source allowlist.";
+      $("source-help").textContent = entries.length ? "Choose the device feeding this bridge." : "No source is known yet.";
     }
 
     function recordingCard(item, active) {
@@ -334,27 +403,31 @@
       $("saved-count").textContent = `${data.saved.length} file${data.saved.length === 1 ? "" : "s"}`;
     }
 
+    async function refreshRecordings() {
+      clearTimeout(recordingTimer);
+      try {
+        const recordings = await request("/api/recordings");
+        renderRecordings(recordings);
+        if (recordings.active.length) recordingTimer = setTimeout(refreshRecordings, 1000);
+      } catch (error) {
+        showMessage(error.message, true);
+      }
+    }
+
     async function unlock(candidate) {
       token = candidate;
       try {
         await request("/api/recordings");
       } catch (error) {
         token = "";
-        setLocked(true);
+        setRecState("locked");
         showMessage(error.message, true);
         return;
       }
       sessionStorage.setItem(TOKEN_KEY, token);
-      setLocked(false);
+      setRecState("unlocked");
       clearMessage();
-      await refresh();
-      clearTimeout(pollTimer);
-      pollTimer = setTimeout(poll, 1000);
-    }
-
-    async function poll() {
-      await refresh();
-      if (token) pollTimer = setTimeout(poll, 1000);
+      await refreshRecordings();
     }
 
     $("unlock-form").addEventListener("submit", (event) => { event.preventDefault(); unlock($("token").value); });
@@ -368,7 +441,7 @@
         await request("/api/recordings", {method:"POST", body:JSON.stringify({source:$("source").value, title:$("title").value})});
         $("title").value = "";
         showMessage("Ready. Start playback; the file begins when audio arrives.");
-        await refresh();
+        await refreshRecordings();
       } catch (error) { showMessage(error.message, true); }
     });
     $("workspace").addEventListener("click", async (event) => {
@@ -388,19 +461,18 @@
           await request(`/api/recordings/${id}`, {method:"DELETE"});
           showMessage("Recording deleted.");
         }
-        await refresh();
+        await refreshRecordings();
       } catch (error) { showMessage(error.message, true); }
       finally { button.disabled = false; }
     });
 
+    pollStatus();
     (async () => {
       try {
         const capabilities = await fetch(url("/api/recordings/capabilities"), {cache:"no-store"}).then((response) => response.json());
-        setBridgeStatus("Bridge online", "good");
-        if (!capabilities.enabled) { $("disabled").classList.remove("hidden"); return; }
-        if (token) await unlock(token); else setLocked(true);
-      } catch (error) {
-        setBridgeStatus("Bridge unavailable", "bad");
+        if (!capabilities.enabled) { setRecState("disabled"); return; }
+        if (token) await unlock(token); else setRecState("locked");
+      } catch {
         showMessage("The bridge did not answer. Check that it is running, then reload this page.", true);
       }
     })();

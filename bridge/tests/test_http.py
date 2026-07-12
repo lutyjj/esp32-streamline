@@ -80,7 +80,10 @@ class HttpAdapterTests(unittest.TestCase):
         self.assertFalse(json.loads(capabilities_body)["enabled"])
         self.assertEqual(recordings_page, 200)
         self.assertEqual(recordings_headers["Content-Type"], "text/html; charset=utf-8")
-        self.assertIn(b"Bridge recordings", recordings_body)
+        self.assertIn(b"Bridge console", recordings_body)
+        self.assertIn(b"Live level", recordings_body)
+        self.assertNotIn(b'if (recState === "unlocked") await refreshRecordings()', recordings_body)
+        self.assertIn(b"if (recordings.active.length)", recordings_body)
         self.assertIn(b"Download completed recordings you want to keep", recordings_body)
         csp = recordings_headers["Content-Security-Policy"]
         self.assertNotIn("unsafe-inline", csp)
@@ -92,7 +95,17 @@ class HttpAdapterTests(unittest.TestCase):
         status, headers, body = self.request("/")
         self.assertEqual(status, 200)
         self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
-        self.assertIn(b"Bridge recordings", body)
+        self.assertIn(b"Bridge console", body)
+
+    def test_status_exposes_latest_per_source_audio_levels(self) -> None:
+        source = self.sources.acquire("192.0.2.10")
+        source.hub.ingest(1, bytes.fromhex("10270000f0d80080"))
+
+        status, _, body = self.request("/status")
+        levels = json.loads(body)["sources"]["192.0.2.10"]["levels"]
+
+        self.assertEqual(status, 200)
+        self.assertEqual(levels, {"peak_left": 10000, "peak_right": 32768, "rms_left": 10000, "rms_right": 23170})
 
     def test_ingress_path_header_scopes_console_requests(self) -> None:
         status, _, body = self.request("/", {"X-Ingress-Path": "/api/hassio_ingress/abc-1_2"})

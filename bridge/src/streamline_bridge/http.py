@@ -30,7 +30,7 @@ HTTP_MAX_BATCH_CHUNKS = 64
 HTTP_MAX_JSON_BODY_BYTES = 4096
 DEFAULT_MAX_HTTP_CONNECTIONS = 32
 DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS = 10.0
-RECORDINGS_PAGE = files("streamline_bridge").joinpath("recordings.html").read_bytes()
+CONSOLE_PAGE = files("streamline_bridge").joinpath("console.html").read_bytes()
 # Home Assistant ingress forwards requests with an X-Ingress-Path prefix the
 # console must resolve its own requests against. Accept only a plain URL path so
 # a spoofed header on the published port cannot inject markup into the page.
@@ -232,7 +232,7 @@ def make_handler(
 
         def _send_recordings_page(self) -> None:
             nonce = secrets.token_urlsafe(18)
-            body = RECORDINGS_PAGE.replace(b"__CSP_NONCE__", nonce.encode()).replace(
+            body = CONSOLE_PAGE.replace(b"__CSP_NONCE__", nonce.encode()).replace(
                 b"__INGRESS_BASE__", self._ingress_base().encode()
             )
             self.send_response(HTTPStatus.OK)

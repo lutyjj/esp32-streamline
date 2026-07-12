@@ -504,7 +504,8 @@ body.locked .gated :is(form, .cardfoot) {
   flex: none;
   background: var(--faint);
 }
-.healthchip .statusdot {
+.healthchip .statusdot,
+.chip .statusdot {
   width: 6px;
   height: 6px;
 }

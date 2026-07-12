@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import re
 import secrets
 import struct
 import threading
@@ -30,6 +31,10 @@ HTTP_MAX_JSON_BODY_BYTES = 4096
 DEFAULT_MAX_HTTP_CONNECTIONS = 32
 DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS = 10.0
 RECORDINGS_PAGE = files("streamline_bridge").joinpath("recordings.html").read_bytes()
+# Home Assistant ingress forwards requests with an X-Ingress-Path prefix the
+# console must resolve its own requests against. Accept only a plain URL path so
+# a spoofed header on the published port cannot inject markup into the page.
+INGRESS_BASE_PATTERN = re.compile(r"(?:/[A-Za-z0-9._~-]+)*")
 
 
 class BoundedThreadingHTTPServer(ThreadingHTTPServer):
@@ -136,9 +141,9 @@ def make_handler(
 
         def do_GET(self) -> None:
             url = urlsplit(self.path)
-            if url.path in {"/", "/status"}:
+            if url.path == "/status":
                 self._send_json({"bridge_version": bridge_version, "sources": sources.snapshot()})
-            elif url.path in {"/recordings", "/recordings/"}:
+            elif url.path in {"/", "/recordings", "/recordings/"}:
                 self._send_recordings_page()
             elif url.path == "/health":
                 self._send_text("ok\n")
@@ -221,9 +226,15 @@ def make_handler(
             self.end_headers()
             self.wfile.write(body)
 
+        def _ingress_base(self) -> str:
+            base = self.headers.get("X-Ingress-Path", "")
+            return base if INGRESS_BASE_PATTERN.fullmatch(base) else ""
+
         def _send_recordings_page(self) -> None:
             nonce = secrets.token_urlsafe(18)
-            body = RECORDINGS_PAGE.replace(b"__CSP_NONCE__", nonce.encode())
+            body = RECORDINGS_PAGE.replace(b"__CSP_NONCE__", nonce.encode()).replace(
+                b"__INGRESS_BASE__", self._ingress_base().encode()
+            )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))

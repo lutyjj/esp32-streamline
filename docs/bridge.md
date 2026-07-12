@@ -13,7 +13,7 @@ a restart or identify a device by hostname.
 | `/streamline.wav?source=<ipv4>` | Live WAV from an existing or allowlisted source. |
 | `/status` | Bridge version, per-source playout/client statistics, and lifecycle state. |
 | `/health` | `200 OK` with `ok` while the HTTP process is running. |
-| `/recordings` | Bridge recording page. It reports that recording is disabled when no directory is configured. |
+| `/` and `/recordings` | Recording console. It reports that recording is disabled when no directory is configured. The Home Assistant add-on serves it through ingress. |
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 
 When more than one source exists, an unqualified `/streamline.wav` request
@@ -60,8 +60,9 @@ Recording is disabled unless the deployment supplies writable storage. Set
 `STREAMLINE_RECORDING_TOKEN` of at least 16 characters for a standalone
 bridge. For Compose, set the directory to `/recordings`; its named volume owns
 the files. Home Assistant users enable recordings and set the token in the
-add-on options. Open `http://<bridge-host>:8088/recordings` to record,
-download, or delete files.
+add-on options. Open `http://<bridge-host>:8088/` (or `/recordings`) to record,
+download, or delete files. Home Assistant opens the same console through the
+add-on's ingress Web UI.
 
 [Lossless recordings](recordings.md) defines the user flow, API, resource
 limits, timeline reconstruction, and storage lifecycle.

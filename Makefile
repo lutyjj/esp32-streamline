@@ -72,7 +72,7 @@ clean: firmware-clean
 bridge-check: bridge-lock-check bridge-lint bridge-test bridge-image ;
 console-check: console-lint console-test console-build ;
 firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-build ;
-tools-check: tools-lock-check tools-lint tools-test tools-image ;
+tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;
 

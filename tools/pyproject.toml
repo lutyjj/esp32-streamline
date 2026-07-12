@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 streamline-analyze = "streamline_tools.analyze_capture:main"
 streamline-capture = "streamline_tools.serial_capture:main"
+streamline-smoke = "streamline_tools.smoke:main"
 
 [dependency-groups]
 dev = [

@@ -1,0 +1,3 @@
+offline = true
+include_fragments = "anchor-only"
+exclude_path = ["dist", "firmware/streamline/target", "node_modules"]

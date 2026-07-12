@@ -1,0 +1,100 @@
+name: Firmware cache
+description: Restore, reclaim, or save the ESP-IDF and Cargo caches used by firmware builds.
+
+inputs:
+  operation:
+    description: One of restore, reclaim, or save.
+    required: true
+  container-user:
+    description: UID:GID that runs the firmware toolchain container.
+    required: false
+    default: 0:0
+  cargo-cache-path:
+    description: Repository-relative Cargo home cache path.
+    required: true
+  embuild-cache-path:
+    description: Repository-relative ESP-IDF build cache path.
+    required: true
+  embuild-cache-hit:
+    description: Cache hit output from this action's restore operation.
+    required: false
+    default: ''
+  cargo-cache-hit:
+    description: Cache hit output from this action's restore operation.
+    required: false
+    default: ''
+
+outputs:
+  embuild-cache-hit:
+    description: Whether the ESP-IDF cache restored an exact key.
+    value: ${{ steps.embuild.outputs.cache-hit }}
+  cargo-cache-hit:
+    description: Whether the Cargo home cache restored an exact key.
+    value: ${{ steps.cargo.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # esp-idf-sys builds ESP-IDF into .embuild. Its key changes only when a
+    # toolchain or ESP-IDF input changes, while Cargo restores its downloads
+    # through a narrower key. CI saves only after a successful build, so a
+    # cancelled or failed job cannot publish a partial ESP-IDF tree.
+    - name: Restore ESP-IDF build
+      id: embuild
+      if: inputs.operation == 'restore'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ inputs.embuild-cache-path }}
+        key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
+
+    - name: Restore firmware Cargo home
+      id: cargo
+      if: inputs.operation == 'restore'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ inputs.cargo-cache-path }}
+        key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}
+        restore-keys: |
+          fw-cargo-v1-
+
+    - name: Hand firmware caches to toolchain container
+      if: inputs.operation == 'restore'
+      shell: bash
+      env:
+        CARGO_CACHE_PATH: ${{ inputs.cargo-cache-path }}
+        EMBUILD_CACHE_PATH: ${{ inputs.embuild-cache-path }}
+        CONTAINER_USER: ${{ inputs.container-user }}
+      run: |
+        mkdir -p "$CARGO_CACHE_PATH"
+        for path in "$EMBUILD_CACHE_PATH" "$CARGO_CACHE_PATH"; do
+          if [ -e "$path" ]; then
+            sudo chown -R "$CONTAINER_USER" "$path"
+          fi
+        done
+
+    - name: Reclaim firmware caches
+      if: inputs.operation == 'reclaim'
+      shell: bash
+      env:
+        CARGO_CACHE_PATH: ${{ inputs.cargo-cache-path }}
+        EMBUILD_CACHE_PATH: ${{ inputs.embuild-cache-path }}
+      run: |
+        for path in "$EMBUILD_CACHE_PATH" "$CARGO_CACHE_PATH"; do
+          if [ -e "$path" ]; then
+            sudo chown -R "$(id -u):$(id -g)" "$path"
+          fi
+        done
+
+    - name: Save ESP-IDF build
+      if: inputs.operation == 'save' && inputs.embuild-cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ inputs.embuild-cache-path }}
+        key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
+
+    - name: Save firmware Cargo home
+      if: inputs.operation == 'save' && inputs.cargo-cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ inputs.cargo-cache-path }}
+        key: fw-cargo-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml') }}

@@ -61,7 +61,7 @@ in desktop Chrome or Edge, connect the board over USB, and click
 **Connect & Install**.
 
 **Terminal** — download the latest `streamline-X.Y.Z-full.bin` from
-[Releases](../../releases), then flash it with
+[Releases](https://github.com/lutyjj/esp32-streamline/releases), then flash it with
 [esptool](https://docs.espressif.com/projects/esptool/) (`pip install esptool`):
 
 ```sh
@@ -165,6 +165,7 @@ and `make`. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and the PR flow;
 ```sh
 make help                                 # all targets
 make lint && make test                    # local baseline before a PR
+make repository-check                      # docs, metadata, and release versions
 make firmware-build                       # cross-compile the firmware
 make firmware-flash PORT=/dev/ttyUSB0     # flash from the host
 make firmware-monitor PORT=/dev/ttyUSB0   # interactive serial monitor

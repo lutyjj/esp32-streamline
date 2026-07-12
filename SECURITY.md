@@ -7,10 +7,10 @@ place, and the accepted risks before reporting.
 ## Reporting a vulnerability
 
 Report vulnerabilities privately through
-[GitHub Security Advisories](../../security/advisories/new). Do not open a
+[GitHub Security Advisories](https://github.com/lutyjj/esp32-streamline/security/advisories/new). Do not open a
 public issue for anything exploitable.
 
 ## Supported versions
 
-Only the [latest release](../../releases/latest) is supported; the firmware's
+Only the [latest release](https://github.com/lutyjj/esp32-streamline/releases/latest) is supported; the firmware's
 OTA update pulls it directly.

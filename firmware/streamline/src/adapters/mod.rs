@@ -8,6 +8,8 @@ pub mod http;
 pub mod i2s;
 pub mod mdns;
 pub mod nvs;
+#[cfg(feature = "qemu")]
+pub mod openeth;
 pub mod ota;
 pub mod pins;
 pub mod status_light;

@@ -12,6 +12,7 @@ import shutil
 import struct
 import threading
 import unicodedata
+import wave
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, TypedDict
@@ -330,6 +331,45 @@ class RecordingStore:
                     )
                 )
             except (OSError, RecordingError, ValueError):
+                continue
+        for wav_path in self.root.glob("*.wav"):
+            recording_id = wav_path.stem
+            try:
+                paths = self.paths(recording_id)
+                if paths.manifest.is_file():
+                    continue
+                with wave.open(str(wav_path), "rb") as recording:
+                    if (
+                        recording.getframerate(),
+                        recording.getnchannels(),
+                        recording.getsampwidth() * 8,
+                    ) != (self._format.rate, self._format.channels, self._format.bits):
+                        continue
+                    frames = recording.getnframes()
+                finished = isoformat(datetime.fromtimestamp(wav_path.stat().st_mtime, UTC))
+                self.save_manifest(
+                    RecordingManifest(
+                        1,
+                        recording_id,
+                        _title_from_id(recording_id),
+                        "unknown",
+                        "interrupted",
+                        finished,
+                        None,
+                        finished,
+                        self._format.rate,
+                        self._format.channels,
+                        self._format.bits,
+                        frames,
+                        frames * self._format.channels * self._format.bits // 8,
+                        frames / self._format.rate,
+                        0,
+                        0,
+                        "The recording manifest was missing. Check the audio before using it.",
+                        wav_path.name,
+                    )
+                )
+            except (OSError, RecordingError, ValueError, wave.Error):
                 continue
 
 

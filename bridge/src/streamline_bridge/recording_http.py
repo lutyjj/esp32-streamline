@@ -5,21 +5,27 @@ from __future__ import annotations
 import hmac
 import json
 import re
+import secrets
+import threading
+import time
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs
 
 from streamline_bridge.recording import RecordingError, recording_capabilities
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from streamline_bridge.recording import RecordingService
 
 RECORDINGS_PATH = "/api/recordings"
 CAPABILITIES_PATH = f"{RECORDINGS_PATH}/capabilities"
-RECORDING_ACTION = re.compile(r"^/api/recordings/([a-zA-Z0-9-]+)/(stop|file)$")
+RECORDING_ACTION = re.compile(r"^/api/recordings/([a-zA-Z0-9-]+)/(stop|file|download-ticket)$")
 RECORDING_ITEM = re.compile(r"^/api/recordings/([a-zA-Z0-9-]+)$")
+DOWNLOAD_TICKET_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -40,9 +46,17 @@ RecordingResponse = JsonResponse | FileResponse
 class RecordingHttpController:
     """Route recording requests without owning sockets or files."""
 
-    def __init__(self, service: RecordingService | None, token: str | None) -> None:
+    def __init__(
+        self,
+        service: RecordingService | None,
+        token: str | None,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._service = service
         self._token = token
+        self._monotonic = monotonic
+        self._ticket_lock = threading.Lock()
+        self._tickets: dict[str, tuple[str, float]] = {}
 
     def handle(
         self,
@@ -50,6 +64,7 @@ class RecordingHttpController:
         path: str,
         authorization: str | None,
         body: bytes = b"",
+        query: str = "",
     ) -> RecordingResponse | None:
         if path == CAPABILITIES_PATH:
             if method != "GET":
@@ -58,15 +73,24 @@ class RecordingHttpController:
             return JsonResponse(HTTPStatus.OK, capabilities)
         if path != RECORDINGS_PATH and not path.startswith(f"{RECORDINGS_PATH}/"):
             return None
+        action = RECORDING_ACTION.fullmatch(path)
+        if (
+            action is not None
+            and action.group(2) == "file"
+            and method == "GET"
+            and self._consume_download_ticket(action.group(1), query)
+        ):
+            if self._service is None:
+                return self._recording_disabled()
+            try:
+                return FileResponse(self._service.file(action.group(1)))
+            except RecordingError as exc:
+                return self._recording_error(exc)
         unauthorized = self._authorize(authorization)
         if unauthorized is not None:
             return unauthorized
         if self._service is None:
-            return self._error(
-                HTTPStatus.SERVICE_UNAVAILABLE,
-                "recording-disabled",
-                "Recording is disabled. Configure writable recording storage and restart the bridge.",
-            )
+            return self._recording_disabled()
         try:
             return self._handle_enabled(method, path, body)
         except RecordingError as exc:
@@ -92,6 +116,18 @@ class RecordingHttpController:
                 if method != "POST":
                     return self._method_not_allowed("POST")
                 return JsonResponse(HTTPStatus.OK, {"recording": self._service.stop(recording_id)})
+            if operation == "download-ticket":
+                if method != "POST":
+                    return self._method_not_allowed("POST")
+                self._service.file(recording_id)
+                ticket = self._issue_download_ticket(recording_id)
+                return JsonResponse(
+                    HTTPStatus.CREATED,
+                    {
+                        "url": f"{RECORDINGS_PATH}/{recording_id}/file?ticket={ticket}",
+                        "expires_in_seconds": DOWNLOAD_TICKET_SECONDS,
+                    },
+                )
             if method != "GET":
                 return self._method_not_allowed("GET")
             return FileResponse(self._service.file(recording_id))
@@ -104,9 +140,41 @@ class RecordingHttpController:
             return JsonResponse(HTTPStatus.OK, {"deleted": recording_id})
         return self._error(HTTPStatus.NOT_FOUND, "not-found", "Recording endpoint not found. Refresh the page.")
 
+    def _issue_download_ticket(self, recording_id: str) -> str:
+        ticket = secrets.token_urlsafe(24)
+        with self._ticket_lock:
+            self._discard_expired_tickets_locked()
+            self._tickets[ticket] = (recording_id, self._monotonic() + DOWNLOAD_TICKET_SECONDS)
+        return ticket
+
+    def _consume_download_ticket(self, recording_id: str, query: str) -> bool:
+        supplied = parse_qs(query).get("ticket", [""])[0]
+        if not supplied:
+            return False
+        with self._ticket_lock:
+            self._discard_expired_tickets_locked()
+            ticket = self._tickets.pop(supplied, None)
+        return ticket is not None and ticket[0] == recording_id
+
+    def _discard_expired_tickets_locked(self) -> None:
+        now = self._monotonic()
+        for ticket, (_, expires_at) in tuple(self._tickets.items()):
+            if expires_at <= now:
+                del self._tickets[ticket]
+
+    @staticmethod
+    def _recording_disabled() -> JsonResponse:
+        return RecordingHttpController._error(
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            "recording-disabled",
+            "Recording is disabled. Configure writable recording storage and restart the bridge.",
+        )
+
     def _authorize(self, authorization: str | None) -> JsonResponse | None:
         expected = self._token
-        supplied = authorization.removeprefix("Bearer ") if authorization is not None else ""
+        supplied = (
+            authorization.removeprefix("Bearer ") if authorization and authorization.startswith("Bearer ") else ""
+        )
         if expected and hmac.compare_digest(supplied.encode(), expected.encode()):
             return None
         return self._error(

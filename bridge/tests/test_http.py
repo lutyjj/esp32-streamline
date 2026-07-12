@@ -14,6 +14,7 @@ from streamline_bridge.http import make_handler, wav_header
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT
 from streamline_bridge.recording import RecordingService, RecordingStore
+from streamline_bridge.recording_http import JsonResponse, RecordingHttpController
 from streamline_bridge.sources import SourceRegistry
 
 
@@ -59,6 +60,7 @@ class HttpAdapterTests(unittest.TestCase):
         missing, _, missing_body = self.request("/streamline.wav?source=192.0.2.10")
         unknown, _, _ = self.request("/missing")
         capabilities, _, capabilities_body = self.request("/api/recordings/capabilities")
+        recordings_page, recordings_headers, recordings_body = self.request("/recordings")
         self.assertEqual((health, body), (200, b"ok\n"))
         self.assertEqual(status, 200)
         self.assertEqual(headers["Content-Type"], "application/json")
@@ -70,6 +72,9 @@ class HttpAdapterTests(unittest.TestCase):
         self.assertEqual(unknown, 404)
         self.assertEqual(capabilities, 200)
         self.assertFalse(json.loads(capabilities_body)["enabled"])
+        self.assertEqual(recordings_page, 200)
+        self.assertEqual(recordings_headers["Content-Type"], "text/html; charset=utf-8")
+        self.assertIn(b"Lossless recordings", recordings_body)
 
     def test_stream_cleanup_releases_http_source_lifecycle(self) -> None:
         source = self.sources.acquire("192.0.2.10")
@@ -141,6 +146,9 @@ class RecordingHttpTests(unittest.TestCase):
         self.assertEqual(wrong, 401)
         self.assertIn("Bearer", headers["WWW-Authenticate"])
         self.assertEqual(json.loads(body)["error"]["code"], "unauthorized")
+        raw_token = RecordingHttpController(self.recordings, self.token).handle("GET", "/api/recordings", self.token)
+        self.assertIsInstance(raw_token, JsonResponse)
+        self.assertEqual(cast("JsonResponse", raw_token).status, 401)
 
     def test_api_drives_record_download_and_delete_end_to_end(self) -> None:
         started_status, _, started_body = self.request(
@@ -150,7 +158,10 @@ class RecordingHttpTests(unittest.TestCase):
         self.source.hub.ingest(4, bytes(DEFAULT_FORMAT.payload_bytes))
         stopped_status, _, stopped_body = self.request("POST", f"/api/recordings/{started['id']}/stop")
         listed_status, _, listed_body = self.request("GET", "/api/recordings")
-        file_status, file_headers, file_body = self.request("GET", f"/api/recordings/{started['id']}/file")
+        ticket_status, _, ticket_body = self.request("POST", f"/api/recordings/{started['id']}/download-ticket")
+        ticket_url = json.loads(ticket_body)["url"]
+        file_status, file_headers, file_body = self.request("GET", ticket_url, token=None)
+        reused_ticket_status, _, _ = self.request("GET", ticket_url, token=None)
         deleted_status, _, _ = self.request("DELETE", f"/api/recordings/{started['id']}")
         missing_status, _, _ = self.request("GET", f"/api/recordings/{started['id']}/file")
 
@@ -159,9 +170,11 @@ class RecordingHttpTests(unittest.TestCase):
         self.assertEqual(stopped_status, 200)
         self.assertEqual(listed_status, 200)
         self.assertEqual(len(json.loads(listed_body)["saved"]), 1)
+        self.assertEqual(ticket_status, 201)
         self.assertEqual(file_status, 200)
         self.assertEqual(file_headers["Content-Type"], "audio/wav")
         self.assertEqual(file_body[:4], b"RIFF")
+        self.assertEqual(reused_ticket_status, 401)
         self.assertEqual(deleted_status, 200)
         self.assertEqual(missing_status, 404)
 

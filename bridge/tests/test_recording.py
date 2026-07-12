@@ -129,3 +129,17 @@ class RecordingRecoveryTests(unittest.TestCase):
             store = RecordingStore(Path(tmp), now=FixedTime())
             with self.assertRaisesRegex(Exception, "not found"):
                 store.file("../outside")
+
+    def test_startup_rebuilds_a_missing_manifest_from_the_wav(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            recording_id = "20260711T120000Z-rare-album-abcdef"
+            wav_path = root / f"{recording_id}.wav"
+            wav_path.write_bytes(wav_header(DEFAULT_FORMAT.payload_bytes) + payload(123))
+
+            store = RecordingStore(root, now=FixedTime())
+
+            saved = store.list()
+            self.assertEqual(len(saved), 1)
+            self.assertEqual(saved[0]["frames"], DEFAULT_FORMAT.frames_per_packet)
+            self.assertIn("manifest was missing", str(saved[0]["error"]))

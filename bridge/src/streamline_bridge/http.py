@@ -8,6 +8,7 @@ import queue
 import struct
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
+from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlsplit
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 HTTP_MAX_BATCH_CHUNKS = 64
+RECORDINGS_PAGE = files("streamline_bridge").joinpath("recordings.html").read_bytes()
 
 
 def wav_header(pcm_format: PcmFormat = DEFAULT_FORMAT) -> bytes:
@@ -77,12 +79,14 @@ def make_handler(
             url = urlsplit(self.path)
             if url.path in {"/", "/status"}:
                 self._send_json({"bridge_version": bridge_version, "sources": sources.snapshot()})
+            elif url.path in {"/recordings", "/recordings/"}:
+                self._send_recordings_page()
             elif url.path == "/health":
                 self._send_text("ok\n")
             elif url.path == "/streamline.wav":
                 self._stream_wav(url.query)
             else:
-                self._dispatch_recording("GET", url.path)
+                self._dispatch_recording("GET", url.path, query=url.query)
 
         def do_POST(self) -> None:
             self._dispatch_recording("POST", urlsplit(self.path).path, self._read_body())
@@ -118,8 +122,8 @@ def make_handler(
                 return b""
             return self.rfile.read(max(0, length))
 
-        def _dispatch_recording(self, method: str, path: str, body: bytes = b"") -> None:
-            response = recording_http.handle(method, path, self.headers.get("Authorization"), body)
+        def _dispatch_recording(self, method: str, path: str, body: bytes = b"", query: str = "") -> None:
+            response = recording_http.handle(method, path, self.headers.get("Authorization"), body, query)
             if response is None:
                 self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
             elif isinstance(response, JsonResponse):
@@ -156,6 +160,20 @@ def make_handler(
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
+
+        def _send_recordings_page(self) -> None:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(RECORDINGS_PAGE)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'",
+            )
+            self.end_headers()
+            self.wfile.write(RECORDINGS_PAGE)
 
         def _stream_wav(self, query: str) -> None:
             requested = parse_qs(query).get("source", [None])[0]

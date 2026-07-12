@@ -2,19 +2,25 @@ from __future__ import annotations
 
 import http.client
 import json
+import socket
 import tempfile
 import threading
 import time
 import unittest
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
+from urllib.parse import urlsplit
 
-from streamline_bridge.http import make_handler, wav_header
+from streamline_bridge.http import BoundedThreadingHTTPServer, make_handler, wav_header
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT
 from streamline_bridge.recording import RecordingService, RecordingStore
-from streamline_bridge.recording_http import JsonResponse, RecordingHttpController
+from streamline_bridge.recording_http import (
+    MAX_DOWNLOAD_TICKETS,
+    FileResponse,
+    JsonResponse,
+    RecordingHttpController,
+)
 from streamline_bridge.sources import SourceRegistry
 
 
@@ -25,7 +31,7 @@ def make_pipeline() -> AudioPipeline:
 class HttpAdapterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.sources = SourceRegistry(make_pipeline, max_sources=2)
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.sources, "test"))
+        self.server = BoundedThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.sources, "test"))
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
@@ -75,6 +81,43 @@ class HttpAdapterTests(unittest.TestCase):
         self.assertEqual(recordings_page, 200)
         self.assertEqual(recordings_headers["Content-Type"], "text/html; charset=utf-8")
         self.assertIn(b"Lossless recordings", recordings_body)
+        csp = recordings_headers["Content-Security-Policy"]
+        self.assertNotIn("unsafe-inline", csp)
+        nonce = csp.split("script-src 'nonce-", 1)[1].split("'", 1)[0]
+        self.assertIn(f'<style nonce="{nonce}">'.encode(), recordings_body)
+        self.assertIn(f'<script nonce="{nonce}">'.encode(), recordings_body)
+
+    def test_http_connection_count_and_idle_reads_are_bounded(self) -> None:
+        server = BoundedThreadingHTTPServer(
+            ("127.0.0.1", 0),
+            make_handler(self.sources, "test"),
+            max_connections=1,
+            request_timeout_seconds=0.1,
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        stalled = socket.create_connection(("127.0.0.1", server.server_port), timeout=1)
+        try:
+            stalled.sendall(b"GET /health HTTP/1.1\r\nHost: bridge\r\n")
+            time.sleep(0.02)
+            rejected = socket.create_connection(("127.0.0.1", server.server_port), timeout=1)
+            with rejected:
+                rejected.sendall(b"GET /health HTTP/1.1\r\nHost: bridge\r\n\r\n")
+                try:
+                    received = rejected.recv(1)
+                except ConnectionResetError:
+                    received = b""
+                self.assertEqual(received, b"")
+            time.sleep(0.15)
+            status = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=1)
+            status.request("GET", "/health")
+            self.assertEqual(status.getresponse().status, 200)
+            status.close()
+        finally:
+            stalled.close()
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
     def test_stream_cleanup_releases_http_source_lifecycle(self) -> None:
         source = self.sources.acquire("192.0.2.10")
@@ -87,8 +130,8 @@ class HttpAdapterTests(unittest.TestCase):
         self.assertEqual(response.read(1), b"x")
         response.close()
         conn.close()
-        for _ in range(5):
-            source.hub.clients.publish(b"x")
+        for _ in range(100):
+            source.hub.clients.publish(bytes(64 * 1024))
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline:
             lifecycle = self.lifecycle(self.sources.snapshot()["192.0.2.10"])
@@ -106,7 +149,7 @@ class RecordingHttpTests(unittest.TestCase):
         self.sources = SourceRegistry(make_pipeline, max_sources=2)
         self.source = self.sources.acquire("192.0.2.10")
         self.recordings = RecordingService(self.sources, RecordingStore(Path(self.temp.name)))
-        self.server = ThreadingHTTPServer(
+        self.server = BoundedThreadingHTTPServer(
             ("127.0.0.1", 0), make_handler(self.sources, "test", self.recordings, self.token)
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -191,6 +234,34 @@ class RecordingHttpTests(unittest.TestCase):
         self.assertIn("unknown source", json.loads(unknown_source_body)["error"]["message"])
         self.assertEqual(wrong_method, 405)
         self.assertEqual(wrong_method_headers["Allow"], "GET, POST")
+
+    def test_download_ticket_storage_is_bounded(self) -> None:
+        started_status, _, started_body = self.request(
+            "POST", "/api/recordings", {"source": "192.0.2.10", "title": "Ticket bound"}
+        )
+        self.assertEqual(started_status, 201)
+        recording_id = json.loads(started_body)["recording"]["id"]
+        self.source.hub.ingest(1, bytes(DEFAULT_FORMAT.payload_bytes))
+        self.request("POST", f"/api/recordings/{recording_id}/stop")
+        controller = RecordingHttpController(self.recordings, self.token)
+        urls: list[str] = []
+        for _ in range(MAX_DOWNLOAD_TICKETS + 1):
+            response = controller.handle(
+                "POST",
+                f"/api/recordings/{recording_id}/download-ticket",
+                f"Bearer {self.token}",
+            )
+            self.assertIsInstance(response, JsonResponse)
+            urls.append(cast("str", cast("JsonResponse", response).data["url"]))
+
+        first = urlsplit(urls[0])
+        evicted = controller.handle("GET", first.path, None, query=first.query)
+        last = urlsplit(urls[-1])
+        accepted = controller.handle("GET", last.path, None, query=last.query)
+
+        self.assertEqual(cast("JsonResponse", evicted).status, 401)
+        self.assertIsInstance(accepted, FileResponse)
+        cast("FileResponse", accepted).source.close()
 
     def test_oversized_request_is_rejected_before_json_parsing(self) -> None:
         status, _, body = self.request(

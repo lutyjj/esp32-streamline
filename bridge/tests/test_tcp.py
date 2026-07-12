@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import socket
+import time
 import unittest
 from typing import cast
 
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT, HEADER, MAGIC, VERSION
 from streamline_bridge.sources import Source, SourceRegistry
-from streamline_bridge.tcp import receive_source
+from streamline_bridge.tcp import TcpIngestServer, receive_source
 
 
 def packet(sequence: int, magic: bytes = MAGIC) -> bytes:
@@ -86,3 +87,31 @@ class TcpAdapterTests(unittest.TestCase):
             replacement_peer.close()
             replacement.close()
             server.close()
+
+    def test_ingest_worker_count_is_bounded(self) -> None:
+        registry = SourceRegistry(make_pipeline, max_sources=2)
+        ingest = TcpIngestServer(registry, "127.0.0.1", 0, 1.0, max_connections=1)
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        first_peer = socket.create_connection(listener.getsockname())
+        first, first_addr = listener.accept()
+        second_peer = socket.create_connection(listener.getsockname())
+        second, second_addr = listener.accept()
+        try:
+            ingest.accept(first, first_addr)
+            ingest.accept(second, second_addr)
+
+            self.assertEqual(second.fileno(), -1)
+            first_peer.close()
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline:
+                lifecycle = cast("dict[str, object]", registry.snapshot()[first_addr[0]]["lifecycle"])
+                if lifecycle["state"] == "disconnected":
+                    break
+                time.sleep(0.01)
+            self.assertEqual(lifecycle["state"], "disconnected")
+        finally:
+            first_peer.close()
+            second_peer.close()
+            listener.close()

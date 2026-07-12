@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>StreamLine recordings</title>
-  <style>
+  <style nonce="__CSP_NONCE__">
     :root {
       color-scheme: dark;
       --bg: #0b0d12;
@@ -47,6 +47,8 @@
     .button.danger { color: var(--danger); background: transparent; border: 1px solid #623d45; }
     .button.small { padding: 8px 11px; font-size: .84rem; }
     .actions { display: flex; flex-wrap: wrap; gap: 9px; }
+    .state-actions { margin-bottom: 7px; }
+    .recording-error { color: var(--warn); margin-top: 7px; }
     .metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 19px 0 0; }
     .metric { background: #0e1118; border-radius: 12px; padding: 13px; }
     .metric strong { display: block; font-size: 1.15rem; }
@@ -141,7 +143,7 @@
       </section>
     </div>
   </main>
-  <script>
+  <script nonce="__CSP_NONCE__">
     const TOKEN_KEY = "streamline.recordingToken";
     const $ = (id) => document.getElementById(id);
     let token = sessionStorage.getItem(TOKEN_KEY) || "";
@@ -216,11 +218,11 @@
     function recordingCard(item, active) {
       const state = escapeHtml(item.state);
       const warning = item.gap_packets ? `${item.gap_packets.toLocaleString()} silent gap packet${item.gap_packets === 1 ? "" : "s"}` : "No timeline gaps";
-      const error = item.error ? `<div class="fine" style="color:var(--warn);margin-top:7px">${escapeHtml(item.error)}</div>` : "";
+      const error = item.error ? `<div class="fine recording-error">${escapeHtml(item.error)}</div>` : "";
       const actions = active
         ? `<button class="button danger small" data-action="stop" data-id="${escapeHtml(item.id)}">Stop and save</button>`
         : `<div class="actions"><button class="button secondary small" data-action="download" data-id="${escapeHtml(item.id)}">Download WAV</button><button class="button danger small" data-action="delete" data-id="${escapeHtml(item.id)}" data-title="${escapeHtml(item.title)}">Delete</button></div>`;
-      return `<article class="recording"><div><div class="actions" style="margin-bottom:7px"><span class="pill ${state}">${state.replaceAll("-", " ")}</span></div><h3>${escapeHtml(item.title)}</h3><div class="meta"><span>${escapeHtml(item.source)}</span><span>${formatDuration(item.duration_seconds)}</span><span>${formatBytes(item.bytes)}</span><span>${warning}</span></div>${error}</div>${actions}</article>`;
+      return `<article class="recording"><div><div class="actions state-actions"><span class="pill ${state}">${state.replaceAll("-", " ")}</span></div><h3>${escapeHtml(item.title)}</h3><div class="meta"><span>${escapeHtml(item.source)}</span><span>${formatDuration(item.duration_seconds)}</span><span>${formatBytes(item.bytes)}</span><span>${warning}</span></div>${error}</div>${actions}</article>`;
     }
 
     function renderRecordings(data) {

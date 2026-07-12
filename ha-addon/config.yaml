@@ -25,6 +25,8 @@ map:
 options:
   source_allow: ""
   max_sources: 8
+  max_http_connections: 32
+  http_request_timeout_seconds: 10.0
   client_buffer_chunks: 2048
   playout_buffer_seconds: 1.0
   max_repeat_conceal_packets: 3
@@ -36,6 +38,8 @@ options:
 schema:
   source_allow: str
   max_sources: "int(1,)"
+  max_http_connections: "int(1,)"
+  http_request_timeout_seconds: "float(0.001,)"
   client_buffer_chunks: "int(1,)"
   playout_buffer_seconds: "float(0.001,)"
   max_repeat_conceal_packets: "int(0,)"

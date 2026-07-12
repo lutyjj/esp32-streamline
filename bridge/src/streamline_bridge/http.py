@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import secrets
 import struct
+import threading
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
-from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlsplit
 
@@ -18,13 +19,68 @@ from streamline_bridge.recording_http import FileResponse, JsonResponse, Recordi
 from streamline_bridge.sources import SourceRegistry, SourceSelectionError
 
 if TYPE_CHECKING:
+    import socket
+
     from streamline_bridge.pipeline import AudioPipeline
     from streamline_bridge.recording import RecordingService
 
 logger = logging.getLogger(__name__)
 HTTP_MAX_BATCH_CHUNKS = 64
 HTTP_MAX_JSON_BODY_BYTES = 4096
+DEFAULT_MAX_HTTP_CONNECTIONS = 32
+DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS = 10.0
 RECORDINGS_PAGE = files("streamline_bridge").joinpath("recordings.html").read_bytes()
+
+
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """Serve a fixed maximum of timeout-bound HTTP connections."""
+
+    daemon_threads = True
+    block_on_close = False
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        max_connections: int = DEFAULT_MAX_HTTP_CONNECTIONS,
+        request_timeout_seconds: float = DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+    ) -> None:
+        if max_connections < 1 or request_timeout_seconds <= 0:
+            raise ValueError("HTTP connection limits must be positive")
+        self._connection_slots = threading.BoundedSemaphore(max_connections)
+        self._request_timeout_seconds = request_timeout_seconds
+        super().__init__(server_address, handler)
+
+    def get_request(self) -> tuple[socket.socket, tuple[str, int]]:
+        request, client_address = super().get_request()
+        request.settimeout(self._request_timeout_seconds)
+        return request, client_address
+
+    def process_request(
+        self, request: socket.socket | tuple[bytes, socket.socket], client_address: tuple[str, int]
+    ) -> None:
+        if not self._connection_slots.acquire(blocking=False):
+            logger.warning("rejected HTTP connection from %s: connection limit reached", client_address[0])
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._connection_slots.release()
+            raise
+
+    def process_request_thread(
+        self, request: socket.socket | tuple[bytes, socket.socket], client_address: tuple[str, int]
+    ) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._connection_slots.release()
+
+    def handle_error(
+        self, request: socket.socket | tuple[bytes, socket.socket], client_address: tuple[str, int]
+    ) -> None:
+        logger.debug("HTTP connection from %s ended with a socket error", client_address[0])
 
 
 def wav_header(pcm_format: PcmFormat = DEFAULT_FORMAT) -> bytes:
@@ -75,6 +131,8 @@ def make_handler(
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        server_version = "StreamLine"
+        sys_version = ""
 
         def do_GET(self) -> None:
             url = urlsplit(self.path)
@@ -141,25 +199,18 @@ def make_handler(
                 self._send_file(response)
 
         def _send_file(self, response: FileResponse) -> None:
-            path = Path(response.path)
-            try:
-                size = path.stat().st_size
-                source = path.open("rb")
-            except OSError:
-                self._send_json(
-                    {"error": {"code": "not-found", "message": "Recording file is no longer available."}},
-                    HTTPStatus.NOT_FOUND,
-                )
-                return
-            with source:
-                self.send_response(HTTPStatus.OK)
-                self.send_header("Content-Type", "audio/wav")
-                self.send_header("Content-Length", str(size))
-                self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
-                self.send_header("Cache-Control", "private, no-store")
-                self.end_headers()
-                while chunk := source.read(64 * 1024):
-                    self.wfile.write(chunk)
+            with response.source:
+                try:
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", "audio/wav")
+                    self.send_header("Content-Length", str(response.size))
+                    self.send_header("Content-Disposition", f'attachment; filename="{response.name}"')
+                    self.send_header("Cache-Control", "private, no-store")
+                    self.end_headers()
+                    while chunk := response.source.read(64 * 1024):
+                        self.wfile.write(chunk)
+                except OSError:
+                    pass
 
         def _send_text(self, body_text: str) -> None:
             body = body_text.encode()
@@ -171,18 +222,22 @@ def make_handler(
             self.wfile.write(body)
 
         def _send_recordings_page(self) -> None:
+            nonce = secrets.token_urlsafe(18)
+            body = RECORDINGS_PAGE.replace(b"__CSP_NONCE__", nonce.encode())
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(RECORDINGS_PAGE)))
+            self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'",
+                f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+                "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'self'",
             )
             self.end_headers()
-            self.wfile.write(RECORDINGS_PAGE)
+            self.wfile.write(body)
 
         def _stream_wav(self, query: str) -> None:
             requested = parse_qs(query).get("source", [None])[0]
@@ -206,7 +261,7 @@ def make_handler(
                     self.wfile.write(body)
                     self.wfile.flush()
                     source.hub.record_client_write(stream.stats.id, len(body), len(chunks))
-            except (BrokenPipeError, ConnectionResetError):
+            except OSError:
                 pass
             finally:
                 source.hub.unregister_client(stream.stats.id)

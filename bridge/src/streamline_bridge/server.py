@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from http.server import ThreadingHTTPServer
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from streamline_bridge.http import make_handler
+from streamline_bridge.http import BoundedThreadingHTTPServer, make_handler
 from streamline_bridge.options import parse_args, validate_args
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.recording import RecordingService, RecordingStore
@@ -51,10 +50,19 @@ def main() -> int:
         if len(recording_token) < 16:
             raise SystemExit("STREAMLINE_RECORDING_TOKEN must contain at least 16 characters when recording is enabled")
         recordings = RecordingService(sources, RecordingStore(Path(args.recordings_dir)))
-    tcp_server = TcpIngestServer(sources, args.tcp_bind, args.tcp_port, args.source_idle_timeout_seconds)
+    tcp_server = TcpIngestServer(
+        sources,
+        args.tcp_bind,
+        args.tcp_port,
+        args.source_idle_timeout_seconds,
+        max_connections=args.max_sources * 2,
+    )
     threading.Thread(target=tcp_server.serve_forever, daemon=True).start()
-    server = ThreadingHTTPServer(
-        (args.http_bind, args.http_port), make_handler(sources, bridge_version(), recordings, recording_token)
+    server = BoundedThreadingHTTPServer(
+        (args.http_bind, args.http_port),
+        make_handler(sources, bridge_version(), recordings, recording_token),
+        max_connections=args.max_http_connections,
+        request_timeout_seconds=args.http_request_timeout_seconds,
     )
     logger.info("serving HTTP WAV on http://%s:%s/streamline.wav", args.http_bind, args.http_port)
     try:

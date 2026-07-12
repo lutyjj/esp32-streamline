@@ -10,14 +10,13 @@ import threading
 import time
 from dataclasses import dataclass, field
 from http import HTTPStatus
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO
 from urllib.parse import parse_qs
 
 from streamline_bridge.recording import RecordingError, recording_capabilities
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from streamline_bridge.recording import RecordingService
 
@@ -26,6 +25,7 @@ CAPABILITIES_PATH = f"{RECORDINGS_PATH}/capabilities"
 RECORDING_ACTION = re.compile(r"^/api/recordings/([a-zA-Z0-9-]+)/(stop|file|download-ticket)$")
 RECORDING_ITEM = re.compile(r"^/api/recordings/([a-zA-Z0-9-]+)$")
 DOWNLOAD_TICKET_SECONDS = 60
+MAX_DOWNLOAD_TICKETS = 128
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,9 @@ class JsonResponse:
 
 @dataclass(frozen=True)
 class FileResponse:
-    path: Path
+    name: str
+    size: int
+    source: BinaryIO
 
 
 RecordingResponse = JsonResponse | FileResponse
@@ -83,7 +85,8 @@ class RecordingHttpController:
             if self._service is None:
                 return self._recording_disabled()
             try:
-                return FileResponse(self._service.file(action.group(1)))
+                opened = self._service.open_file(action.group(1))
+                return FileResponse(opened.name, opened.size, opened.source)
             except RecordingError as exc:
                 return self._recording_error(exc)
         unauthorized = self._authorize(authorization)
@@ -119,7 +122,7 @@ class RecordingHttpController:
             if operation == "download-ticket":
                 if method != "POST":
                     return self._method_not_allowed("POST")
-                self._service.file(recording_id)
+                self._service.ensure_file(recording_id)
                 ticket = self._issue_download_ticket(recording_id)
                 return JsonResponse(
                     HTTPStatus.CREATED,
@@ -130,7 +133,8 @@ class RecordingHttpController:
                 )
             if method != "GET":
                 return self._method_not_allowed("GET")
-            return FileResponse(self._service.file(recording_id))
+            opened = self._service.open_file(recording_id)
+            return FileResponse(opened.name, opened.size, opened.source)
         item = RECORDING_ITEM.fullmatch(path)
         if item is not None:
             if method != "DELETE":
@@ -144,6 +148,8 @@ class RecordingHttpController:
         ticket = secrets.token_urlsafe(24)
         with self._ticket_lock:
             self._discard_expired_tickets_locked()
+            while len(self._tickets) >= MAX_DOWNLOAD_TICKETS:
+                del self._tickets[next(iter(self._tickets))]
             self._tickets[ticket] = (recording_id, self._monotonic() + DOWNLOAD_TICKET_SECONDS)
         return ticket
 

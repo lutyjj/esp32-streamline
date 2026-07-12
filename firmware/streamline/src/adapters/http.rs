@@ -762,9 +762,15 @@ where
     C::Error: std::error::Error + Send + Sync + 'static,
 {
     json_response(request, 200, &api::Ack::rebooting())?;
-    // Let the HTTP server flush the response before replacing the process.
-    esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
-    unsafe { esp_idf_svc::sys::esp_restart() };
+    // Restart from a detached task so this handler returns and the server
+    // completes the chunked response. Restarting inside the handler leaves
+    // the terminating chunk unsent, and every client that reads the body to
+    // its end then hangs until the reboot kills the connection.
+    std::thread::spawn(|| {
+        esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
+        unsafe { esp_idf_svc::sys::esp_restart() };
+    });
+    Ok(())
 }
 
 fn respond<C>(

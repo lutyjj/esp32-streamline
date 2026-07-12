@@ -13,7 +13,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
     adapters::{
-        codec::{self, CodecControl},
+        codec::CodecControl,
         mdns::MdnsAdvertisement,
         nvs::ConfigStore,
         ota::{self, OtaProgress},
@@ -27,6 +27,7 @@ use crate::{
     levels::CLIP_THRESHOLD_ABS,
     metrics::render_prometheus,
     profiles::AudioProfileCatalog,
+    recovery,
     runtime::StreamStatus,
     telemetry::{
         AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry, StreamTelemetry, TargetTelemetry,
@@ -56,9 +57,18 @@ pub enum Mode {
     /// Unconfigured: own open AP, writes accepted so a first admin key can be
     /// set. Capture and streaming are down.
     Setup,
+    /// A provisioned device that could not join its saved Wi-Fi starts the
+    /// setup AP with its validated state and keeps writes behind its key.
+    Recovery,
     /// Station on the home network: console behind the admin key, capture
     /// running; the TCP stream runs only while a bridge target is configured.
     Provisioned,
+}
+
+impl Mode {
+    const fn has_persisted_configuration(self) -> bool {
+        matches!(self, Self::Recovery | Self::Provisioned)
+    }
 }
 
 pub struct ApiState {
@@ -251,38 +261,19 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                 .lock()
                 .map_err(|_| anyhow!("configuration lock poisoned"))?
                 .clone();
-            let password = if form.password.is_empty() {
-                current.password
-            } else {
-                form.password
-            };
-            // The admin key is preserved when left blank, just like the password, so a
-            // routine Wi-Fi change does not require retyping it.
-            let admin_secret = if form.admin_secret.is_empty() {
-                current.admin_secret
-            } else {
-                form.admin_secret
-            };
             // Commissioning may set the initial stream target in the same
             // write, because the device reboots onto the home network right
             // after and the two cannot be posted separately. Absent target
             // fields are preserved, so a steady-state Wi-Fi change leaves the
             // target alone.
-            let target_host = match form.target_host {
-                Some(value) => value.trim().to_owned(),
-                None => current.target_host,
-            };
-            let target_port = form.target_port.unwrap_or(current.target_port);
-            let next = RuntimeConfig {
-                ssid: form.ssid,
-                password,
-                target_host,
-                target_port,
-                admin_secret,
-                device_name: current.device_name,
-                auto_update_schedule: current.auto_update_schedule,
-                audio: current.audio,
-            };
+            let next = recovery::replace_wifi(
+                current,
+                form.ssid,
+                form.password,
+                form.admin_secret,
+                form.target_host.map(|value| value.trim().to_owned()),
+                form.target_port,
+            );
             save(&state_for_wifi, next)
         })();
         match result {
@@ -343,18 +334,18 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                 .store
                 .lock()
                 .map_err(|_| anyhow!("configuration lock poisoned"))?;
-            if state_for_board.mode == Mode::Provisioned {
+            if state_for_board.mode.has_persisted_configuration() {
                 next.validate(selected)
                     .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
             }
-            match &update {
-                BoardUpdate::BuiltIn(board) => store.save_built_in_board(board)?,
-                BoardUpdate::Custom(board) => store.save_custom_board(board)?,
-            }
-            store.clear_audio_profiles()?;
-            if state_for_board.mode == Mode::Provisioned {
-                store.save(&next, selected)?;
-            }
+            store.save_board_state(
+                selected,
+                matches!(&update, BoardUpdate::Custom(_)),
+                state_for_board
+                    .mode
+                    .has_persisted_configuration()
+                    .then_some(&next),
+            )?;
             *state_for_board
                 .config
                 .lock()
@@ -396,8 +387,17 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
             }
             .validate(state_for_audio.board.as_ref())
             .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
-            save(&state_for_audio, RuntimeConfig { audio, ..current })?;
-            clear_active_profile(&state_for_audio)?;
+            let mut catalog = state_for_audio
+                .audio_profiles
+                .lock()
+                .map_err(|_| anyhow!("audio profile lock poisoned"))?
+                .clone();
+            catalog.active_profile_id = None;
+            save_configuration_and_profiles(
+                &state_for_audio,
+                RuntimeConfig { audio, ..current },
+                catalog,
+            )?;
             apply_audio_live(&state_for_audio, audio)
         })();
         match result {
@@ -469,11 +469,11 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                     .lock()
                     .map_err(|_| anyhow!("configuration lock poisoned"))?
                     .clone();
-                save(
+                save_configuration_and_profiles(
                     &state_for_active_profile,
                     RuntimeConfig { audio, ..current },
+                    catalog,
                 )?;
-                save_audio_profiles(&state_for_active_profile, catalog)?;
                 return apply_audio_live(&state_for_active_profile, audio);
             }
             save_audio_profiles(&state_for_active_profile, catalog)?;
@@ -553,7 +553,7 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
                 auto_update_schedule,
                 ..current
             };
-            if state_for_firmware.mode == Mode::Provisioned {
+            if state_for_firmware.mode.has_persisted_configuration() {
                 save(&state_for_firmware, next)
             } else {
                 *state_for_firmware
@@ -663,15 +663,22 @@ fn save(state: &ApiState, config: RuntimeConfig) -> Result<()> {
     config
         .validate(state.board.as_ref())
         .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
-    state
-        .store
+    let mut committed = state
+        .config
         .lock()
         .map_err(|_| anyhow!("configuration lock poisoned"))?
-        .save(&config, state.board.as_ref())?;
+        .clone();
+    recovery::commit_after_persist(&mut committed, config, |next| {
+        state
+            .store
+            .lock()
+            .map_err(|_| anyhow!("configuration lock poisoned"))?
+            .save(next, state.board.as_ref())
+    })?;
     *state
         .config
         .lock()
-        .map_err(|_| anyhow!("configuration lock poisoned"))? = config;
+        .map_err(|_| anyhow!("configuration lock poisoned"))? = committed;
     Ok(())
 }
 
@@ -691,15 +698,32 @@ fn save_audio_profiles(state: &ApiState, catalog: AudioProfileCatalog) -> Result
     Ok(())
 }
 
-fn clear_active_profile(state: &ApiState) -> Result<()> {
-    let mut catalog = state
+/// Persist a cross-record profile activation before exposing either its audio
+/// values or its active profile id in memory.
+fn save_configuration_and_profiles(
+    state: &ApiState,
+    config: RuntimeConfig,
+    catalog: AudioProfileCatalog,
+) -> Result<()> {
+    config
+        .validate(state.board.as_ref())
+        .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
+    catalog
+        .validate(state.board.as_ref())
+        .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
+    state
+        .store
+        .lock()
+        .map_err(|_| anyhow!("configuration lock poisoned"))?
+        .save_configuration_and_profiles(&config, &catalog, state.board.as_ref())?;
+    *state
+        .config
+        .lock()
+        .map_err(|_| anyhow!("configuration lock poisoned"))? = config;
+    *state
         .audio_profiles
         .lock()
-        .map_err(|_| anyhow!("audio profile lock poisoned"))?
-        .clone();
-    if catalog.active_profile_id.take().is_some() {
-        save_audio_profiles(state, catalog)?;
-    }
+        .map_err(|_| anyhow!("audio profile lock poisoned"))? = catalog;
     Ok(())
 }
 
@@ -947,7 +971,6 @@ fn board_update_from_form(
                     board.id
                 );
             }
-            codec::validate_supported(&board.codec)?;
             Ok(BoardUpdate::Custom(board))
         }
         (None, None) => bail!("board_id or descriptor is required"),
@@ -1015,7 +1038,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         .map(|stream| stream.snapshot())
         .unwrap_or_default();
     let (mode, wifi_status) = match state.mode {
-        Mode::Setup => ("setup", "ap"),
+        Mode::Setup | Mode::Recovery => ("setup", "ap"),
         Mode::Provisioned => ("provisioned", "connected"),
     };
     let ota = state.ota.snapshot();

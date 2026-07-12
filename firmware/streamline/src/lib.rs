@@ -8,6 +8,7 @@
 
 pub mod api;
 pub mod board;
+pub mod codec;
 pub mod config;
 #[cfg(any(test, target_os = "espidf"))]
 mod counter;
@@ -20,6 +21,8 @@ pub mod packet;
 pub mod play;
 pub mod profiles;
 pub mod protocol;
+pub mod recovery;
+pub mod state;
 pub mod telemetry;
 pub mod update;
 

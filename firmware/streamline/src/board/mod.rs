@@ -119,7 +119,14 @@ pub enum BoardError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BoardLoadError {
     Json(String),
-    Invalid { id: String, error: BoardError },
+    Invalid {
+        id: String,
+        error: BoardError,
+    },
+    UnsupportedCodec {
+        id: String,
+        error: crate::codec::CodecError,
+    },
     DuplicateId(String),
     MissingDefault(String),
 }
@@ -129,6 +136,12 @@ impl fmt::Display for BoardLoadError {
         match self {
             Self::Json(error) => write!(f, "invalid board descriptor JSON: {error}"),
             Self::Invalid { id, error } => write!(f, "invalid board descriptor '{id}': {error:?}"),
+            Self::UnsupportedCodec { id, error } => {
+                write!(
+                    f,
+                    "board descriptor '{id}' exceeds its codec capabilities: {error:?}"
+                )
+            }
             Self::DuplicateId(id) => write!(f, "duplicate board descriptor id '{id}'"),
             Self::MissingDefault(id) => write!(f, "default board descriptor '{id}' is missing"),
         }
@@ -218,19 +231,13 @@ pub fn parse_descriptor(json: &str) -> Result<Board, BoardLoadError> {
 }
 
 pub fn validate_descriptor(board: Board) -> Result<Board, BoardLoadError> {
-    board.validate().map_err(|error| BoardLoadError::Invalid {
-        id: board.id.clone(),
-        error,
-    })?;
+    validate_board(&board)?;
     Ok(board)
 }
 
 pub fn validate_catalog(catalog: &[Board]) -> Result<(), BoardLoadError> {
     for board in catalog {
-        board.validate().map_err(|error| BoardLoadError::Invalid {
-            id: board.id.clone(),
-            error,
-        })?;
+        validate_board(board)?;
     }
     for (i, a) in catalog.iter().enumerate() {
         for b in &catalog[i + 1..] {
@@ -240,6 +247,17 @@ pub fn validate_catalog(catalog: &[Board]) -> Result<(), BoardLoadError> {
         }
     }
     Ok(())
+}
+
+fn validate_board(board: &Board) -> Result<(), BoardLoadError> {
+    board.validate().map_err(|error| BoardLoadError::Invalid {
+        id: board.id.clone(),
+        error,
+    })?;
+    crate::codec::validate_board(board).map_err(|error| BoardLoadError::UnsupportedCodec {
+        id: board.id.clone(),
+        error,
+    })
 }
 
 fn validate_output_gpio(gpio: u8) -> Result<(), BoardError> {
@@ -282,16 +300,16 @@ mod tests {
                     "i2s":{"mclk":12,"bclk":13,"ws":14,"din":35}
                 },
                 "status_led":{"gpio":22},
-                "input_lines":[{"line":7,"label":"only input"}],
+                "input_lines":[{"line":2,"label":"only input"}],
                 "input_gain_max":10,
                 "adc_atten_max_db":6
             }"#,
         )
         .expect("valid descriptor");
 
-        assert!(board.accepts_line(7));
+        assert!(board.accepts_line(2));
         assert!(!board.accepts_line(1));
-        assert_eq!(board.default_line(), 7);
+        assert_eq!(board.default_line(), 2);
     }
 
     #[test]
@@ -313,6 +331,32 @@ mod tests {
                 }"#,
             ),
             Err(BoardLoadError::Json(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_descriptor_capabilities_the_codec_cannot_apply() {
+        let invalid = parse_descriptor(
+            r#"{
+                "id":"test-board",
+                "name":"test",
+                "codec":{"driver":"es8388","i2c_address":16},
+                "pins":{
+                    "i2c":{"sda":4,"scl":5},
+                    "i2s":{"mclk":12,"bclk":13,"ws":14,"din":35}
+                },
+                "input_lines":[{"line":3,"label":"unsupported"}],
+                "input_gain_max":100,
+                "adc_atten_max_db":48
+            }"#,
+        );
+
+        assert!(matches!(
+            invalid,
+            Err(BoardLoadError::UnsupportedCodec {
+                error: crate::codec::CodecError::UnsupportedInputLine,
+                ..
+            })
         ));
     }
 

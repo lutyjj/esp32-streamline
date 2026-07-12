@@ -16,9 +16,7 @@ use esp_idf_svc::hal::{
     units::Hertz,
 };
 
-use crate::{adapters::pins::I2cBusPins, board::CodecSpec, config::AudioSettings};
-
-const DRIVER_ES8388: &str = "es8388";
+use crate::{adapters::pins::I2cBusPins, board::CodecSpec, codec::Driver, config::AudioSettings};
 
 /// A line-in capture codec on the shared I2C control bus.
 trait CodecDriver {
@@ -32,20 +30,7 @@ trait CodecDriver {
     fn apply(bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()>;
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Driver {
-    Es8388,
-}
-
 impl Driver {
-    fn resolve(id: &str) -> Result<Self> {
-        if id == DRIVER_ES8388 {
-            Ok(Self::Es8388)
-        } else {
-            Err(anyhow!("unsupported codec driver '{id}'"))
-        }
-    }
-
     fn configure(self, bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()> {
         match self {
             Self::Es8388 => Es8388::configure(bus, address, audio),
@@ -59,11 +44,6 @@ impl Driver {
     }
 }
 
-/// Validate that the firmware contains a driver for a descriptor's codec.
-pub fn validate_supported(codec: &CodecSpec) -> Result<()> {
-    Driver::resolve(&codec.driver).map(|_| ())
-}
-
 /// Open the control bus, configure the board's codec, and return a handle that
 /// can re-apply input settings while the device streams.
 pub fn configure<'d>(
@@ -72,7 +52,8 @@ pub fn configure<'d>(
     codec: &CodecSpec,
     audio: AudioSettings,
 ) -> Result<CodecControl<'d>> {
-    let driver = Driver::resolve(&codec.driver)?;
+    let driver = Driver::resolve(&codec.driver)
+        .map_err(|error| anyhow!("unsupported codec driver '{}': {error:?}", codec.driver))?;
     let config = I2cConfig::new()
         .baudrate(Hertz(100_000))
         .sda_enable_pullup(true)
@@ -152,7 +133,7 @@ impl CodecDriver for Es8388 {
             // ADC, 16-bit normal I2S, 256*fs clock ratio.
             (ADC_POWER, 0xff),
             (ADC_CONTROL1, input_gain_register(audio.input_gain)),
-            (ADC_CONTROL2, input_register(audio.input_line)),
+            (ADC_CONTROL2, input_register(audio.input_line)?),
             (ADC_CONTROL3, 0x02),
             (ADC_CONTROL4, 0x0d),
             (ADC_CONTROL5, 0x02),
@@ -166,7 +147,7 @@ impl CodecDriver for Es8388 {
     }
 
     fn apply(bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()> {
-        for (register, value) in input_controls(audio) {
+        for (register, value) in input_controls(audio)? {
             bus.write(address, &[register, value], BLOCK)?;
         }
         Ok(())
@@ -175,22 +156,21 @@ impl CodecDriver for Es8388 {
 
 /// The register writes for the user-adjustable input settings — the live
 /// subset of the full `configure` sequence.
-const fn input_controls(audio: AudioSettings) -> [(u8, u8); 4] {
-    [
+fn input_controls(audio: AudioSettings) -> Result<[(u8, u8); 4]> {
+    Ok([
         (ADC_CONTROL1, input_gain_register(audio.input_gain)),
-        (ADC_CONTROL2, input_register(audio.input_line)),
+        (ADC_CONTROL2, input_register(audio.input_line)?),
         (ADC_CONTROL8, attenuation_register(audio.adc_attenuation_db)),
         (ADC_CONTROL9, attenuation_register(audio.adc_attenuation_db)),
-    ]
+    ])
 }
 
-/// ES8388 input mux for the board's line numbers. Settings are validated
-/// against the board descriptor before they reach the codec, so an unknown
-/// line cannot arrive here; the fallback keeps the mapping total.
-const fn input_register(line: u8) -> u8 {
+/// ES8388 input mux for the driver-supported line numbers.
+fn input_register(line: u8) -> Result<u8> {
     match line {
-        1 => 0x00,
-        _ => 0x50,
+        1 => Ok(0x00),
+        2 => Ok(0x50),
+        _ => Err(anyhow!("unsupported ES8388 input line {line}")),
     }
 }
 
@@ -215,25 +195,12 @@ mod tests {
 
     #[test]
     fn maps_audio_controls_to_documented_register_values() {
-        assert_eq!(input_register(1), 0x00);
-        assert_eq!(input_register(2), 0x50);
+        assert_eq!(input_register(1), Ok(0x00));
+        assert_eq!(input_register(2), Ok(0x50));
+        assert!(input_register(3).is_err());
         assert_eq!(input_gain_register(0), 0x00);
         assert_eq!(input_gain_register(100), 0x88);
         assert_eq!(attenuation_register(48), 96);
-    }
-
-    #[test]
-    fn validates_supported_codec_descriptors() {
-        assert!(super::validate_supported(&crate::board::CodecSpec {
-            driver: DRIVER_ES8388.to_owned(),
-            i2c_address: 0x10,
-        })
-        .is_ok());
-        assert!(super::validate_supported(&crate::board::CodecSpec {
-            driver: "missing-codec".to_owned(),
-            i2c_address: 0x10,
-        })
-        .is_err());
     }
 
     #[test]
@@ -244,7 +211,7 @@ mod tests {
             adc_attenuation_db: 9,
         };
         assert_eq!(
-            input_controls(audio),
+            input_controls(audio).expect("supported line"),
             [
                 (ADC_CONTROL1, 0x00),
                 (ADC_CONTROL2, 0x50),

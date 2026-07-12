@@ -130,7 +130,12 @@ Promise:
 - Any change that restarts the device is narrated through to recovery, and
   an overdue recovery says what to check instead of spinning forever.
 - A device that cannot reach its Wi-Fi falls back to its own setup network,
-  so it is never unreachable; the journey re-enters stage 2.
+  so it is never unreachable. A provisioned device keeps its saved visible
+  settings in the recovery form, retains its write-only password and admin
+  key when their fields stay blank, and requires that admin key before a
+  recovery write. Replacing the Wi-Fi credentials does not change the target,
+  audio settings, profiles, name, board, or update schedule. A device without
+  valid saved configuration re-enters stage 2 with clean descriptor defaults.
 - A fault that appears after the network is up — an audio codec that will
   not start — keeps the device on the home network and reachable, showing
   the fault and its fix, rather than dropping to the setup network. Only a

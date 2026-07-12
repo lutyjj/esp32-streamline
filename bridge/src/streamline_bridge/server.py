@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
-from http.server import ThreadingHTTPServer
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
-from streamline_bridge.http import make_handler
+from streamline_bridge.http import BoundedThreadingHTTPServer, make_handler
 from streamline_bridge.options import parse_args, validate_args
 from streamline_bridge.pipeline import AudioPipeline
+from streamline_bridge.recording import RecordingService, RecordingStore
 from streamline_bridge.sources import SourceRegistry
 from streamline_bridge.tcp import TcpIngestServer
 
@@ -41,9 +43,27 @@ def main() -> int:
         allowed=args.source_allow,
         eviction_idle_seconds=args.source_eviction_idle_seconds,
     )
-    tcp_server = TcpIngestServer(sources, args.tcp_bind, args.tcp_port, args.source_idle_timeout_seconds)
+    recordings: RecordingService | None = None
+    recording_token: str | None = None
+    if args.recordings_dir:
+        recording_token = os.environ.get("STREAMLINE_RECORDING_TOKEN", "")
+        if len(recording_token) < 16:
+            raise SystemExit("STREAMLINE_RECORDING_TOKEN must contain at least 16 characters when recording is enabled")
+        recordings = RecordingService(sources, RecordingStore(Path(args.recordings_dir)))
+    tcp_server = TcpIngestServer(
+        sources,
+        args.tcp_bind,
+        args.tcp_port,
+        args.source_idle_timeout_seconds,
+        max_connections=args.max_sources * 2,
+    )
     threading.Thread(target=tcp_server.serve_forever, daemon=True).start()
-    server = ThreadingHTTPServer((args.http_bind, args.http_port), make_handler(sources, bridge_version()))
+    server = BoundedThreadingHTTPServer(
+        (args.http_bind, args.http_port),
+        make_handler(sources, bridge_version(), recordings, recording_token),
+        max_connections=args.max_http_connections,
+        request_timeout_seconds=args.http_request_timeout_seconds,
+    )
     logger.info("serving HTTP WAV on http://%s:%s/streamline.wav", args.http_bind, args.http_port)
     try:
         server.serve_forever()
@@ -51,6 +71,8 @@ def main() -> int:
         logger.info("stopped")
     finally:
         server.server_close()
+        if recordings is not None:
+            recordings.shutdown()
     return 0
 
 

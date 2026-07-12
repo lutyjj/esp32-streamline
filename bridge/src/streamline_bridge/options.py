@@ -24,9 +24,19 @@ class BridgeOption:
     def supervisor_schema(self) -> str:
         if self.value_type is str:
             return "str"
-        assert self.minimum is not None
+        if self.minimum is None:
+            raise ValueError(f"numeric option {self.name} requires a minimum")
         type_name = "int" if self.value_type is int else "float"
         return f"{type_name}({self.minimum},)"
+
+
+@dataclass(frozen=True)
+class AddonControlOption:
+    """An add-on-only setting consumed before the bridge process starts."""
+
+    name: str
+    default: bool | str
+    supervisor_schema: str
 
 
 BRIDGE_OPTIONS = (
@@ -42,6 +52,31 @@ BRIDGE_OPTIONS = (
     ),
     BridgeOption("http_bind", "--http-bind", str, "0.0.0.0", "HTTP bind address"),
     BridgeOption("http_port", "--http-port", int, 8088, "HTTP listen port", minimum=1),
+    BridgeOption(
+        "max_http_connections",
+        "--max-http-connections",
+        int,
+        32,
+        "maximum simultaneous HTTP clients",
+        minimum=1,
+        addon=True,
+    ),
+    BridgeOption(
+        "http_request_timeout_seconds",
+        "--http-request-timeout-seconds",
+        float,
+        10.0,
+        "disconnect an HTTP client after this many seconds without socket progress",
+        minimum=0.001,
+        addon=True,
+    ),
+    BridgeOption(
+        "recordings_dir",
+        "--recordings-dir",
+        str,
+        "",
+        "writable directory for lossless recordings; disabled when empty",
+    ),
     BridgeOption(
         "client_buffer_chunks", "--client-buffer-chunks", int, 2048, "per-client HTTP output queue depth", 1, True
     ),
@@ -94,6 +129,10 @@ BRIDGE_OPTIONS = (
 )
 
 OPTIONS_BY_NAME = {option.name: option for option in BRIDGE_OPTIONS}
+ADDON_CONTROL_OPTIONS = (
+    AddonControlOption("recordings_enabled", False, "bool"),
+    AddonControlOption("recording_token", "", "password"),
+)
 
 
 def addon_options() -> tuple[BridgeOption, ...]:
@@ -114,7 +153,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 help=option.help,
             )
         else:
-            parser.add_argument(option.flag, type=option.value_type, default=option.default, help=option.help)
+            default = (
+                os.environ.get("STREAMLINE_RECORDINGS_DIR", str(option.default))
+                if option.name == "recordings_dir"
+                else option.default
+            )
+            parser.add_argument(option.flag, type=option.value_type, default=default, help=option.help)
     return parser.parse_args(argv)
 
 

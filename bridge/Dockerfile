@@ -39,7 +39,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1
 
 COPY --from=build /opt/venv /opt/venv
-RUN useradd --uid 10001 --no-create-home streamline
+RUN useradd --uid 10001 --no-create-home streamline \
+    && mkdir /recordings \
+    && chown streamline:streamline /recordings
 
 USER streamline
 

@@ -69,7 +69,7 @@ class SourceRegistryTests(unittest.TestCase):
         admitted = registry.acquire("192.0.2.12")
         self.assertEqual(admitted.key, "192.0.2.12")
 
-    def test_active_producer_and_http_client_prevent_eviction(self) -> None:
+    def test_active_producer_http_client_and_recording_prevent_eviction(self) -> None:
         registry = self.registry()
         source = registry.acquire("192.0.2.10")
         server, peer = socket.socketpair()
@@ -81,8 +81,12 @@ class SourceRegistryTests(unittest.TestCase):
             registry.retain_http(source)
             self.time.advance(20.0)
             self.assertIs(registry.select("192.0.2.10"), source)
-        finally:
             registry.release_http(source)
+            registry.retain_recording(source)
+            self.time.advance(20.0)
+            self.assertIs(registry.select("192.0.2.10"), source)
+        finally:
+            registry.release_recording(source)
             peer.close()
             server.close()
 

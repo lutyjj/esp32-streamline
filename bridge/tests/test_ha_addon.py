@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from streamline_bridge.ha_addon import bridge_argv, load_options, normalize_source_allow
-from streamline_bridge.options import addon_options
+from streamline_bridge.ha_addon import bridge_argv, load_options, normalize_source_allow, recording_environment
+from streamline_bridge.options import ADDON_CONTROL_OPTIONS, AddonControlOption, BridgeOption, addon_options
 
 
 class HomeAssistantAddonOptionTests(unittest.TestCase):
@@ -53,6 +53,19 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
             ["streamline-bridge", "--max-sources", "8"],
         )
 
+    def test_recording_options_enable_shared_storage_without_putting_the_token_in_argv(self) -> None:
+        options = {"recordings_enabled": True, "recording_token": "long-recording-token"}
+
+        self.assertEqual(
+            bridge_argv(options),
+            ["streamline-bridge", "--recordings-dir", "/config/recordings"],
+        )
+        self.assertEqual(recording_environment(options), {"STREAMLINE_RECORDING_TOKEN": "long-recording-token"})
+
+    def test_enabled_recordings_require_a_long_token(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "at least 16 characters"):
+            bridge_argv({"recordings_enabled": True, "recording_token": "short"})
+
     def test_source_allow_accepts_a_list(self) -> None:
         self.assertEqual(
             normalize_source_allow(["192.0.2.10", " 198.51.100.20 ", ""]),
@@ -88,7 +101,8 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
         config = config_path.read_text(encoding="utf-8")
         options = self._yaml_section(config, "options")
         schema = self._yaml_section(config, "schema")
-        contract = {option.name: option for option in addon_options()}
+        contract: dict[str, BridgeOption | AddonControlOption] = {option.name: option for option in addon_options()}
+        contract.update({option.name: option for option in ADDON_CONTROL_OPTIONS})
         self.assertEqual(set(options), set(contract))
         self.assertEqual(set(schema), set(contract))
         for name, option in contract.items():

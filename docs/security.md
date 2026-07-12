@@ -20,6 +20,8 @@ place, and the standing items we track or have accepted.
 | PCM stream (`:39000`) | Cleartext TCP | LAN sniffer can capture audio |
 | Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access |
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
+| Bridge recording API (`:8088`) | Disabled without writable storage; bearer-token gated when enabled | Token holder can record, list, download, and delete captures |
+| Bridge recording directory | Dedicated writable volume; link-safe file operations and validated metadata | A storage peer can delete or corrupt recordings, but cannot redirect bridge file access outside the directory |
 
 ## Authentication
 
@@ -51,6 +53,7 @@ place, and the standing items we track or have accepted.
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
 | Open setup AP during commissioning | by design | Accepts writes only until the first admin key is set — a brief, physically proximate window. |
 | Bridge WAV stream is unauthenticated | by design | Front it with an authenticating reverse proxy before sharing beyond a trusted LAN. |
+| Home Assistant recording files join add-on backups | by design | Large WAV libraries make backups large. Download recordings and delete bridge copies that do not need backup protection. |
 
 ## Bridge
 
@@ -60,3 +63,56 @@ place, and the standing items we track or have accepted.
 - Set `--source-allow <ESP32 IPv4>` (or `STREAMLINE_SOURCE_ALLOW`) to reject
   unexpected PCM sources. In the Home Assistant add-on, set `source_allow`.
   This is not a firewall replacement; restrict inbound at the boundary.
+- Recording requires `STREAMLINE_RECORDING_TOKEN`. The bridge page keeps it in
+  browser session storage and sends it as a bearer token. The API never returns
+  it. An authenticated request can mint a one-use download ticket that expires
+  after 60 seconds. Keep recordings on trusted storage and terminate TLS at a
+  reverse proxy before crossing a trust boundary.
+- HTTP bodies, connection workers, socket inactivity, producer workers,
+  retained sources, client queues, recording queues, recording duration,
+  sequence gaps, download tickets, manifest sizes, directory scans, and list
+  results all have finite limits. A client that exceeds a connection or socket
+  limit is disconnected without allocating another worker.
+- The recording page uses a per-response Content Security Policy nonce. It has
+  no cross-origin permissions, cookies, third-party scripts, or persistent
+  token storage. The bearer header keeps cross-origin form and image requests
+  from authorizing an operation.
+
+### Host containment
+
+- The standalone container runs as an unprivileged fixed user. Its supported
+  Compose configuration makes the image filesystem read-only, drops every
+  Linux capability, sets `no-new-privileges`, and mounts only `/tmp` and the
+  recording volume writable.
+- The Home Assistant add-on uses Supervisor-owned `/data` for options and maps
+  only its dedicated `addon_config` folder read/write at `/config`. It does not
+  request host networking, devices, privileged mode, the Docker socket, Home
+  Assistant configuration, or the host-wide shared folder.
+- Runtime images pin their Python base image by digest. Dependabot owns digest
+  updates so reviewed dependency changes remain mechanical.
+- The bridge media path does not invoke a shell, start subprocesses, deserialize
+  executable objects, load plugins, or fetch user-selected URLs.
+
+### Recording storage
+
+The recording directory is an untrusted persistence boundary. The store pins
+an opened directory descriptor for its lifetime and performs later operations
+relative to that descriptor. Replacing the configured path cannot redirect an
+active bridge process.
+
+The store refuses a symlink as its root. It creates WAV parts and manifest
+temporaries exclusively with mode `0600`, does not follow links, refuses
+non-regular and multiply linked artifacts, and atomically publishes completed
+files. Downloads stream from the verified open file descriptor rather than
+checking one path and reopening it. Recovery applies the same rules before it
+repairs a part file.
+
+Manifest JSON is data, not authority. The store bounds its size, requires the
+exact versioned fields, validates every type and range, derives byte counts and
+duration from frames, checks the expected WAV size, and ignores invalid
+records. Directory scans and API lists are bounded.
+
+Someone who can write the recording volume can still delete recordings, fill
+its space, or make individual artifacts fail validation. Someone who already
+controls the container runtime or host is outside this boundary and can control
+the bridge process itself.

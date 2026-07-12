@@ -104,6 +104,13 @@ profile or says `Custom settings`. An external automation can activate the same
 profile through the API when it knows the physical selector state. StreamLine
 never guesses the source from overlapping waveform characteristics.
 
+Optional lossless recording is a bridge-hosted task. The bridge page lets the
+owner choose a source, start before playing it, observe whether audio has
+arrived, stop and finalize, then download or delete the file. It calls the
+bridge recording API and never asks the device console to manage host storage.
+An interrupted capture remains available with its failure reason and gap
+counters. [Lossless recordings](recordings.md) owns this flow.
+
 Exit: none. Maintenance interrupts and returns here.
 
 ## Stage 6: maintenance and recovery

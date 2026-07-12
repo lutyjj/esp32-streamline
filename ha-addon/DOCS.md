@@ -23,6 +23,22 @@ validates immediately.
 - `http://<home-assistant-host>:8088/streamline.wav?source=<esp32-ip>` — one
   stream when several ESP32 sources feed the bridge.
 - `http://<home-assistant-host>:8088/status` — per-source JSON stats.
+- `http://<home-assistant-host>:8088/recordings`: lossless recording page.
+
+## Record a source
+
+In the add-on configuration, turn on `recordings_enabled` and set a private
+`recording_token` of at least 16 characters. Restart the add-on, open its Web
+UI, and unlock with that token. Choose the device source, name the recording,
+start it, then play the source.
+
+The add-on stores WAV files in its dedicated public configuration folder under
+`recordings/`. Download or delete them from the recording page. Home Assistant
+file tools can also access finalized files. This folder is included when the
+add-on is backed up, so download and delete large WAV files you no longer need.
+
+Recording preserves the analog input as 48 kHz, 16-bit stereo PCM. It is not a
+bit-perfect CD extraction and does not split tracks or fetch metadata.
 
 ## Restrict sources
 

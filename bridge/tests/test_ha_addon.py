@@ -53,12 +53,12 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
             ["streamline-bridge", "--max-sources", "8"],
         )
 
-    def test_recording_options_enable_shared_storage_without_putting_the_token_in_argv(self) -> None:
+    def test_recording_options_enable_private_storage_without_putting_the_token_in_argv(self) -> None:
         options = {"recordings_enabled": True, "recording_token": "long-recording-token"}
 
         self.assertEqual(
             bridge_argv(options),
-            ["streamline-bridge", "--recordings-dir", "/config/recordings"],
+            ["streamline-bridge", "--recordings-dir", "/data/recordings"],
         )
         self.assertEqual(recording_environment(options), {"STREAMLINE_RECORDING_TOKEN": "long-recording-token"})
 
@@ -108,6 +108,15 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
         for name, option in contract.items():
             self.assertEqual(options[name], str(option.default).lower())
             self.assertEqual(schema[name], option.supervisor_schema)
+
+    def test_supervisor_config_keeps_recordings_private_and_out_of_backups(self) -> None:
+        config_path = Path(
+            os.environ.get("STREAMLINE_ADDON_CONFIG", Path(__file__).parents[2] / "ha-addon" / "config.yaml")
+        )
+        config = config_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("\nmap:\n", config)
+        self.assertIn("\nbackup_exclude:\n  - recordings\n", config)
 
     @staticmethod
     def _yaml_section(config: str, name: str) -> dict[str, str]:

@@ -31,12 +31,17 @@ test: image
 	$(CONTAINER) run --rm --platform $(PLATFORM) --user 0:0 --entrypoint sh \
 		-v "$$volume:/data" \
 		"$(IMAGE):$(VERSION)" \
-		-c 'printf "%s\n" "{\"max_sources\": 3}" > /data/options.json && chown 0:0 /data/options.json && chmod 600 /data/options.json'; \
+		-c 'printf "%s\n" "{\"max_sources\": 3, \"recordings_enabled\": true, \"recording_token\": \"test-recording-token\"}" > /data/options.json && chown 0:0 /data/options.json && chmod 600 /data/options.json'; \
 	printf '%s\n' \
 		'#!/bin/sh' \
-		'test "$$#" -eq 2' \
-		'test "$$1" = "--max-sources"' \
-		'test "$$2" = "3"' \
+		'test "$$#" -eq 4' \
+		'test "$$1" = "--recordings-dir"' \
+		'test "$$2" = "/data/recordings"' \
+		'test "$$3" = "--max-sources"' \
+		'test "$$4" = "3"' \
+		'test "$$STREAMLINE_RECORDING_TOKEN" = "test-recording-token"' \
+		'mkdir "$$2"' \
+		'test -w "$$2"' \
 		> "$$stub_dir/streamline-bridge"; \
 	chmod +x "$$stub_dir/streamline-bridge"; \
 	$(CONTAINER) run --rm --platform $(PLATFORM) \

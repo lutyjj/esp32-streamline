@@ -33,8 +33,8 @@ as the add-on Web UI; standalone users open the documented bridge URL.
    size, free storage, and any source-timeline gaps.
 5. **Stop and save** finalizes the WAV header and makes the file downloadable.
    The recording list remains available after a bridge restart.
-6. The operator downloads or deletes the file. Home Assistant recordings also
-   remain visible under its shared storage.
+6. The operator downloads the file for permanent storage or deletes it from
+   the bridge. Bridge storage is a working area, not a media library.
 
 The page narrates each wait and failure. Stopping a session that received no
 audio creates no empty file.
@@ -112,10 +112,11 @@ writable `/recordings` volume while the rest of the container stays read-only.
 Recording stays disabled when `STREAMLINE_RECORDINGS_DIR` is empty.
 
 The Home Assistant add-on exposes an opt-in `recordings_enabled` option and a
-password-type `recording_token` option. It maps only its dedicated public
-configuration folder and stores files in `/config/recordings`. Home Assistant
-includes that folder when it backs up the add-on, so operators should download
-and delete large WAV files they no longer need.
+password-type `recording_token` option. It stores files in its private
+`/data/recordings` directory without mapping another writable host folder.
+Recordings survive add-on restarts and updates, but the add-on excludes them
+from Home Assistant backups. Restoring the add-on or uninstalling it removes
+these working files. Download every completed WAV that must be retained.
 
 The recording page stores the token in `sessionStorage`, never in a URL,
 cookie, file name, status response, or log. A bearer-authenticated request

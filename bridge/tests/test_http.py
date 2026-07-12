@@ -81,6 +81,7 @@ class HttpAdapterTests(unittest.TestCase):
         self.assertEqual(recordings_page, 200)
         self.assertEqual(recordings_headers["Content-Type"], "text/html; charset=utf-8")
         self.assertIn(b"Lossless recordings", recordings_body)
+        self.assertIn(b"Download completed recordings you want to keep", recordings_body)
         csp = recordings_headers["Content-Security-Policy"]
         self.assertNotIn("unsafe-inline", csp)
         nonce = csp.split("script-src 'nonce-", 1)[1].split("'", 1)[0]

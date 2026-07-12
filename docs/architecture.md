@@ -35,7 +35,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
 | `ha-addon` | Home Assistant Supervisor metadata, writable recording storage mapping, and bridge process wiring | Bridge runtime behavior |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
-| `tools` | Developer-only capture analysis and bounded serial capture | Product runtime behavior |
+| `tools` | Developer-only capture analysis, bounded serial capture, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
 | `.github`, root and component Makefiles | Change selection, checks, release assembly, publishing | Component behavior |
 
 Each component builds from a public base and owns its dependency and tool

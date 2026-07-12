@@ -3,6 +3,8 @@ import { apiClient, unwrap } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, loadDeviceSettings, status } from '../state/device';
 import { AudioProfiles } from './AudioProfiles';
+import { Button } from './Button';
+import { Card, CardFooter } from './Card';
 import { Meter } from './Meter';
 import { ActionState, TransactButton } from './Transact';
 
@@ -53,12 +55,11 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
   return (
     <>
       <AudioProfiles />
-      <div class="card gated">
-        <span class="lockhint">Unlock to edit</span>
-        <h2>Input settings</h2>
-        <p class="lead">
-          Changes apply instantly and return to Custom settings — watch the live level below.
-        </p>
+      <Card
+        gated
+        title="Input settings"
+        lead="Changes apply instantly and return to Custom settings. Watch the live level below."
+      >
         <form onSubmit={save}>
           <div class="formgrid">
             <div class="field">
@@ -110,33 +111,29 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
             </div>
             <div class="field">
               <label for="calibrateButton">Not sure?</label>
-              <button
-                class="btn secondary"
-                type="button"
+              <Button
                 id="calibrateButton"
-                style="justify-self:start"
+                className="field-action"
                 disabled={!writable}
                 onClick={onCalibrate}
               >
                 Calibrate levels
-              </button>
+              </Button>
               <span class="help">Measures your source and sets these for you.</span>
             </div>
           </div>
-          <div class="cardfoot">
+          <CardFooter>
             <TransactButton transact={transact} type="submit" disabled={!writable}>
               Save
             </TransactButton>
             <ActionState state={transact.state} />
-          </div>
+          </CardFooter>
         </form>
-      </div>
+      </Card>
 
-      <div class="card">
-        <h2>Live level</h2>
-        <p class="lead">Watch the effect of a change here — clipping lights the lamp.</p>
+      <Card title="Live level" lead="Watch the effect of a change here. Clipping lights the lamp.">
         <Meter />
-      </div>
+      </Card>
     </>
   );
 }

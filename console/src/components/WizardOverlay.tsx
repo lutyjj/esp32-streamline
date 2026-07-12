@@ -10,6 +10,8 @@ import { errorMessage } from '../lib/errors';
 import { dbfs } from '../lib/format';
 import { loadDeviceSettings, status } from '../state/device';
 import { toast } from '../state/toasts';
+import { Button } from './Button';
+import { DialogSheet } from './DialogSheet';
 import { Kv } from './Kv';
 import { MeterRow } from './Meter';
 
@@ -177,115 +179,23 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
   const stepIndex = WIZARD_STEPS.indexOf(step);
 
   return (
-    <div class="overlay">
-      <div class="sheet" role="dialog" aria-modal="true" aria-label="Level calibration">
-        <div class="stepline">
-          LEVEL CALIBRATION
-          <span class="stepdots">
-            {WIZARD_STEPS.map((name, i) => (
-              <i key={name} class={i <= stepIndex ? 'on' : ''} />
-            ))}
-          </span>
-        </div>
-
-        {step === 'prepare' && (
-          <div>
-            <h3>Calibrate input levels</h3>
-            <div class="body">
-              <p>
-                StreamLine measures your source and picks the ADC attenuation for you. Takes about a
-                minute. You’ll need:
-              </p>
-              <ol class="checklist">
-                <li>
-                  <b>Your source connected</b> to the line input and powered on
-                </li>
-                <li>
-                  <b>Something loud to play</b> — the most dynamic track you have nearby
-                </li>
-              </ol>
-              <p>
-                Levels change live while it runs — streaming keeps going. Cancelling puts your
-                current settings back.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === 'silence' && (
-          <div>
-            <h3>First, measure the quiet</h3>
-            <div class="body">
-              <p>
-                Leave everything connected, but pause playback on your source. StreamLine listens
-                for a few seconds to learn its idle level.
-              </p>
-            </div>
-            <div class="bigread">
-              <span class="n">{floorText}</span>
-              <span class="l">dBFS idle level</span>
-            </div>
-            <div class="progress">
-              <i style={{ width: `${progress * 100}%` }} />
-            </div>
-            {silenceNote && <p class="body wznote">{silenceNote}</p>}
-          </div>
-        )}
-
-        {step === 'loud' && (
-          <div>
-            <h3>Now play the loudest track you have</h3>
-            <div class="body">
-              <p>
-                Starting from 0 dB, StreamLine raises the attenuation until loud passages stop
-                clipping.
-              </p>
-            </div>
-            <div class="meter">
-              <MeterRow label="In" rms={live.rms} peak={live.peak} />
-            </div>
-            <div class="log wizlog">
-              {log.map((line, i) => (
-                <div key={i} class={line.cls}>
-                  {line.text}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {step === 'done' && result && (
-          <div>
-            <h3>Calibrated</h3>
-            <div class="body">
-              <p>
-                {result.atten === original.current.atten
-                  ? 'Your current setting was already right — nothing changed.'
-                  : 'Applied and saved — the device is already running with the new setting.'}
-              </p>
-            </div>
-            <Kv rows={doneRows} />
-          </div>
-        )}
-
-        <div class="sheetfoot">
-          <button class="btn secondary" type="button" onClick={() => close(true)}>
-            {step === 'done' ? 'Undo & close' : 'Cancel'}
-          </button>
-          <div class="row">
+    <DialogSheet
+      label="Level calibration"
+      steps={WIZARD_STEPS}
+      currentStep={step}
+      onDismiss={() => close(true)}
+      footer={
+        <>
+          <Button onClick={() => close(true)}>
+            {step === 'done' ? 'Undo and close' : 'Cancel'}
+          </Button>
+          <div class="sheetfoot-row">
             {stepIndex > 0 && step !== 'done' && (
-              <button
-                class="btn secondary"
-                type="button"
-                onClick={() => show(WIZARD_STEPS[stepIndex - 1])}
-              >
-                Back
-              </button>
+              <Button onClick={() => show(WIZARD_STEPS[stepIndex - 1])}>Back</Button>
             )}
             {step !== 'loud' && (
-              <button
-                class="btn primary"
-                type="button"
+              <Button
+                kind="primary"
                 disabled={step === 'silence' && !floorOk && !silenceNote}
                 onClick={() => {
                   if (step === 'prepare') show('silence');
@@ -300,11 +210,91 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
                       ? 'Measure again'
                       : 'Continue'
                     : 'Done'}
-              </button>
+              </Button>
             )}
           </div>
+        </>
+      }
+    >
+      {step === 'prepare' && (
+        <div>
+          <h3>Calibrate input levels</h3>
+          <div class="body">
+            <p>
+              StreamLine measures your source and picks the ADC attenuation for you. Takes about a
+              minute. You’ll need:
+            </p>
+            <ol class="checklist">
+              <li>
+                <b>Your source connected</b> to the line input and powered on
+              </li>
+              <li>
+                <b>Something loud to play</b> — the most dynamic track you have nearby
+              </li>
+            </ol>
+            <p>
+              Levels change live while it runs — streaming keeps going. Cancelling puts your current
+              settings back.
+            </p>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      {step === 'silence' && (
+        <div>
+          <h3>First, measure the quiet</h3>
+          <div class="body">
+            <p>
+              Leave everything connected, but pause playback on your source. StreamLine listens for
+              a few seconds to learn its idle level.
+            </p>
+          </div>
+          <div class="bigread">
+            <span class="n">{floorText}</span>
+            <span class="l">dBFS idle level</span>
+          </div>
+          <div class="progress">
+            <i style={{ width: `${progress * 100}%` }} />
+          </div>
+          {silenceNote && <p class="body wznote">{silenceNote}</p>}
+        </div>
+      )}
+
+      {step === 'loud' && (
+        <div>
+          <h3>Now play the loudest track you have</h3>
+          <div class="body">
+            <p>
+              Starting from 0 dB, StreamLine raises the attenuation until loud passages stop
+              clipping.
+            </p>
+          </div>
+          <div class="meter">
+            <MeterRow label="In" rms={live.rms} peak={live.peak} />
+          </div>
+          <div class="log wizlog">
+            {log.map((line, i) => (
+              <div key={i} class={line.cls}>
+                {line.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === 'done' && result && (
+        <div>
+          <h3>Calibrated</h3>
+          <div class="body">
+            <p>
+              {result.atten === original.current.atten
+                ? 'Your current setting was already right — nothing changed.'
+                : 'Applied and saved — the device is already running with the new setting.'}
+            </p>
+          </div>
+          <Kv rows={doneRows} />
+        </div>
+      )}
+    </DialogSheet>
   );
 }

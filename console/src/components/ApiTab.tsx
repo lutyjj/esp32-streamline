@@ -9,6 +9,8 @@ import {
 } from '../lib/contract';
 import { errorMessage } from '../lib/errors';
 import { toast } from '../state/toasts';
+import { Button } from './Button';
+import { Card } from './Card';
 
 type OperationEntry = {
   method: 'GET' | 'POST';
@@ -27,25 +29,25 @@ export function ApiTab() {
   }, []);
 
   if (failure) {
-    return <div class="card">Could not load the API contract: {failure}</div>;
+    return <Card>Could not load the API contract: {failure}</Card>;
   }
-  if (!document) return <div class="card">Loading the device API contract…</div>;
+  if (!document) return <Card>Loading the device API contract…</Card>;
 
   const operations = collectOperations(document);
   return (
     <>
-      <div class="card api-intro">
+      <Card className="api-intro">
         <div>
           <h2>{document.info?.title ?? 'Device API'}</h2>
           <p class="lead">
-            OpenAPI {document.info?.version ?? '1.0'} · {operations.length} operations · writes use
-            the admin key as a bearer token
+            Contract v{document.info?.version ?? '1.0'} · {operations.length} operations · writes
+            use the admin key as a bearer token
           </p>
         </div>
         <a class="btn secondary" href="/api/openapi.json" target="_blank" rel="noreferrer">
           Open JSON
         </a>
-      </div>
+      </Card>
       <div class="api-list">
         {operations.map(({ method, path, operation }) => (
           <OperationCard
@@ -84,15 +86,16 @@ function OperationCard({
           <div class="api-fields">
             <h3>Form fields</h3>
             <div class="api-field api-field-header" aria-hidden="true">
-              <span>Parameter</span>
-              <span>Type</span>
+              <span>Parameter and type</span>
               <span>Presence</span>
               <span>Description</span>
             </div>
             {Object.entries(body.properties).map(([name, schema]) => (
               <div class="api-field" key={name}>
-                <code>{name}</code>
-                <span>{schemaType(schema)}</span>
+                <div class="api-field-main">
+                  <code>{name}</code>
+                  <span>{schemaType(schema)}</span>
+                </div>
                 <span class={required.has(name) ? 'api-field-required' : 'api-field-optional'}>
                   {required.has(name) ? 'required' : 'optional'}
                 </span>
@@ -110,9 +113,8 @@ function OperationCard({
         <div class="api-example">
           <div>
             <h3>curl</h3>
-            <button
-              class="btn secondary api-copy"
-              type="button"
+            <Button
+              className="api-copy"
               onClick={() =>
                 copyText(command).then(
                   () => toast('curl command copied', 'ok'),
@@ -121,7 +123,7 @@ function OperationCard({
               }
             >
               Copy
-            </button>
+            </Button>
           </div>
           <pre>{command}</pre>
         </div>

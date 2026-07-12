@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import type { ActionState as ActionStateValue, Transact } from '../lib/hooks';
+import { Button, type ButtonKind } from './Button';
 
 /**
  * Rendering for the useTransact lifecycle: the button that carries the busy
@@ -9,7 +10,7 @@ import type { ActionState as ActionStateValue, Transact } from '../lib/hooks';
 interface TransactButtonProps {
   transact: Transact;
   children: ComponentChildren;
-  kind?: 'primary' | 'secondary' | 'danger';
+  kind?: ButtonKind;
   type?: 'submit' | 'button';
   /** Gates beyond the transaction itself, e.g. locked settings. */
   disabled?: boolean;
@@ -25,15 +26,9 @@ export function TransactButton({
   onClick,
 }: TransactButtonProps) {
   return (
-    <button
-      class={`btn ${kind}${transact.busy ? ' busy' : ''}`}
-      type={type}
-      disabled={disabled || transact.busy}
-      onClick={onClick}
-    >
-      <span class="spin" />
+    <Button kind={kind} type={type} disabled={disabled} busy={transact.busy} onClick={onClick}>
       {children}
-    </button>
+    </Button>
   );
 }
 

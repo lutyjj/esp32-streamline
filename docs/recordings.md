@@ -112,8 +112,10 @@ writable `/recordings` volume while the rest of the container stays read-only.
 Recording stays disabled when `STREAMLINE_RECORDINGS_DIR` is empty.
 
 The Home Assistant add-on exposes an opt-in `recordings_enabled` option and a
-password-type `recording_token` option. It maps `share:rw` and stores files in
-`/share/streamline-recordings`, outside the add-on image and its backup payload.
+password-type `recording_token` option. It maps only its dedicated public
+configuration folder and stores files in `/config/recordings`. Home Assistant
+includes that folder when it backs up the add-on, so operators should download
+and delete large WAV files they no longer need.
 
 The recording page stores the token in `sessionStorage`, never in a URL,
 cookie, file name, status response, or log. A bearer-authenticated request

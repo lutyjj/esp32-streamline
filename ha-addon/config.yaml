@@ -21,7 +21,7 @@ ports_description:
   39000/tcp: ESP32 PCM input
   8088/tcp: HTTP WAV stream and status API
 map:
-  - share:rw
+  - addon_config:rw
 options:
   source_allow: ""
   max_sources: 8

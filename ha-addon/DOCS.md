@@ -32,9 +32,10 @@ In the add-on configuration, turn on `recordings_enabled` and set a private
 UI, and unlock with that token. Choose the device source, name the recording,
 start it, then play the source.
 
-The add-on stores WAV files in `/share/streamline-recordings`. Download or
-delete them from the recording page. Home Assistant shared-storage tools can
-also access the same directory.
+The add-on stores WAV files in its dedicated public configuration folder under
+`recordings/`. Download or delete them from the recording page. Home Assistant
+file tools can also access finalized files. This folder is included when the
+add-on is backed up, so download and delete large WAV files you no longer need.
 
 Recording preserves the analog input as 48 kHz, 16-bit stereo PCM. It is not a
 bit-perfect CD extraction and does not split tracks or fetch metadata.

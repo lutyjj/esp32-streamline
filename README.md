@@ -92,6 +92,13 @@ services:
       STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
       STREAMLINE_RECORDINGS_DIR: ${STREAMLINE_RECORDINGS_DIR:-}
       STREAMLINE_RECORDING_TOKEN: ${STREAMLINE_RECORDING_TOKEN:-}
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
     volumes:
       - streamline-recordings:/recordings
 
@@ -120,6 +127,10 @@ files; recording stays disabled when `STREAMLINE_RECORDINGS_DIR` is empty. The
 Home Assistant add-on exposes the same opt-in flow in its configuration. This
 focused bridge page manages stored files; the device console continues to own
 audio, network, and firmware settings.
+
+Set `STREAMLINE_SOURCE_ALLOW` to the device IPv4 address, or a comma-separated
+list, whenever those addresses are stable. Keep ports `39000` and `8088` on a
+trusted LAN; neither is an internet-facing service.
 
 ### 3. Configure the device
 

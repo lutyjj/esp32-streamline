@@ -58,7 +58,7 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
 
         self.assertEqual(
             bridge_argv(options),
-            ["streamline-bridge", "--recordings-dir", "/share/streamline-recordings"],
+            ["streamline-bridge", "--recordings-dir", "/config/recordings"],
         )
         self.assertEqual(recording_environment(options), {"STREAMLINE_RECORDING_TOKEN": "long-recording-token"})
 

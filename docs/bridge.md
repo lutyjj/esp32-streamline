@@ -40,6 +40,8 @@ HTTP client count, current idle duration, and eviction interval.
 | --- | ---: | --- | --- |
 | `--source-allow` | empty | IPv4 addresses | Repeat or comma-separate allowed producer addresses. |
 | `--max-sources` | 8 | integer >= 1 | Maximum retained source pipelines. |
+| `--max-http-connections` | 32 | integer >= 1 | Maximum simultaneous HTTP workers. Excess connections are rejected. |
+| `--http-request-timeout-seconds` | 10.0 | number >= 0.001 | Socket inactivity before an HTTP client is disconnected. |
 | `--client-buffer-chunks` | 2048 | integer >= 1 | Per-client output queue depth. Full queues evict the client. |
 | `--playout-buffer-seconds` | 1.0 | number >= 0.001 | Packets buffered before playout begins or resumes. |
 | `--max-repeat-conceal-packets` | 3 | integer >= 0 | Loss packets that repeat attenuated PCM before silence. |

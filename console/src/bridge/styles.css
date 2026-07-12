@@ -1,0 +1,132 @@
+.bridge-console {
+  display: grid;
+  gap: 22px;
+}
+.bridge-group {
+  display: grid;
+  gap: 12px;
+}
+.bridge-group > .section-head {
+  margin: 0;
+}
+.bridge-group > .section-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.grouplead {
+  margin: -4px 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.bridge-list {
+  display: grid;
+  gap: 10px;
+}
+.source-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.source-head h3,
+.recording h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.source-head h3 {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+.bridge-meter {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+  color: var(--faint);
+  font: 10.5px var(--mono);
+}
+.streamrow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.streamlabel {
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+.stream {
+  color: var(--accent);
+  font: 12px var(--mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.pill {
+  display: inline-flex;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: var(--muted);
+  font: 650 11px var(--mono);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pill.connected,
+.pill.complete {
+  color: var(--good);
+  border-color: #2f5d47;
+}
+.pill.recording {
+  color: var(--bad);
+  border-color: #6b3434;
+}
+.pill.waiting-for-audio,
+.pill.interrupted {
+  color: var(--warn);
+  border-color: #6b5a2a;
+}
+.recording {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 12px;
+}
+.recording:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.recording h3 {
+  margin-top: 7px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.storage-value {
+  font: 600 18px var(--mono);
+}
+.bridge-lock {
+  align-self: start;
+}
+@media (max-width: 700px) {
+  .recording {
+    grid-template-columns: 1fr;
+  }
+}

@@ -31,7 +31,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | Component | Owns | Does not own |
 |---|---|---|
 | `firmware/streamline` | Board selection, codec and I2S capture, signal gating, device configuration, telemetry, HTTP API, TCP sender, OTA | Jitter buffering, audio encoding, playback |
-| `console` | Device setup and management UI, browser-held admin-key custody, generated API client types | Device facts, validation authority, persistent device state |
+| `console` | Device and bridge consoles, WebFlasher UI, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
 | `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
 | `ha-addon` | Home Assistant Supervisor metadata, writable recording storage mapping, and bridge process wiring | Bridge runtime behavior |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
@@ -40,9 +40,10 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 
 Each component builds from a public base and owns its dependency and tool
 configuration. Register every new component or dependency surface in
-`.github/dependabot.yml` in the same change. The firmware embeds the console
-build. The Home Assistant add-on packages the bridge. These are deliberate
-build-time dependencies, not shared runtime state.
+`.github/dependabot.yml` in the same change. The firmware embeds the device
+console build. The bridge packages the bridge console build, and the Home
+Assistant add-on packages the bridge. These are deliberate build-time
+dependencies, not shared runtime state.
 
 ## Firmware boundaries
 
@@ -99,6 +100,14 @@ It owns a bounded writer queue and a failure-atomic recording store. The bridge
 page calls the same authenticated API available to scripts. [Lossless
 recordings](recordings.md) owns the user flow, API, storage lifecycle, and
 integrity contract.
+
+`bridge/src/streamline_bridge/http.py` owns bridge routes through FastAPI and
+their request and response shapes through Pydantic models. `make
+bridge-openapi` generates `docs/bridge-openapi.json` from that runtime app. The
+bridge serves the same contract at `GET /api/openapi.json`, and Orval generates
+the bridge console client from the checked artifact. The WAV route uses the
+same application but keeps media delivery behind a transport-neutral bounded
+client stream.
 
 The standalone container and Home Assistant add-on run the same `streamline-bridge` process. `streamline-ha-addon` only translates Supervisor options into bridge CLI arguments. The [bridge reference](bridge.md) owns the runtime endpoints, lifecycle states, and tuning options.
 

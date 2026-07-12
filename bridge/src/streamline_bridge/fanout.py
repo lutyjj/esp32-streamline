@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import contextlib
 import queue
-import socket
 import threading
 import time
 from dataclasses import asdict, dataclass
@@ -32,7 +30,6 @@ class ClientStats:
 class ClientStream:
     stats: ClientStats
     queue: queue.Queue[bytes | None]
-    client_socket: socket.socket
 
 
 class ClientFanout:
@@ -47,14 +44,13 @@ class ClientFanout:
         self._queue_drops = 0
         self._slow_clients = 0
 
-    def register(self, remote_addr: str, path: str, client_socket: socket.socket) -> ClientStream:
+    def register(self, remote_addr: str, path: str) -> ClientStream:
         with self._lock:
             client_id = self._next_client_id
             self._next_client_id += 1
             stream = ClientStream(
                 ClientStats(client_id, remote_addr, path, self._now()),
                 queue.Queue(self._max_client_chunks),
-                client_socket,
             )
             self._clients[client_id] = stream
             return stream
@@ -102,9 +98,9 @@ class ClientFanout:
             stream.stats.queue_depth = stream.queue.qsize()
             self._queue_drops += 1
             self._slow_clients += 1
-        with contextlib.suppress(queue.Full):
-            stream.queue.put_nowait(None)
-        with contextlib.suppress(OSError):
-            stream.client_socket.shutdown(socket.SHUT_RDWR)
-        with contextlib.suppress(OSError):
-            stream.client_socket.close()
+        while True:
+            try:
+                stream.queue.get_nowait()
+            except queue.Empty:
+                break
+        stream.queue.put_nowait(None)

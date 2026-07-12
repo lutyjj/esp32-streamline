@@ -11,9 +11,10 @@ a restart or identify a device by hostname.
 | --- | --- |
 | `/streamline.wav` | Live WAV from the sole source, or a pending pipeline before a producer connects. |
 | `/streamline.wav?source=<ipv4>` | Live WAV from an existing or allowlisted source. |
-| `/status` | Bridge version, per-source playout/client statistics, and lifecycle state. |
+| `/status` | Bridge version, per-source playout/client statistics, latest PCM levels, and lifecycle state. |
 | `/health` | `200 OK` with `ok` while the HTTP process is running. |
-| `/` and `/recordings` | Recording console. It reports that recording is disabled when no directory is configured. The Home Assistant add-on serves it through ingress. |
+| `/api/openapi.json` | OpenAPI 3.1 contract generated from the running bridge routes and Pydantic models. |
+| `/` and `/recordings` | Bridge console with live sources and optional recordings. The Home Assistant add-on serves it through ingress. |
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 
 When more than one source exists, an unqualified `/streamline.wav` request
@@ -33,6 +34,14 @@ The bridge retains an inactive dynamic source for
 that interval reuses its playout pipeline. An active TCP producer or HTTP
 client prevents eviction. The `/status` lifecycle block reports the state,
 HTTP client count, current idle duration, and eviction interval.
+
+Each source snapshot also includes `levels`, the peak and RMS absolute sample
+values for the latest accepted 16-bit stereo PCM packet. Each channel ranges
+from `0` (silence) through `32768` (full scale). The bridge console polls this
+open JSON contract once per second and renders the values as a live meter.
+
+The bridge owns [its OpenAPI artifact](bridge-openapi.json). Console checks use
+that artifact to generate a typed client; do not edit generated client files.
 
 ## Tuning options
 

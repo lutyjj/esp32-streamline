@@ -69,7 +69,7 @@ clean: firmware-clean
 # Per-component check aggregates. The trailing `;` gives each an empty recipe so
 # the `<component>-%` forwarding rules do not also fire a `check` sub-target. CI
 # fans out over these by name.
-bridge-check: bridge-lock-check bridge-lint bridge-test bridge-image ;
+bridge-check: bridge-lock-check bridge-lint bridge-test bridge-openapi-check bridge-image ;
 console-check: console-lint console-test console-build ;
 firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-build ;
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;

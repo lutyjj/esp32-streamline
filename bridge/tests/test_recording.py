@@ -81,7 +81,12 @@ class RecordingServiceTests(unittest.TestCase):
         self.assertEqual(saved["state"], "interrupted")
         self.assertIn("timeline moved backwards", str(saved["error"]))
         self.store.ensure_file(started["id"])
-        lifecycle = cast("dict[str, object]", self.sources.snapshot()["192.0.2.10"]["lifecycle"])
+        deadline = time.monotonic() + 1
+        while True:
+            lifecycle = cast("dict[str, object]", self.sources.snapshot()["192.0.2.10"]["lifecycle"])
+            if lifecycle["recording_sessions"] == 0 or time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
         self.assertEqual(lifecycle["recording_sessions"], 0)
 
     def test_gap_larger_than_one_write_batch_preserves_the_full_timeline(self) -> None:
@@ -169,6 +174,18 @@ class RecordingRecoveryTests(unittest.TestCase):
             self.assertEqual(len(saved), 1)
             self.assertEqual(saved[0]["frames"], DEFAULT_FORMAT.frames_per_packet)
             self.assertIn("manifest was missing", str(saved[0]["error"]))
+
+    def test_repeated_directory_scans_see_new_recordings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = RecordingStore(root, now=FixedTime())
+            self.assertEqual(store.list_saved(), [])
+            recording_id = "20260711T120000Z-rare-album-abcdef"
+            (root / f"{recording_id}.wav").write_bytes(wav_header(DEFAULT_FORMAT.payload_bytes) + payload(123))
+
+            store.recover()
+
+            self.assertEqual(len(store.list_saved()), 1)
 
     def test_store_refuses_a_symlink_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

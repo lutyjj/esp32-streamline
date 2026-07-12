@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import socket
 import struct
 import unittest
 
@@ -90,15 +89,12 @@ class PlayoutBufferTests(unittest.TestCase):
 
 class ClientFanoutTests(unittest.TestCase):
     def test_overflow_evicts_a_slow_client(self) -> None:
-        client, peer = socket.socketpair()
         fanout = ClientFanout(1)
-        try:
-            fanout.register("192.0.2.10", "/streamline.wav", client)
-            fanout.publish(b"first")
-            fanout.publish(b"second")
-            snapshot = fanout.snapshot()
-            self.assertEqual(snapshot["clients"], 0)
-            self.assertEqual(snapshot["slow_clients"], 1)
-            self.assertEqual(snapshot["client_queue_drops"], 1)
-        finally:
-            peer.close()
+        stream = fanout.register("192.0.2.10", "/streamline.wav")
+        fanout.publish(b"first")
+        fanout.publish(b"second")
+        snapshot = fanout.snapshot()
+        self.assertEqual(snapshot["clients"], 0)
+        self.assertEqual(snapshot["slow_clients"], 1)
+        self.assertEqual(snapshot["client_queue_drops"], 1)
+        self.assertIsNone(stream.queue.get_nowait())

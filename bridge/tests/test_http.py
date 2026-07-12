@@ -40,14 +40,14 @@ class HttpAdapterTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
 
-    def request(self, path: str) -> tuple[int, dict[str, str], bytes]:
+    def request(self, path: str, headers: dict[str, str] | None = None) -> tuple[int, dict[str, str], bytes]:
         conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=1)
-        conn.request("GET", path)
+        conn.request("GET", path, headers=headers or {})
         response = conn.getresponse()
         body = response.read()
-        headers = dict(response.getheaders())
+        response_headers = dict(response.getheaders())
         conn.close()
-        return response.status, headers, body
+        return response.status, response_headers, body
 
     @staticmethod
     def lifecycle(snapshot: dict[str, object]) -> dict[str, object]:
@@ -80,13 +80,30 @@ class HttpAdapterTests(unittest.TestCase):
         self.assertFalse(json.loads(capabilities_body)["enabled"])
         self.assertEqual(recordings_page, 200)
         self.assertEqual(recordings_headers["Content-Type"], "text/html; charset=utf-8")
-        self.assertIn(b"Lossless recordings", recordings_body)
+        self.assertIn(b"Bridge recordings", recordings_body)
         self.assertIn(b"Download completed recordings you want to keep", recordings_body)
         csp = recordings_headers["Content-Security-Policy"]
         self.assertNotIn("unsafe-inline", csp)
         nonce = csp.split("script-src 'nonce-", 1)[1].split("'", 1)[0]
         self.assertIn(f'<style nonce="{nonce}">'.encode(), recordings_body)
         self.assertIn(f'<script nonce="{nonce}">'.encode(), recordings_body)
+
+    def test_root_serves_the_console_for_ingress_landing(self) -> None:
+        status, headers, body = self.request("/")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
+        self.assertIn(b"Bridge recordings", body)
+
+    def test_ingress_path_header_scopes_console_requests(self) -> None:
+        status, _, body = self.request("/", {"X-Ingress-Path": "/api/hassio_ingress/abc-1_2"})
+        self.assertEqual(status, 200)
+        self.assertIn(b'content="/api/hassio_ingress/abc-1_2"', body)
+
+    def test_spoofed_ingress_path_header_is_rejected(self) -> None:
+        status, _, body = self.request("/recordings", {"X-Ingress-Path": "not a path<script>alert(1)</script>"})
+        self.assertEqual(status, 200)
+        self.assertIn(b'content=""', body)
+        self.assertNotIn(b"<script>alert(1)</script>", body)
 
     def test_http_connection_count_and_idle_reads_are_bounded(self) -> None:
         server = BoundedThreadingHTTPServer(

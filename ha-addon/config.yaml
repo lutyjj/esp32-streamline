@@ -12,7 +12,10 @@ startup: services
 boot: auto
 stage: experimental
 image: "ghcr.io/lutyjj/{arch}-esp32-streamline-bridge-addon"
-webui: "http://[HOST]:[PORT:8088]/recordings"
+ingress: true
+ingress_port: 8088
+panel_icon: mdi:cassette
+panel_title: StreamLine
 watchdog: "http://[HOST]:[PORT:8088]/health"
 backup_exclude:
   - recordings

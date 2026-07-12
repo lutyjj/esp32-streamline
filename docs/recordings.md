@@ -19,7 +19,8 @@ Serving bridge controls from a device would require the device page to discover
 the bridge's separate HTTP address, cross browser origins, hold a second token,
 and present files from sources other than that device. Keeping the API and page
 on the bridge preserves one origin and one owner. Home Assistant opens the page
-as the add-on Web UI; standalone users open the documented bridge URL.
+through the add-on's ingress Web UI; standalone users open the bridge URL
+directly.
 
 ## User flow
 

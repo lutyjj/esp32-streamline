@@ -1,8 +1,14 @@
 # ESP32 StreamLine Bridge
 
 This add-on runs the StreamLine PCM-to-WAV bridge as a Home Assistant service.
-Point each ESP32 device at the Home Assistant host on port `39000`; the bridge
-serves the live audio on HTTP `8088`.
+Each ESP32 device sends raw PCM over a direct TCP connection to the Home
+Assistant host on port `39000`; the bridge serves the live audio over HTTP
+`8088`.
+
+Point each device at the host's LAN IP address, not a reverse-proxy hostname.
+The device opens a raw TCP socket that an HTTP reverse proxy does not forward,
+so a proxy in front of Home Assistant carries the web UI but never the device's
+audio connection.
 
 ## Play it in Music Assistant
 
@@ -23,14 +29,19 @@ validates immediately.
 - `http://<home-assistant-host>:8088/streamline.wav?source=<esp32-ip>` — one
   stream when several ESP32 sources feed the bridge.
 - `http://<home-assistant-host>:8088/status` — per-source JSON stats.
-- `http://<home-assistant-host>:8088/recordings`: lossless recording page.
+- **Open Web UI** (Home Assistant ingress) — the recording console. On the LAN,
+  `http://<home-assistant-host>:8088/` serves the same page.
 
 ## Record a source
 
 In the add-on configuration, turn on `recordings_enabled` and set a private
-`recording_token` of at least 16 characters. Restart the add-on, open its Web
-UI, and unlock with that token. Choose the device source, name the recording,
-start it, then play the source.
+`recording_token` of at least 16 characters. Restart the add-on, open **Open
+Web UI** (or the StreamLine sidebar entry), and unlock with that token. Choose
+the device source, name the recording, start it, then play the source.
+
+The add-on serves this page through Home Assistant ingress, so it opens on the
+same host and port as Home Assistant and works behind a reverse proxy. Port
+`8088` stays published for Music Assistant and direct LAN access.
 
 The add-on stores WAV files in its private working directory. They survive
 add-on restarts and updates, but Home Assistant backups exclude them to avoid

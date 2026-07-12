@@ -183,7 +183,7 @@
     function lock() {
       token = "";
       sessionStorage.removeItem(TOKEN_KEY);
-      clearInterval(pollTimer);
+      clearTimeout(pollTimer);
       $("workspace").classList.add("hidden");
       $("unlock").classList.remove("hidden");
     }
@@ -239,11 +239,16 @@
         $("workspace").classList.remove("hidden");
         clearMessage();
         await refresh();
-        clearInterval(pollTimer);
-        pollTimer = setInterval(refresh, 1000);
+        clearTimeout(pollTimer);
+        pollTimer = setTimeout(poll, 1000);
       } catch (error) {
         showMessage(error.message, true);
       }
+    }
+
+    async function poll() {
+      await refresh();
+      if (token) pollTimer = setTimeout(poll, 1000);
     }
 
     $("unlock-form").addEventListener("submit", (event) => { event.preventDefault(); unlock($("token").value); });

@@ -45,6 +45,7 @@ DEFAULT_MIN_FREE_BYTES = 256 * 1024 * 1024
 DEFAULT_QUEUE_CHUNKS = 1024
 MAX_TITLE_CHARS = 80
 SPACE_CHECK_INTERVAL_BYTES = 4 * 1024 * 1024
+SILENCE_BATCH_PACKETS = 256
 ID_PATTERN = re.compile(r"^[a-zA-Z0-9-]+$")
 
 
@@ -190,10 +191,18 @@ class WavRecordingFile:
             raise ValueError("PCM payload is not frame-aligned")
         if self.data_bytes + len(payload) > WAV_MAX_DATA_BYTES:
             raise RecordingError("duration-limit", "The WAV size limit was reached. Start a new recording.")
-        self._file.write(payload)
-        self.data_bytes += len(payload)
+        written = self._file.write(payload)
+        self.data_bytes += written
+        if written != len(payload):
+            raise OSError(f"short recording write: {written} of {len(payload)} bytes")
 
     def finalize(self) -> Path:
+        self._file.flush()
+        file_bytes = self._file.seek(0, os.SEEK_END)
+        frame_bytes = self._format.channels * self._format.bits // 8
+        self.data_bytes = max(0, file_bytes - WAV_HEADER_BYTES)
+        self.data_bytes -= self.data_bytes % frame_bytes
+        self._file.truncate(WAV_HEADER_BYTES + self.data_bytes)
         self._file.seek(0)
         self._file.write(wav_header(self.data_bytes, self._format))
         self._file.flush()
@@ -555,26 +564,30 @@ class RecordingSession:
         return self._limits.max_duration_seconds * self._format.rate
 
     def _append_silence(self, output: WavRecordingFile, packets: int) -> None:
-        silence = bytes(self._format.payload_bytes)
-        for _ in range(packets):
-            output.append(silence)
+        while packets:
+            batch_packets = min(packets, SILENCE_BATCH_PACKETS)
+            output.append(bytes(self._format.payload_bytes * batch_packets))
+            packets -= batch_packets
 
     def _finish(self, output: WavRecordingFile) -> None:
         with self._lock:
-            frames = self._frames
             error = self._error
-        if frames == 0:
+        if output.data_bytes == 0:
             output.discard()
             state: RecordingState = "empty"
             file_name = ""
+            frames = 0
         else:
             output.finalize()
+            frame_bytes = self._format.channels * self._format.bits // 8
+            frames = output.data_bytes // frame_bytes
             state = "interrupted" if error else "complete"
             file_name = self._paths.wav.name
         finished_at = isoformat(self._now())
         with self._lock:
             self._state = state
             self._finished_at = finished_at
+            self._frames = frames
             snapshot = self.snapshot_unlocked()
         if frames:
             self._store.save_manifest(

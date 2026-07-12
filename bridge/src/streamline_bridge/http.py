@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 HTTP_MAX_BATCH_CHUNKS = 64
+HTTP_MAX_JSON_BODY_BYTES = 4096
 RECORDINGS_PAGE = files("streamline_bridge").joinpath("recordings.html").read_bytes()
 
 
@@ -89,7 +90,15 @@ def make_handler(
                 self._dispatch_recording("GET", url.path, query=url.query)
 
         def do_POST(self) -> None:
-            self._dispatch_recording("POST", urlsplit(self.path).path, self._read_body())
+            body = self._read_body()
+            if body is None:
+                self.close_connection = True
+                self._send_json(
+                    {"error": {"code": "request-too-large", "message": "Request bodies must not exceed 4096 bytes."}},
+                    HTTPStatus(413),
+                )
+                return
+            self._dispatch_recording("POST", urlsplit(self.path).path, body)
 
         def do_DELETE(self) -> None:
             self._dispatch_recording("DELETE", urlsplit(self.path).path)
@@ -113,14 +122,14 @@ def make_handler(
             self.end_headers()
             self.wfile.write(body)
 
-        def _read_body(self) -> bytes:
+        def _read_body(self) -> bytes | None:
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
-                length = 0
-            if length > 4096:
-                return b""
-            return self.rfile.read(max(0, length))
+                return None
+            if not 0 <= length <= HTTP_MAX_JSON_BODY_BYTES:
+                return None
+            return self.rfile.read(length)
 
         def _dispatch_recording(self, method: str, path: str, body: bytes = b"", query: str = "") -> None:
             response = recording_http.handle(method, path, self.headers.get("Authorization"), body, query)

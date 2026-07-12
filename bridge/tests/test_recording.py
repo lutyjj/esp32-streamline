@@ -10,7 +10,7 @@ from typing import cast
 
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT
-from streamline_bridge.recording import RecordingService, RecordingStore, wav_header
+from streamline_bridge.recording import SILENCE_BATCH_PACKETS, RecordingService, RecordingStore, wav_header
 from streamline_bridge.sources import SourceRegistry
 
 
@@ -73,6 +73,20 @@ class RecordingServiceTests(unittest.TestCase):
         self.assertTrue(self.store.file(started["id"]).is_file())
         lifecycle = cast("dict[str, object]", self.sources.snapshot()["192.0.2.10"]["lifecycle"])
         self.assertEqual(lifecycle["recording_sessions"], 0)
+
+    def test_gap_larger_than_one_write_batch_preserves_the_full_timeline(self) -> None:
+        started = self.service.start("192.0.2.10", "Long gap")
+        self.source.hub.ingest(10, payload(100))
+        second_sequence = 10 + SILENCE_BATCH_PACKETS + 2
+        self.source.hub.ingest(second_sequence, payload(200))
+
+        stopped = self.service.stop(started["id"])
+
+        expected_gap = SILENCE_BATCH_PACKETS + 1
+        self.assertEqual(stopped["gap_packets"], expected_gap)
+        self.assertEqual(stopped["frames"], (expected_gap + 2) * DEFAULT_FORMAT.frames_per_packet)
+        with wave.open(str(self.store.file(started["id"])), "rb") as recording:
+            self.assertEqual(recording.getnframes(), stopped["frames"])
 
     def test_stop_before_audio_discards_the_empty_part(self) -> None:
         started = self.service.start("192.0.2.10", "Nothing played")

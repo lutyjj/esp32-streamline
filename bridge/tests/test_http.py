@@ -191,3 +191,13 @@ class RecordingHttpTests(unittest.TestCase):
         self.assertIn("unknown source", json.loads(unknown_source_body)["error"]["message"])
         self.assertEqual(wrong_method, 405)
         self.assertEqual(wrong_method_headers["Allow"], "GET, POST")
+
+    def test_oversized_request_is_rejected_before_json_parsing(self) -> None:
+        status, _, body = self.request(
+            "POST",
+            "/api/recordings",
+            {"source": "192.0.2.10", "title": "x" * 5000},
+        )
+
+        self.assertEqual(status, 413)
+        self.assertEqual(json.loads(body)["error"]["code"], "request-too-large")

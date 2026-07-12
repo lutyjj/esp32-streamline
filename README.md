@@ -88,8 +88,15 @@ services:
     ports:
       - "39000:39000/tcp"
       - "8088:8088/tcp"
-    # environment:
-    #   STREAMLINE_SOURCE_ALLOW: 192.0.2.100  # accept PCM only from your ESP32
+    environment:
+      STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
+      STREAMLINE_RECORDINGS_DIR: ${STREAMLINE_RECORDINGS_DIR:-}
+      STREAMLINE_RECORDING_TOKEN: ${STREAMLINE_RECORDING_TOKEN:-}
+    volumes:
+      - streamline-recordings:/recordings
+
+volumes:
+  streamline-recordings:
 ```
 
 The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
@@ -105,7 +112,7 @@ characters before `docker compose up -d`:
 
 ```sh
 export STREAMLINE_RECORDINGS_DIR=/recordings
-export STREAMLINE_RECORDING_TOKEN=<private-recording-token>
+export STREAMLINE_RECORDING_TOKEN=replace-with-a-private-token
 ```
 
 Open `http://<bridge-host>:8088/recordings`. The named Docker volume owns the

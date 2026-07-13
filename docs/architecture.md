@@ -91,7 +91,7 @@ flowchart LR
 
 ## Bridge boundaries
 
-The bridge runs separate compatibility and authenticated PCM listeners. A cleartext source is identified by peer IPv4 address. A TLS source is admitted only after the exact TLS 1.3 PSK profile succeeds and is identified by its authenticated device key id; peer IPv4 remains available for allowlist policy and diagnostics. Each source owns an independent playout pipeline. A newer connection for the same source id replaces the older session so packets from a rebooted device cannot mix with stale packets.
+The bridge runs one PCM listener in either cleartext or authenticated TLS mode. A cleartext source is identified by peer IPv4 address. A TLS source is admitted only after the exact TLS 1.3 PSK profile succeeds and is identified by its authenticated device key id; peer IPv4 remains available for allowlist policy and diagnostics. Each source owns an independent playout pipeline. A newer connection for the same source id replaces the older session so packets from a rebooted device cannot mix with stale packets.
 
 The pipeline buffers packets before playout, follows sequence numbers, attenuates repeated audio across short gaps, emits silence for longer gaps, and re-buffers after a sustained outage. Each HTTP client has a bounded output queue; the bridge disconnects a client that cannot keep up. The [PCM protocol](pcm-protocol.md) owns the media and concealment contract.
 

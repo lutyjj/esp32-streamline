@@ -34,14 +34,13 @@ from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
 from streamline_bridge.recording import RecordingError
 from streamline_bridge.recording_http import RecordingHttpService
 from streamline_bridge.sources import Source, SourceRegistry, SourceSelectionError
-from streamline_bridge.transport import DEFAULT_PORT
+from streamline_bridge.transport import DEFAULT_PORT, TransportControl
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator, Mapping
 
     from streamline_bridge.pipeline import AudioPipeline
     from streamline_bridge.recording import RecordingService
-    from streamline_bridge.transport import TransportControl
 
 HTTP_MAX_BATCH_CHUNKS = 64
 HTTP_MAX_JSON_BODY_BYTES = 4096
@@ -190,6 +189,8 @@ def make_app(
     )
     app.add_middleware(BodyLimitMiddleware)
     recording_api = RecordingHttpService(recordings, recording_token)
+    if transport is None:
+        transport = TransportControl(None, None, None, tls_enabled=False, port=DEFAULT_PORT)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -213,12 +214,7 @@ def make_app(
     def authorize_transport(
         credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)],
     ) -> None:
-        if (
-            transport is None
-            or credentials is None
-            or credentials.scheme != "Bearer"
-            or not transport.authorize(credentials.credentials)
-        ):
+        if credentials is None or credentials.scheme != "Bearer" or not transport.authorize(credentials.credentials):
             raise HTTPException(
                 status_code=401,
                 detail={"code": "unauthorized", "message": "Enter the transport API token configured on this bridge."},
@@ -238,20 +234,8 @@ def make_app(
         summary="Read bridge and source status",
     )
     def get_status() -> BridgeStatus:
-        transport_status = (
-            transport.snapshot()
-            if transport is not None
-            else {
-                "contract_version": 1,
-                "mode": "cleartext",
-                "port": DEFAULT_PORT,
-                "key_ids": [],
-                "auth_successes": 0,
-                "auth_failures": 0,
-            }
-        )
         return BridgeStatus.model_validate(
-            {"bridge_version": bridge_version, "sources": sources.snapshot(), "transport": transport_status}
+            {"bridge_version": bridge_version, "sources": sources.snapshot(), "transport": transport.snapshot()}
         )
 
     @app.get("/health", response_class=PlainTextResponse, operation_id="getBridgeHealth", summary="Check bridge health")
@@ -264,9 +248,7 @@ def make_app(
         operation_id="getTransport",
         summary="Read PCM transport listeners, key ids, and authentication counters",
     )
-    def get_transport() -> Response | TransportSnapshot:
-        if transport is None:
-            return error_response(503, "transport-unavailable", "Transport control is unavailable.")
+    def get_transport() -> TransportSnapshot:
         return TransportSnapshot.model_validate(transport.snapshot())
 
     transport_authenticated = [Depends(authorize_transport)]
@@ -281,7 +263,7 @@ def make_app(
         summary="Provision or replace one device PCM transport key",
     )
     def put_transport_key(key_id: TransportKeyId, body: TransportKeyRequest) -> Response | TransportKeyResult:
-        if transport is None or transport.keys is None:
+        if transport.keys is None:
             return error_response(503, "transport-unavailable", "TLS transport is disabled.")
         try:
             transport.keys.put(key_id, body.psk)
@@ -298,7 +280,7 @@ def make_app(
         summary="Remove one device PCM transport key",
     )
     def delete_transport_key(key_id: TransportKeyId) -> Response | TransportKeyDeleteResult:
-        if transport is None or transport.keys is None:
+        if transport.keys is None:
             return error_response(503, "transport-unavailable", "TLS transport is disabled.")
         try:
             transport.keys.delete(key_id)

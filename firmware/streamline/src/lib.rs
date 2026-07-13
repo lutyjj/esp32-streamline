@@ -7,6 +7,7 @@
 //! prevents board/runtime concerns from leaking into application logic.
 
 pub mod api;
+pub mod auth;
 pub mod board;
 pub mod codec;
 pub mod config;

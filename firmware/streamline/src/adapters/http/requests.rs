@@ -26,17 +26,3 @@ where
     request.read_exact(&mut body)?;
     serde_urlencoded::from_bytes(&body).map_err(|error| anyhow!("invalid form: {error}"))
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::api;
-
-    #[test]
-    fn decodes_browser_urlencoded_forms() {
-        let form: api::WifiSettingsRequest =
-            serde_urlencoded::from_str("ssid=Studio+WiFi&target_host=bridge%2Elocal")
-                .expect("valid form");
-        assert_eq!(form.ssid, "Studio WiFi");
-        assert_eq!(form.target_host.as_deref(), Some("bridge.local"));
-    }
-}

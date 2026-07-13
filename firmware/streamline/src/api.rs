@@ -909,6 +909,46 @@ mod tests {
     }
 
     #[test]
+    fn request_dtos_decode_browser_urlencoded_forms() {
+        let form: WifiSettingsRequest =
+            serde_urlencoded::from_str("ssid=Studio+WiFi&target_host=bridge%2Elocal")
+                .expect("valid form");
+        assert_eq!(form.ssid, "Studio WiFi");
+        assert_eq!(form.target_host.as_deref(), Some("bridge.local"));
+    }
+
+    #[test]
+    fn capabilities_report_a_resolved_board_descriptor() {
+        let catalog = crate::board::builtin_catalog().expect("valid catalog");
+        let board = crate::board::resolve(&catalog, None).expect("default board");
+        let json = serde_json::to_string(&CapabilitiesStatus::from_board(board))
+            .expect("serializable capabilities");
+        assert!(json.contains(r#""board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
+        assert!(json.contains(r#""codec":{"driver":"es8388","i2c_address":16}"#));
+        assert!(json.contains(
+            r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
+        ));
+    }
+
+    #[test]
+    fn board_catalog_reports_the_active_preset_and_built_ins() {
+        let catalog = crate::board::builtin_catalog().expect("valid catalog");
+        let selected_board = crate::board::resolve(&catalog, None).expect("default board");
+        let boards = catalog.iter().map(CapabilitiesStatus::from_board).collect();
+        let json = serde_json::to_string(&BoardCatalogResponse {
+            selected_board_id: selected_board.id.as_str(),
+            selected_board: CapabilitiesStatus::from_board(selected_board),
+            boards,
+        })
+        .expect("serializable board catalog");
+
+        assert!(json.contains(r#""selected_board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
+        assert!(json
+            .contains(r#""selected_board":{"board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
+        assert!(json.contains(r#""boards":[{"board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
+    }
+
+    #[test]
     fn acknowledgement_variants_serialize_through_one_dto() {
         assert_eq!(
             serde_json::to_string(&Ack::rebooting()).expect("serializable"),

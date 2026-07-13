@@ -1,7 +1,7 @@
 //! Bounded cleartext or TLS 1.3 PSK transport for the streaming task.
 
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString},
     fmt,
     io::Write,
     net::{SocketAddr, TcpStream, ToSocketAddrs},
@@ -22,6 +22,8 @@ use crate::{
 const CLEARTEXT_TIMEOUT: Duration = Duration::from_millis(250);
 const TLS_TIMEOUT_MS: i32 = 2_000;
 const TLS_CIPHERSUITES: [i32; 2] = [sys::MBEDTLS_TLS1_3_AES_128_GCM_SHA256 as i32, 0];
+const TLS_VERSION: &[u8] = b"TLSv1.3";
+const TLS_CIPHERSUITE: &[u8] = b"TLS1-3-AES-128-GCM-SHA256";
 
 #[derive(Clone)]
 enum TransportSecurity {
@@ -192,6 +194,10 @@ impl TlsConnection {
             unsafe { sys::esp_tls_conn_destroy(handle) };
             return Err(anyhow!("TLS 1.3 PSK authentication failed ({result})"));
         }
+        if let Err(error) = validate_tls_profile(handle) {
+            unsafe { sys::esp_tls_conn_destroy(handle) };
+            return Err(error);
+        }
         Ok(Self {
             handle,
             _key: key,
@@ -216,6 +222,30 @@ impl TlsConnection {
             WriteAllError::Closed => anyhow!("TLS PCM stream closed during write"),
         })
     }
+}
+
+fn validate_tls_profile(handle: *mut sys::esp_tls_t) -> Result<()> {
+    let context = unsafe { sys::esp_tls_get_ssl_context(handle) };
+    if context.is_null() {
+        return Err(anyhow!("TLS connection has no Mbed TLS context"));
+    }
+    let ssl = context.cast::<sys::mbedtls_ssl_context>();
+    let version = unsafe { sys::mbedtls_ssl_get_version(ssl) };
+    let ciphersuite = unsafe { sys::mbedtls_ssl_get_ciphersuite(ssl) };
+    if version.is_null() || ciphersuite.is_null() {
+        return Err(anyhow!("TLS connection has no negotiated profile"));
+    }
+    if unsafe { CStr::from_ptr(version) }.to_bytes() != TLS_VERSION
+        || unsafe { CStr::from_ptr(ciphersuite) }.to_bytes() != TLS_CIPHERSUITE
+    {
+        return Err(anyhow!("bridge negotiated an unsupported TLS profile"));
+    }
+    if !unsafe { sys::mbedtls_ssl_get_peer_cert(ssl) }.is_null() {
+        return Err(anyhow!(
+            "bridge did not authenticate with the transport PSK"
+        ));
+    }
+    Ok(())
 }
 
 impl Drop for TlsConnection {

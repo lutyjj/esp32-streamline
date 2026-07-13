@@ -448,7 +448,7 @@ endpoint!(
     summary = "Roll back firmware",
     responses(
         (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
+        (status = 409, body = ErrorResponse),
         (status = 401, body = ErrorResponse)
     )
 );

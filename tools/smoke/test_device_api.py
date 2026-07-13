@@ -80,4 +80,5 @@ def test_rollback_is_refused_when_no_slot_is_available(authed_device_api: Device
         pytest.skip("device has a valid rollback slot; refusing to reboot it to test the guard")
 
     code, body = authed_device_api.post_form("/api/ota/rollback", {})
-    assert code == 400, f"unavailable rollback was answered with HTTP {code}: {body[:200]!r}"
+    # No stored previous image is a state conflict, not a bad request.
+    assert code == 409, f"unavailable rollback was answered with HTTP {code}: {body[:200]!r}"

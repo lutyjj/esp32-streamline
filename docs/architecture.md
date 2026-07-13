@@ -70,7 +70,13 @@ The [user journey](user-journey.md) owns the visible behavior of these states. T
 
 ### Audio flow
 
-The selected board descriptor supplies codec identity, GPIO wiring, input labels, and control limits. The codec adapter configures the hardware, and the I2S adapter reads 48 kHz, 16-bit stereo PCM.
+The selected board descriptor supplies codec identity, GPIO wiring, input labels, control limits, and an optional local analog output. The codec adapter configures the hardware, and the I2S adapter reads 48 kHz, 16-bit stereo PCM.
+
+On a board that advertises local output, the codec can route the selected input
+directly to that output without converting it to PCM. This route is independent
+of the I2S capture, signal gate, and network sender. The application core owns
+desired, active, and fault state behind a codec-control interface; the hardware
+adapter owns register order, muting, and fail-close behavior.
 
 For each captured packet, portable code computes levels and updates the signal gate. The firmware increments the sequence while idle but sends packets only while the gate reports playback. A bounded drop-oldest queue prevents a stalled network from blocking capture. The [PCM protocol](pcm-protocol.md) owns the bytes; the [PCM transport record](tcp-transport.md) owns mode selection, key lifecycle, task placement, timeouts, and reconnect behavior.
 

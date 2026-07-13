@@ -12,8 +12,8 @@ use crate::{
     levels::CLIP_THRESHOLD_ABS,
     metrics::render_prometheus,
     telemetry::{
-        AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry, StreamTelemetry, TargetTelemetry,
-        TelemetrySnapshot, WifiTelemetry,
+        AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
+        StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
     },
 };
 
@@ -85,6 +85,11 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         Err(_) => (String::new(), String::new()),
     };
     let config = state.config.lock().expect("configuration lock poisoned");
+    let passthrough = state
+        .analog_passthrough
+        .lock()
+        .expect("analog passthrough lock poisoned")
+        .clone();
     let metrics = state
         .stream
         .as_ref()
@@ -132,6 +137,11 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             noise_floor: metrics.noise_floor,
             clipped_samples_total: metrics.clipped_total,
             playing: metrics.playing,
+        },
+        analog_passthrough: AnalogPassthroughTelemetry {
+            enabled: config.analog_passthrough_enabled,
+            active: passthrough.active,
+            fault: passthrough.fault,
         },
         stream: StreamTelemetry {
             sequence: metrics.sequence,
@@ -222,6 +232,11 @@ impl<'a> api::StatusResponse<'a> {
                 sample_rate: snapshot.audio.sample_rate_hz,
                 channels: snapshot.audio.channels,
                 bits_per_sample: snapshot.audio.bits_per_sample,
+            },
+            analog_passthrough: api::AnalogPassthroughStatus {
+                enabled: snapshot.analog_passthrough.enabled,
+                active: snapshot.analog_passthrough.active,
+                fault: snapshot.analog_passthrough.fault.as_deref(),
             },
             metrics: api::MetricsStatus {
                 sequence: snapshot.stream.sequence,

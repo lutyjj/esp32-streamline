@@ -190,6 +190,7 @@ fn config_json(state: &ApiState) -> String {
         input_line: config.audio.input_line,
         input_gain: config.audio.input_gain,
         adc_attenuation_db: config.audio.adc_attenuation_db,
+        analog_passthrough_enabled: config.analog_passthrough_enabled,
         auto_update_schedule: config.auto_update_schedule.into(),
         config_source: "nvs",
     })

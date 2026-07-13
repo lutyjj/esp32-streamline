@@ -28,7 +28,8 @@ place, and the standing items we track or have accepted.
 ## Authentication
 
 - Mutating endpoints (`/api/settings/wifi`, `/api/settings/target`,
-  `/api/settings/audio`, `/api/settings/name`, `/api/settings/admin-key`,
+  `/api/settings/audio`, `/api/settings/analog-passthrough`,
+  `/api/settings/name`, `/api/settings/admin-key`,
   `/api/settings/board`, `/api/settings/audio-profiles`,
   `/api/settings/audio-profile`, `/api/settings/firmware`, `/api/restart`,
   `/api/factory-reset`, `/api/ota/check`, `/api/ota/update`,

@@ -368,6 +368,7 @@ mod tests {
                     input_gain: 10,
                     adc_attenuation_db: 3,
                 },
+                analog_passthrough_enabled: true,
             }),
             board_id: Some(board.id.clone()),
             board_descriptor: None,

@@ -43,7 +43,7 @@ pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiSta
             let selected = update.board();
             let next = lock_config(&state)?
                 .clone()
-                .with_audio_compatible_with(selected);
+                .with_board_compatible_with(selected);
 
             let store = lock_store(&state)?;
             if state.mode.has_persisted_configuration() {

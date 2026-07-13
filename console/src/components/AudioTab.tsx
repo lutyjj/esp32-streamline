@@ -5,6 +5,7 @@ import { config, loadDeviceSettings, status } from '../state/device';
 import { AudioProfiles } from './AudioProfiles';
 import { Button } from './Button';
 import { Card, CardFooter } from './Card';
+import { LocalOutput } from './LocalOutput';
 import { Meter } from './Meter';
 import { ActionState, TransactButton } from './Transact';
 
@@ -117,6 +118,14 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
               </Button>
               <span class="help">Measures your source and sets these for you.</span>
             </div>
+            {status.value && (
+              <LocalOutput
+                capability={caps?.analog_passthrough}
+                status={status.value.analog_passthrough}
+                writable={writable}
+                provisioned={status.value.mode === 'provisioned'}
+              />
+            )}
           </div>
           <CardFooter>
             <TransactButton transact={transact} type="submit" disabled={!writable}>

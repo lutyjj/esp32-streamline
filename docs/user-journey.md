@@ -128,6 +128,13 @@ profile or says `Custom settings`. An external automation can activate the same
 profile through the API when it knows the physical selector state. StreamLine
 never guesses the source from overlapping waveform characteristics.
 
+When the selected board advertises a local analog output, Input settings names
+the physical jack and offers Streaming only or Streaming + local output as
+radio options. It reports Active, Off, or Fault from device state and explains
+that the fixed line-level route stays analog. Input gain, ADC attenuation,
+calibration, silence detection, and streaming do not act as output-volume
+controls. Boards without the capability show no local output control.
+
 Optional lossless recording is a bridge-hosted task. The bridge page lets the
 owner choose a source, start before playing it, observe whether audio has
 arrived, stop and finalize, then download or delete the file. It calls the
@@ -158,8 +165,9 @@ Promise:
   settings in the recovery form, retains its write-only password and admin
   key when their fields stay blank, and requires that admin key before a
   recovery write. Replacing the Wi-Fi credentials does not change the target,
-  audio settings, profiles, name, board, or update schedule. A device without
-  valid saved configuration re-enters stage 2 with clean descriptor defaults.
+  audio settings, profiles, local-output intent, name, board, or update
+  schedule. A device without valid saved configuration re-enters stage 2 with
+  clean descriptor defaults.
 - A fault that appears after the network is up — an audio codec that will
   not start — keeps the device on the home network and reachable, showing
   the fault and its fix, rather than dropping to the setup network. Only a

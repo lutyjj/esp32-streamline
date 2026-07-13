@@ -30,6 +30,7 @@ function deviceConfig(transport: TransportStatus): DeviceConfig {
     input_line: 2,
     input_gain: 0,
     adc_attenuation_db: 9,
+    analog_passthrough_enabled: false,
     config_source: 'nvs',
   };
 }

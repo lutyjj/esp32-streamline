@@ -282,8 +282,8 @@ impl MetricKind {
 mod tests {
     use super::render_prometheus;
     use crate::telemetry::{
-        AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry, StreamTelemetry, TargetTelemetry,
-        TelemetrySnapshot, WifiTelemetry,
+        AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
+        StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
     };
 
     #[test]
@@ -437,6 +437,7 @@ streamline_ota_busy 0\n"
                 clipped_samples_total: 5,
                 playing: true,
             },
+            analog_passthrough: AnalogPassthroughTelemetry::default(),
             stream: StreamTelemetry {
                 sequence: 15,
                 packets_total: 12,

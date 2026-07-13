@@ -13,6 +13,7 @@ pub struct TelemetrySnapshot {
     pub wifi: WifiTelemetry,
     pub target: TargetTelemetry,
     pub audio: AudioTelemetry,
+    pub analog_passthrough: AnalogPassthroughTelemetry,
     pub stream: StreamTelemetry,
     pub diagnostics: DiagnosticsTelemetry,
     pub ota: OtaTelemetry,
@@ -51,6 +52,13 @@ pub struct AudioTelemetry {
     pub noise_floor: u32,
     pub clipped_samples_total: u64,
     pub playing: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AnalogPassthroughTelemetry {
+    pub enabled: bool,
+    pub active: bool,
+    pub fault: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

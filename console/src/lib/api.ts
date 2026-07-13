@@ -8,6 +8,8 @@ import type { ApiDocument } from './contract';
 
 export type {
   Ack,
+  AnalogPassthroughCapabilityStatus,
+  AnalogPassthroughStatus,
   AudioProfile,
   AudioProfileCatalog,
   AudioSettings as AudioProfileSettings,
@@ -42,6 +44,7 @@ export {
   retireTransportKey,
   rollbackTransportKey,
   setAdminKey,
+  setAnalogPassthrough,
   setAudio,
   setFirmware,
   setName,

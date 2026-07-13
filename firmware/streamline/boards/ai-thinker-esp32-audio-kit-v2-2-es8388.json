@@ -20,6 +20,10 @@
   "status_led": {
     "gpio": 22
   },
+  "analog_passthrough": {
+    "output_line": 2,
+    "label": "3.5 mm output"
+  },
   "input_lines": [
     {
       "line": 2,

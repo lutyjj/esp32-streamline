@@ -103,6 +103,35 @@ def test_provisioned_device_gates_writes_behind_the_key(provisioned_device: Emul
     assert code == 200 and "qemu-renamed" in body.decode(errors="replace")
 
 
+def test_local_output_intent_and_fault_are_reversible_without_a_codec(
+    provisioned_device: EmulatedDevice,
+) -> None:
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    status = json.loads(body)
+    if status["capabilities"]["analog_passthrough"] is None:
+        pytest.skip("the emulated board does not advertise a local output")
+
+    code, body = provisioned_device.api.post_form("/api/settings/analog-passthrough", {"enabled": "true"})
+    assert code == 503, f"unavailable local output was answered with HTTP {code}: {body[:200]!r}"
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    output = json.loads(body)["analog_passthrough"]
+    assert output["enabled"] is True
+    assert output["active"] is False
+    assert isinstance(output["fault"], str) and output["fault"]
+
+    code, body = provisioned_device.api.post_form("/api/settings/analog-passthrough", {"enabled": "false"})
+    assert code == 200, f"local output off was answered with HTTP {code}: {body[:200]!r}"
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    assert json.loads(body)["analog_passthrough"] == {
+        "enabled": False,
+        "active": False,
+        "fault": None,
+    }
+
+
 def test_factory_reset_returns_to_setup(
     provisioned_device: EmulatedDevice, boot_device: Callable[..., EmulatedDevice]
 ) -> None:

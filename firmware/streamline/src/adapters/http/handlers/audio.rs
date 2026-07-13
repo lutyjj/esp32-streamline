@@ -149,13 +149,22 @@ fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool, Muta
     let Some(codec) = &state.codec else {
         return Ok(false);
     };
-    codec
+    let result = codec
         .lock()
         .map_err(|_| MutationError::Internal("codec lock poisoned".to_owned()))?
-        .apply(audio)
-        .map_err(|error| {
-            MutationError::Internal(format!("could not apply audio settings: {error:#}"))
-        })?;
+        .apply(audio);
+    if let Err(error) = result {
+        let mut passthrough = state
+            .analog_passthrough
+            .lock()
+            .map_err(|_| MutationError::Internal("analog passthrough lock poisoned".to_owned()))?;
+        if passthrough.active {
+            passthrough.record_fault(format!("audio control failed: {error:#}"));
+        }
+        return Err(MutationError::Internal(format!(
+            "could not apply audio settings: {error:#}"
+        )));
+    }
     if let Some(stream) = &state.stream {
         stream.request_relearn();
     }

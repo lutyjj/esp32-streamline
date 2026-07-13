@@ -76,6 +76,16 @@ pub struct InputOption {
     pub label: String,
 }
 
+/// One board-wired local analog output that the selected codec can route from
+/// every advertised input.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct AnalogPassthroughCapability {
+    pub output_line: u8,
+    pub label: String,
+}
+
 /// What a board offers the user. The status API advertises this and the
 /// settings API validates against it, so the two cannot diverge.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -94,6 +104,10 @@ pub struct Board {
     /// A board-owned light that renders the device's status, when present.
     #[serde(default)]
     pub status_led: Option<StatusLed>,
+    /// Local analog monitoring output, absent when the board has no supported
+    /// route.
+    #[serde(default)]
+    pub analog_passthrough: Option<AnalogPassthroughCapability>,
     /// Selectable inputs in console order, never empty; the first entry is
     /// the factory default.
     pub input_lines: Vec<InputOption>,
@@ -114,6 +128,7 @@ pub enum BoardError {
     DuplicateGpio,
     NoInputLines,
     MissingInputLabel,
+    MissingAnalogPassthroughLabel,
     DuplicateInputLine,
     InvalidInputGainMax,
 }
@@ -187,6 +202,13 @@ impl Board {
         }
         if self.input_lines.is_empty() {
             return Err(BoardError::NoInputLines);
+        }
+        if self
+            .analog_passthrough
+            .as_ref()
+            .is_some_and(|capability| capability.label.is_empty())
+        {
+            return Err(BoardError::MissingAnalogPassthroughLabel);
         }
         if self.input_gain_max > 100 {
             return Err(BoardError::InvalidInputGainMax);
@@ -312,6 +334,7 @@ mod tests {
         assert!(board.accepts_line(2));
         assert!(!board.accepts_line(1));
         assert_eq!(board.default_line(), 2);
+        assert_eq!(board.analog_passthrough, None);
     }
 
     #[test]
@@ -381,6 +404,7 @@ mod tests {
                 },
             },
             status_led: None,
+            analog_passthrough: None,
             input_lines: vec![
                 InputOption {
                     line: 1,

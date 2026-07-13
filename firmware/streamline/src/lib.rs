@@ -6,6 +6,7 @@
 //! configuration in target-independent modules makes them host-testable and
 //! prevents board/runtime concerns from leaking into application logic.
 
+pub mod analog_passthrough;
 pub mod api;
 pub mod auth;
 pub mod board;

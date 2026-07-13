@@ -28,6 +28,7 @@ export type {
 } from '../generated/api';
 export {
   activateTransportKey,
+  discardTransportKey,
   factoryReset,
   getAudioProfiles,
   getBoards,
@@ -45,7 +46,7 @@ export {
   setFirmware,
   setName,
   setTarget,
-  setTransport as setTransportSettings,
+  setTransportMode,
   setWifi,
   stageTransportKey,
   verifyTransportKey,

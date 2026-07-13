@@ -74,6 +74,22 @@ describe('PCM encryption journey', () => {
     expect(buttonLabels(host)).toEqual(['Verify with bridge', 'Recovery options']);
   });
 
+  it('offers a discard exit back to plain cleartext while a key is pending', () => {
+    config.value = deviceConfig(
+      transportStatus({ pending_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
+    );
+    const host = document.createElement('div');
+    render(<TransportCard />, host);
+
+    const recovery = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Recovery options',
+    );
+    act(() => recovery?.click());
+
+    expect(buttonLabels(host)).toContain('Discard pending credential');
+    expect(buttonLabels(host)).not.toContain('Disable encryption & restart');
+  });
+
   it('masks the one-time PSK until the owner explicitly reveals it', () => {
     const keyId = 'eli1-0123456789abcdef0123456789abcdef';
     const psk = '01'.repeat(32);

@@ -5,10 +5,11 @@ import {
   type Ack,
   activateTransportKey,
   type DeviceConfig,
+  discardTransportKey,
   recoverTransport,
   retireTransportKey,
   rollbackTransportKey,
-  setTransportSettings,
+  setTransportMode,
   stageTransportKey,
   type TransportKeyResponse,
   type TransportSettingsRequest,
@@ -21,6 +22,7 @@ export interface TransportApi {
   stage(): Promise<TransportKeyResponse>;
   verify(): Promise<Ack>;
   activate(): Promise<Ack>;
+  discard(): Promise<Ack>;
   rollback(): Promise<Ack>;
   retire(): Promise<Ack>;
   recover(): Promise<TransportKeyResponse>;
@@ -35,6 +37,7 @@ export interface TransportActions {
   canStage: boolean;
   canVerify: boolean;
   canActivate: boolean;
+  canDiscard: boolean;
   canRollback: boolean;
   canRetire: boolean;
 }
@@ -45,10 +48,11 @@ const runtimeApi: TransportApi = {
   stage: stageTransportKey,
   verify: verifyTransportKey,
   activate: activateTransportKey,
+  discard: discardTransportKey,
   rollback: rollbackTransportKey,
   retire: retireTransportKey,
   recover: recoverTransport,
-  configure: setTransportSettings,
+  configure: setTransportMode,
 };
 
 export function transportActions(status: TransportStatus): TransportActions {
@@ -56,6 +60,7 @@ export function transportActions(status: TransportStatus): TransportActions {
     canStage: !status.pending_key_id && !status.rollback_key_id,
     canVerify: Boolean(status.pending_key_id) && !status.pending_verified,
     canActivate: Boolean(status.pending_key_id) && status.pending_verified,
+    canDiscard: Boolean(status.pending_key_id),
     canRollback: status.mode === 'tls-psk' && Boolean(status.rollback_key_id),
     canRetire: Boolean(status.rollback_key_id),
   };
@@ -89,6 +94,14 @@ export class TransportController {
 
   activate(): Promise<Ack> {
     return this.api.activate();
+  }
+
+  /** Abandon the staged key and its one-time reveal; nothing was cut over. */
+  async discard(): Promise<Ack> {
+    const response = await this.api.discard();
+    this.revealed.value = undefined;
+    await this.reload();
+    return response;
   }
 
   rollback(): Promise<Ack> {

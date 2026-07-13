@@ -31,6 +31,7 @@ function fakeApi(overrides: Partial<TransportApi> = {}): TransportApi {
     stage: vi.fn(async () => credential),
     verify: vi.fn(async () => ack),
     activate: vi.fn(async () => ack),
+    discard: vi.fn(async () => ack),
     rollback: vi.fn(async () => ack),
     retire: vi.fn(async () => ack),
     recover: vi.fn(async () => credential),
@@ -45,6 +46,7 @@ describe('PCM transport lifecycle', () => {
       canStage: true,
       canVerify: false,
       canActivate: false,
+      canDiscard: false,
       canRollback: false,
       canRetire: false,
     });
@@ -103,6 +105,22 @@ describe('PCM transport lifecycle', () => {
     await expect(controller.verify()).rejects.toThrow('bridge rejected key');
     expect(reload).toHaveBeenCalledTimes(1);
     await expect(controller.verify()).resolves.toEqual(ack);
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it('discards a pending key with its one-time reveal so setup can be abandoned', async () => {
+    const api = fakeApi();
+    const reload = vi.fn(async () => undefined);
+    const controller = new TransportController(api, reload);
+
+    await controller.stage();
+    expect(transportActions(status({ pending_key_id: credential.key_id }))).toMatchObject({
+      canDiscard: true,
+    });
+    await expect(controller.discard()).resolves.toEqual(ack);
+
+    expect(api.discard).toHaveBeenCalledTimes(1);
+    expect(controller.revealed.value).toBeUndefined();
     expect(reload).toHaveBeenCalledTimes(2);
   });
 

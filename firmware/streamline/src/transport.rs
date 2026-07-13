@@ -172,6 +172,15 @@ impl TransportKeys {
         Ok(())
     }
 
+    /// Abandon the staged key so the owner can back out before activation.
+    pub fn discard_pending(&mut self) -> Result<(), TransportError> {
+        let pending = self.pending.ok_or(TransportError::NoPendingKey)?;
+        self.set(pending, None);
+        self.pending = None;
+        self.pending_verified = false;
+        Ok(())
+    }
+
     pub fn activate(&mut self) -> Result<(), TransportError> {
         let pending = self.pending.ok_or(TransportError::NoPendingKey)?;
         if !self.pending_verified {
@@ -691,6 +700,29 @@ mod tests {
         ))
         .expect("decodable invalid id");
         assert_eq!(invalid.validate(), Err(TransportError::InvalidKeyId));
+    }
+
+    #[test]
+    fn discard_abandons_only_a_pending_key_and_restores_the_prior_state() {
+        let mut keys = TransportKeys::default();
+        assert_eq!(keys.discard_pending(), Err(TransportError::NoPendingKey));
+
+        keys.stage(&mut Sequence(0)).expect("first");
+        keys.discard_pending().expect("discarded");
+        assert_eq!(keys, TransportKeys::default());
+
+        keys.stage(&mut Sequence(0)).expect("first again");
+        keys.mark_pending_verified().expect("verified");
+        keys.activate().expect("active");
+        let active = keys.active().map(TransportKey::id).map(str::to_owned);
+        keys.stage(&mut Sequence(64)).expect("rotation");
+        keys.discard_pending().expect("rotation abandoned");
+        assert_eq!(
+            keys.active().map(TransportKey::id).map(str::to_owned),
+            active
+        );
+        assert_eq!(keys.pending(), None);
+        assert_eq!(keys.validate(), Ok(()));
     }
 
     #[test]

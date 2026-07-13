@@ -507,6 +507,17 @@ mod tests {
             .recover(&mut Sequence(128))
             .expect("recover key");
 
+        let mut discarded = rotation_staged.clone();
+        discarded
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .discard_pending()
+            .expect("discard pending key");
+        assert_eq!(discarded, activated);
+
         let transitions = [
             ("stage", &cleartext, &staged),
             ("verify", &staged, &verified),
@@ -516,6 +527,7 @@ mod tests {
             ("rotation activate", &rotation_verified, &rotated),
             ("rollback", &rotated, &rolled_back),
             ("retire", &rolled_back, &retired),
+            ("discard", &rotation_staged, &discarded),
             ("recovery", &rotation_staged, &recovered),
         ];
 

@@ -60,8 +60,8 @@ creates it. The admin key and PCM PSK are independent.
 
 Each lifecycle write saves a complete inactive state generation, then switches
 one marker. Power loss before that marker leaves the prior generation active.
-The failure-atomic transitions are stage, verify, activate, rotation, rollback,
-retirement, and recovery.
+The failure-atomic transitions are stage, verify, activate, discard, rotation,
+rollback, retirement, and recovery.
 
 The bridge stores a bounded versioned key map in a private `0600` file. Updates
 use a durable atomic replacement. The API lists only key ids. Its key mutation
@@ -100,6 +100,11 @@ Open the device console and the bridge console:
    transition.
 6. Confirm the bridge reports the source by key id over `tls-psk` and audio
    continues.
+
+To back out before activation, select **Recovery options → Discard pending
+credential** or `POST /api/transport/keys/discard`. The device abandons the
+staged key, stays on cleartext, and returns to the opt-in state; remove any
+already-provisioned bridge key with `DELETE /api/transport/keys/<key-id>`.
 
 Every console operation is available through the APIs. The equivalent key
 provisioning sequence uses placeholders only:

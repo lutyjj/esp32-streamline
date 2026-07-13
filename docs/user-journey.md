@@ -75,8 +75,9 @@ time: create a bridge credential, switch the bridge to TLS, provision and
 verify the credential, then activate and restart. The coordinated switch causes
 a short audio interruption because each side accepts exactly one protocol.
 Verification failure keeps the retry visible and never changes the device mode.
-The PSK is masked by default, shown only on request, and never available again
-after the owner dismisses it.
+Until activation, **Recovery options** can discard the pending credential, so
+opting in never traps the owner mid-setup. The PSK is masked by default, shown
+only on request, and never available again after the owner dismisses it.
 
 Once encryption is active, the card says no routine action is required.
 Credential replacement, rollback, and recovery stay under **Advanced

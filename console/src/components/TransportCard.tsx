@@ -224,11 +224,11 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
 
           {recoveryOpen && (
             <div class="notice transport-fallback">
-              <strong>{secure ? 'Connection recovery.' : 'Lost the generated credential?'}</strong>
+              <strong>{secure ? 'Connection recovery.' : 'Pending credential options.'}</strong>
               <p>
                 {secure
                   ? 'Switch the bridge to cleartext first. Then disable encryption here and restart the device.'
-                  : 'Replace the pending key and copy its new one-time credential. Cleartext remains active.'}
+                  : 'Replace the pending key if its one-time secret was lost, or discard it to stay on cleartext.'}
               </p>
               <div class="actions">
                 {secure && (
@@ -257,6 +257,20 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
                 >
                   {secure ? 'Replace lost credential' : 'Replace generated credential'}
                 </TransactButton>
+                {actions.canDiscard && (
+                  <TransactButton
+                    transact={recovery}
+                    kind="danger"
+                    disabled={!writable}
+                    onClick={() =>
+                      recovery.run(() => transport.discard(), {
+                        okText: 'Pending credential discarded',
+                      })
+                    }
+                  >
+                    Discard pending credential
+                  </TransactButton>
+                )}
                 {credential?.recovery && (
                   <TransactButton
                     transact={recovery}

@@ -6,6 +6,7 @@ use anyhow::{anyhow, Result};
 
 use crate::{
     api,
+    config::RuntimeConfig,
     transport::{self, RandomBytes, TransportMode},
 };
 
@@ -30,6 +31,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     register_stage(server, state)?;
     register_verify(server, state)?;
     register_activate(server, state)?;
+    register_discard(server, state)?;
     register_rollback(server, state)?;
     register_retire(server, state)?;
     register_recovery(server, state)
@@ -41,21 +43,15 @@ fn register_settings(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
         if !authorized_for(&request, &state, api::SET_TRANSPORT) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<bool> {
-            let form: api::TransportSettingsRequest = form(&mut request)?;
-            let current = state
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
-            let mut next = current.clone();
-            next.transport.contract_version = form.contract_version;
-            next.transport.mode = form.mode;
-            next.transport.validate()?;
-            let restart = current.transport.requires_restart_to(&next.transport);
-            save_configuration(&state, next)?;
-            Ok(restart)
-        })();
+        let result = form(&mut request).and_then(|form: api::TransportSettingsRequest| {
+            mutate(&state, |next| {
+                let previous = next.transport.clone();
+                next.transport.contract_version = form.contract_version;
+                next.transport.mode = form.mode;
+                next.transport.validate()?;
+                Ok(previous.requires_restart_to(&next.transport))
+            })
+        });
         match result {
             Ok(true) => reboot_response(request),
             Ok(false) => json_response(request, 200, &api::Ack::ok()),
@@ -70,18 +66,9 @@ fn register_stage(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Res
         if !authorized_for(&request, &state, api::TRANSPORT_KEY_STAGE) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<api::TransportKeyResponse> {
-            let mut next = state
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
-            let key = next.transport.keys.stage(&mut EspRandom)?;
-            let response = key_response(&key);
-            save_configuration(&state, next)?;
-            Ok(response)
-        })();
-        match result {
+        match mutate(&state, |next| {
+            Ok(key_response(&next.transport.keys.stage(&mut EspRandom)?))
+        }) {
             Ok(response) => json_response(request, 200, &response),
             Err(error) => bad_request(request, error),
         }
@@ -100,18 +87,12 @@ fn register_verify(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Re
                 "secure PCM verification is unavailable in this mode",
             );
         };
-        let result = (|| -> Result<()> {
-            let mut next = state
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
+        match mutate(&state, |next| {
             let target_host = next.target_host.clone();
             let target_port = next.target_port;
             transport::verify_pending(&mut next.transport, &target_host, target_port, verifier)?;
-            save_configuration(&state, next)
-        })();
-        match result {
+            Ok(())
+        }) {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
             Err(error) => bad_request(request, error),
         }
@@ -135,18 +116,26 @@ fn register_activate(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
     })
 }
 
+fn register_discard(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
+    let state = Arc::clone(state);
+    server.handler::<anyhow::Error, _>(api::TRANSPORT_KEY_DISCARD, move |request| {
+        if !authorized_for(&request, &state, api::TRANSPORT_KEY_DISCARD) {
+            return unauthorized(request);
+        }
+        match mutate(&state, |next| Ok(next.transport.keys.discard_pending()?)) {
+            Ok(()) => json_response(request, 200, &api::Ack::ok()),
+            Err(error) => bad_request(request, error),
+        }
+    })
+}
+
 fn register_rollback(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::TRANSPORT_KEY_ROLLBACK, move |request| {
         if !authorized_for(&request, &state, api::TRANSPORT_KEY_ROLLBACK) {
             return unauthorized(request);
         }
-        match mutate(&state, |next| {
-            next.transport
-                .keys
-                .rollback_key()
-                .map_err(anyhow::Error::from)
-        }) {
+        match mutate(&state, |next| Ok(next.transport.keys.rollback_key()?)) {
             Ok(()) => reboot_response(request),
             Err(error) => bad_request(request, error),
         }
@@ -159,12 +148,7 @@ fn register_retire(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Re
         if !authorized_for(&request, &state, api::TRANSPORT_KEY_RETIRE) {
             return unauthorized(request);
         }
-        match mutate(&state, |next| {
-            next.transport
-                .keys
-                .retire_rollback()
-                .map_err(anyhow::Error::from)
-        }) {
+        match mutate(&state, |next| Ok(next.transport.keys.retire_rollback()?)) {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
             Err(error) => bad_request(request, error),
         }
@@ -177,36 +161,27 @@ fn register_recovery(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
         if !authorized_for(&request, &state, api::TRANSPORT_RECOVER) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<api::TransportKeyResponse> {
-            let mut next = state
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
+        match mutate(&state, |next| {
             next.transport.mode = TransportMode::Cleartext;
-            let key = next.transport.keys.recover(&mut EspRandom)?;
-            let response = key_response(&key);
-            save_configuration(&state, next)?;
-            Ok(response)
-        })();
-        match result {
+            Ok(key_response(&next.transport.keys.recover(&mut EspRandom)?))
+        }) {
             Ok(response) => json_response(request, 200, &response),
             Err(error) => bad_request(request, error),
         }
     })
 }
 
-fn mutate(
-    state: &ApiState,
-    change: impl FnOnce(&mut crate::config::RuntimeConfig) -> Result<()>,
-) -> Result<()> {
+/// Apply one lifecycle change to a copy of the configuration and expose its
+/// result only after the change persisted as a complete state generation.
+fn mutate<T>(state: &ApiState, change: impl FnOnce(&mut RuntimeConfig) -> Result<T>) -> Result<T> {
     let mut next = state
         .config
         .lock()
         .map_err(|_| anyhow!("configuration lock poisoned"))?
         .clone();
-    change(&mut next)?;
-    save_configuration(state, next)
+    let value = change(&mut next)?;
+    save_configuration(state, next)?;
+    Ok(value)
 }
 
 fn key_response(key: &transport::TransportKey) -> api::TransportKeyResponse {

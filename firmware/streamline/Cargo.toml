@@ -31,6 +31,9 @@ utoipa = { version = "5.5.0", optional = true }
 
 [features]
 api-spec = ["dep:utoipa"]
+# Host-only generator for docs/pcm-frame-vectors.json. Gates the conformance
+# corpus so it never compiles into the device image.
+pcm-frame-vectors = []
 # QEMU image variant: network over the emulated OpenCores Ethernet MAC
 # instead of Wi-Fi, audio bring-up skipped. Built by `make -C firmware
 # qemu-artifacts`; never part of a hardware release image.
@@ -57,3 +60,8 @@ remote_component = { name = "espressif/mdns", version = "1.8.2" }
 name = "streamline-openapi"
 path = "src/bin/openapi.rs"
 required-features = ["api-spec"]
+
+[[bin]]
+name = "streamline-pcm-frame-vectors"
+path = "src/bin/pcm_frame_vectors.rs"
+required-features = ["pcm-frame-vectors"]

@@ -45,6 +45,17 @@ Sequence numbers increment by one per packet and wrap naturally at `uint32_t`.
 The receiver uses them to reorder packets, detect loss, and preserve the audio
 timeline when a packet cannot be recovered before its playout deadline.
 
+## Conformance vectors
+
+[`pcm-frame-vectors.json`](pcm-frame-vectors.json) proves the Rust encoder
+(`firmware/streamline/src/protocol.rs`) and the Python parser
+(`bridge/src/streamline_bridge/protocol.py`) agree byte for byte. It lists valid
+frames the encoder emits — across the sequence range and short whole-frame reads
+— and malformed frames the parser must reject, one per failure category. Both
+component test suites consume it. Regenerate it with `make firmware-pcm-frame-vectors`
+after a protocol change: `firmware-test` fails until the file matches the
+encoder, and `bridge-test` fails until the parser matches the file.
+
 ## Receiver Playout
 
 The HTTP bridge uses a playout buffer before publishing audio to clients. By

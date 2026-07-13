@@ -11,6 +11,8 @@ pub mod auth;
 pub mod board;
 pub mod codec;
 pub mod config;
+#[cfg(any(test, feature = "pcm-frame-vectors"))]
+pub mod conformance;
 mod counter;
 pub mod health;
 pub mod identity;

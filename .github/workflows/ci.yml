@@ -53,6 +53,7 @@ jobs:
               - 'console/**'
               - 'docs/bridge-openapi.json'
               - 'docs/pcm-transport.json'
+              - 'docs/pcm-frame-vectors.json'
             console:
               - *shared
               - 'console/**'
@@ -77,6 +78,7 @@ jobs:
               - *shared
               - 'firmware/**'
               - 'docs/pcm-transport.json'
+              - 'docs/pcm-frame-vectors.json'
             api_contract:
               - 'docs/openapi.json'
       - id: matrix

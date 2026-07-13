@@ -46,6 +46,8 @@ function source(rms: number): SourceSnapshot {
       recording_sessions: 0,
       idle_seconds: 0,
       eviction_idle_seconds: 300,
+      peer_ip: '192.0.2.10',
+      transport: 'cleartext',
     },
   };
 }

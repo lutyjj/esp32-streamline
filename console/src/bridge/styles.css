@@ -92,6 +92,23 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+.bridge-lock {
+  align-self: start;
+}
+.transport-key-list {
+  margin-top: 16px;
+}
+.transport-key {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
+}
+.transport-key code {
+  overflow-wrap: anywhere;
+}
 @media (max-width: 700px) {
   .recording {
     grid-template-columns: 1fr;

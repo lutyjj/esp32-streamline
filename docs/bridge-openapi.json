@@ -14,11 +14,15 @@
             },
             "title": "Sources",
             "type": "object"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/TransportSnapshot"
           }
         },
         "required": [
           "bridge_version",
-          "sources"
+          "sources",
+          "transport"
         ],
         "title": "BridgeStatus",
         "type": "object"
@@ -523,6 +527,10 @@
             "title": "Idle Seconds",
             "type": "number"
           },
+          "peer_ip": {
+            "title": "Peer Ip",
+            "type": "string"
+          },
           "recording_sessions": {
             "minimum": 0.0,
             "title": "Recording Sessions",
@@ -538,6 +546,14 @@
             ],
             "title": "State",
             "type": "string"
+          },
+          "transport": {
+            "enum": [
+              "cleartext",
+              "tls-psk"
+            ],
+            "title": "Transport",
+            "type": "string"
           }
         },
         "required": [
@@ -545,7 +561,9 @@
           "dynamic",
           "http_clients",
           "recording_sessions",
-          "idle_seconds"
+          "idle_seconds",
+          "peer_ip",
+          "transport"
         ],
         "title": "SourceLifecycle",
         "type": "object"
@@ -815,6 +833,108 @@
           "title"
         ],
         "title": "StartRecordingRequest",
+        "type": "object"
+      },
+      "TransportKeyDeleteResult": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "TransportKeyDeleteResult",
+        "type": "object"
+      },
+      "TransportKeyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "psk": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Psk",
+            "type": "string"
+          }
+        },
+        "required": [
+          "psk"
+        ],
+        "title": "TransportKeyRequest",
+        "type": "object"
+      },
+      "TransportKeyResult": {
+        "additionalProperties": false,
+        "properties": {
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key_id"
+        ],
+        "title": "TransportKeyResult",
+        "type": "object"
+      },
+      "TransportSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_failures": {
+            "minimum": 0.0,
+            "title": "Auth Failures",
+            "type": "integer"
+          },
+          "auth_successes": {
+            "minimum": 0.0,
+            "title": "Auth Successes",
+            "type": "integer"
+          },
+          "cleartext_enabled": {
+            "title": "Cleartext Enabled",
+            "type": "boolean"
+          },
+          "cleartext_port": {
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Cleartext Port",
+            "type": "integer"
+          },
+          "contract_version": {
+            "const": 1,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "key_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Ids",
+            "type": "array"
+          },
+          "tls_enabled": {
+            "title": "Tls Enabled",
+            "type": "boolean"
+          },
+          "tls_port": {
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Tls Port",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "contract_version",
+          "cleartext_enabled",
+          "tls_enabled",
+          "cleartext_port",
+          "tls_port",
+          "key_ids",
+          "auth_successes",
+          "auth_failures"
+        ],
+        "title": "TransportSnapshot",
         "type": "object"
       },
       "ValidationError": {
@@ -1322,6 +1442,182 @@
           }
         ],
         "summary": "Stop and finalize a recording"
+      }
+    },
+    "/api/transport": {
+      "get": {
+        "operationId": "getTransport",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read PCM transport listeners, key ids, and authentication counters"
+      }
+    },
+    "/api/transport/keys/{key_id}": {
+      "delete": {
+        "operationId": "deleteTransportKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "pattern": "^eli1-[0-9a-f]{32}$",
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportKeyDeleteResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Remove one device PCM transport key"
+      },
+      "put": {
+        "operationId": "putTransportKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "pattern": "^eli1-[0-9a-f]{32}$",
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransportKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportKeyResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Provision or replace one device PCM transport key"
       }
     },
     "/health": {

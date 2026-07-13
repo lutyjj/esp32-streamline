@@ -27,7 +27,20 @@ const capabilities: RecordingCapabilities = {
 };
 
 const emptyRecordings: RecordingList = { active: [], saved: [], storage: { free_bytes: 1000 } };
-const status: BridgeStatus = { bridge_version: 'test', sources: {} };
+const status: BridgeStatus = {
+  bridge_version: 'test',
+  sources: {},
+  transport: {
+    contract_version: 1,
+    cleartext_enabled: true,
+    tls_enabled: true,
+    cleartext_port: 39000,
+    tls_port: 39001,
+    key_ids: [],
+    auth_successes: 0,
+    auth_failures: 0,
+  },
+};
 
 function fakeApi(overrides: Partial<BridgeApi> = {}): BridgeApi {
   return {
@@ -38,6 +51,8 @@ function fakeApi(overrides: Partial<BridgeApi> = {}): BridgeApi {
     stop: vi.fn(async () => undefined),
     delete: vi.fn(async () => undefined),
     ticket: vi.fn(async (): Promise<DownloadTicket> => ({ url: '/file', expires_in_seconds: 60 })),
+    putTransportKey: vi.fn(async () => undefined),
+    deleteTransportKey: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -142,5 +157,23 @@ describe('bridge controller', () => {
     expect(succeeded).toBe(false);
     expect(controller.error.value).toBe('storage full');
     expect(api.recordings).not.toHaveBeenCalled();
+  });
+
+  it('keeps transport provisioning unlocked after a rejected key so it can be retried', async () => {
+    const putTransportKey = vi
+      .fn<BridgeApi['putTransportKey']>()
+      .mockRejectedValueOnce(new Error('unauthorized'))
+      .mockResolvedValueOnce(undefined);
+    const controller = new BridgeController(fakeApi({ putTransportKey }));
+    controller.unlockTransport('wrong-token');
+
+    await expect(
+      controller.provisionTransportKey('eli1-a'.padEnd(37, 'a'), '01'.repeat(32)),
+    ).resolves.toBe(false);
+    expect(controller.transportState.value).toBe('unlocked');
+    expect(controller.error.value).toBe('unauthorized');
+    await expect(
+      controller.provisionTransportKey('eli1-a'.padEnd(37, 'a'), '01'.repeat(32)),
+    ).resolves.toBe(true);
   });
 });

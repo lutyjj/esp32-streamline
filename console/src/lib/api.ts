@@ -21,8 +21,13 @@ export type {
   OtaStatus as OtaSnapshot,
   Severity as HealthSeverity,
   StatusResponse as DeviceStatus,
+  TransportKeyResponse,
+  TransportMode,
+  TransportSettingsRequest,
+  TransportStatus,
 } from '../generated/api';
 export {
+  activateTransportKey,
   factoryReset,
   getAudioProfiles,
   getBoards,
@@ -31,13 +36,19 @@ export {
   otaCheck,
   otaRollback,
   otaUpdate,
+  recoverTransport,
   restart,
+  retireTransportKey,
+  rollbackTransportKey,
   setAdminKey,
   setAudio,
   setFirmware,
   setName,
   setTarget,
+  setTransport as setTransportSettings,
   setWifi,
+  stageTransportKey,
+  verifyTransportKey,
 } from '../generated/api';
 export { ApiError, setTransport, verifyAdminKey } from './http';
 

@@ -4,16 +4,23 @@ import {
   createRecordingDownloadTicket,
   type DownloadTicket,
   deleteRecording,
+  deleteTransportKey,
   getBridgeStatus,
   getRecordingCapabilities,
   getRecordings,
+  putTransportKey,
   type RecordingCapabilities,
   type RecordingList,
   type StartRecordingRequest,
   startRecording,
   stopRecording,
 } from '../generated/bridge';
-import { forgetRecordingToken, rememberRecordingToken } from './http';
+import {
+  forgetRecordingToken,
+  forgetTransportToken,
+  rememberRecordingToken,
+  rememberTransportToken,
+} from './http';
 
 export interface BridgeApi {
   status(): Promise<BridgeStatus>;
@@ -23,6 +30,8 @@ export interface BridgeApi {
   stop(id: string): Promise<void>;
   delete(id: string): Promise<void>;
   ticket(id: string): Promise<DownloadTicket>;
+  putTransportKey(keyId: string, psk: string): Promise<void>;
+  deleteTransportKey(keyId: string): Promise<void>;
 }
 
 export type Scheduler = (callback: () => void, delay: number) => number;
@@ -41,6 +50,12 @@ const runtimeApi: BridgeApi = {
     await deleteRecording(id);
   },
   ticket: createRecordingDownloadTicket,
+  putTransportKey: async (keyId, psk) => {
+    await putTransportKey(keyId, { psk });
+  },
+  deleteTransportKey: async (keyId) => {
+    await deleteTransportKey(keyId);
+  },
 };
 
 export class BridgeController {
@@ -49,6 +64,7 @@ export class BridgeController {
   readonly recordings = signal<RecordingList>();
   readonly unreachable = signal(false);
   readonly recordingState = signal<'checking' | 'disabled' | 'locked' | 'unlocked'>('checking');
+  readonly transportState = signal<'checking' | 'disabled' | 'locked' | 'unlocked'>('checking');
   readonly error = signal('');
 
   private recordingTimer?: number;
@@ -73,6 +89,14 @@ export class BridgeController {
   async pollStatus(): Promise<void> {
     try {
       this.status.value = await this.api.status();
+      if (!this.status.value.transport.tls_enabled) {
+        this.transportState.value = 'disabled';
+      } else if (
+        this.transportState.value === 'checking' ||
+        this.transportState.value === 'disabled'
+      ) {
+        this.transportState.value = 'locked';
+      }
       this.unreachable.value = false;
     } catch {
       this.unreachable.value = true;
@@ -114,6 +138,41 @@ export class BridgeController {
     this.recordingState.value = 'locked';
   }
 
+  unlockTransport(token: string): void {
+    rememberTransportToken(token);
+    this.transportState.value = 'unlocked';
+    this.error.value = '';
+  }
+
+  lockTransport(): void {
+    forgetTransportToken();
+    this.transportState.value = this.status.value?.transport.tls_enabled ? 'locked' : 'disabled';
+  }
+
+  async provisionTransportKey(keyId: string, psk: string): Promise<boolean> {
+    try {
+      await this.api.putTransportKey(keyId, psk);
+      await this.pollStatusOnce();
+      this.error.value = '';
+      return true;
+    } catch (error) {
+      this.error.value = message(error);
+      return false;
+    }
+  }
+
+  async removeTransportKey(keyId: string): Promise<boolean> {
+    try {
+      await this.api.deleteTransportKey(keyId);
+      await this.pollStatusOnce();
+      this.error.value = '';
+      return true;
+    } catch (error) {
+      this.error.value = message(error);
+      return false;
+    }
+  }
+
   async refreshRecordings(): Promise<void> {
     try {
       this.updateRecordings(await this.api.recordings());
@@ -151,6 +210,11 @@ export class BridgeController {
     this.recordingTimer = undefined;
     this.recordings.value = recordings;
     if (recordings.active.length > 0) this.scheduleRecordingRefresh();
+  }
+
+  private async pollStatusOnce(): Promise<void> {
+    this.status.value = await this.api.status();
+    this.unreachable.value = false;
   }
 
   private scheduleRecordingRefresh(): void {

@@ -80,6 +80,11 @@ export function BridgeApp() {
               onClick={onLockClick}
             />
           )}
+          {bridge.transportState.value === 'unlocked' && (
+            <Button className="bridge-lock" onClick={() => bridge.lockTransport()}>
+              Lock transport keys
+            </Button>
+          )}
         </div>
       </header>
       {recordingState === 'locked' && panelOpen && (
@@ -102,9 +107,140 @@ export function BridgeApp() {
           )}
         </div>
       </section>
+      <TransportKeys />
       <Recordings />
       <Toasts />
     </main>
+  );
+}
+
+function TransportKeys() {
+  const status = bridge.status.value?.transport;
+  const state = bridge.transportState.value;
+  if (!status || state === 'checking') return null;
+  return (
+    <section class="bridge-group">
+      <div class="section-head">
+        <h2>PCM transport</h2>
+        <span class="eyebrow">
+          {status.tls_enabled ? `TLS 1.3 · port ${status.tls_port}` : 'encrypted listener disabled'}
+        </span>
+      </div>
+      <p class="grouplead">
+        {status.cleartext_enabled
+          ? `Cleartext remains available on port ${status.cleartext_port}. Disable it in bridge configuration after every device has cut over.`
+          : 'Cleartext intake is disabled.'}
+      </p>
+      {state === 'disabled' ? (
+        <Card lead="Enable the encrypted listener and configure a transport API token, then restart the bridge.">
+          {null}
+        </Card>
+      ) : state === 'locked' ? (
+        <TransportUnlock />
+      ) : (
+        <TransportKeyWorkspace keyIds={status.key_ids} />
+      )}
+    </section>
+  );
+}
+
+function TransportUnlock() {
+  const [token, setToken] = useState('');
+  return (
+    <Card lead="Enter the transport API token configured on this bridge. It stays in this browser tab.">
+      <form
+        class="unlockform"
+        onSubmit={(event) => {
+          event.preventDefault();
+          bridge.unlockTransport(token);
+          setToken('');
+        }}
+      >
+        <input
+          type="password"
+          autocomplete="current-password"
+          placeholder="transport API token"
+          value={token}
+          onInput={(event) => setToken(event.currentTarget.value)}
+          minlength={16}
+          required
+        />
+        <Button kind="primary" type="submit">
+          Unlock
+        </Button>
+      </form>
+    </Card>
+  );
+}
+
+function TransportKeyWorkspace({ keyIds }: { keyIds: string[] }) {
+  const [keyId, setKeyId] = useState('');
+  const [psk, setPsk] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <Card title="Device keys" lead="Paste the one-time credential shown by the device console.">
+      <form
+        class="formgrid"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setBusy(true);
+          try {
+            if (await bridge.provisionTransportKey(keyId.trim(), psk.trim())) {
+              setKeyId('');
+              setPsk('');
+            }
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label class="field">
+          <span>Key ID</span>
+          <input
+            value={keyId}
+            pattern="eli1-[0-9a-f]{32}"
+            autocomplete="off"
+            onInput={(event) => setKeyId(event.currentTarget.value)}
+            required
+          />
+        </label>
+        <label class="field">
+          <span>PSK</span>
+          <input
+            type="password"
+            value={psk}
+            pattern="[0-9a-f]{64}"
+            autocomplete="new-password"
+            onInput={(event) => setPsk(event.currentTarget.value)}
+            required
+          />
+        </label>
+        <Button kind="primary" type="submit" busy={busy}>
+          Provision key
+        </Button>
+      </form>
+      <div class="bridge-list transport-key-list">
+        {keyIds.length ? (
+          keyIds.map((id) => (
+            <div class="transport-key" key={id}>
+              <code>{id}</code>
+              <Button
+                kind="danger"
+                onClick={() => {
+                  if (window.confirm(`Remove transport key ${id}?`)) {
+                    void bridge.removeTransportKey(id);
+                  }
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          ))
+        ) : (
+          <div class="empty">No encrypted device key is provisioned.</div>
+        )}
+      </div>
+    </Card>
   );
 }
 

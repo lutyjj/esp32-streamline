@@ -142,22 +142,18 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
   }
 
   async function close(restore: boolean) {
-    engine.current?.cancel();
-    const applied = engine.current?.applied ?? null;
+    const active = engine.current;
+    active?.cancel();
     const o = original.current;
     onClose();
-    if (restore && applied !== null && applied !== o.atten) {
-      try {
-        await setAudio({
-          input_line: o.line,
-          input_gain: o.gain,
-          adc_attenuation_db: o.atten,
-        });
+    if (!restore || !active) return;
+    try {
+      if (await active.restore(o.atten)) {
         toast(`Put ADC attenuation back to ${o.atten} dB`, 'ok');
         loadDeviceSettings().catch(() => {});
-      } catch (error) {
-        toast(`Could not restore previous levels: ${errorMessage(error)}`, 'err');
       }
+    } catch (error) {
+      toast(`Could not restore previous levels: ${errorMessage(error)}`, 'err');
     }
   }
 

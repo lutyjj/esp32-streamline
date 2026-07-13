@@ -179,14 +179,13 @@ function Recordings() {
     <section class="bridge-group">
       <SectionHead title="Recordings" note={state} />
       {state === 'disabled' && (
-        <Card lead="Recording is off. Configure writable storage and a recording token, then restart the bridge.">
-          {null}
-        </Card>
+        <EmptyState>
+          Recording is off. Configure writable storage and a recording token, then restart the
+          bridge.
+        </EmptyState>
       )}
       {state === 'locked' && (
-        <Card lead="Recordings are locked. Choose Unlock in the header to manage them.">
-          {null}
-        </Card>
+        <EmptyState>Recordings are locked. Choose Unlock in the header to manage them.</EmptyState>
       )}
       {state === 'unlocked' && <RecordingWorkspace />}
     </section>
@@ -201,7 +200,7 @@ function RecordingWorkspace() {
   const [source, setSource] = useState(sources[0] || '');
   const [title, setTitle] = useState('');
   const selectedSource = sources.includes(source) ? source : sources[0] || '';
-  if (!data) return <Card lead="Loading recordings…">{null}</Card>;
+  if (!data) return <EmptyState>Loading recordings…</EmptyState>;
   return (
     <div class="cardstack">
       <div class="grid">
@@ -213,9 +212,10 @@ function RecordingWorkspace() {
               if (await bridge.startRecording({ source: selectedSource, title })) setTitle('');
             }}
           >
-            <label class="field">
-              <span>Source</span>
+            <div class="field">
+              <label for="rec-source">Source</label>
               <select
+                id="rec-source"
                 value={selectedSource}
                 onChange={(event) => setSource(event.currentTarget.value)}
                 required
@@ -226,16 +226,18 @@ function RecordingWorkspace() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label class="field">
-              <span>Title</span>
+            </div>
+            <div class="field">
+              <label for="rec-title">Title</label>
               <input
+                id="rec-title"
+                type="text"
                 value={title}
                 maxlength={80}
                 onInput={(event) => setTitle(event.currentTarget.value)}
                 required
               />
-            </label>
+            </div>
             <Button kind="primary" type="submit" disabled={!selectedSource}>
               Start recording
             </Button>

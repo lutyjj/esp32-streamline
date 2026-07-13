@@ -196,11 +196,12 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  height: 32px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
   color: var(--text);
-  padding: 7px 14px;
+  padding: 0 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -245,6 +246,13 @@ button {
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+.theme-switch input:active + span {
+  transform: scale(0.94);
 }
 .theme-switch input:checked + span {
   background: var(--primary-bg);
@@ -1442,10 +1450,14 @@ select:disabled {
   .btn,
   .switch .knob,
   .switch .knob::after,
+  .theme-switch span,
   .disclosure-summary::before,
   .disclosure-panel,
   .progress i {
     transition: none;
+  }
+  .theme-switch input:active + span {
+    transform: none;
   }
   .disclosure-panel {
     transform: none;

@@ -13,7 +13,7 @@ import { KeyReveal } from './KeyReveal';
 import { ActionState, TransactButton } from './Transact';
 import { TransportCard } from './TransportCard';
 
-export function NetworkTab() {
+export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
   const writable = useWritable();
   const s = status.value;
   const setup = setupMode.value;
@@ -161,6 +161,23 @@ export function NetworkTab() {
         title="Stream target"
         lead="Where the audio goes: your bridge or Home Assistant add-on."
       >
+        {!setup && (
+          <div class="wizentry">
+            <span>
+              {noBridge.value
+                ? 'Not sure what to enter? The guide picks it up from here.'
+                : 'Prefer step by step? Reconnect with the guide.'}
+            </span>
+            <Button
+              kind={noBridge.value ? 'primary' : 'secondary'}
+              disabled={!writable}
+              onClick={onSetupBridge}
+            >
+              {noBridge.value ? 'Set up bridge' : 'Guide me'}
+            </Button>
+          </div>
+        )}
+
         <div class="formgrid">
           <div class="field">
             <label for="target_host">Host or IP</label>

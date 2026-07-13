@@ -1,10 +1,10 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { copyText } from '../lib/adminKey';
 import { restart } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, setupMode } from '../state/device';
 import { toast } from '../state/toasts';
-import { transport, transportActions, transportJourney } from '../state/transport';
+import { optInRequested, transport, transportActions, transportJourney } from '../state/transport';
 import { Button } from './Button';
 import { CardFooter } from './Card';
 import { Chip } from './Chip';
@@ -31,6 +31,14 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
   const [pskReveal, setPskReveal] = useState<{ keyId?: string; visible: boolean }>({
     visible: false,
   });
+
+  // The bridge wizard hands off here: open the opt-in and clear the request.
+  const wantsOptIn = optInRequested.value;
+  useEffect(() => {
+    if (!wantsOptIn) return;
+    optInRequested.value = false;
+    setSetupOpen(true);
+  }, [wantsOptIn]);
 
   if (!current || setupMode.value) return null;
   const status = current.transport;

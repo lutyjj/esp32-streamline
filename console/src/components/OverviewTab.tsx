@@ -1,6 +1,6 @@
 import { dbfs } from '../lib/format';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
-import { noBridge, packetsMoving, setupMode, status } from '../state/device';
+import { bridgeConnection, noBridge, setupMode, status } from '../state/device';
 import { blockingHealth } from '../state/health';
 import { Button } from './Button';
 import { Card } from './Card';
@@ -8,14 +8,28 @@ import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
 import { Meter } from './Meter';
 
-export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
+const BRIDGE_TILE: Record<string, { dot: string; label: string }> = {
+  setup: { dot: '', label: '—' },
+  unset: { dot: 'warn', label: 'Not set' },
+  idle: { dot: '', label: 'Idle' },
+  connecting: { dot: 'warn', label: 'Connecting' },
+  sending: { dot: 'good', label: 'Sending' },
+};
+
+export function OverviewTab({
+  onCalibrate,
+  onSetupBridge,
+}: {
+  onCalibrate: () => void;
+  onSetupBridge: () => void;
+}) {
   const s = status.value;
   if (!s) return <section class="view active" />;
 
   const playing = s.metrics.playing;
   const setup = setupMode.value;
   const bridgeless = noBridge.value;
-  const moving = packetsMoving.value;
+  const bridge = bridgeConnection.value;
   const clips = s.metrics.clipped_samples_total;
   const showClipCallout = clipCalloutVisible.value;
   const fault = blockingHealth.value;
@@ -47,6 +61,21 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
           <div>
             <strong>{fault.detail}</strong>
             {fault.remedy && <span class="sub"> {fault.remedy}</span>}
+          </div>
+        </div>
+      )}
+
+      {bridgeless && (
+        <div class="card callout">
+          <div>
+            <strong>No bridge yet.</strong>
+            <span class="sub">
+              {' StreamLine is capturing audio but has nowhere to send it. The guided setup' +
+                ' connects it in about a minute.'}
+            </span>
+          </div>
+          <div class="actions">
+            <Button onClick={onSetupBridge}>Set up bridge</Button>
           </div>
         </div>
       )}
@@ -112,24 +141,12 @@ export function OverviewTab({ onCalibrate }: { onCalibrate: () => void }) {
         <div class="health">
           <span class="eyebrow">Bridge</span>
           <span class="val">
-            <span
-              class={`statusdot ${bridgeless ? 'warn' : moving ? 'good' : playing ? 'warn' : ''}`}
-            />
-            <span>
-              {setup
-                ? '—'
-                : bridgeless
-                  ? 'Not set'
-                  : moving
-                    ? 'Sending'
-                    : playing
-                      ? 'Connecting'
-                      : 'Idle'}
-            </span>
+            <span class={`statusdot ${BRIDGE_TILE[bridge].dot}`} />
+            <span>{BRIDGE_TILE[bridge].label}</span>
           </span>
           <span class="sub">
             {bridgeless
-              ? 'point it at your bridge in the Network tab'
+              ? 'no bridge configured yet'
               : `${s.target.target_host}:${s.target.target_port}`}
           </span>
         </div>

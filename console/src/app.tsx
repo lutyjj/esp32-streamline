@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { ApiTab } from './components/ApiTab';
 import { AudioTab } from './components/AudioTab';
+import { BridgeWizard } from './components/BridgeWizard';
 import { Masthead } from './components/Masthead';
 import { NetworkTab } from './components/NetworkTab';
 import { Notice } from './components/Notice';
@@ -24,6 +25,7 @@ import { toast } from './state/toasts';
 export function App() {
   const view = useConsoleView();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [bridgeWizardOpen, setBridgeWizardOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingSeen, setOnboardingSeen] = useState(false);
   const writable = useWritable();
@@ -50,6 +52,14 @@ export function App() {
     setWizardOpen(true);
   }
 
+  function openBridgeWizard() {
+    if (status.value?.mode !== 'provisioned') {
+      toast('Bridge setup needs the device on your home network', 'err');
+      return;
+    }
+    setBridgeWizardOpen(true);
+  }
+
   /** Clip-callout action: land on the audio tab; calibrate when unlocked. */
   function calibrateFromCallout() {
     navigateTo('audio');
@@ -59,11 +69,11 @@ export function App() {
   function activeView(selected: ConsoleView) {
     switch (selected) {
       case 'overview':
-        return <OverviewTab onCalibrate={calibrateFromCallout} />;
+        return <OverviewTab onCalibrate={calibrateFromCallout} onSetupBridge={openBridgeWizard} />;
       case 'audio':
         return <AudioTab onCalibrate={openWizard} />;
       case 'network':
-        return <NetworkTab />;
+        return <NetworkTab onSetupBridge={openBridgeWizard} />;
       case 'system':
         return <SystemTab />;
       case 'api':
@@ -99,6 +109,7 @@ export function App() {
       </section>
 
       {wizardOpen && <WizardOverlay onClose={() => setWizardOpen(false)} />}
+      {bridgeWizardOpen && <BridgeWizard onClose={() => setBridgeWizardOpen(false)} />}
       {onboardingOpen && (
         <OnboardingOverlay
           onClose={() => {

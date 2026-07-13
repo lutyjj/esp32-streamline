@@ -2,14 +2,15 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
-use crate::{api, board, profiles::AudioProfileCatalog};
+use crate::{api, board, mutation::MutationError, profiles::AudioProfileCatalog};
 
 use super::super::{
     auth::authorized_for,
+    persistence::{lock_audio_profiles, lock_config, lock_store},
     requests::form,
-    responses::{bad_request, reboot_response, respond, serialize, unauthorized},
+    responses::{mutation_error, reboot_response, respond, serialize, unauthorized},
     ApiState, ContractServer,
 };
 
@@ -31,48 +32,39 @@ pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiSta
         if !authorized_for(&request, &state, api::SET_BOARD) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<(), MutationError> {
             let form: api::BoardSettingsRequest = form(&mut request)?;
             let update = board::resolve_update(
                 &state.board_catalog,
                 form.board_id.as_deref(),
                 form.descriptor.as_deref(),
-            )?;
+            )
+            .map_err(|error| MutationError::InvalidInput(error.to_string()))?;
             let selected = update.board();
-            let next = state
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
+            let next = lock_config(&state)?
                 .clone()
                 .with_audio_compatible_with(selected);
 
-            let store = state
-                .store
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?;
+            let store = lock_store(&state)?;
             if state.mode.has_persisted_configuration() {
-                next.validate(selected)
-                    .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
+                next.validate(selected).map_err(|error| {
+                    MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
+                })?;
             }
-            store.save_board_state(
-                selected,
-                update.is_custom(),
-                state.mode.has_persisted_configuration().then_some(&next),
-            )?;
-            *state
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
-            *state
-                .audio_profiles
-                .lock()
-                .map_err(|_| anyhow!("audio profile lock poisoned"))? =
-                AudioProfileCatalog::empty(selected);
+            store
+                .save_board_state(
+                    selected,
+                    update.is_custom(),
+                    state.mode.has_persisted_configuration().then_some(&next),
+                )
+                .map_err(|error| MutationError::Persistence(format!("{error:#}")))?;
+            *lock_config(&state)? = next;
+            *lock_audio_profiles(&state)? = AudioProfileCatalog::empty(selected);
             Ok(())
         })();
         match result {
             Ok(()) => reboot_response(request),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }

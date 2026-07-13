@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
-use crate::{adapters::ota as ota_adapter, api, update};
+use crate::{adapters::ota as ota_adapter, api, mutation::MutationError, update};
 
 use super::super::{
     auth::authorized_for,
     requests::form,
-    responses::{bad_request, ota_accepted, reboot_response, unauthorized},
+    responses::{mutation_error, ota_accepted, reboot_response, unauthorized},
     ApiState, ContractServer,
 };
 
@@ -40,13 +40,13 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
         }
         let form: api::OtaUpdateRequest = match form(&mut request) {
             Ok(form) => form,
-            Err(error) => return bad_request(request, error),
+            Err(error) => return mutation_error(request, error),
         };
         let source =
             match update::custom_image_from_form(form.url.as_deref(), form.sha256.as_deref()) {
                 Ok(None) => ota_adapter::Source::LatestRelease,
                 Ok(Some(image)) => ota_adapter::Source::Custom(image),
-                Err(error) => return bad_request(request, anyhow!(error)),
+                Err(error) => return mutation_error(request, MutationError::InvalidInput(error)),
             };
         ota_accepted(
             request,
@@ -69,7 +69,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
         }
         match ota_adapter::select_rollback_slot() {
             Ok(()) => reboot_response(request),
-            Err(error) => bad_request(request, error),
+            // No stored previous image is a state conflict, not a bad request.
+            Err(error) => mutation_error(request, MutationError::Conflict(format!("{error:#}"))),
         }
     })
 }

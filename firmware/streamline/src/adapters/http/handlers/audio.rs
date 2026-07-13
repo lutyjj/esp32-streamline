@@ -2,19 +2,22 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use crate::{
     api,
     config::{AudioSettings, RuntimeConfig},
+    mutation::MutationError,
     profiles::AudioProfileCatalog,
 };
 
 use super::super::{
     auth::authorized_for,
-    persistence::{save_audio_profiles, save_configuration_and_profiles},
+    persistence::{
+        lock_audio_profiles, lock_config, save_audio_profiles, save_configuration_and_profiles,
+    },
     requests::form,
-    responses::{bad_request, json_response, reboot_response, respond, serialize, unauthorized},
+    responses::{json_response, mutation_error, reboot_response, respond, serialize, unauthorized},
     ApiState, ContractServer,
 };
 
@@ -44,25 +47,19 @@ pub(super) fn register_writes(
             return unauthorized(request);
         }
         // Ok(true) means the settings were applied live.
-        let result = (|| -> Result<bool> {
+        let result = (|| -> Result<bool, MutationError> {
             let form: api::AudioSettingsRequest = form(&mut request)?;
-            let current = state_for_audio
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
+            let current = lock_config(&state_for_audio)?.clone();
             let audio = AudioSettings {
                 input_line: form.input_line,
                 input_gain: form.input_gain,
                 adc_attenuation_db: form.adc_attenuation_db,
             }
             .validate(state_for_audio.board.as_ref())
-            .map_err(|error| anyhow!("invalid audio settings: {error:?}"))?;
-            let mut catalog = state_for_audio
-                .audio_profiles
-                .lock()
-                .map_err(|_| anyhow!("audio profile lock poisoned"))?
-                .clone();
+            .map_err(|error| {
+                MutationError::InvalidInput(format!("invalid audio settings: {error:?}"))
+            })?;
+            let mut catalog = lock_audio_profiles(&state_for_audio)?.clone();
             catalog.active_profile_id = None;
             save_configuration_and_profiles(
                 &state_for_audio,
@@ -74,7 +71,7 @@ pub(super) fn register_writes(
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
             Ok(false) => reboot_response(request),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })?;
 
@@ -88,33 +85,30 @@ pub(super) fn register_writes(
         ) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<(), MutationError> {
             let form: api::AudioProfilesSettingsRequest = form(&mut request)?;
-            let mut catalog: AudioProfileCatalog = serde_json::from_str(&form.catalog)
-                .map_err(|error| anyhow!("invalid audio profile catalog: {error}"))?;
+            let mut catalog: AudioProfileCatalog =
+                serde_json::from_str(&form.catalog).map_err(|error| {
+                    MutationError::InvalidInput(format!("invalid audio profile catalog: {error}"))
+                })?;
             catalog.active_profile_id = None;
             catalog
                 .validate(state_for_profile_catalog.board.as_ref())
-                .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
-            let previous_active = state_for_profile_catalog
-                .audio_profiles
-                .lock()
-                .map_err(|_| anyhow!("audio profile lock poisoned"))?
+                .map_err(|error| {
+                    MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
+                })?;
+            let previous_active = lock_audio_profiles(&state_for_profile_catalog)?
                 .active_profile_id
                 .clone();
             catalog.active_profile_id = previous_active
                 .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));
-            let current_audio = state_for_profile_catalog
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .audio;
+            let current_audio = lock_config(&state_for_profile_catalog)?.audio;
             catalog.reconcile_active_audio(current_audio);
             save_audio_profiles(&state_for_profile_catalog, catalog)
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })?;
 
@@ -124,22 +118,14 @@ pub(super) fn register_writes(
         if !authorized_for(&request, &state_for_active_profile, api::SET_AUDIO_PROFILE) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<bool> {
+        let result = (|| -> Result<bool, MutationError> {
             let form: api::ActiveAudioProfileRequest = form(&mut request)?;
-            let mut catalog = state_for_active_profile
-                .audio_profiles
-                .lock()
-                .map_err(|_| anyhow!("audio profile lock poisoned"))?
-                .clone();
-            let audio = catalog
-                .activate(Some(&form.profile_id))
-                .map_err(|error| anyhow!("invalid active audio profile: {error:?}"))?;
+            let mut catalog = lock_audio_profiles(&state_for_active_profile)?.clone();
+            let audio = catalog.activate(Some(&form.profile_id)).map_err(|error| {
+                MutationError::InvalidInput(format!("invalid active audio profile: {error:?}"))
+            })?;
             if let Some(audio) = audio {
-                let current = state_for_active_profile
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))?
-                    .clone();
+                let current = lock_config(&state_for_active_profile)?.clone();
                 save_configuration_and_profiles(
                     &state_for_active_profile,
                     RuntimeConfig { audio, ..current },
@@ -153,20 +139,23 @@ pub(super) fn register_writes(
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
             Ok(false) => reboot_response(request),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
 
 /// Apply already-persisted settings to the codec and reset play detection.
-fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool> {
+fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool, MutationError> {
     let Some(codec) = &state.codec else {
         return Ok(false);
     };
     codec
         .lock()
-        .map_err(|_| anyhow!("codec lock poisoned"))?
-        .apply(audio)?;
+        .map_err(|_| MutationError::Internal("codec lock poisoned".to_owned()))?
+        .apply(audio)
+        .map_err(|error| {
+            MutationError::Internal(format!("could not apply audio settings: {error:#}"))
+        })?;
     if let Some(stream) = &state.stream {
         stream.request_relearn();
     }

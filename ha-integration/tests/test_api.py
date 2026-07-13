@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -20,6 +22,8 @@ from .bridge_payloads import (
     SOURCE,
     bridge_status,
     error_response,
+    recording_capabilities,
+    recording_list,
     recording_result,
     recording_snapshot,
 )
@@ -119,6 +123,51 @@ async def test_non_json_body_is_an_api_error(
 
     with pytest.raises(StreamLineApiError, match="invalid JSON"):
         await client(hass).async_get_status()
+
+
+async def test_every_client_operation_matches_the_openapi_contract(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Pin the client's hand-written method, path, and auth facts to the artifact.
+
+    The response models are generated from docs/bridge-openapi.json; this test
+    mechanically checks the remaining copies so a contract change fails here
+    instead of at runtime.
+    """
+    spec = json.loads((Path(__file__).parents[2] / "docs" / "bridge-openapi.json").read_text())
+    recording_id = "rec-1"
+    aioclient_mock.get(f"{BRIDGE_URL}/status", json=bridge_status())
+    aioclient_mock.get(f"{BRIDGE_URL}/api/recordings/capabilities", json=recording_capabilities())
+    aioclient_mock.get(f"{BRIDGE_URL}/api/recordings", json=recording_list())
+    aioclient_mock.post(f"{BRIDGE_URL}/api/recordings", json=recording_result(recording_snapshot()))
+    aioclient_mock.post(
+        f"{BRIDGE_URL}/api/recordings/{recording_id}/stop",
+        json=recording_result(recording_snapshot()),
+    )
+
+    bridge = client(hass, TOKEN)
+    await bridge.async_get_status()
+    await bridge.async_get_recording_capabilities()
+    await bridge.async_get_recordings()
+    await bridge.async_start_recording(SOURCE, "Test recording")
+    await bridge.async_stop_recording(recording_id)
+    exercised = {
+        "async_get_status",
+        "async_get_recording_capabilities",
+        "async_get_recordings",
+        "async_start_recording",
+        "async_stop_recording",
+    }
+
+    public = {name for name in dir(StreamLineBridgeClient) if name.startswith("async_")}
+    assert public == exercised, "every public client operation must be exercised here"
+
+    assert aioclient_mock.mock_calls
+    for method, url, _body, headers in aioclient_mock.mock_calls:
+        path = url.path.replace(recording_id, "{recording_id}")
+        operation = spec["paths"][path][method.lower()]
+        requires_bearer = any("bearer_auth" in s for s in operation.get("security") or [])
+        assert ("Authorization" in (headers or {})) == requires_bearer, (method, path)
 
 
 def test_normalize_bridge_url_canonicalizes_the_root() -> None:

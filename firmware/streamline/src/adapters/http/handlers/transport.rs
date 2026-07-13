@@ -122,7 +122,9 @@ fn register_activate(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
             return unauthorized(request);
         }
         match mutate(&state, |next| {
-            next.transport.keys.activate().map_err(anyhow::Error::from)
+            next.transport.keys.activate()?;
+            next.transport.mode = TransportMode::TlsPsk;
+            Ok(())
         }) {
             Ok(()) => reboot_response(request),
             Err(error) => bad_request(request, error),

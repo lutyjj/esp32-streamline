@@ -8,6 +8,13 @@ interface DisclosureProps {
   children: ComponentChildren;
   className?: string;
   defaultOpen?: boolean;
+  /**
+   * Controlled mode: the parent owns the open state, so another control (a
+   * checkbox, a journey event) can expand the section. Omit for the default
+   * self-managed behavior.
+   */
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
 }
 
 export function Disclosure({
@@ -15,9 +22,12 @@ export function Disclosure({
   children,
   className = '',
   defaultOpen = false,
+  open: controlledOpen,
+  onToggle,
 }: DisclosureProps) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [present, setPresent] = useState(defaultOpen);
+  const controlled = controlledOpen !== undefined;
+  const [open, setOpen] = useState(controlled ? controlledOpen : defaultOpen);
+  const [present, setPresent] = useState(open);
   const openFrame = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
 
@@ -59,9 +69,23 @@ export function Disclosure({
     }, CLOSE_MS);
   }
 
+  // Follow the parent's state through the same animation as a click.
+  const applied = useRef(open);
+  useEffect(() => {
+    if (!controlled || controlledOpen === applied.current) return;
+    applied.current = controlledOpen;
+    if (controlledOpen) openDisclosure();
+    else closeDisclosure();
+  });
+
   function toggle() {
-    if (open) closeDisclosure();
-    else openDisclosure();
+    // The parent's value is the truth in controlled mode; the internal state
+    // only tracks the animation phase and lags it by a frame.
+    const next = controlled ? !controlledOpen : !open;
+    onToggle?.(next);
+    if (controlled) return;
+    if (next) openDisclosure();
+    else closeDisclosure();
   }
 
   function finishClose(event: TargetedTransitionEvent<HTMLDivElement>) {

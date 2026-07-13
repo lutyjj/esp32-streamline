@@ -1,6 +1,30 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.5.7]
+
+### 🚀 Features
+- Drive the QEMU smoke through pytest-embedded
+- Add QEMU image variant with emulated ethernet
+- Add theme preference
+- Add live source console
+- Add boot and API smoke harness for QEMU and USB devices
+
+### 🐛 Bug Fixes
+- Complete reboot responses before restarting
+- Make board state recovery-safe
+- Keep recording polling resilient
+- Keep repeated recording scans current
+
+### 🚜 Refactor
+- Make HTTP policies host-testable
+- Split HTTP adapter by concern
+- Split the device library into purpose-named modules
+- Make the smoke suite device-agnostic
+- Give each image variant one named boot function
+- Centralize browser preferences
+- Derive console from API contract
+
 ## [0.5.6]
 
 ### 🐛 Bug Fixes
@@ -227,4 +251,5 @@ Notable changes per release, grouped by type.
 
 ### 🚀 Features
 - 0.1.0
+
 

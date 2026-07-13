@@ -1,15 +1,61 @@
 import { useState } from 'preact/hooks';
 import { Button } from '../components/Button';
-import { Card } from '../components/Card';
+import { Card, CardFooter } from '../components/Card';
+import { Chip, type Tone } from '../components/Chip';
+import { ConfirmButton } from '../components/ConfirmButton';
+import { EmptyState } from '../components/EmptyState';
+import { LockChip } from '../components/LockChip';
 import { MeterRow } from '../components/Meter';
+import { Notice } from '../components/Notice';
+import { SectionHead } from '../components/SectionHead';
 import { ThemeSwitch } from '../components/ThemeSwitch';
+import { Toasts } from '../components/Toasts';
+import { UnlockPanel } from '../components/UnlockPanel';
 import type { RecordingSnapshot, SourceSnapshot } from '../generated/bridge';
 import { dbfs } from '../lib/format';
+import { toast } from '../state/toasts';
 import { bridgeBase } from './http';
 import { bridge } from './state';
 
+/** Lifecycle and recording states share the console's status tones. */
+function stateTone(state: string): Tone {
+  switch (state) {
+    case 'connected':
+    case 'complete':
+      return 'good';
+    case 'recording':
+      return 'bad';
+    case 'waiting-for-audio':
+    case 'interrupted':
+      return 'warn';
+    default:
+      return 'neutral';
+  }
+}
+
+function StateChip({ state }: { state: string }) {
+  return (
+    <Chip tone={stateTone(state)} dot>
+      {state.replaceAll('-', ' ')}
+    </Chip>
+  );
+}
+
 export function BridgeApp() {
   const status = bridge.status.value;
+  const recordingState = bridge.recordingState.value;
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  function onLockClick() {
+    if (bridge.recordingState.value === 'unlocked') {
+      bridge.lock();
+      toast('Recordings locked', 'ok');
+      setPanelOpen(false);
+    } else {
+      setPanelOpen((open) => !open);
+    }
+  }
+
   return (
     <main class="wrap bridge-console">
       <header class="masthead">
@@ -19,29 +65,29 @@ export function BridgeApp() {
           </h1>
           <div class="devname">Bridge console</div>
           <div class="chips">
-            <span class="chip">
-              <span
-                class={`statusdot ${bridge.unreachable.value ? 'bad' : status ? 'good' : ''}`}
-              />
+            <Chip tone={bridge.unreachable.value ? 'bad' : status ? 'good' : 'neutral'} dot>
               {status ? `v${status.bridge_version}` : 'Checking…'}
-            </span>
+            </Chip>
           </div>
         </div>
         <div class="masthead-actions">
           <ThemeSwitch />
-          {bridge.recordingState.value === 'unlocked' && (
-            <Button className="bridge-lock" onClick={() => bridge.lock()}>
-              Lock recordings
-            </Button>
+          {(recordingState === 'locked' || recordingState === 'unlocked') && (
+            <LockChip
+              state={recordingState}
+              text={recordingState === 'unlocked' ? 'Unlocked' : 'Locked'}
+              sub={recordingState === 'unlocked' ? '· click to lock' : '· click to unlock'}
+              onClick={onLockClick}
+            />
           )}
         </div>
       </header>
-      {bridge.error.value && <div class="notice error">{bridge.error.value}</div>}
+      {recordingState === 'locked' && panelOpen && (
+        <RecordingUnlock onDone={() => setPanelOpen(false)} />
+      )}
+      {bridge.error.value && <Notice tone="error">{bridge.error.value}</Notice>}
       <section class="bridge-group">
-        <div class="section-head">
-          <h2>Sources</h2>
-          <span class="eyebrow">Live · updates every second</span>
-        </div>
+        <SectionHead title="Sources" note="Live · updates every second" />
         <p class="grouplead">Devices streaming PCM to this bridge.</p>
         <div class="bridge-list">
           {status &&
@@ -50,13 +96,14 @@ export function BridgeApp() {
               .filter(([ip]) => ip !== 'pending')
               .map(([ip, source]) => <SourceCard key={ip} ip={ip} source={source} />)
           ) : (
-            <div class="empty">
+            <EmptyState>
               No source is connected. Point a StreamLine device at TCP port 39000.
-            </div>
+            </EmptyState>
           )}
         </div>
       </section>
       <Recordings />
+      <Toasts />
     </main>
   );
 }
@@ -69,9 +116,7 @@ export function SourceCard({ ip, source }: { ip: string; source: SourceSnapshot 
     <Card className="source-card">
       <div class="source-head">
         <h3>{ip}</h3>
-        <span class={`pill ${source.lifecycle.state}`}>
-          {source.lifecycle.state.replaceAll('-', ' ')}
-        </span>
+        <StateChip state={source.lifecycle.state} />
       </div>
       <div class="meta">
         <span>{formatBytes(source.bytes)} received</span>
@@ -98,58 +143,52 @@ export function SourceCard({ ip, source }: { ip: string; source: SourceSnapshot 
   );
 }
 
+function RecordingUnlock({ onDone }: { onDone: () => void }) {
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function unlock() {
+    setBusy(true);
+    try {
+      await bridge.unlock(token.trim());
+      toast('Recordings unlocked', 'ok');
+      onDone();
+    } catch {
+      // The controller surfaces the reason in the page banner.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <UnlockPanel
+      secret={token}
+      onSecret={setToken}
+      onUnlock={unlock}
+      busy={busy}
+      placeholder="recording token"
+      autoComplete="current-password"
+    />
+  );
+}
+
 function Recordings() {
   const state = bridge.recordingState.value;
   if (state === 'checking') return null;
   return (
     <section class="bridge-group">
-      <div class="section-head">
-        <h2>Recordings</h2>
-        <span class="eyebrow">{state}</span>
-      </div>
+      <SectionHead title="Recordings" note={state} />
       {state === 'disabled' && (
-        <Card lead="Recording is off. Configure writable storage and a recording token, then restart the bridge.">
-          {null}
-        </Card>
+        <EmptyState>
+          Recording is off. Configure writable storage and a recording token, then restart the
+          bridge.
+        </EmptyState>
       )}
-      {state === 'locked' && <RecordingUnlock />}
+      {state === 'locked' && (
+        <EmptyState>Recordings are locked. Choose Unlock in the header to manage them.</EmptyState>
+      )}
       {state === 'unlocked' && <RecordingWorkspace />}
     </section>
-  );
-}
-
-function RecordingUnlock() {
-  const [token, setToken] = useState('');
-  const [busy, setBusy] = useState(false);
-  return (
-    <Card lead="Enter the recording token configured on this bridge. It stays in this browser tab.">
-      <form
-        class="unlockform"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setBusy(true);
-          try {
-            await bridge.unlock(token);
-          } catch {
-            // The controller owns the visible error state.
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <input
-          type="password"
-          autocomplete="current-password"
-          placeholder="recording token"
-          value={token}
-          onInput={(event) => setToken(event.currentTarget.value)}
-          required
-        />
-        <Button kind="primary" type="submit" busy={busy}>
-          Unlock
-        </Button>
-      </form>
-    </Card>
   );
 }
 
@@ -161,21 +200,24 @@ function RecordingWorkspace() {
   const [source, setSource] = useState(sources[0] || '');
   const [title, setTitle] = useState('');
   const selectedSource = sources.includes(source) ? source : sources[0] || '';
-  if (!data) return <Card lead="Loading recordings…">{null}</Card>;
+  if (!data) return <EmptyState>Loading recordings…</EmptyState>;
   return (
     <div class="cardstack">
-      <div class="grid">
-        <Card title="New recording" lead="Start first, then play the source.">
-          <form
-            class="formgrid"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (await bridge.startRecording({ source: selectedSource, title })) setTitle('');
-            }}
-          >
-            <label class="field">
-              <span>Source</span>
+      <Card
+        title="New recording"
+        lead="Start first, then play the source. WAV uses about 11 MiB per minute."
+      >
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (await bridge.startRecording({ source: selectedSource, title })) setTitle('');
+          }}
+        >
+          <div class="formgrid">
+            <div class="field">
+              <label for="rec-source">Source</label>
               <select
+                id="rec-source"
                 value={selectedSource}
                 onChange={(event) => setSource(event.currentTarget.value)}
                 required
@@ -186,25 +228,27 @@ function RecordingWorkspace() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label class="field">
-              <span>Title</span>
+            </div>
+            <div class="field">
+              <label for="rec-title">Title</label>
               <input
+                id="rec-title"
+                type="text"
                 value={title}
                 maxlength={80}
                 onInput={(event) => setTitle(event.currentTarget.value)}
                 required
               />
-            </label>
+            </div>
+          </div>
+          <CardFooter>
             <Button kind="primary" type="submit" disabled={!selectedSource}>
               Start recording
             </Button>
-          </form>
-        </Card>
-        <Card title="Storage" lead="WAV uses about 11 MiB per minute.">
-          <div class="storage-value">{formatBytes(data.storage.free_bytes)} free</div>
-        </Card>
-      </div>
+            <span class="actionstate">{formatBytes(data.storage.free_bytes)} free</span>
+          </CardFooter>
+        </form>
+      </Card>
       <RecordingList title="Active" items={data.active} active />
       <RecordingList title="Saved" items={data.saved} />
     </div>
@@ -226,7 +270,7 @@ function RecordingList({
         {items.length ? (
           items.map((item) => <RecordingCard key={item.id} item={item} active={active} />)
         ) : (
-          <div class="empty">No {title.toLowerCase()} recordings.</div>
+          <EmptyState>No {title.toLowerCase()} recordings.</EmptyState>
         )}
       </div>
     </Card>
@@ -237,7 +281,7 @@ function RecordingCard({ item, active }: { item: RecordingSnapshot; active: bool
   return (
     <article class="recording">
       <div>
-        <span class={`pill ${item.state}`}>{item.state.replaceAll('-', ' ')}</span>
+        <StateChip state={item.state} />
         <h3>{item.title}</h3>
         <div class="meta">
           <span>{item.source}</span>
@@ -265,14 +309,11 @@ function RecordingCard({ item, active }: { item: RecordingSnapshot; active: bool
             >
               Download WAV
             </Button>
-            <Button
-              kind="danger"
-              onClick={() => {
-                if (window.confirm(`Delete "${item.title}"?`)) void bridge.deleteRecording(item.id);
-              }}
-            >
-              Delete
-            </Button>
+            <ConfirmButton
+              label="Delete"
+              confirmLabel="Delete"
+              onConfirm={() => void bridge.deleteRecording(item.id)}
+            />
           </>
         )}
       </div>

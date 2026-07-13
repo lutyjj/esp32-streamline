@@ -1,6 +1,8 @@
 import { render } from 'preact';
-import { describe, expect, it } from 'vitest';
-import { SourceCard } from '../src/bridge/BridgeApp';
+import { act } from 'preact/test-utils';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { BridgeApp, SourceCard } from '../src/bridge/BridgeApp';
+import { bridge } from '../src/bridge/state';
 import type { SourceSnapshot } from '../src/generated/bridge';
 
 function source(rms: number): SourceSnapshot {
@@ -58,5 +60,48 @@ describe('bridge source view', () => {
 
     expect(host.querySelector('.source-card')).toBe(card);
     expect(host.textContent).toContain('-10.3 / -10.3 dBFS');
+  });
+
+  it('renders the lifecycle state as a toned status chip', () => {
+    const host = document.createElement('div');
+    render(<SourceCard ip="192.0.2.10" source={source(100)} />, host);
+    const chip = host.querySelector('.source-head .chip');
+    expect(chip?.className).toContain('good');
+    expect(chip?.textContent).toBe('connected');
+    expect(chip?.querySelector('.statusdot.good')).not.toBeNull();
+  });
+});
+
+describe('bridge lock flow', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    bridge.status.value = { bridge_version: 'test', sources: {} };
+    bridge.recordings.value = undefined;
+    bridge.error.value = '';
+  });
+
+  it('reveals the unlock panel from the masthead lock chip while locked', () => {
+    bridge.recordingState.value = 'locked';
+    const host = document.createElement('div');
+    render(<BridgeApp />, host);
+
+    const chip = host.querySelector<HTMLButtonElement>('button.lockchip');
+    expect(chip?.textContent).toContain('Locked');
+    expect(host.querySelector('.unlockpanel')).toBeNull();
+
+    act(() => chip?.click());
+    expect(host.querySelector('.unlockpanel input')).not.toBeNull();
+  });
+
+  it('locks straight from the masthead chip when unlocked', () => {
+    bridge.recordingState.value = 'unlocked';
+    const host = document.createElement('div');
+    render(<BridgeApp />, host);
+
+    expect(host.querySelector('button.lockchip')?.textContent).toContain('Unlocked');
+
+    act(() => host.querySelector<HTMLButtonElement>('button.lockchip')?.click());
+    expect(bridge.recordingState.value).toBe('locked');
+    expect(host.querySelector('button.lockchip')?.textContent).toContain('Locked');
   });
 });

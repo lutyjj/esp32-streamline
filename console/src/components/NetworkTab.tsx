@@ -7,6 +7,7 @@ import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
 import { Button } from './Button';
 import { Card, CardFooter, CardStack } from './Card';
+import { Chip } from './Chip';
 import { KeyReveal } from './KeyReveal';
 import { ActionState, TransactButton } from './Transact';
 
@@ -200,16 +201,13 @@ export function NetworkTab() {
           </TransactButton>
           <ActionState state={targetTransact.state} />
           {!setup && !noBridge.value && (
-            <span class="chip healthchip">
-              <span class={`statusdot ${moving ? 'good' : playing ? 'warn' : ''}`} />
-              <span>
-                {moving
-                  ? 'connection healthy'
-                  : playing
-                    ? 'connecting to bridge…'
-                    : 'idle — nothing to send'}
-              </span>
-            </span>
+            <Chip tone={moving ? 'good' : playing ? 'warn' : 'neutral'} dot className="healthchip">
+              {moving
+                ? 'connection healthy'
+                : playing
+                  ? 'connecting to bridge…'
+                  : 'idle — nothing to send'}
+            </Chip>
           )}
         </CardFooter>
       </Card>

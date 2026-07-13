@@ -16,6 +16,7 @@ import { config, status } from '../state/device';
 import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
 import { Button } from './Button';
 import { Card, CardFooter } from './Card';
+import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
@@ -106,7 +107,7 @@ function FirmwareCard() {
         </div>
         <CardFooter>
           <TransactButton transact={settingsTransact} type="submit" disabled={!writable}>
-            Save preference
+            Save
           </TransactButton>
           <ActionState state={settingsTransact.state} />
         </CardFooter>
@@ -361,7 +362,6 @@ function ResetCard() {
   const writable = useWritable();
   const restart = useTransact();
   const factory = useTransact();
-  const [confirming, setConfirming] = useState(false);
 
   return (
     <Card gated title="Reset">
@@ -379,39 +379,20 @@ function ResetCard() {
         >
           Restart device
         </TransactButton>
-        <Button kind="danger" disabled={!writable} onClick={() => setConfirming(true)}>
-          Factory reset
-        </Button>
+        <ConfirmButton
+          label="Factory reset"
+          confirmLabel="Erase everything"
+          disabled={!writable}
+          message="This erases Wi-Fi, the stream target, audio settings and profiles, and the admin key. The device returns to its setup network."
+          onConfirm={() =>
+            factory.run(() => factoryReset(), {
+              busyText: 'Erasing…',
+              reboots: 'the factory reset',
+            })
+          }
+        />
         <ActionState state={factory.state} />
       </CardFooter>
-      {confirming && (
-        <div class="confirmbox">
-          <span>
-            This erases Wi-Fi, the stream target, audio settings and profiles, and the admin key.
-            The device returns to its setup network.
-          </span>
-          <div class="row">
-            <TransactButton
-              transact={factory}
-              kind="danger"
-              disabled={!writable}
-              onClick={() =>
-                factory.run(
-                  async () => {
-                    const data = await factoryReset();
-                    setConfirming(false);
-                    return data;
-                  },
-                  { busyText: 'Erasing…', reboots: 'the factory reset' },
-                )
-              }
-            >
-              Erase everything
-            </TransactButton>
-            <Button onClick={() => setConfirming(false)}>Cancel</Button>
-          </div>
-        </div>
-      )}
     </Card>
   );
 }

@@ -13,27 +13,28 @@ import { verifyAdminKey } from '../lib/api';
 import { errorMessage } from '../lib/errors';
 import { setupMode, status, unreachable } from '../state/device';
 import { toast } from '../state/toasts';
-import { Button } from './Button';
-import { RememberSwitch } from './RememberSwitch';
+import { Chip } from './Chip';
+import { LockChip, type LockState } from './LockChip';
 import { ThemeSwitch } from './ThemeSwitch';
+import { UnlockPanel } from './UnlockPanel';
 
 export function Masthead() {
   useAuthEpoch();
   const s = status.value;
   const [panelOpen, setPanelOpen] = useState(false);
 
-  const chip = !s
-    ? { cls: '', text: 'Checking…', sub: '' }
+  const chip: { state: LockState; text: string; sub: string } = !s
+    ? { state: 'neutral', text: 'Checking…', sub: '' }
     : !s.auth_required
-      ? { cls: 'unlocked', text: 'Setup mode', sub: '· no key yet' }
+      ? { state: 'unlocked', text: 'Setup mode', sub: '· no key yet' }
       : isUnlocked()
         ? {
-            cls: 'unlocked',
+            state: 'unlocked',
             text: 'Unlocked',
             sub: `· ${Math.max(1, Math.round((unlockUntil() - Date.now()) / 60000))} min left — click to lock`,
           }
         : {
-            cls: 'locked',
+            state: 'locked',
             text: 'Locked',
             sub: storedAdminKey() ? '· key saved — click to unlock' : '· click to unlock',
           };
@@ -57,33 +58,28 @@ export function Masthead() {
           </h1>
           {s?.device_name && <div class="devname">{s.device_name}</div>}
           <div class="chips">
-            <span class="chip">
-              <span class={`statusdot ${!s ? '' : unreachable.value ? 'bad' : 'good'}`} />v
-              {s?.firmware_version ?? '—'}
-            </span>
-            <span class="chip">
+            <Chip tone={!s ? 'neutral' : unreachable.value ? 'bad' : 'good'} dot>
+              v{s?.firmware_version ?? '—'}
+            </Chip>
+            <Chip>
               {s ? `${s.audio.sample_rate / 1000} kHz / ${s.audio.bits_per_sample}-bit` : '— Hz'}
-            </span>
-            <span class="chip">
+            </Chip>
+            <Chip>
               {s ? (setupMode.value ? s.wifi.ap_ip : s.wifi.hostname || s.wifi.sta_ip) : '—'}
-            </span>
+            </Chip>
           </div>
         </div>
         <div class="masthead-actions">
           <ThemeSwitch />
-          <button class={`lockchip ${chip.cls}`} type="button" onClick={onChipClick}>
-            <span class="dot" />
-            <span>{chip.text}</span>
-            <small>{chip.sub}</small>
-          </button>
+          <LockChip state={chip.state} text={chip.text} sub={chip.sub} onClick={onChipClick} />
         </div>
       </header>
-      {panelOpen && !isUnlocked() && <UnlockPanel onDone={() => setPanelOpen(false)} />}
+      {panelOpen && !isUnlocked() && <AdminUnlock onDone={() => setPanelOpen(false)} />}
     </>
   );
 }
 
-function UnlockPanel({ onDone }: { onDone: () => void }) {
+function AdminUnlock({ onDone }: { onDone: () => void }) {
   // A saved key pre-fills the field (masked) so it is visible that Unlock has
   // something to work with; replacing the text uses a different key.
   const [secret, setSecret] = useState(storedAdminKey());
@@ -114,32 +110,25 @@ function UnlockPanel({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div class="unlockpanel">
-      <input
-        type="password"
-        autocomplete="off"
-        placeholder="admin key"
-        value={secret}
-        onInput={(e) => setSecret(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') unlock();
-        }}
-      />
-      <RememberSwitch checked={remember} onChange={setRemember} />
-      <Button kind="primary" busy={busy} onClick={unlock}>
-        Unlock
-      </Button>
-      {Boolean(storedAdminKey()) && (
-        <Button
-          onClick={() => {
-            forgetAdminKey();
-            setSecret('');
-            toast('Saved admin key forgotten', 'ok');
-          }}
-        >
-          Forget saved key
-        </Button>
-      )}
-    </div>
+    <UnlockPanel
+      secret={secret}
+      onSecret={setSecret}
+      onUnlock={unlock}
+      busy={busy}
+      placeholder="admin key"
+      remember={{ checked: remember, onChange: setRemember }}
+      forget={
+        storedAdminKey()
+          ? {
+              label: 'Forget saved key',
+              onForget: () => {
+                forgetAdminKey();
+                setSecret('');
+                toast('Saved admin key forgotten', 'ok');
+              },
+            }
+          : undefined
+      }
+    />
   );
 }

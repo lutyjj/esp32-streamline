@@ -179,6 +179,15 @@ button {
   max-width: 100%;
   overflow-wrap: anywhere;
 }
+.chip.good {
+  color: var(--good);
+}
+.chip.warn {
+  color: var(--warn);
+}
+.chip.bad {
+  color: var(--bad);
+}
 .healthchip {
   margin-left: auto;
 }
@@ -187,11 +196,12 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  height: 32px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
   color: var(--text);
-  padding: 7px 14px;
+  padding: 0 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -236,6 +246,13 @@ button {
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+.theme-switch input:active + span {
+  transform: scale(0.94);
 }
 .theme-switch input:checked + span {
   background: var(--primary-bg);
@@ -262,19 +279,42 @@ button {
   display: none;
 }
 
-/* Connectivity banner: polls failing outside an expected reboot. */
-.connbanner {
-  border: 1px solid #6b5a2a;
-  border-left: 3px solid var(--warn);
+/* Page-level banner: connectivity waits, load failures, and other messages
+   that outlive a toast. Tones: info (default), warn, error. */
+.notice {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
   border-radius: 8px;
-  background: rgba(244, 201, 93, 0.06);
-  color: var(--warn);
+  background: var(--surface-2);
+  color: var(--text);
   padding: 9px 14px;
   margin-bottom: 14px;
   font-size: 13px;
 }
-.connbanner[hidden] {
+.notice.warn {
+  border-color: #6b5a2a;
+  border-left-color: var(--warn);
+  background: rgba(244, 201, 93, 0.06);
+  color: var(--warn);
+}
+.notice.error {
+  border-color: #6b3434;
+  border-left-color: var(--bad);
+  background: rgba(255, 107, 107, 0.06);
+  color: var(--bad);
+}
+.notice[hidden] {
   display: none;
+}
+
+/* Placeholder for a list with no items yet. */
+.empty {
+  border: 1px dashed var(--line-soft);
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 /* ---------- Navigation ---------- */
@@ -523,6 +563,16 @@ button {
   font-weight: 650;
   letter-spacing: 0.09em;
   text-transform: uppercase;
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.section-head h2 {
+  margin: 0;
+  font-size: 16px;
 }
 
 /* Locked gating: cards with editable settings dim and hint. */
@@ -1197,6 +1247,10 @@ select:disabled {
   display: flex;
   gap: 8px;
 }
+/* When armed inside a card footer, drop the box to its own full-width line. */
+.cardfoot > .confirmbox {
+  flex-basis: 100%;
+}
 
 /* ---------- Log ---------- */
 .log {
@@ -1396,10 +1450,14 @@ select:disabled {
   .btn,
   .switch .knob,
   .switch .knob::after,
+  .theme-switch span,
   .disclosure-summary::before,
   .disclosure-panel,
   .progress i {
     transition: none;
+  }
+  .theme-switch input:active + span {
+    transform: none;
   }
   .disclosure-panel {
     transform: none;

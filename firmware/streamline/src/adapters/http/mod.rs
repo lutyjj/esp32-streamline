@@ -144,7 +144,10 @@ impl<'a> ContractServer<'a> {
 
 pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     let mut server = EspHttpServer::new(&Configuration {
-        stack_size: 8_192,
+        // Authenticated transport-key writes serialize a complete atomic state
+        // generation before returning the one-time credential. Keep that work
+        // on the HTTP task without approaching FreeRTOS's stack guard.
+        stack_size: 16_384,
         ..Default::default()
     })?;
     server.fn_handler("/", Method::Get, move |request| {

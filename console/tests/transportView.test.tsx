@@ -35,7 +35,19 @@ function deviceConfig(transport: TransportStatus): DeviceConfig {
 }
 
 function buttonLabels(host: HTMLElement): string[] {
-  return [...host.querySelectorAll('button')].map((button) => button.textContent || '');
+  return [...host.querySelectorAll('button:not(.disclosure-summary)')].map(
+    (button) => button.textContent || '',
+  );
+}
+
+function summaries(host: HTMLElement): HTMLButtonElement[] {
+  return [...host.querySelectorAll<HTMLButtonElement>('.disclosure-summary')];
+}
+
+function open(host: HTMLElement, title: string): void {
+  const summary = summaries(host).find((button) => button.textContent === title);
+  expect(summary, `disclosure "${title}"`).toBeDefined();
+  act(() => summary?.click());
 }
 
 describe('PCM encryption journey', () => {
@@ -50,7 +62,7 @@ describe('PCM encryption journey', () => {
     render(<TransportCard />, host);
 
     expect(buttonLabels(host)).toEqual([]);
-    expect(host.textContent).not.toContain('Generate encrypted key');
+    expect(summaries(host)).toEqual([]);
 
     const toggle = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
     act(() => {
@@ -63,7 +75,7 @@ describe('PCM encryption journey', () => {
     expect(buttonLabels(host)).toEqual(['Generate bridge credential']);
   });
 
-  it('shows only the valid provisioning action', () => {
+  it('shows the valid provisioning action with recovery as a collapsed sub-section', () => {
     config.value = deviceConfig(
       transportStatus({ pending_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
     );
@@ -71,7 +83,9 @@ describe('PCM encryption journey', () => {
     render(<TransportCard />, host);
 
     expect(host.textContent).toContain('Step 2 of 3 · Switch the bridge and verify');
-    expect(buttonLabels(host)).toEqual(['Verify with bridge', 'Recovery options']);
+    expect(buttonLabels(host)).toEqual(['Verify with bridge']);
+    expect(summaries(host).map((s) => s.textContent)).toEqual(['Recovery']);
+    expect(host.textContent).toContain('Pending credential');
   });
 
   it('offers a discard exit back to plain cleartext while a key is pending', () => {
@@ -81,13 +95,18 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    const recovery = [...host.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Recovery options',
-    );
-    act(() => recovery?.click());
+    open(host, 'Recovery');
 
     expect(buttonLabels(host)).toContain('Discard pending credential');
     expect(buttonLabels(host)).not.toContain('Disable encryption & restart');
+
+    const discard = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Discard pending credential',
+    );
+    act(() => discard?.click());
+
+    expect(buttonLabels(host)).toContain('Discard it');
+    expect(buttonLabels(host)).toContain('Cancel');
   });
 
   it('masks the one-time PSK until the owner explicitly reveals it', () => {
@@ -109,7 +128,7 @@ describe('PCM encryption journey', () => {
     expect(host.textContent).toContain(psk);
   });
 
-  it('separates rotation decisions from collapsed recovery exits', () => {
+  it('keeps the steady state minimal with everything under Advanced security', () => {
     config.value = deviceConfig(
       transportStatus({
         mode: 'tls-psk',
@@ -120,35 +139,65 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    expect(host.textContent).toContain('No immediate action is required.');
-    expect(host.textContent).not.toContain('Rotation complete');
-    expect(buttonLabels(host)).toEqual(['Advanced security']);
-    expect(host.querySelector('.transport-fallback')).toBeNull();
+    expect(host.textContent).toContain('encrypted');
+    expect(host.textContent).toContain('No routine action is needed.');
+    expect(host.textContent).not.toContain('Step ');
+    expect(buttonLabels(host)).toEqual([]);
+    expect(summaries(host).map((s) => s.textContent)).toEqual(['Advanced security']);
 
-    const advanced = [...host.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Advanced security',
-    );
-    act(() => advanced?.click());
+    open(host, 'Advanced security');
 
-    expect(buttonLabels(host)).toContain('Use previous credential');
-    expect(buttonLabels(host)).toContain('Forget previous credential');
+    expect(host.textContent).toContain('Active credential');
+    expect(host.textContent).toContain('Previous credential');
+    expect(buttonLabels(host)).toEqual(['Use previous credential', 'Forget previous credential']);
+    expect(summaries(host).map((s) => s.textContent)).toEqual(['Advanced security', 'Recovery']);
 
-    const recovery = [...host.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Recovery options',
-    );
-    act(() => recovery?.click());
+    open(host, 'Recovery');
 
-    expect(host.querySelector('.transport-fallback')).not.toBeNull();
     expect(buttonLabels(host)).toContain('Disable encryption & restart');
     expect(buttonLabels(host)).toContain('Replace lost credential');
 
-    const hideAdvanced = [...host.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Hide advanced security',
-    );
-    act(() => hideAdvanced?.click());
+    open(host, 'Advanced security');
+    const advanced = summaries(host).find((s) => s.textContent === 'Advanced security');
+    expect(advanced?.getAttribute('aria-expanded')).toBe('false');
+  });
 
-    expect(host.querySelector('.transport-fallback')).toBeNull();
-    expect(buttonLabels(host)).toEqual(['Advanced security']);
+  it('confirms before disabling encryption', () => {
+    config.value = deviceConfig(
+      transportStatus({ mode: 'tls-psk', active_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
+    );
+    const host = document.createElement('div');
+    render(<TransportCard />, host);
+
+    open(host, 'Advanced security');
+    open(host, 'Recovery');
+    const disable = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Disable encryption & restart',
+    );
+    act(() => disable?.click());
+
+    expect(host.textContent).toContain('Switch the bridge to cleartext first');
+    expect(buttonLabels(host)).toContain('Disable & restart');
+    expect(buttonLabels(host)).toContain('Cancel');
+  });
+
+  it('opens the leave-encryption path when the owner unchecks the mode', () => {
+    config.value = deviceConfig(
+      transportStatus({ mode: 'tls-psk', active_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
+    );
+    const host = document.createElement('div');
+    render(<TransportCard />, host);
+
+    const toggle = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(toggle?.checked).toBe(true);
+    act(() => {
+      if (!toggle) return;
+      toggle.checked = false;
+      toggle.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    expect(toggle?.checked).toBe(true);
+    expect(buttonLabels(host)).toContain('Disable encryption & restart');
   });
 
   it('keeps the mode control with the target and blocks it while that target is unsaved', () => {

@@ -101,7 +101,7 @@ Open the device console and the bridge console:
 6. Confirm the bridge reports the source by key id over `tls-psk` and audio
    continues.
 
-To back out before activation, select **Recovery options → Discard pending
+To back out before activation, select **Recovery → Discard pending
 credential** or `POST /api/transport/keys/discard`. The device abandons the
 staged key, stays on cleartext, and returns to the opt-in state; remove any
 already-provisioned bridge key with `DELETE /api/transport/keys/<key-id>`.

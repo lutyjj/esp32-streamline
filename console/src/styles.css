@@ -1294,43 +1294,40 @@ select:disabled {
   background: var(--inset);
   padding: 10px 12px;
 }
-.transport-step p,
-.transport-fallback p {
+.transport-step p {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
 }
-.transport-meta,
-.transport-credential,
-.transport-secondary {
-  margin-top: 16px;
-}
-.transport-meta {
-  display: grid;
+.transport-title {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
-.transport-meta span {
-  display: grid;
-  gap: 3px;
+.transport-credential,
+.transport-advanced,
+.transport-keys {
+  margin-top: 16px;
 }
-.transport-meta code {
+.transport-keys .kv {
+  margin: 0;
+}
+.transport-keys .kv dd {
+  font-family: var(--mono);
   overflow-wrap: anywhere;
-  color: var(--text);
 }
-.transport-secondary {
-  padding-top: 14px;
-  border-top: 1px solid var(--line-soft);
+/* A nested disclosure reads as contained: inset with a soft rail. */
+.disclosure-body > .disclosure {
+  margin-top: 14px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line-soft);
 }
-.transport-fallback {
-  display: grid;
-  gap: 10px;
-  margin: 16px 0 0;
+.transport-recovery .help {
+  display: block;
+  margin: 10px 0 0;
 }
-.transport-fallback .actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 2px;
+.transport-recovery .cardfoot {
+  margin-top: 12px;
 }
 
 /* ---------- Log ---------- */

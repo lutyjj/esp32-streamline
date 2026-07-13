@@ -81,6 +81,17 @@ where
     error_response(request, 400, &error.to_string())
 }
 
+pub(super) fn unavailable<C>(
+    request: embedded_svc::http::server::Request<C>,
+    message: &str,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    error_response(request, 503, message)
+}
+
 pub(super) fn json_response<C, T>(
     request: embedded_svc::http::server::Request<C>,
     code: u16,

@@ -13,6 +13,7 @@ pub fn setup_baseline(board: &Board, persisted: Option<RuntimeConfig>) -> Runtim
         password: String::new(),
         target_host: String::new(),
         target_port: 39_000,
+        transport: Default::default(),
         admin_secret: String::new(),
         device_name: String::new(),
         auto_update_schedule: AutoUpdateSchedule::Daily,
@@ -43,6 +44,7 @@ pub fn replace_wifi(
         },
         target_host: target_host.unwrap_or(current.target_host),
         target_port: target_port.unwrap_or(current.target_port),
+        transport: current.transport,
         admin_secret: if admin_secret.is_empty() {
             current.admin_secret
         } else {
@@ -82,6 +84,7 @@ mod tests {
             password: "old-password".to_owned(),
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
+            transport: Default::default(),
             admin_secret: "admin-secret".to_owned(),
             device_name: "Studio".to_owned(),
             auto_update_schedule: AutoUpdateSchedule::Weekly,

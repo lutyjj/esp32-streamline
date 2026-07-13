@@ -21,6 +21,7 @@ use crate::{
     health::HealthReport,
     profiles::AudioProfileCatalog,
     runtime::StreamStatus,
+    transport::KeyVerifier,
 };
 
 const INDEX: &str = include_str!("../../../../../console/dist/index.html");
@@ -62,6 +63,7 @@ pub struct ApiState {
     pub audio_profiles: Arc<Mutex<AudioProfileCatalog>>,
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
+    pub key_verifier: Option<Arc<dyn KeyVerifier>>,
     /// Live codec control, present when provisioned so audio settings apply
     /// without a reboot. Absent in setup mode, where the codec is not running.
     pub codec: Option<Arc<Mutex<CodecControl<'static>>>>,

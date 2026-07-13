@@ -25,6 +25,7 @@ pub mod protocol;
 pub mod recovery;
 pub mod state;
 pub mod telemetry;
+pub mod transport;
 pub mod update;
 
 #[cfg(target_os = "espidf")]

@@ -14,7 +14,11 @@ use esp_idf_svc::{
 #[cfg(feature = "qemu")]
 use streamline_firmware::adapters::openeth;
 #[cfg(not(feature = "qemu"))]
-use streamline_firmware::adapters::{i2s::Capture, pins::AudioPins, tcp::TargetAddress};
+use streamline_firmware::adapters::{
+    i2s::Capture,
+    pins::AudioPins,
+    tcp::{TargetAddress, TlsKeyVerifier},
+};
 use streamline_firmware::{
     adapters::{
         codec,
@@ -28,7 +32,9 @@ use streamline_firmware::{
     health::{BootFacts, HealthReport},
     identity,
     profiles::AudioProfileCatalog,
-    recovery, runtime, update,
+    recovery, runtime,
+    transport::KeyVerifier,
+    update,
 };
 
 fn main() -> Result<()> {
@@ -118,6 +124,10 @@ fn main() -> Result<()> {
         None
     };
 
+    #[cfg(not(feature = "qemu"))]
+    let key_verifier = Some(Arc::new(TlsKeyVerifier) as Arc<dyn KeyVerifier>);
+    #[cfg(feature = "qemu")]
+    let key_verifier: Option<Arc<dyn KeyVerifier>> = None;
     let state = Arc::new(ApiState {
         mode,
         hostname: local_hostname,
@@ -127,6 +137,7 @@ fn main() -> Result<()> {
         board,
         store,
         stream,
+        key_verifier,
         codec,
         mdns,
         ota: Arc::new(ota::OtaProgress::default()),

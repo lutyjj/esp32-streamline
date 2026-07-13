@@ -167,6 +167,18 @@ export class CalibrationEngine {
     return { kind: 'cancelled' };
   }
 
+  /**
+   * Walk the attenuation back to `baseline` when calibration moved it, so a
+   * cancelled run leaves the device as it was found. Returns whether it wrote:
+   * a run that never applied anything, or one already at the baseline, restores
+   * nothing.
+   */
+  async restore(baseline: number): Promise<boolean> {
+    if (this.applied === null || this.applied === baseline) return false;
+    await this.applyAttenuation(baseline);
+    return true;
+  }
+
   private async applyAttenuation(atten: number): Promise<void> {
     await this.deps.applyAttenuation(atten);
     this.applied = atten;

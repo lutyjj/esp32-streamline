@@ -176,3 +176,38 @@ describe('findAttenuation', () => {
     expect(engine.applied).toBe(CAL_ATTEN_STEP);
   });
 });
+
+// Stage 4: cancelling calibration leaves the device as it was found.
+describe('restore', () => {
+  it('walks the attenuation back to the baseline it moved away from', async () => {
+    const { engine, applied } = engineWith([]);
+    engine.applied = 12; // calibration raised it during the run
+    expect(await engine.restore(0)).toBe(true);
+    expect(applied).toEqual([0]);
+    expect(engine.applied).toBe(0);
+  });
+
+  it('writes nothing when the run never touched the device', async () => {
+    const { engine, applied } = engineWith([]);
+    expect(await engine.restore(0)).toBe(false);
+    expect(applied).toEqual([]);
+  });
+
+  it('writes nothing when the applied value already matches the baseline', async () => {
+    const { engine, applied } = engineWith([]);
+    engine.applied = 6;
+    expect(await engine.restore(6)).toBe(false);
+    expect(applied).toEqual([]);
+  });
+
+  it('surfaces a failed restore write and keeps its recorded state', async () => {
+    const { engine } = engineWith([], {
+      applyAttenuation: async () => {
+        throw new Error('unauthorized');
+      },
+    });
+    engine.applied = 12;
+    await expect(engine.restore(0)).rejects.toThrow('unauthorized');
+    expect(engine.applied).toBe(12);
+  });
+});

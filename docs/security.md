@@ -48,8 +48,8 @@ place, and the standing items we track or have accepted.
 
 | Item | Tracking | Notes |
 |---|---|---|
-| PCM stream is unencrypted | [#12](https://github.com/lutyjj/esp32-streamline/issues/12) | Noise PSK (`Noise_NNpsk0_25519_ChaChaPoly_SHA256`) is the lead — lighter than TLS, no certs, reuses a shared secret. |
-| Admin key travels over plain HTTP | by design | No on-device TLS — the cost is the certificate, not the code. Terminate TLS at a reverse proxy with a real cert if ever exposed beyond the LAN. |
+| PCM stream is unencrypted | [transport rollout](https://github.com/lutyjj/esp32-streamline/issues/187) | [TLS-PSK is selected](design.md#encrypted-pcm-transport), but the current device and bridge remain cleartext until the implementation and migration contracts ship. |
+| Admin key travels over plain HTTP | by design | PCM transport encryption does not protect the HTTP API. Terminate TLS at a reverse proxy with a real certificate before exposure beyond the LAN. |
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
 | Open setup AP during commissioning | by design | Accepts writes only until the first admin key is set — a brief, physically proximate window. |
 | Bridge WAV stream is unauthenticated | by design | Front it with an authenticating reverse proxy before sharing beyond a trusted LAN. |

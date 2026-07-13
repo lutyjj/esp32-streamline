@@ -7,6 +7,7 @@
  */
 
 import { signal } from '@preact/signals';
+import type { Ack } from './api';
 
 const ADMIN_KEY_STORAGE = 'streamline_admin_key';
 const LEGACY_TOKEN_STORAGE = 'streamline_token';
@@ -74,6 +75,23 @@ export function forgetAdminKey(): void {
   localStorage.removeItem(LEGACY_TOKEN_STORAGE);
   sessionStorage.removeItem(UNLOCK_UNTIL_STORAGE);
   touch();
+}
+
+/**
+ * Replace the admin key from an open settings window. The guard, the write, and
+ * the re-unlock are one step: the new key takes effect immediately, so this
+ * browser must re-open its window on the new secret or the owner locks
+ * themselves out mid-session. A rejected write leaves custody untouched.
+ */
+export async function replaceAdminKey(
+  write: (secret: string) => Promise<Ack>,
+  next: string,
+  remember: boolean,
+): Promise<Ack> {
+  if (!isUnlocked()) throw new Error('unlock settings before replacing the admin key');
+  const ack = await write(next);
+  unlockSettings(next, remember);
+  return ack;
 }
 
 export function generateAdminKey(): string {

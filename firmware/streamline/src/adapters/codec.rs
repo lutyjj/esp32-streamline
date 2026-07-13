@@ -2,8 +2,7 @@
 //!
 //! This is deliberately not a port of the Arduino audio-driver abstraction.
 //! The register sequence is the small, auditable subset required for ES8388
-//! line-in capture: I2S slave mode, 48 kHz/16-bit stereo, an ADC input selected
-//! by the board descriptor, and no DAC output.
+//! line-in capture and an optional board-advertised analog monitor route.
 //!
 //! A board descriptor selects a codec driver by stable id. New codec chips add
 //! one implementation plus one resolver entry; capture and transport never name
@@ -11,12 +10,20 @@
 
 use anyhow::{anyhow, Result};
 use esp_idf_svc::hal::{
-    delay::BLOCK,
+    delay::{FreeRtos, BLOCK},
     i2c::{I2cConfig, I2cDriver, I2C0},
     units::Hertz,
 };
 
-use crate::{adapters::pins::I2cBusPins, board::CodecSpec, codec::Driver, config::AudioSettings};
+use crate::{
+    adapters::pins::I2cBusPins,
+    analog_passthrough::{
+        route_for_audio_change, AnalogPassthroughControl, AnalogPassthroughRoute,
+    },
+    board::CodecSpec,
+    codec::Driver,
+    config::AudioSettings,
+};
 
 /// A line-in capture codec on the shared I2C control bus.
 trait CodecDriver {
@@ -28,6 +35,21 @@ trait CodecDriver {
     /// Rewrite only the input controls — line, gain, attenuation — on a codec
     /// that is already running, without a reset or capture interruption.
     fn apply(bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()>;
+
+    fn apply_with_passthrough(
+        bus: &mut I2cDriver<'_>,
+        address: u8,
+        audio: AudioSettings,
+        route: AnalogPassthroughRoute,
+    ) -> Result<()>;
+
+    fn enable_passthrough(
+        bus: &mut I2cDriver<'_>,
+        address: u8,
+        route: AnalogPassthroughRoute,
+    ) -> Result<()>;
+
+    fn disable_passthrough(bus: &mut I2cDriver<'_>, address: u8) -> Result<()>;
 }
 
 impl Driver {
@@ -40,6 +62,35 @@ impl Driver {
     fn apply(self, bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()> {
         match self {
             Self::Es8388 => Es8388::apply(bus, address, audio),
+        }
+    }
+
+    fn apply_with_passthrough(
+        self,
+        bus: &mut I2cDriver<'_>,
+        address: u8,
+        audio: AudioSettings,
+        route: AnalogPassthroughRoute,
+    ) -> Result<()> {
+        match self {
+            Self::Es8388 => Es8388::apply_with_passthrough(bus, address, audio, route),
+        }
+    }
+
+    fn enable_passthrough(
+        self,
+        bus: &mut I2cDriver<'_>,
+        address: u8,
+        route: AnalogPassthroughRoute,
+    ) -> Result<()> {
+        match self {
+            Self::Es8388 => Es8388::enable_passthrough(bus, address, route),
+        }
+    }
+
+    fn disable_passthrough(self, bus: &mut I2cDriver<'_>, address: u8) -> Result<()> {
+        match self {
+            Self::Es8388 => Es8388::disable_passthrough(bus, address),
         }
     }
 }
@@ -64,6 +115,8 @@ pub fn configure<'d>(
         bus,
         driver,
         i2c_address: codec.i2c_address,
+        audio,
+        passthrough: None,
     })
 }
 
@@ -73,12 +126,59 @@ pub struct CodecControl<'d> {
     bus: I2cDriver<'d>,
     driver: Driver,
     i2c_address: u8,
+    audio: AudioSettings,
+    passthrough: Option<AnalogPassthroughRoute>,
 }
 
 impl CodecControl<'_> {
     /// Apply new input settings to the running codec.
     pub fn apply(&mut self, audio: AudioSettings) -> Result<()> {
-        self.driver.apply(&mut self.bus, self.i2c_address, audio)
+        let route = self.passthrough.and_then(|current| {
+            route_for_audio_change(true, self.audio, audio, current.output_line)
+        });
+        let result = match route {
+            Some(route) => {
+                self.driver
+                    .apply_with_passthrough(&mut self.bus, self.i2c_address, audio, route)
+            }
+            None => self.driver.apply(&mut self.bus, self.i2c_address, audio),
+        };
+        if let Err(error) = result {
+            if self.passthrough.is_some() {
+                let close = self
+                    .driver
+                    .disable_passthrough(&mut self.bus, self.i2c_address);
+                self.passthrough = None;
+                if let Err(close_error) = close {
+                    return Err(anyhow!("{error:#}; fail-close failed: {close_error:#}"));
+                }
+            }
+            return Err(error);
+        }
+        self.audio = audio;
+        if let Some(route) = route {
+            self.passthrough = Some(route);
+        }
+        Ok(())
+    }
+}
+
+impl AnalogPassthroughControl for CodecControl<'_> {
+    type Error = anyhow::Error;
+
+    fn enable(&mut self, route: AnalogPassthroughRoute) -> Result<()> {
+        self.driver
+            .enable_passthrough(&mut self.bus, self.i2c_address, route)?;
+        self.passthrough = Some(route);
+        Ok(())
+    }
+
+    fn disable(&mut self) -> Result<()> {
+        let result = self
+            .driver
+            .disable_passthrough(&mut self.bus, self.i2c_address);
+        self.passthrough = None;
+        result
     }
 }
 
@@ -106,6 +206,10 @@ const DAC_CONTROL17: u8 = 0x27;
 const DAC_CONTROL20: u8 = 0x2a;
 const DAC_CONTROL21: u8 = 0x2b;
 const DAC_CONTROL23: u8 = 0x2d;
+const LOUT1_VOLUME: u8 = 0x2e;
+const ROUT1_VOLUME: u8 = 0x2f;
+const LOUT2_VOLUME: u8 = 0x30;
+const ROUT2_VOLUME: u8 = 0x31;
 
 impl CodecDriver for Es8388 {
     fn configure(bus: &mut I2cDriver<'_>, address: u8, audio: AudioSettings) -> Result<()> {
@@ -151,6 +255,89 @@ impl CodecDriver for Es8388 {
             bus.write(address, &[register, value], BLOCK)?;
         }
         Ok(())
+    }
+
+    fn apply_with_passthrough(
+        bus: &mut I2cDriver<'_>,
+        address: u8,
+        audio: AudioSettings,
+        route: AnalogPassthroughRoute,
+    ) -> Result<()> {
+        passthrough_output(route.output_line)?;
+        write(bus, address, DAC_CONTROL3, 0x04)?;
+        Self::apply(bus, address, audio)?;
+        write(
+            bus,
+            address,
+            DAC_CONTROL16,
+            passthrough_input_register(route.input_line)?,
+        )?;
+        FreeRtos::delay_ms(100);
+        write(bus, address, DAC_CONTROL3, 0x00)
+    }
+
+    fn enable_passthrough(
+        bus: &mut I2cDriver<'_>,
+        address: u8,
+        route: AnalogPassthroughRoute,
+    ) -> Result<()> {
+        let (left_volume, right_volume, power) = passthrough_output(route.output_line)?;
+        // DAC_CONTROL21 stays at the ADC-owned LRCK configuration established
+        // during capture setup; the raw analog mixer does not need to change it.
+        for (register, value) in [
+            (DAC_CONTROL3, 0x04),
+            (DAC_CONTROL16, passthrough_input_register(route.input_line)?),
+            (DAC_CONTROL17, 0x50),
+            (DAC_CONTROL20, 0x50),
+            (left_volume, 0x1e),
+            (right_volume, 0x1e),
+            (DAC_POWER, power),
+        ] {
+            write(bus, address, register, value)?;
+        }
+        FreeRtos::delay_ms(100);
+        write(bus, address, DAC_CONTROL3, 0x00)
+    }
+
+    fn disable_passthrough(bus: &mut I2cDriver<'_>, address: u8) -> Result<()> {
+        // Attempt every fail-close write even when the bus reports an earlier
+        // error. Powering the output pair down is more important than cleanup.
+        let mut first_error = None;
+        for (register, value) in [
+            (DAC_CONTROL3, 0x04),
+            (DAC_POWER, 0x00),
+            (DAC_CONTROL17, 0x90),
+            (DAC_CONTROL20, 0x90),
+        ] {
+            if let Err(error) = write(bus, address, register, value) {
+                first_error.get_or_insert(error);
+            }
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
+fn write(bus: &mut I2cDriver<'_>, address: u8, register: u8, value: u8) -> Result<()> {
+    bus.write(address, &[register, value], BLOCK)?;
+    Ok(())
+}
+
+fn passthrough_input_register(line: u8) -> Result<u8> {
+    match line {
+        1 => Ok(0x00),
+        2 => Ok(0x09),
+        _ => Err(anyhow!("unsupported ES8388 passthrough input line {line}")),
+    }
+}
+
+fn passthrough_output(line: u8) -> Result<(u8, u8, u8)> {
+    match line {
+        1 => Ok((LOUT1_VOLUME, ROUT1_VOLUME, 0x30)),
+        2 => Ok((LOUT2_VOLUME, ROUT2_VOLUME, 0x0c)),
+        _ => Err(anyhow!("unsupported ES8388 passthrough output line {line}")),
     }
 }
 

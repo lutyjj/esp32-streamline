@@ -42,6 +42,29 @@ def test_health_status_code_tracks_the_verdict(device_api: DeviceApi) -> None:
     assert (code == 503) == (health["status"] == "blocking"), health
 
 
+def test_local_output_status_matches_the_advertised_capability(device_api: DeviceApi) -> None:
+    code, body = device_api.fetch("/api/status")
+    assert code == 200
+    status = json.loads(body)
+    capability = status["capabilities"]["analog_passthrough"]
+    output = status["analog_passthrough"]
+
+    assert isinstance(output["enabled"], bool)
+    assert isinstance(output["active"], bool)
+    assert output["fault"] is None or isinstance(output["fault"], str)
+    assert not output["active"] or output["enabled"]
+    assert not output["active"] or output["fault"] is None
+
+    if capability is None:
+        assert output["enabled"] is False
+        assert output["active"] is False
+        return
+    assert isinstance(capability["output_line"], int)
+    assert capability["output_line"] > 0
+    assert isinstance(capability["label"], str)
+    assert capability["label"]
+
+
 def test_metrics_are_scriptable(device_api: DeviceApi) -> None:
     code, body = device_api.fetch("/api/metrics")
     assert code == 200, f"metrics endpoint answered HTTP {code}"

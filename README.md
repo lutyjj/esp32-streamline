@@ -17,6 +17,9 @@ HTTP consumer can read it too.
   levels. A per-device admin key gates every write; reads stay open.
 - **Signal-gated streaming** — the device streams while the input plays and
   pauses on sustained silence, so an idle input costs no bandwidth.
+- **Local analog output** — supported boards can send the selected input
+  directly through the codec to a local output while capture and streaming
+  continue independently.
 - **Source profiles**: save complete input settings for sources such as CD
   and vinyl, switch them live from the console or API, and share the versioned
   board-bound catalog. See [audio profiles](docs/audio-profiles.md).
@@ -43,10 +46,10 @@ The device speaks plain HTTP on a trusted LAN. Read the
 - **Flash**: 4 MB or larger
 
 Board support is descriptor-driven: presets define the codec, I2C/I2S pin map,
-input labels, and audio limits. Official presets and BYOD descriptors use the
-same JSON contract when the codec driver is compiled into the firmware. The
-release firmware is a generic ESP32 app image with an embedded official
-descriptor catalog. See
+input labels, audio limits, and optional local analog output. Official presets
+and BYOD descriptors use the same JSON contract when the codec driver is
+compiled into the firmware. The release firmware is a generic ESP32 app image
+with an embedded official descriptor catalog. See
 [design notes](docs/design.md#board-support).
 
 ### Status light

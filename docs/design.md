@@ -145,9 +145,10 @@ publish FLAC/MP3/Opus.
 
 StreamLine targets ESP32 boards that can feed 48 kHz stereo PCM into I2S.
 The application treats board facts as data: a board descriptor names the
-descriptor id, display name, codec driver id, codec address, ESP32 audio pin map,
-input labels, and audio limits. Settings validation, status capabilities,
-audio hardware initialization, and console controls read that descriptor.
+descriptor id, display name, codec driver id, codec address, ESP32 audio pin
+map, input labels, audio limits, and an optional local analog output. Settings
+validation, status capabilities, audio hardware initialization, and console
+controls read that descriptor.
 
 Board support has three tiers:
 
@@ -217,6 +218,34 @@ format:      16-bit stereo I2S
 input:       board descriptor's line input (NVS configured)
 gain:        0-100 (NVS configured)
 ```
+
+### Local analog output
+
+A board descriptor may advertise one `analog_passthrough` output with a codec
+line number and user-facing jack label. Absence means unsupported. Codec
+validation accepts the descriptor only when every advertised input and the
+output line form a supported hardware route.
+
+The Ai-Thinker ESP32 Audio Kit preset routes the selected `LIN1/RIN1` or
+`LIN2/RIN2` pair through the ES8388 analog bypass mixer to `LOUT2/ROUT2`, which
+feeds the board's 3.5 mm output. The signal does not pass through the ADC,
+ESP32, or DAC. The route uses fixed 0 dB mixer and output settings. The unused
+`LOUT1/ROUT1` speaker path and its GPIO-controlled amplifier stay off.
+
+`POST /api/settings/analog-passthrough` persists the desired On/Off state. The
+settings response reports that intent; status reports intent, observed active
+state, and an optional codec fault. Enabling is rejected on an unsupported
+board. A codec write failure mutes and powers down the output pair, keeps the
+desired state available for diagnosis or retry, and reports the route inactive.
+The firmware also reconciles a persisted route while opening the recovery AP,
+so a Wi-Fi startup fault does not make the local audio path depend on the
+network.
+
+The selected input drives both PCM capture and local output. An input change
+mutes the output around the route switch. Input gain, ADC attenuation, level
+calibration, silence detection, and network faults do not change or disable the
+analog path. The console calls this feature **Local output** and exposes no
+firmware volume control; listening volume belongs to connected equipment.
 
 Named audio profiles group the input, gain, and attenuation settings behind a
 versioned board-bound model. The device keeps up to eight short profile records

@@ -316,6 +316,25 @@ endpoint!(
     )
 );
 endpoint!(
+    SET_ANALOG_PASSTHROUGH,
+    set_analog_passthrough,
+    Post,
+    post,
+    "/api/settings/analog-passthrough",
+    authenticated,
+    summary = "Set the local analog output",
+    request_body(
+        content = AnalogPassthroughSettingsRequest,
+        content_type = "application/x-www-form-urlencoded"
+    ),
+    responses(
+        (status = 200, body = Ack),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 503, body = ErrorResponse)
+    )
+);
+endpoint!(
     SET_AUDIO_PROFILES,
     set_audio_profiles,
     Post,
@@ -512,6 +531,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     TRANSPORT_RECOVER,
     SET_BOARD,
     SET_AUDIO,
+    SET_ANALOG_PASSTHROUGH,
     SET_AUDIO_PROFILES,
     SET_AUDIO_PROFILE,
     SET_NAME,
@@ -585,6 +605,13 @@ pub struct AudioSettingsRequest {
     pub input_line: u8,
     pub input_gain: u8,
     pub adc_attenuation_db: u8,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct AnalogPassthroughSettingsRequest {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -712,6 +739,7 @@ pub struct ConfigResponse<'a> {
     pub input_line: u8,
     pub input_gain: u8,
     pub adc_attenuation_db: u8,
+    pub analog_passthrough_enabled: bool,
     pub auto_update_schedule: AutoUpdateScheduleRequest,
     pub config_source: &'a str,
 }
@@ -760,6 +788,7 @@ pub struct StatusResponse<'a> {
     pub wifi: WifiStatus<'a>,
     pub target: TargetStatus<'a>,
     pub audio: AudioStatus,
+    pub analog_passthrough: AnalogPassthroughStatus<'a>,
     pub metrics: MetricsStatus,
     pub diagnostics: DiagnosticsStatus<'a>,
     pub ota: OtaStatus<'a>,
@@ -775,6 +804,7 @@ pub struct CapabilitiesStatus<'a> {
     pub codec: CodecStatus<'a>,
     pub pins: PinMapStatus,
     pub status_led: Option<StatusLedStatus>,
+    pub analog_passthrough: Option<AnalogPassthroughCapabilityStatus<'a>>,
     pub input_lines: Vec<InputLineStatus<'a>>,
     pub input_gain_max: u8,
     pub adc_atten_max_db: u8,
@@ -824,6 +854,13 @@ pub struct InputLineStatus<'a> {
     pub label: &'a str,
 }
 
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct AnalogPassthroughCapabilityStatus<'a> {
+    pub output_line: u8,
+    pub label: &'a str,
+}
+
 impl<'a> CapabilitiesStatus<'a> {
     pub fn from_board(board: &'a Board) -> Self {
         Self {
@@ -848,6 +885,12 @@ impl<'a> CapabilitiesStatus<'a> {
             status_led: board.status_led.map(|led| StatusLedStatus {
                 gpio: led.gpio,
                 active_low: led.active_low,
+            }),
+            analog_passthrough: board.analog_passthrough.as_ref().map(|capability| {
+                AnalogPassthroughCapabilityStatus {
+                    output_line: capability.output_line,
+                    label: capability.label.as_str(),
+                }
             }),
             input_lines: board
                 .input_lines
@@ -939,6 +982,14 @@ pub struct OtaStatus<'a> {
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct AnalogPassthroughStatus<'a> {
+    pub enabled: bool,
+    pub active: bool,
+    pub fault: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct IndicatorStatus {
     pub available: bool,
     pub state: &'static str,
@@ -952,7 +1003,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]
@@ -1084,6 +1135,7 @@ mod tests {
         assert!(json.contains(
             r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
         ));
+        assert!(json.contains(r#""analog_passthrough":{"output_line":2,"label":"3.5 mm output"}"#));
     }
 
     #[test]

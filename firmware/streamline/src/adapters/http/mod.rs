@@ -15,6 +15,7 @@ use esp_idf_svc::http::server::{Configuration, EspHttpConnection, EspHttpServer}
 
 use crate::{
     adapters::{codec::CodecControl, mdns::MdnsAdvertisement, nvs::ConfigStore, ota::OtaProgress},
+    analog_passthrough::AnalogPassthroughState,
     api::{self, Endpoint, HttpMethod},
     board,
     config::RuntimeConfig,
@@ -41,7 +42,8 @@ pub enum Mode {
     /// set. Capture and streaming are down.
     Setup,
     /// A provisioned device that could not join its saved Wi-Fi starts the
-    /// setup AP with its validated state and keeps writes behind its key.
+    /// setup AP with its validated state and keeps writes behind its key. A
+    /// persisted local analog route remains independent of that network fault.
     Recovery,
     /// Station on the home network: console behind the admin key, capture
     /// running; the TCP stream runs only while a bridge target is configured.
@@ -64,9 +66,10 @@ pub struct ApiState {
     pub store: Arc<Mutex<ConfigStore>>,
     pub stream: Option<Arc<StreamStatus>>,
     pub key_verifier: Option<Arc<dyn KeyVerifier>>,
-    /// Live codec control, present when provisioned so audio settings apply
-    /// without a reboot. Absent in setup mode, where the codec is not running.
+    /// Live codec control for immediate audio and local-output changes. It also
+    /// stays available in network recovery when persisted local output is on.
     pub codec: Option<Arc<Mutex<CodecControl<'static>>>>,
+    pub analog_passthrough: Arc<Mutex<AnalogPassthroughState>>,
     pub mdns: Option<Arc<Mutex<MdnsAdvertisement>>>,
     pub ota: Arc<OtaProgress>,
     /// The startup health verdict, assembled once at boot (see [`crate::health`]).

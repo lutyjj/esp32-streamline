@@ -311,6 +311,7 @@ impl ConfigStore {
                 input_gain: self.required_u8(KEY_INPUT_GAIN)?,
                 adc_attenuation_db: self.required_u8(KEY_ADC_ATTENUATION)?,
             },
+            analog_passthrough_enabled: false,
         };
         // A stored audio setting the selected board does not advertise opens
         // setup mode, so a device moved to different hardware can recover.

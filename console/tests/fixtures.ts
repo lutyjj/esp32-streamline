@@ -35,6 +35,7 @@ export function deviceStatus(
         i2s: { mclk: 0, bclk: 27, ws: 25, din: 35 },
       },
       status_led: { gpio: 22, active_low: false },
+      analog_passthrough: { output_line: 2, label: '3.5 mm output' },
       input_lines: [
         { line: 2, label: 'Line 2 — 3.5 mm jack' },
         { line: 1, label: 'Line 1 — header pins' },
@@ -61,6 +62,7 @@ export function deviceStatus(
       bits_per_sample: 16,
       ...audio,
     },
+    analog_passthrough: { enabled: false, active: false, fault: null },
     metrics: {
       sequence: 1,
       packets: 0,

@@ -135,6 +135,7 @@ pub enum ConfigError {
     InvalidInputLine,
     InvalidInputGain,
     InvalidAdcAttenuation,
+    UnsupportedAnalogPassthrough,
     WeakAdminSecret,
     DeviceNameTooLong,
     InvalidTransport(TransportError),
@@ -168,6 +169,9 @@ pub struct RuntimeConfig {
     /// How often to install newer published releases while provisioned.
     pub auto_update_schedule: AutoUpdateSchedule,
     pub audio: AudioSettings,
+    /// Whether the selected board's local analog output should be active.
+    #[serde(default)]
+    pub analog_passthrough_enabled: bool,
 }
 
 impl RuntimeConfig {
@@ -188,11 +192,17 @@ impl RuntimeConfig {
             .validate()
             .map_err(ConfigError::InvalidTransport)?;
         self.audio.validate(board)?;
+        if self.analog_passthrough_enabled && board.analog_passthrough.is_none() {
+            return Err(ConfigError::UnsupportedAnalogPassthrough);
+        }
         Ok(())
     }
 
-    pub fn with_audio_compatible_with(mut self, board: &Board) -> Self {
+    pub fn with_board_compatible_with(mut self, board: &Board) -> Self {
         self.audio = self.audio.compatible_with(board);
+        if board.analog_passthrough.is_none() {
+            self.analog_passthrough_enabled = false;
+        }
         self
     }
 }
@@ -294,6 +304,7 @@ mod tests {
                 },
             },
             status_led: None,
+            analog_passthrough: None,
             input_lines: vec![InputOption {
                 line: 7,
                 label: "test input".to_owned(),
@@ -332,12 +343,45 @@ mod tests {
                 input_gain: 0,
                 adc_attenuation_db: 0,
             },
+            analog_passthrough_enabled: false,
         }
     }
 
     #[test]
     fn validates_an_owned_runtime_configuration() {
         assert_eq!(sample_runtime_config().validate(&default_board()), Ok(()));
+    }
+
+    #[test]
+    fn persisted_configuration_without_local_output_intent_defaults_off() {
+        let mut value = serde_json::to_value(sample_runtime_config()).expect("serializable config");
+        value
+            .as_object_mut()
+            .expect("config object")
+            .remove("analog_passthrough_enabled");
+
+        let decoded: super::RuntimeConfig =
+            serde_json::from_value(value).expect("compatible persisted config");
+
+        assert!(!decoded.analog_passthrough_enabled);
+    }
+
+    #[test]
+    fn board_compatibility_disables_an_unsupported_local_output() {
+        let mut config = sample_runtime_config();
+        config.analog_passthrough_enabled = true;
+        let mut board = default_board();
+        board.analog_passthrough = None;
+
+        assert_eq!(
+            config.validate(&board),
+            Err(ConfigError::UnsupportedAnalogPassthrough)
+        );
+        assert!(
+            !config
+                .with_board_compatible_with(&board)
+                .analog_passthrough_enabled
+        );
     }
 
     #[test]

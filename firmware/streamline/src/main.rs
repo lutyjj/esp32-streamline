@@ -16,7 +16,7 @@ use streamline_firmware::adapters::openeth;
 #[cfg(not(feature = "qemu"))]
 use streamline_firmware::adapters::{
     i2s::Capture,
-    pins::AudioPins,
+    pins::{AudioPins, I2cBusPins},
     tcp::{TargetAddress, TlsKeyVerifier},
 };
 use streamline_firmware::{
@@ -27,6 +27,7 @@ use streamline_firmware::{
         nvs::ConfigStore,
         ota, status_light, time, wifi,
     },
+    analog_passthrough::AnalogPassthroughState,
     board::{self, Board},
     config::RuntimeConfig,
     health::{BootFacts, HealthReport},
@@ -36,6 +37,9 @@ use streamline_firmware::{
     transport::KeyVerifier,
     update,
 };
+
+#[cfg(not(feature = "qemu"))]
+use streamline_firmware::analog_passthrough::AnalogPassthroughRoute;
 
 fn main() -> Result<()> {
     // Required by esp-idf-sys to link runtime patches on an ESP-IDF target.
@@ -87,7 +91,7 @@ fn main() -> Result<()> {
     // The network is the one seam between the hardware image and the QEMU
     // image; exactly one `network_boot` variant below compiles into each,
     // and nothing after this call knows which network the device is on.
-    let (_network, (mode, config, stream, codec, health)) = network_boot(
+    let (_network, (mode, config, stream, codec, analog_passthrough, health)) = network_boot(
         peripherals,
         event_loop,
         nvs_partition,
@@ -139,6 +143,7 @@ fn main() -> Result<()> {
         stream,
         key_verifier,
         codec,
+        analog_passthrough: Arc::new(Mutex::new(analog_passthrough)),
         mdns,
         ota: Arc::new(ota::OtaProgress::default()),
         health,
@@ -246,13 +251,24 @@ fn network_boot(
                     "StreamLine provisioned; startup health: {:?}",
                     health.status
                 );
-                (Mode::Provisioned, config, audio.stream, audio.codec, health)
+                (
+                    Mode::Provisioned,
+                    config,
+                    audio.stream,
+                    audio.codec,
+                    audio.analog_passthrough,
+                    health,
+                )
             }
             Err(error) => {
                 let reason = format!("Wi-Fi station connection failed: {error:#}");
                 log::warn!("{reason}; opening setup AP");
                 note_fallback(store, &reason);
-                start_setup(&mut wifi, &suffix, board.as_ref(), Some(config))?
+                let (codec, analog_passthrough) =
+                    start_recovery_local_output(peripherals.i2c0, board.as_ref(), &config);
+                let (mode, config, stream, _, _, health) =
+                    start_setup(&mut wifi, &suffix, board.as_ref(), Some(config))?;
+                (mode, config, stream, codec, analog_passthrough, health)
             }
         },
         None => start_setup(&mut wifi, &suffix, board.as_ref(), None)?,
@@ -290,7 +306,18 @@ fn network_boot(
                 "StreamLine provisioned; startup health: {:?}",
                 health.status
             );
-            (Mode::Provisioned, config, None, None, health)
+            let mut analog_passthrough = AnalogPassthroughState::default();
+            if config.analog_passthrough_enabled {
+                analog_passthrough.record_fault("audio capture is not emulated");
+            }
+            (
+                Mode::Provisioned,
+                config,
+                None,
+                None,
+                analog_passthrough,
+                health,
+            )
         }
         None => {
             log::info!("setup console started");
@@ -299,6 +326,7 @@ fn network_boot(
                 recovery::setup_baseline(board.as_ref(), None),
                 None,
                 None,
+                AnalogPassthroughState::default(),
                 Arc::new(HealthReport::healthy()),
             )
         }
@@ -332,13 +360,15 @@ fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
     TargetAddress::resolve(config).map(Some)
 }
 
-/// Audio bring-up outcome: the live handles when everything came up, plus the
-/// single fact the health check reads. A fault leaves `stream`/`codec` `None`
-/// and the device reachable, rather than tearing the boot down.
+/// Audio bring-up outcome: every live handle that came up, plus the single fact
+/// the health check reads. A capture fault can retain codec control so an
+/// enabled local analog route stays available while the device remains
+/// reachable for diagnosis.
 #[cfg(not(feature = "qemu"))]
 struct AudioOutcome {
     stream: Option<Arc<stream::StreamStatus>>,
     codec: Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    analog_passthrough: AnalogPassthroughState,
     /// `Ok` when the codec answered and the capture task started; `Err(reason)`
     /// otherwise, phrased for a person reading the health check.
     result: Result<(), String>,
@@ -353,30 +383,120 @@ fn start_audio(
     target: Option<TargetAddress>,
 ) -> AudioOutcome {
     let audio_pins = AudioPins::new(board.pins);
-    let capture = match Capture::new(i2s0, audio_pins.i2s) {
+    let capture = Capture::new(i2s0, audio_pins.i2s);
+    let (codec, analog_passthrough) = match start_codec(i2c0, audio_pins.i2c, board, config) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let reason = match capture.as_ref() {
+                Ok(_) => format!("codec setup failed: {error:#}"),
+                Err(capture_error) => format!(
+                    "I2S capture setup failed: {capture_error:#}; codec setup failed: {error:#}"
+                ),
+            };
+            return AudioOutcome::failed(reason, config.analog_passthrough_enabled);
+        }
+    };
+    let capture = match capture {
         Ok(capture) => capture,
-        Err(error) => return AudioOutcome::failed(format!("I2S capture setup failed: {error:#}")),
+        Err(error) => {
+            return AudioOutcome::degraded(
+                codec,
+                analog_passthrough,
+                format!("I2S capture setup failed: {error:#}"),
+            )
+        }
     };
-    let codec = match codec::configure(i2c0, audio_pins.i2c, &board.codec, config.audio) {
-        Ok(codec) => codec,
-        Err(error) => return AudioOutcome::failed(format!("codec setup failed: {error:#}")),
+    let stream = match runtime::start(capture, target) {
+        Ok(stream) => stream,
+        Err(error) => {
+            return AudioOutcome::degraded(
+                codec,
+                analog_passthrough,
+                format!("capture task setup failed: {error:#}"),
+            )
+        }
     };
-    match runtime::start(capture, target) {
-        Ok(stream) => AudioOutcome {
-            stream: Some(stream),
-            codec: Some(Arc::new(Mutex::new(codec))),
-            result: Ok(()),
-        },
-        Err(error) => AudioOutcome::failed(format!("capture task setup failed: {error:#}")),
+    AudioOutcome {
+        stream: Some(stream),
+        codec: Some(Arc::new(Mutex::new(codec))),
+        analog_passthrough,
+        result: Ok(()),
+    }
+}
+
+#[cfg(not(feature = "qemu"))]
+fn start_codec(
+    i2c0: I2C0<'static>,
+    i2c_pins: I2cBusPins<'static>,
+    board: &Board,
+    config: &RuntimeConfig,
+) -> Result<(codec::CodecControl<'static>, AnalogPassthroughState)> {
+    let mut codec = codec::configure(i2c0, i2c_pins, &board.codec, config.audio)?;
+    let route = board
+        .analog_passthrough
+        .as_ref()
+        .map(|capability| AnalogPassthroughRoute {
+            input_line: config.audio.input_line,
+            output_line: capability.output_line,
+        });
+    let mut analog_passthrough = AnalogPassthroughState::default();
+    if config.analog_passthrough_enabled {
+        if let Err(error) = analog_passthrough.reconcile(true, route, &mut codec) {
+            log::warn!("local analog output unavailable: {error}");
+        }
+    }
+    Ok((codec, analog_passthrough))
+}
+
+#[cfg(not(feature = "qemu"))]
+fn start_recovery_local_output(
+    i2c0: I2C0<'static>,
+    board: &Board,
+    config: &RuntimeConfig,
+) -> (
+    Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    AnalogPassthroughState,
+) {
+    if !config.analog_passthrough_enabled {
+        return (None, AnalogPassthroughState::default());
+    }
+    let i2c_pins = AudioPins::new(board.pins).i2c;
+    match start_codec(i2c0, i2c_pins, board, config) {
+        Ok((codec, state)) => (Some(Arc::new(Mutex::new(codec))), state),
+        Err(error) => {
+            let reason = format!("codec setup failed: {error:#}");
+            log::warn!("local analog output unavailable during network recovery: {reason}");
+            let mut state = AnalogPassthroughState::default();
+            state.record_fault(reason);
+            (None, state)
+        }
     }
 }
 
 #[cfg(not(feature = "qemu"))]
 impl AudioOutcome {
-    fn failed(reason: String) -> Self {
+    fn failed(reason: String, passthrough_enabled: bool) -> Self {
+        let mut analog_passthrough = AnalogPassthroughState::default();
+        if passthrough_enabled {
+            analog_passthrough.record_fault(reason.clone());
+        }
         Self {
             stream: None,
             codec: None,
+            analog_passthrough,
+            result: Err(reason),
+        }
+    }
+
+    fn degraded(
+        codec: codec::CodecControl<'static>,
+        analog_passthrough: AnalogPassthroughState,
+        reason: String,
+    ) -> Self {
+        Self {
+            stream: None,
+            codec: Some(Arc::new(Mutex::new(codec))),
+            analog_passthrough,
             result: Err(reason),
         }
     }
@@ -387,6 +507,7 @@ type SetupState = (
     RuntimeConfig,
     Option<Arc<stream::StreamStatus>>,
     Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    AnalogPassthroughState,
     Arc<HealthReport>,
 );
 
@@ -408,6 +529,7 @@ fn start_setup(
         recovery::setup_baseline(board, persisted),
         None,
         None,
+        AnalogPassthroughState::default(),
         // Nothing to check until the device reaches the home network.
         Arc::new(HealthReport::healthy()),
     ))

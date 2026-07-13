@@ -23,6 +23,7 @@ pub fn setup_baseline(board: &Board, persisted: Option<RuntimeConfig>) -> Runtim
             input_gain: 0,
             adc_attenuation_db: 0,
         },
+        analog_passthrough_enabled: false,
     })
 }
 
@@ -54,6 +55,7 @@ pub fn replace_wifi(
         device_name: current.device_name,
         auto_update_schedule: current.auto_update_schedule,
         audio: current.audio,
+        analog_passthrough_enabled: current.analog_passthrough_enabled,
     }
 }
 
@@ -94,6 +96,7 @@ mod tests {
                 input_gain: 42,
                 adc_attenuation_db: 9,
             },
+            analog_passthrough_enabled: true,
         }
     }
 
@@ -130,6 +133,10 @@ mod tests {
         assert_eq!(after.audio, before.audio);
         assert_eq!(after.device_name, before.device_name);
         assert_eq!(after.auto_update_schedule, before.auto_update_schedule);
+        assert_eq!(
+            after.analog_passthrough_enabled,
+            before.analog_passthrough_enabled
+        );
     }
 
     #[test]

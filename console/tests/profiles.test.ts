@@ -48,6 +48,7 @@ const config: DeviceConfig = {
   input_line: 2,
   input_gain: 7,
   adc_attenuation_db: 12,
+  analog_passthrough_enabled: false,
   config_source: 'nvs',
 };
 

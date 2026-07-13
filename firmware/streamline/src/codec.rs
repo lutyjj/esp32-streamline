@@ -14,6 +14,7 @@ pub enum CodecError {
     UnsupportedInputLine,
     UnsupportedInputGain,
     UnsupportedAdcAttenuation,
+    UnsupportedAnalogPassthroughRoute,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -67,6 +68,13 @@ impl CodecCapabilities for Es8388Capabilities {
         if board.adc_atten_max_db > 48 {
             return Err(CodecError::UnsupportedAdcAttenuation);
         }
+        if board
+            .analog_passthrough
+            .as_ref()
+            .is_some_and(|capability| !matches!(capability.output_line, 1 | 2))
+        {
+            return Err(CodecError::UnsupportedAnalogPassthroughRoute);
+        }
         Ok(())
     }
 }
@@ -113,6 +121,17 @@ mod tests {
         assert_eq!(
             validate_board(&candidate),
             Err(CodecError::UnsupportedAddress)
+        );
+
+        let mut candidate = board();
+        candidate
+            .analog_passthrough
+            .as_mut()
+            .expect("official route")
+            .output_line = 3;
+        assert_eq!(
+            validate_board(&candidate),
+            Err(CodecError::UnsupportedAnalogPassthroughRoute)
         );
     }
 }

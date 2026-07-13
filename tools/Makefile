@@ -69,12 +69,16 @@ analyze: image
 qemu-image:
 	$(CONTAINER) build -f Dockerfile --target qemu-runner -t $(QEMU_IMAGE) .
 
-# Run the emulated-device pytest suite against the QEMU image variant: boot
-# transcript, HTTP API over the emulated network, and the commissioning
-# persistence cycle. Build the image first: `make -C firmware qemu-artifacts`.
+# Run the emulated-device pytest suite against the QEMU image variant: boot,
+# API over the emulated network, provisioning persistence, key gating,
+# factory reset, and the OTA slot switch. Build the images first:
+# `make -C firmware qemu-artifacts`. The OTA image is optional; without it
+# the OTA test skips.
+OTA_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-ota.bin
 smoke-qemu: qemu-image
 	@test -f "$(FLASH_IMAGE)" || (echo "FLASH_IMAGE=$(FLASH_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	$(CONTAINER) run --rm -v "$(abspath $(FLASH_IMAGE)):/flash.bin:ro" \
+		$(if $(wildcard $(OTA_IMAGE)),-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" -e STREAMLINE_QEMU_OTA_IMAGE=/ota.bin) \
 		-v "$(CURDIR):/workspace" -w /workspace \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_QEMU_IMAGE=/flash.bin \
 		$(QEMU_IMAGE) pytest smoke -v

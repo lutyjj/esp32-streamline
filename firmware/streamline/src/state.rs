@@ -440,4 +440,56 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn corrupt_marker_is_an_error_not_a_guess() {
+        let store = StateStore::new(FakeStorage::default());
+        store.save(&state("first")).expect("state saves");
+        let mut values = store.into_inner().values();
+        values.insert(ACTIVE_GENERATION_KEY.to_owned(), "9:z".to_owned());
+
+        let corrupted = StateStore::new(FakeStorage::from_values(values, usize::MAX));
+        assert_eq!(corrupted.load(), Err(StateError::InvalidMarker));
+    }
+
+    #[test]
+    fn missing_record_in_the_active_generation_is_an_error() {
+        let store = StateStore::new(FakeStorage::default());
+        store.save(&state("first")).expect("state saves");
+        let mut values = store.into_inner().values();
+        let config_key = values
+            .keys()
+            .find(|key| key.contains("config"))
+            .expect("a config record exists")
+            .clone();
+        values.remove(&config_key);
+
+        let truncated = StateStore::new(FakeStorage::from_values(values, usize::MAX));
+        assert_eq!(
+            truncated.load(),
+            Err(StateError::InvalidRecord("configuration"))
+        );
+    }
+
+    #[test]
+    fn oversized_descriptor_is_rejected_before_any_write() {
+        let store = StateStore::new(FakeStorage::default());
+        store.save(&state("first")).expect("state saves");
+        let before = StateStore::new(FakeStorage::from_values(
+            store.into_inner().values(),
+            usize::MAX,
+        ));
+
+        let mut oversized = state("second");
+        oversized.board_descriptor = Some("x".repeat(MAX_BOARD_DESCRIPTOR_RECORD_BYTES + 1));
+        assert_eq!(
+            before.save(&oversized),
+            Err(StateError::OversizedRecord("board descriptor"))
+        );
+        assert_eq!(
+            before.load(),
+            Ok(Some(state("first"))),
+            "a rejected save must leave the active generation untouched"
+        );
+    }
 }

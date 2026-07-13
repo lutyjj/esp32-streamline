@@ -124,10 +124,12 @@ artifacts: build
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-$(VERSION).elf
 	cd $(DIST_DIR)/firmware && shasum -a 256 streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf > SHA256SUMS
 
-# One merged image for the QEMU-emulated device; the smoke harness boots it
-# directly, so no OTA image or checksum file accompanies it. Runs the build
-# and the packaging in one invocation because both variants share the ELF
-# path — an interleaved `build` would package the wrong binary.
+# The QEMU-emulated device's images: the merged image the smoke harness
+# boots, and the bare application image its OTA test installs into the
+# inactive slot. Runs the build and the packaging in one invocation because
+# both variants share the ELF path — an interleaved `build` would package
+# the wrong binary.
 qemu-artifacts: qemu-build
 	mkdir -p $(DIST_DIR)/firmware
 	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-qemu-full.bin --merge --skip-padding --flash-size $(FLASH_SIZE) --bootloader target/$(TARGET)/release/bootloader.bin --partition-table partitions.csv
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/streamline-qemu-ota.bin $(ELF)'

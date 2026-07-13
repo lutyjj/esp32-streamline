@@ -7,9 +7,7 @@ or a provisioned board on the LAN (`STREAMLINE_SMOKE_TARGET=http://...`).
 
 import json
 
-from conftest import DeviceApi
-
-from streamline_tools.smoke_checks import api_checks
+from streamline_tools.device.api import DeviceApi, api_checks
 
 _MODES = ("setup", "recovery", "provisioned")
 

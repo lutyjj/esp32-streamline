@@ -14,8 +14,8 @@ class BridgeOption:
 
     name: str
     flag: str
-    value_type: type[int] | type[float] | type[str]
-    default: int | float | str
+    value_type: type[bool] | type[int] | type[float] | type[str]
+    default: bool | int | float | str
     help: str
     minimum: int | float | None = None
     addon: bool = False
@@ -24,6 +24,8 @@ class BridgeOption:
     def supervisor_schema(self) -> str:
         if self.value_type is str:
             return "str"
+        if self.value_type is bool:
+            return "bool"
         if self.minimum is None:
             raise ValueError(f"numeric option {self.name} requires a minimum")
         type_name = "int" if self.value_type is int else "float"
@@ -42,6 +44,10 @@ class AddonControlOption:
 BRIDGE_OPTIONS = (
     BridgeOption("tcp_bind", "--tcp-bind", str, "0.0.0.0", "TCP bind address"),
     BridgeOption("tcp_port", "--tcp-port", int, 39000, "TCP listen port", minimum=1),
+    BridgeOption("cleartext_enabled", "--cleartext-enabled", bool, True, "enable cleartext PCM input", addon=True),
+    BridgeOption("tls_enabled", "--tls-enabled", bool, False, "enable TLS 1.3 PSK PCM input", addon=True),
+    BridgeOption("tls_port", "--tls-port", int, 39001, "TLS 1.3 PSK listen port", minimum=1, addon=True),
+    BridgeOption("tls_keys_file", "--tls-keys-file", str, "", "private versioned transport key file"),
     BridgeOption(
         "source_allow",
         "--source-allow",
@@ -132,6 +138,7 @@ OPTIONS_BY_NAME = {option.name: option for option in BRIDGE_OPTIONS}
 ADDON_CONTROL_OPTIONS = (
     AddonControlOption("recordings_enabled", False, "bool"),
     AddonControlOption("recording_token", "", "password"),
+    AddonControlOption("transport_api_token", "", "password"),
 )
 
 
@@ -158,7 +165,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 if option.name == "recordings_dir"
                 else option.default
             )
-            parser.add_argument(option.flag, type=option.value_type, default=default, help=option.help)
+            parser.add_argument(
+                option.flag,
+                type=parse_bool if option.value_type is bool else option.value_type,
+                default=default,
+                help=option.help,
+            )
     return parser.parse_args(argv)
 
 
@@ -182,6 +194,12 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
         raise SystemExit(f"--source-allow must be an IPv4 address: {exc}") from exc
     if len(args.source_allow) > args.max_sources:
         raise SystemExit("--max-sources must be at least the number of allowed sources")
+    if not args.cleartext_enabled and not args.tls_enabled:
+        raise SystemExit("at least one PCM listener must be enabled")
+    if args.cleartext_enabled and args.tls_enabled and args.tcp_port == args.tls_port:
+        raise SystemExit("--tcp-port and --tls-port must differ when both listeners are enabled")
+    if args.tls_enabled and not args.tls_keys_file:
+        raise SystemExit("--tls-keys-file is required when TLS transport is enabled")
     return args
 
 
@@ -191,6 +209,9 @@ def option_value(options: dict[str, object], option: BridgeOption) -> str:
     if option.value_type is str:
         if not isinstance(value, str):
             raise SystemExit(f"{option.name} must be a string")
+    elif option.value_type is bool:
+        if not isinstance(value, bool):
+            raise SystemExit(f"{option.name} must be a boolean")
     elif option.value_type is int:
         if not isinstance(value, int) or isinstance(value, bool):
             raise SystemExit(f"{option.name} must be an integer")
@@ -200,4 +221,13 @@ def option_value(options: dict[str, object], option: BridgeOption) -> str:
         numeric_value = float(value)
         if numeric_value < option.minimum:
             raise SystemExit(f"{option.name} must be at least {option.minimum}")
-    return str(value)
+    return str(value).lower() if isinstance(value, bool) else str(value)
+
+
+def parse_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise argparse.ArgumentTypeError("expected true or false")

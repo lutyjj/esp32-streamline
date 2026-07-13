@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import ipaddress
+import re
 import socket
 import threading
 import time
@@ -77,6 +78,8 @@ class Source[H: AudioPipeline]:
     connected: bool = False
     http_clients: int = 0
     recording_sessions: int = 0
+    peer_ip: str = ""
+    transport: str = "cleartext"
 
 
 class SourceSelectionError(Exception):
@@ -91,6 +94,7 @@ class SourceAdmissionError(Exception):
 
 
 PENDING_KEY = "pending"
+TRANSPORT_KEY_ID = re.compile(r"^eli1-[0-9a-f]{32}$")
 
 
 class SourceRegistry[H: AudioPipeline]:
@@ -121,30 +125,44 @@ class SourceRegistry[H: AudioPipeline]:
         self._eviction_idle_seconds = eviction_idle_seconds
         self._now = now
         self._lock = threading.Lock()
-        self._sources = {ip: self._create(ip, True) for ip in sorted(allowed)}
+        self._sources = {ip: self._create(ip, True, ip, "cleartext") for ip in sorted(allowed)}
 
-    def _create(self, key: str, allowlisted: bool) -> Source[H]:
+    def _create(self, key: str, allowlisted: bool, peer_ip: str = "", transport: str = "cleartext") -> Source[H]:
         created_at = self._now()
         hub = self._hub_factory()
-        return Source(key, hub, TcpSourceGate(hub), allowlisted, created_at, created_at)
+        return Source(
+            key, hub, TcpSourceGate(hub), allowlisted, created_at, created_at, peer_ip=peer_ip, transport=transport
+        )
 
-    def acquire(self, ip: str) -> Source[H]:
-        if self._allowed and ip not in self._allowed:
-            raise SourceAdmissionError(f"{ip} is not in --source-allow")
+    def acquire(self, key: str, peer_ip: str | None = None, transport: str = "cleartext") -> Source[H]:
+        peer = peer_ip or key
+        if self._allowed and peer not in self._allowed:
+            raise SourceAdmissionError(f"{peer} is not in --source-allow")
         with self._lock:
             self._evict_expired_locked()
-            existing = self._sources.get(ip)
+            existing = self._sources.get(key)
             if existing is not None:
+                existing.peer_ip = peer
+                existing.transport = transport
                 return existing
+            placeholder = self._sources.pop(peer, None) if key != peer else None
+            if placeholder is not None and placeholder.allowlisted and not placeholder.connected:
+                placeholder.key = key
+                placeholder.peer_ip = peer
+                placeholder.transport = transport
+                self._sources[key] = placeholder
+                return placeholder
             pending = self._sources.pop(PENDING_KEY, None)
             if pending is not None:
-                pending.key = ip
-                self._sources[ip] = pending
+                pending.key = key
+                pending.peer_ip = peer
+                pending.transport = transport
+                self._sources[key] = pending
                 return pending
             if len(self._sources) >= self._max_sources:
                 raise SourceAdmissionError(f"source limit reached (--max-sources={self._max_sources})")
-            source = self._create(ip, False)
-            self._sources[ip] = source
+            source = self._create(key, False, peer, transport)
+            self._sources[key] = source
             return source
 
     def connect(self, source: Source[H], conn: socket.socket) -> int:
@@ -205,13 +223,17 @@ class SourceRegistry[H: AudioPipeline]:
 
     def _select_explicit_locked(self, requested: str) -> Source[H]:
         try:
-            ip = str(ipaddress.IPv4Address(requested))
+            key = str(ipaddress.IPv4Address(requested))
         except ipaddress.AddressValueError:
-            raise SourceSelectionError(HTTPStatus.BAD_REQUEST, "source must be an IPv4 address") from None
-        source = self._sources.get(ip)
+            if not TRANSPORT_KEY_ID.fullmatch(requested):
+                raise SourceSelectionError(
+                    HTTPStatus.BAD_REQUEST, "source must be an IPv4 address or PCM transport key id"
+                ) from None
+            key = requested
+        source = self._sources.get(key)
         if source is None:
             raise SourceSelectionError(
-                HTTPStatus.NOT_FOUND, f"unknown source {ip}; connect the device or list it in --source-allow"
+                HTTPStatus.NOT_FOUND, f"unknown source {key}; connect the device or list it in --source-allow"
             )
         return source
 
@@ -244,5 +266,7 @@ class SourceRegistry[H: AudioPipeline]:
             if source.connected or source.http_clients or source.recording_sessions
             else now - source.disconnected_at,
             "eviction_idle_seconds": self._eviction_idle_seconds if not source.allowlisted else None,
+            "peer_ip": source.peer_ip,
+            "transport": source.transport,
         }
         return data

@@ -13,6 +13,8 @@ BRIDGE_EXECUTABLE = "streamline-bridge"
 OPTIONS_PATH = Path("/data/options.json")
 RECORDINGS_DIR = "/data/recordings"
 RECORDING_TOKEN_ENV = "STREAMLINE_RECORDING_TOKEN"
+TRANSPORT_KEYS_FILE = "/data/transport-keys.json"
+TRANSPORT_TOKEN_ENV = "STREAMLINE_TRANSPORT_API_TOKEN"
 
 
 def load_options(path: Path = OPTIONS_PATH) -> dict[str, object]:
@@ -38,6 +40,10 @@ def bridge_argv(options: dict[str, object]) -> list[str]:
     if recordings_enabled(options):
         validate_recording_token(options)
         argv.extend(("--recordings-dir", RECORDINGS_DIR))
+
+    if tls_enabled(options):
+        validate_transport_token(options)
+        argv.extend(("--tls-keys-file", TRANSPORT_KEYS_FILE))
 
     source_allow = normalize_source_allow(options.get("source_allow", ""))
     if source_allow:
@@ -67,9 +73,28 @@ def validate_recording_token(options: dict[str, object]) -> str:
 
 
 def recording_environment(options: dict[str, object]) -> dict[str, str]:
-    if not recordings_enabled(options):
-        return {}
-    return {RECORDING_TOKEN_ENV: validate_recording_token(options)}
+    environment: dict[str, str] = {}
+    if recordings_enabled(options):
+        environment[RECORDING_TOKEN_ENV] = validate_recording_token(options)
+    if tls_enabled(options):
+        environment[TRANSPORT_TOKEN_ENV] = validate_transport_token(options)
+    return environment
+
+
+def tls_enabled(options: dict[str, object]) -> bool:
+    enabled = options.get("tls_enabled", False)
+    if not isinstance(enabled, bool):
+        raise SystemExit("tls_enabled must be a boolean")
+    return enabled
+
+
+def validate_transport_token(options: dict[str, object]) -> str:
+    token = options.get("transport_api_token", "")
+    if not isinstance(token, str):
+        raise SystemExit("transport_api_token must be a string")
+    if len(token) < 16:
+        raise SystemExit("transport_api_token must contain at least 16 characters when TLS is enabled")
+    return token
 
 
 def normalize_source_allow(value: object) -> str:

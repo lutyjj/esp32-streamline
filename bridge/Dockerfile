@@ -40,12 +40,13 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 COPY --from=build /opt/venv /opt/venv
 RUN useradd --uid 10001 --no-create-home streamline \
-    && mkdir /recordings \
-    && chown streamline:streamline /recordings
+    && mkdir /recordings /data \
+    && chown streamline:streamline /recordings /data
 
 USER streamline
 
 EXPOSE 39000/tcp
+EXPOSE 39001/tcp
 EXPOSE 8088/tcp
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \

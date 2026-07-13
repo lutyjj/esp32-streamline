@@ -66,6 +66,25 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "at least 16 characters"):
             bridge_argv({"recordings_enabled": True, "recording_token": "short"})
 
+    def test_tls_uses_private_data_storage_and_keeps_the_token_out_of_argv(self) -> None:
+        options = {"tls_enabled": True, "transport_api_token": "long-transport-token"}
+
+        self.assertEqual(
+            bridge_argv(options),
+            [
+                "streamline-bridge",
+                "--tls-keys-file",
+                "/data/transport-keys.json",
+                "--tls-enabled",
+                "true",
+            ],
+        )
+        self.assertEqual(recording_environment(options), {"STREAMLINE_TRANSPORT_API_TOKEN": "long-transport-token"})
+
+    def test_enabled_tls_requires_a_long_transport_token(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "at least 16 characters"):
+            bridge_argv({"tls_enabled": True, "transport_api_token": "short"})
+
     def test_source_allow_accepts_a_list(self) -> None:
         self.assertEqual(
             normalize_source_allow(["192.0.2.10", " 198.51.100.20 ", ""]),

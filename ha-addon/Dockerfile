@@ -38,6 +38,7 @@ COPY --from=build /opt/venv /opt/venv
 # container user so the add-on can read its mounted configuration.
 
 EXPOSE 39000/tcp
+EXPOSE 39001/tcp
 EXPOSE 8088/tcp
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \

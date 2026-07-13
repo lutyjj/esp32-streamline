@@ -16,6 +16,7 @@ from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.recording import RecordingService, RecordingStore
 from streamline_bridge.sources import SourceRegistry
 from streamline_bridge.tcp import TcpIngestServer
+from streamline_bridge.transport import TlsPskAuthenticator, TransportControl, TransportKeyStore
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +53,48 @@ def main() -> int:
         if len(recording_token) < 16:
             raise SystemExit("STREAMLINE_RECORDING_TOKEN must contain at least 16 characters when recording is enabled")
         recordings = RecordingService(sources, RecordingStore(Path(args.recordings_dir)))
-    tcp_server = TcpIngestServer(
-        sources,
-        args.tcp_bind,
-        args.tcp_port,
-        args.source_idle_timeout_seconds,
-        max_connections=args.max_sources * 2,
+    connection_slots = threading.BoundedSemaphore(args.max_sources * 2)
+    if args.cleartext_enabled:
+        cleartext_server = TcpIngestServer(
+            sources,
+            args.tcp_bind,
+            args.tcp_port,
+            args.source_idle_timeout_seconds,
+            max_connections=args.max_sources * 2,
+            connection_slots=connection_slots,
+        )
+        threading.Thread(target=cleartext_server.serve_forever, daemon=True).start()
+
+    transport_token = os.environ.get("STREAMLINE_TRANSPORT_API_TOKEN", "") or None
+    key_store: TransportKeyStore | None = None
+    tls_authenticator: TlsPskAuthenticator | None = None
+    if args.tls_enabled:
+        if transport_token is None or len(transport_token) < 16:
+            raise SystemExit("STREAMLINE_TRANSPORT_API_TOKEN must contain at least 16 characters when TLS is enabled")
+        key_store = TransportKeyStore(Path(args.tls_keys_file), maximum=min(args.max_sources * 2, 64))
+        tls_authenticator = TlsPskAuthenticator(key_store)
+        tls_server = TcpIngestServer(
+            sources,
+            args.tcp_bind,
+            args.tls_port,
+            args.source_idle_timeout_seconds,
+            max_connections=args.max_sources * 2,
+            authenticator=tls_authenticator,
+            connection_slots=connection_slots,
+        )
+        threading.Thread(target=tls_server.serve_forever, daemon=True).start()
+    transport = TransportControl(
+        key_store,
+        tls_authenticator,
+        transport_token,
+        cleartext_enabled=args.cleartext_enabled,
+        tls_enabled=args.tls_enabled,
+        cleartext_port=args.tcp_port,
+        tls_port=args.tls_port,
     )
-    threading.Thread(target=tcp_server.serve_forever, daemon=True).start()
     server = uvicorn.Server(
         uvicorn.Config(
-            make_app(sources, bridge_version(), recordings, recording_token),
+            make_app(sources, bridge_version(), recordings, recording_token, transport),
             host=args.http_bind,
             port=args.http_port,
             log_config=None,

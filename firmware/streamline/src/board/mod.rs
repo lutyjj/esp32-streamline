@@ -10,9 +10,11 @@ use serde::{Deserialize, Serialize};
 
 pub mod catalog;
 pub mod selection;
+pub mod update;
 
 pub use catalog::{builtin_catalog, find, resolve, DEFAULT_BOARD_ID};
 pub use selection::{select, BoardSelection};
+pub use update::{resolve_update, BoardUpdate, BoardUpdateError};
 
 /// Largest custom descriptor accepted by the API and persistent store.
 pub const MAX_DESCRIPTOR_BYTES: usize = 3_072;

@@ -45,7 +45,7 @@ git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
-.PHONY: check help lint test format clean release-tools-image changelog changelog-check release release-history release-prepare release-lock-check release-check release-verify release-package release-notes \
+.PHONY: check help lint test format clean smoke-qemu release-tools-image changelog changelog-check release release-history release-prepare release-lock-check release-check release-verify release-package release-notes \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check docs-check api-contract-check version-check
 
 check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
@@ -53,6 +53,7 @@ check: bridge-check console-check firmware-check tools-check webflasher-check ha
 help:
 	@echo "Cross-project targets:"
 	@echo "  make lint | test | check | format   run across every component"
+	@echo "  make smoke-qemu                      build QEMU images and smoke the emulated device"
 	@echo "  make <c>-check                       c = bridge | console | firmware | tools | webflasher | ha-addon"
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
 	@echo "                                        e.g. firmware-flash PORT=..., bridge-run, bridge-up"
@@ -70,6 +71,15 @@ release-tools-image:
 lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
 
 test: bridge-test console-test firmware-test firmware-build tools-test ha-addon-test
+
+# One command to smoke the firmware pre-silicon: build the QEMU variant images,
+# then boot the emulated device and run the device suite against it. The same
+# suite runs on a real board with `make tools-smoke-device DEVICE=...`; CI runs
+# this suite in the dedicated qemu-smoke job. Kept out of `make test` because it
+# builds firmware images and boots an emulator — too heavy for the fast fan-out.
+smoke-qemu:
+	$(MAKE) firmware-qemu-artifacts
+	$(MAKE) tools-smoke-qemu
 
 # Only the firmware writes build artifacts onto the host; every other component
 # builds inside containers and leaves nothing to clean.

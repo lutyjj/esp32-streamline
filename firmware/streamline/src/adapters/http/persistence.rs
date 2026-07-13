@@ -1,47 +1,42 @@
 //! Failure-atomic configuration persistence for HTTP writes.
 
-use anyhow::{anyhow, Result};
+use std::sync::MutexGuard;
 
-use crate::{config::RuntimeConfig, profiles::AudioProfileCatalog, recovery};
+use crate::{
+    adapters::nvs::ConfigStore, config::RuntimeConfig, mutation::MutationError,
+    profiles::AudioProfileCatalog, recovery,
+};
 
 use super::ApiState;
 
-pub(super) fn save_configuration(state: &ApiState, config: RuntimeConfig) -> Result<()> {
-    config
-        .validate(state.board.as_ref())
-        .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
-    let mut committed = state
-        .config
-        .lock()
-        .map_err(|_| anyhow!("configuration lock poisoned"))?
-        .clone();
-    recovery::commit_after_persist(&mut committed, config, |next| {
-        state
-            .store
-            .lock()
-            .map_err(|_| anyhow!("configuration lock poisoned"))?
-            .save(next, state.board.as_ref())
+pub(super) fn save_configuration(
+    state: &ApiState,
+    config: RuntimeConfig,
+) -> Result<(), MutationError> {
+    config.validate(state.board.as_ref()).map_err(|error| {
+        MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
     })?;
-    *state
-        .config
-        .lock()
-        .map_err(|_| anyhow!("configuration lock poisoned"))? = committed;
+    let mut committed = lock_config(state)?.clone();
+    recovery::commit_after_persist(&mut committed, config, |next| {
+        lock_store(state)?
+            .save(next, state.board.as_ref())
+            .map_err(persistence)
+    })?;
+    *lock_config(state)? = committed;
     Ok(())
 }
 
-pub(super) fn save_audio_profiles(state: &ApiState, catalog: AudioProfileCatalog) -> Result<()> {
-    catalog
-        .validate(state.board.as_ref())
-        .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
-    state
-        .store
-        .lock()
-        .map_err(|_| anyhow!("configuration lock poisoned"))?
-        .save_audio_profiles(&catalog, state.board.as_ref())?;
-    *state
-        .audio_profiles
-        .lock()
-        .map_err(|_| anyhow!("audio profile lock poisoned"))? = catalog;
+pub(super) fn save_audio_profiles(
+    state: &ApiState,
+    catalog: AudioProfileCatalog,
+) -> Result<(), MutationError> {
+    catalog.validate(state.board.as_ref()).map_err(|error| {
+        MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
+    })?;
+    lock_store(state)?
+        .save_audio_profiles(&catalog, state.board.as_ref())
+        .map_err(persistence)?;
+    *lock_audio_profiles(state)? = catalog;
     Ok(())
 }
 
@@ -51,25 +46,46 @@ pub(super) fn save_configuration_and_profiles(
     state: &ApiState,
     config: RuntimeConfig,
     catalog: AudioProfileCatalog,
-) -> Result<()> {
-    config
-        .validate(state.board.as_ref())
-        .map_err(|error| anyhow!("invalid configuration: {error:?}"))?;
-    catalog
-        .validate(state.board.as_ref())
-        .map_err(|error| anyhow!("invalid audio profile catalog: {error:?}"))?;
+) -> Result<(), MutationError> {
+    config.validate(state.board.as_ref()).map_err(|error| {
+        MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
+    })?;
+    catalog.validate(state.board.as_ref()).map_err(|error| {
+        MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
+    })?;
+    lock_store(state)?
+        .save_configuration_and_profiles(&config, &catalog, state.board.as_ref())
+        .map_err(persistence)?;
+    *lock_config(state)? = config;
+    *lock_audio_profiles(state)? = catalog;
+    Ok(())
+}
+
+pub(super) fn lock_config(
+    state: &ApiState,
+) -> Result<MutexGuard<'_, RuntimeConfig>, MutationError> {
+    state
+        .config
+        .lock()
+        .map_err(|_| MutationError::Internal("configuration lock poisoned".to_owned()))
+}
+
+pub(super) fn lock_store(state: &ApiState) -> Result<MutexGuard<'_, ConfigStore>, MutationError> {
     state
         .store
         .lock()
-        .map_err(|_| anyhow!("configuration lock poisoned"))?
-        .save_configuration_and_profiles(&config, &catalog, state.board.as_ref())?;
-    *state
-        .config
-        .lock()
-        .map_err(|_| anyhow!("configuration lock poisoned"))? = config;
-    *state
+        .map_err(|_| MutationError::Internal("configuration store lock poisoned".to_owned()))
+}
+
+pub(super) fn lock_audio_profiles(
+    state: &ApiState,
+) -> Result<MutexGuard<'_, AudioProfileCatalog>, MutationError> {
+    state
         .audio_profiles
         .lock()
-        .map_err(|_| anyhow!("audio profile lock poisoned"))? = catalog;
-    Ok(())
+        .map_err(|_| MutationError::Internal("audio profile lock poisoned".to_owned()))
+}
+
+fn persistence(error: anyhow::Error) -> MutationError {
+    MutationError::Persistence(format!("{error:#}"))
 }

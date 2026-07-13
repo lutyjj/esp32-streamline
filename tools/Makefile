@@ -10,10 +10,12 @@ CAP ?=
 # Smoke-harness inputs: the QEMU variant image for the emulated run; the
 # serial port and device address for the hardware run. DEVICE resolves from
 # the root .env when present, else stays empty and the hardware run skips API
-# checks.
+# checks. ADMIN_KEY likewise resolves from .env and lets the hardware run drive
+# the authenticated surface; without it those dual-target tests skip.
 FLASH_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-full.bin
 PORT ?= /dev/cu.usbserial-0001
 DEVICE ?= $(call dotenv,STREAMLINE_DEVICE)
+ADMIN_KEY ?= $(call dotenv,STREAMLINE_ADMIN_KEY)
 
 # Run a check in the tools image with the source mounted and the shared
 # ruff/mypy cache volume attached.
@@ -94,6 +96,7 @@ smoke-device: qemu-image
 	$(if $(DEVICE),$(CONTAINER) run --rm \
 		-v "$(CURDIR):/workspace" -w /workspace \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_SMOKE_TARGET="http://$(DEVICE)" \
+		-e STREAMLINE_ADMIN_KEY="$(ADMIN_KEY)" \
 		$(QEMU_IMAGE) pytest smoke -v,@echo "DEVICE is unset: skipping the API contract suite")
 
 release-prepare: image

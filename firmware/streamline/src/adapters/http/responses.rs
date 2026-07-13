@@ -4,7 +4,7 @@ use anyhow::Result;
 use embedded_svc::io::Write;
 use serde::Serialize;
 
-use crate::api;
+use crate::{api, mutation::MutationError};
 
 pub(super) fn reboot_response<C>(request: embedded_svc::http::server::Request<C>) -> Result<()>
 where
@@ -70,15 +70,18 @@ where
     error_response(request, 401, "unauthorized")
 }
 
-pub(super) fn bad_request<C>(
+/// Answer a failed mutation with the status its category earns: invalid input
+/// `400`, a state conflict `409`, an absent capability `503`, and a persistence
+/// or internal fault `500`, instead of collapsing every failure into `400`.
+pub(super) fn mutation_error<C>(
     request: embedded_svc::http::server::Request<C>,
-    error: anyhow::Error,
+    error: MutationError,
 ) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    error_response(request, 400, &error.to_string())
+    error_response(request, error.status(), error.message())
 }
 
 pub(super) fn unavailable<C>(

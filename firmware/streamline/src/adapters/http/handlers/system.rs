@@ -2,13 +2,14 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
-use crate::api;
+use crate::{api, mutation::MutationError};
 
 use super::super::{
     auth::authorized_for,
-    responses::{json_response, reboot_response, respond, unauthorized},
+    persistence::lock_store,
+    responses::{json_response, mutation_error, reboot_response, respond, unauthorized},
     ApiState, ContractServer, OPENAPI,
 };
 
@@ -47,11 +48,14 @@ pub(super) fn register_actions(
         if !authorized_for(&request, &state, api::FACTORY_RESET) {
             return unauthorized(request);
         }
-        state
-            .store
-            .lock()
-            .map_err(|_| anyhow!("configuration lock poisoned"))?
-            .clear()?;
-        reboot_response(request)
+        let result = (|| -> Result<(), MutationError> {
+            lock_store(&state)?
+                .clear()
+                .map_err(|error| MutationError::Persistence(format!("{error:#}")))
+        })();
+        match result {
+            Ok(()) => reboot_response(request),
+            Err(error) => mutation_error(request, error),
+        }
     })
 }

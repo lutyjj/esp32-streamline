@@ -2,19 +2,20 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use crate::{
     api,
     config::{AutoUpdateSchedule, RuntimeConfig},
+    mutation::MutationError,
     recovery,
 };
 
 use super::super::{
     auth::authorized_for,
-    persistence::save_configuration,
+    persistence::{lock_config, save_configuration},
     requests::form,
-    responses::{bad_request, json_response, reboot_response, respond, serialize, unauthorized},
+    responses::{json_response, mutation_error, reboot_response, respond, serialize, unauthorized},
     ApiState, ContractServer,
 };
 
@@ -40,13 +41,9 @@ pub(super) fn register_network_writes(
         if !authorized_for(&request, &state_for_wifi, api::SET_WIFI) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<(), MutationError> {
             let form: api::WifiSettingsRequest = form(&mut request)?;
-            let current = state_for_wifi
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
+            let current = lock_config(&state_for_wifi)?.clone();
             // Commissioning may set the initial stream target in the same
             // write, because the device reboots onto the home network right
             // after and the two cannot be posted separately. Absent target
@@ -64,7 +61,7 @@ pub(super) fn register_network_writes(
         })();
         match result {
             Ok(()) => reboot_response(request),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })?;
 
@@ -78,13 +75,9 @@ pub(super) fn register_network_writes(
         if !authorized_for(&request, &state_for_target, api::SET_TARGET) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
-            let current = state_for_target
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
+            let current = lock_config(&state_for_target)?.clone();
             let target_host = form.target_host.trim().to_owned();
             let target_port = form.target_port.unwrap_or(current.target_port);
             let next = RuntimeConfig {
@@ -96,7 +89,7 @@ pub(super) fn register_network_writes(
         })();
         match result {
             Ok(()) => reboot_response(request),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -112,13 +105,9 @@ pub(super) fn register_identity_writes(
         if !authorized_for(&request, &state_for_name, api::SET_NAME) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<(), MutationError> {
             let form: api::NameSettingsRequest = form(&mut request)?;
-            let mut next = state_for_name
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
+            let mut next = lock_config(&state_for_name)?.clone();
             next.device_name = form.name.trim().to_owned();
             save_configuration(&state_for_name, next.clone())?;
             refresh_mdns_name(&state_for_name, &next);
@@ -126,7 +115,7 @@ pub(super) fn register_identity_writes(
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })?;
 
@@ -135,19 +124,15 @@ pub(super) fn register_identity_writes(
         if !authorized_for(&request, &state_for_admin_key, api::SET_ADMIN_KEY) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<(), MutationError> {
             let form: api::AdminKeySettingsRequest = form(&mut request)?;
-            let mut next = state_for_admin_key
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
+            let mut next = lock_config(&state_for_admin_key)?.clone();
             next.admin_secret = form.admin_secret;
             save_configuration(&state_for_admin_key, next)
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -161,18 +146,14 @@ pub(super) fn register_firmware_write(
         if !authorized_for(&request, &state, api::SET_FIRMWARE) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<(), MutationError> {
             let form: api::FirmwareSettingsRequest = form(&mut request)?;
             let auto_update_schedule = match form.auto_update_schedule {
                 api::AutoUpdateScheduleRequest::Disabled => AutoUpdateSchedule::Disabled,
                 api::AutoUpdateScheduleRequest::Daily => AutoUpdateSchedule::Daily,
                 api::AutoUpdateScheduleRequest::Weekly => AutoUpdateSchedule::Weekly,
             };
-            let current = state
-                .config
-                .lock()
-                .map_err(|_| anyhow!("configuration lock poisoned"))?
-                .clone();
+            let current = lock_config(&state)?.clone();
             let next = RuntimeConfig {
                 auto_update_schedule,
                 ..current
@@ -180,16 +161,13 @@ pub(super) fn register_firmware_write(
             if state.mode.has_persisted_configuration() {
                 save_configuration(&state, next)
             } else {
-                *state
-                    .config
-                    .lock()
-                    .map_err(|_| anyhow!("configuration lock poisoned"))? = next;
+                *lock_config(&state)? = next;
                 Ok(())
             }
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }

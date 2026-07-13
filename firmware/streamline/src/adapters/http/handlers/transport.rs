@@ -2,19 +2,20 @@
 
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use crate::{
     api,
     config::RuntimeConfig,
+    mutation::MutationError,
     transport::{self, RandomBytes, TransportMode},
 };
 
 use super::super::{
     auth::authorized_for,
-    persistence::save_configuration,
+    persistence::{lock_config, save_configuration},
     requests::form,
-    responses::{bad_request, json_response, reboot_response, unauthorized, unavailable},
+    responses::{json_response, mutation_error, reboot_response, unauthorized, unavailable},
     ApiState, ContractServer,
 };
 
@@ -55,7 +56,7 @@ fn register_settings(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
         match result {
             Ok(true) => reboot_response(request),
             Ok(false) => json_response(request, 200, &api::Ack::ok()),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -70,7 +71,7 @@ fn register_stage(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Res
             Ok(key_response(&next.transport.keys.stage(&mut EspRandom)?))
         }) {
             Ok(response) => json_response(request, 200, &response),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -94,7 +95,7 @@ fn register_verify(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Re
             Ok(())
         }) {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -111,7 +112,7 @@ fn register_activate(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
             Ok(())
         }) {
             Ok(()) => reboot_response(request),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -124,7 +125,7 @@ fn register_discard(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> R
         }
         match mutate(&state, |next| Ok(next.transport.keys.discard_pending()?)) {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -137,7 +138,7 @@ fn register_rollback(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
         }
         match mutate(&state, |next| Ok(next.transport.keys.rollback_key()?)) {
             Ok(()) => reboot_response(request),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -150,7 +151,7 @@ fn register_retire(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Re
         }
         match mutate(&state, |next| Ok(next.transport.keys.retire_rollback()?)) {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
@@ -166,19 +167,18 @@ fn register_recovery(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
             Ok(key_response(&next.transport.keys.recover(&mut EspRandom)?))
         }) {
             Ok(response) => json_response(request, 200, &response),
-            Err(error) => bad_request(request, error),
+            Err(error) => mutation_error(request, error),
         }
     })
 }
 
 /// Apply one lifecycle change to a copy of the configuration and expose its
 /// result only after the change persisted as a complete state generation.
-fn mutate<T>(state: &ApiState, change: impl FnOnce(&mut RuntimeConfig) -> Result<T>) -> Result<T> {
-    let mut next = state
-        .config
-        .lock()
-        .map_err(|_| anyhow!("configuration lock poisoned"))?
-        .clone();
+fn mutate<T>(
+    state: &ApiState,
+    change: impl FnOnce(&mut RuntimeConfig) -> Result<T, MutationError>,
+) -> Result<T, MutationError> {
+    let mut next = lock_config(state)?.clone();
     let value = change(&mut next)?;
     save_configuration(state, next)?;
     Ok(value)

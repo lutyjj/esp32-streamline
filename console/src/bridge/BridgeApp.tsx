@@ -224,16 +224,11 @@ function TransportKeyWorkspace({ keyIds }: { keyIds: string[] }) {
           keyIds.map((id) => (
             <div class="transport-key" key={id}>
               <code>{id}</code>
-              <Button
-                kind="danger"
-                onClick={() => {
-                  if (window.confirm(`Remove transport key ${id}?`)) {
-                    void bridge.removeTransportKey(id);
-                  }
-                }}
-              >
-                Remove
-              </Button>
+              <ConfirmButton
+                label="Remove"
+                confirmLabel="Remove"
+                onConfirm={() => void bridge.removeTransportKey(id)}
+              />
             </div>
           ))
         ) : (

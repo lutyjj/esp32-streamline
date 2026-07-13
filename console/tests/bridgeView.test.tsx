@@ -77,7 +77,20 @@ describe('bridge source view', () => {
 describe('bridge lock flow', () => {
   beforeEach(() => {
     sessionStorage.clear();
-    bridge.status.value = { bridge_version: 'test', sources: {} };
+    bridge.status.value = {
+      bridge_version: 'test',
+      sources: {},
+      transport: {
+        contract_version: 1,
+        cleartext_enabled: true,
+        tls_enabled: true,
+        cleartext_port: 39000,
+        tls_port: 39001,
+        key_ids: [],
+        auth_successes: 0,
+        auth_failures: 0,
+      },
+    };
     bridge.recordings.value = undefined;
     bridge.error.value = '';
   });

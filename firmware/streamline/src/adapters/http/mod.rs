@@ -20,7 +20,7 @@ use crate::{
     config::RuntimeConfig,
     health::HealthReport,
     profiles::AudioProfileCatalog,
-    runtime::StreamStatus,
+    stream::StreamStatus,
     transport::KeyVerifier,
 };
 

@@ -12,6 +12,7 @@ use esp_idf_svc::hal::{
 use crate::{
     adapters::pins::I2sBusPins,
     protocol::{PAYLOAD_BYTES, SAMPLE_RATE_HZ},
+    stream::{PcmSource, ReadFailed},
 };
 
 /// Owns the RX driver for the application lifetime. The capture task reads whole
@@ -31,8 +32,19 @@ impl Capture {
         driver.rx_enable()?;
         Ok(Self { driver })
     }
+}
 
-    pub fn read(&mut self, samples: &mut [u8; PAYLOAD_BYTES]) -> Result<usize> {
-        Ok(self.driver.read(samples, BLOCK)?)
+impl PcmSource for Capture {
+    /// Read one whole packet, blocking on the DMA driver. A driver error is
+    /// logged here at the device edge and surfaced as [`ReadFailed`] so the
+    /// capture policy can back off without depending on ESP-IDF error types.
+    fn read(
+        &mut self,
+        samples: &mut [u8; PAYLOAD_BYTES],
+    ) -> std::result::Result<usize, ReadFailed> {
+        self.driver.read(samples, BLOCK).map_err(|error| {
+            log::error!("I2S read failed: {error:#}");
+            ReadFailed
+        })
     }
 }

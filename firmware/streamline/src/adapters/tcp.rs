@@ -13,6 +13,7 @@ use esp_idf_svc::sys;
 
 use crate::{
     config::RuntimeConfig,
+    stream::{PacketSink, SendFailed},
     transport::{
         write_all_with, KeyVerifier, PcmConnector, PcmStream, ReconnectingSender, TransportKey,
         TransportMode, WriteAllError,
@@ -75,8 +76,20 @@ impl TcpClient {
         }
     }
 
-    pub fn send_all(&mut self, bytes: &[u8]) -> std::result::Result<bool, TcpSendError> {
+    fn send_all(&mut self, bytes: &[u8]) -> std::result::Result<bool, TcpSendError> {
         self.sender.send_all(bytes)
+    }
+}
+
+impl PacketSink for TcpClient {
+    /// Send one packet, logging any failure here at the device edge and marking
+    /// TLS handshake rejections so the pipeline can count them separately.
+    fn send(&mut self, bytes: &[u8]) -> std::result::Result<bool, SendFailed> {
+        self.send_all(bytes).map_err(|error| {
+            let secure_handshake = error.is_secure_handshake();
+            log::warn!("TCP stream error: {error:#}");
+            SendFailed { secure_handshake }
+        })
     }
 }
 

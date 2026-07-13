@@ -32,7 +32,7 @@ use streamline_firmware::{
     health::{BootFacts, HealthReport},
     identity,
     profiles::AudioProfileCatalog,
-    recovery, runtime,
+    recovery, runtime, stream,
     transport::KeyVerifier,
     update,
 };
@@ -337,7 +337,7 @@ fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
 /// and the device reachable, rather than tearing the boot down.
 #[cfg(not(feature = "qemu"))]
 struct AudioOutcome {
-    stream: Option<Arc<runtime::StreamStatus>>,
+    stream: Option<Arc<stream::StreamStatus>>,
     codec: Option<Arc<Mutex<codec::CodecControl<'static>>>>,
     /// `Ok` when the codec answered and the capture task started; `Err(reason)`
     /// otherwise, phrased for a person reading the health check.
@@ -385,7 +385,7 @@ impl AudioOutcome {
 type SetupState = (
     Mode,
     RuntimeConfig,
-    Option<Arc<runtime::StreamStatus>>,
+    Option<Arc<stream::StreamStatus>>,
     Option<Arc<Mutex<codec::CodecControl<'static>>>>,
     Arc<HealthReport>,
 );

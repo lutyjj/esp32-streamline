@@ -11,7 +11,6 @@ pub mod auth;
 pub mod board;
 pub mod codec;
 pub mod config;
-#[cfg(any(test, target_os = "espidf"))]
 mod counter;
 pub mod health;
 pub mod identity;
@@ -24,6 +23,7 @@ pub mod profiles;
 pub mod protocol;
 pub mod recovery;
 pub mod state;
+pub mod stream;
 pub mod telemetry;
 pub mod transport;
 pub mod update;

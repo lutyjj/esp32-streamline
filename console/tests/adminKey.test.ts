@@ -4,6 +4,7 @@ import {
   isUnlocked,
   lockSettings,
   rememberAdminKey,
+  replaceAdminKey,
   storedAdminKey,
   UNLOCK_WINDOW_MS,
   unlockSettings,
@@ -60,5 +61,52 @@ describe('unlock window', () => {
   it('a stored key alone does not unlock anything', () => {
     rememberAdminKey('key', true);
     expect(isUnlocked()).toBe(false);
+  });
+});
+
+// Stage 6: replacing the admin key must not lock the owner out. The new secret
+// takes effect at once, so this browser re-opens its window on it — but only
+// after the device confirms the write.
+describe('replaceAdminKey', () => {
+  it('writes the new key and re-unlocks this browser on it', async () => {
+    unlockSettings('old', true);
+    const seen: string[] = [];
+    const ack = await replaceAdminKey(
+      (secret) => {
+        seen.push(secret);
+        return Promise.resolve({ rebooting: false });
+      },
+      'new',
+      true,
+    );
+    expect(ack).toEqual({ rebooting: false });
+    expect(seen).toEqual(['new']);
+    expect(storedAdminKey()).toBe('new');
+    expect(isUnlocked()).toBe(true);
+  });
+
+  it('refuses to write when the settings window is closed', async () => {
+    rememberAdminKey('old', true); // stored but not unlocked
+    let wrote = false;
+    await expect(
+      replaceAdminKey(
+        () => {
+          wrote = true;
+          return Promise.resolve({ rebooting: false });
+        },
+        'new',
+        true,
+      ),
+    ).rejects.toThrow(/unlock settings/);
+    expect(wrote).toBe(false);
+    expect(storedAdminKey()).toBe('old');
+  });
+
+  it('leaves custody on the old key when the device rejects the write', async () => {
+    unlockSettings('old', true);
+    await expect(
+      replaceAdminKey(() => Promise.reject(new Error('device rejected')), 'new', true),
+    ).rejects.toThrow(/device rejected/);
+    expect(storedAdminKey()).toBe('old');
   });
 });

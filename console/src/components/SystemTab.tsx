@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { generateAdminKey, isUnlocked, unlockSettings, useAuthEpoch } from '../lib/adminKey';
+import { generateAdminKey, isUnlocked, replaceAdminKey, useAuthEpoch } from '../lib/adminKey';
 import {
   type DeviceConfig,
   factoryReset,
@@ -303,12 +303,14 @@ function AccessCard() {
   function save(e: SubmitEvent) {
     e.preventDefault();
     transact.run(
-      async (): Promise<undefined> => {
-        if (!isUnlocked()) throw new Error('unlock settings before replacing the admin key');
-        await setAdminKey({ admin_secret: staged });
-        unlockSettings(staged, remember);
+      async () => {
+        const ack = await replaceAdminKey(
+          (secret) => setAdminKey({ admin_secret: secret }),
+          staged,
+          remember,
+        );
         setStaged('');
-        return undefined;
+        return ack;
       },
       { busyText: 'Saving…', okText: 'New key saved and active' },
     );

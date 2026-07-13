@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Button } from '../components/Button';
-import { Card } from '../components/Card';
+import { Card, CardFooter } from '../components/Card';
 import { Chip, type Tone } from '../components/Chip';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
@@ -206,41 +206,44 @@ function RecordingWorkspace() {
       <div class="grid">
         <Card title="New recording" lead="Start first, then play the source.">
           <form
-            class="formgrid"
             onSubmit={async (event) => {
               event.preventDefault();
               if (await bridge.startRecording({ source: selectedSource, title })) setTitle('');
             }}
           >
-            <div class="field">
-              <label for="rec-source">Source</label>
-              <select
-                id="rec-source"
-                value={selectedSource}
-                onChange={(event) => setSource(event.currentTarget.value)}
-                required
-              >
-                {sources.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
+            <div class="formgrid">
+              <div class="field">
+                <label for="rec-source">Source</label>
+                <select
+                  id="rec-source"
+                  value={selectedSource}
+                  onChange={(event) => setSource(event.currentTarget.value)}
+                  required
+                >
+                  {sources.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div class="field">
+                <label for="rec-title">Title</label>
+                <input
+                  id="rec-title"
+                  type="text"
+                  value={title}
+                  maxlength={80}
+                  onInput={(event) => setTitle(event.currentTarget.value)}
+                  required
+                />
+              </div>
             </div>
-            <div class="field">
-              <label for="rec-title">Title</label>
-              <input
-                id="rec-title"
-                type="text"
-                value={title}
-                maxlength={80}
-                onInput={(event) => setTitle(event.currentTarget.value)}
-                required
-              />
-            </div>
-            <Button kind="primary" type="submit" disabled={!selectedSource}>
-              Start recording
-            </Button>
+            <CardFooter>
+              <Button kind="primary" type="submit" disabled={!selectedSource}>
+                Start recording
+              </Button>
+            </CardFooter>
           </form>
         </Card>
         <Card title="Storage" lead="WAV uses about 11 MiB per minute.">

@@ -9,6 +9,7 @@
 .grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: start;
   gap: 14px 16px;
 }
 .bridge-console > .notice,

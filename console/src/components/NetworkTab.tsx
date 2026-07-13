@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { setTarget, setWifi } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
+import { normalizeTargetHost } from '../lib/target';
 import { config, noBridge, packetsMoving, setupMode, status } from '../state/device';
 import { handoffMessage, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
@@ -45,18 +46,10 @@ export function NetworkTab() {
    * vanishing setup network, so it is a handoff, not a reboot wait.
    */
   async function commission() {
-    const host = validTargetHost();
+    const host = normalizeTargetHost(targetHost);
     const data = await joinNetwork({ ssid, password, targetHost: host, targetPort, rememberKey });
     toast(handoffMessage(), 'wait', 0);
     return data;
-  }
-
-  function validTargetHost() {
-    const host = targetHost.trim();
-    if (host.includes(':') || host.includes('/')) {
-      throw new Error('target host must not include port, scheme, or path');
-    }
-    return host;
   }
 
   /** Steady state: Wi-Fi and the stream target are separate writes, so a bad
@@ -78,7 +71,10 @@ export function NetworkTab() {
       () =>
         firstSetup
           ? commission()
-          : setTarget({ target_host: validTargetHost(), target_port: Number(targetPort) }),
+          : setTarget({
+              target_host: normalizeTargetHost(targetHost),
+              target_port: Number(targetPort),
+            }),
       firstSetup
         ? { busyText: 'Saving…', okText: 'Saved — the device is joining your network' }
         : { busyText: 'Saving…', reboots: 'the stream target' },

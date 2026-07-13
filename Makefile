@@ -188,6 +188,9 @@ changelog-check: release-history release-tools-image version-check
 	}
 
 # Print the newest release's notes only (no header/footer) for the GitHub
-# release body. The release workflow feeds this to `gh release create`.
-release-notes: release-history release-tools-image
+# release body. The release workflow feeds this to `gh release create`, so
+# stdout must carry the notes and nothing else — build the image with its
+# output on stderr to keep the recipe echo out of the release body.
+release-notes: release-history
+	@$(MAKE) release-tools-image 1>&2
 	@$(call git_cliff,--latest --strip all)

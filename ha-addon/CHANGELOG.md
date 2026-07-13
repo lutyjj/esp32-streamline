@@ -1,6 +1,50 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.6.0]
+
+### 🚀 Features
+- Guide the whole bridge hookup with a setup wizard
+- Let a parent control a Disclosure
+- Let owners discard the pending PCM key
+- Report secure transport failures
+- Manage secure PCM transport
+- Define TLS 1.3 PCM transport contract
+- Authenticate PCM with TLS 1.3 PSK
+- Secure PCM transport with per-device keys
+
+### 🐛 Bug Fixes
+- Declare and smoke rollback conflict as 409
+- Make dismissing the one-time PSK reveal unmistakable
+- Integrate secure transport with design system
+- Enforce the secure TLS profile
+- Size HTTP stack for key writes
+- Cut over when activating transport key
+- Give the New recording form a full-width action row
+- Polish masthead controls and bridge recording UI
+
+### 🚜 Refactor
+- Give mutation failures typed HTTP statuses
+- Make stream runtime policies host-testable
+- Move calibration restore-on-cancel into the engine
+- Rebuild the encryption section from the design system
+- Persist the PCM PSK as its hex form
+- Move admin-key replacement into a tested step
+- Extract stream-target host validation
+- Move audio-profile edits into tested rules
+- Default transport control to one disabled listener
+- Fold transport failure kinds into one handshake flag
+- Use one mutually exclusive PCM listener
+- Split the analysis library into purpose-named modules
+- Fold bridge storage into the New recording card
+- Unify the device and bridge design system
+
+### 📚 Documentation
+- Match the Recovery sub-section label
+- Describe the single PCM listener
+- Document encrypted PCM operation
+- Choose encrypted PCM transport
+
 ## [0.5.7]
 
 ### 🚀 Features

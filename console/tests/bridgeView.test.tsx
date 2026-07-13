@@ -82,10 +82,8 @@ describe('bridge lock flow', () => {
       sources: {},
       transport: {
         contract_version: 1,
-        cleartext_enabled: true,
-        tls_enabled: true,
-        cleartext_port: 39000,
-        tls_port: 39001,
+        mode: 'tls-psk',
+        port: 39000,
         key_ids: [],
         auth_successes: 0,
         auth_failures: 0,
@@ -118,5 +116,18 @@ describe('bridge lock flow', () => {
     act(() => host.querySelector<HTMLButtonElement>('button.lockchip')?.click());
     expect(bridge.recordingState.value).toBe('locked');
     expect(host.querySelector('button.lockchip')?.textContent).toContain('Locked');
+  });
+
+  it('renders transport credentials with the shared labeled field structure', () => {
+    bridge.recordingState.value = 'disabled';
+    bridge.transportState.value = 'unlocked';
+    const host = document.createElement('div');
+    render(<BridgeApp />, host);
+
+    const credential = host.querySelector<HTMLInputElement>('#transport-key-id');
+    const psk = host.querySelector<HTMLInputElement>('#transport-psk');
+    expect(credential?.classList.contains('credential-input')).toBe(true);
+    expect(psk?.classList.contains('credential-input')).toBe(true);
+    expect(host.querySelector('label[for="transport-key-id"]')?.textContent).toBe('Credential ID');
   });
 });

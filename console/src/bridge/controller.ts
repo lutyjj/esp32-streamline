@@ -89,7 +89,7 @@ export class BridgeController {
   async pollStatus(): Promise<void> {
     try {
       this.status.value = await this.api.status();
-      if (!this.status.value.transport.tls_enabled) {
+      if (this.status.value.transport.mode !== 'tls-psk') {
         this.transportState.value = 'disabled';
       } else if (
         this.transportState.value === 'checking' ||
@@ -146,7 +146,8 @@ export class BridgeController {
 
   lockTransport(): void {
     forgetTransportToken();
-    this.transportState.value = this.status.value?.transport.tls_enabled ? 'locked' : 'disabled';
+    this.transportState.value =
+      this.status.value?.transport.mode === 'tls-psk' ? 'locked' : 'disabled';
   }
 
   async provisionTransportKey(keyId: string, psk: string): Promise<boolean> {

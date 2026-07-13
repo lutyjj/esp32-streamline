@@ -13,12 +13,8 @@ services:
       STREAMLINE_RECORDING_TOKEN: ${STREAMLINE_RECORDING_TOKEN:-}
       STREAMLINE_TRANSPORT_API_TOKEN: ${STREAMLINE_TRANSPORT_API_TOKEN:-}
     command:
-      - --cleartext-enabled
-      - ${STREAMLINE_CLEARTEXT_ENABLED:-true}
       - --tls-enabled
       - ${STREAMLINE_TLS_ENABLED:-false}
-      - --tls-port
-      - ${STREAMLINE_TLS_PORT:-39001}
       - --tls-keys-file
       - /data/transport-keys.json
     read_only: true
@@ -33,7 +29,6 @@ services:
       - transport-data:/data
     ports:
       - "39000:39000/tcp"
-      - "39001:39001/tcp"
       - "8088:8088/tcp"
 
 volumes:

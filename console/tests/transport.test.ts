@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ack, DeviceConfig, TransportKeyResponse, TransportStatus } from '../src/lib/api';
-import { type TransportApi, TransportController, transportActions } from '../src/state/transport';
+import {
+  type TransportApi,
+  TransportController,
+  transportActions,
+  transportJourney,
+} from '../src/state/transport';
 
 const ack: Ack = { ok: true, rebooting: false, started: false };
 const credential: TransportKeyResponse = {
@@ -13,9 +18,6 @@ function status(overrides: Partial<TransportStatus> = {}): TransportStatus {
   return {
     contract_version: 1,
     mode: 'cleartext',
-    cleartext_port: 39000,
-    secure_port: 39001,
-    effective_port: 39000,
     active_key_id: null,
     pending_key_id: null,
     pending_verified: false,
@@ -38,7 +40,7 @@ function fakeApi(overrides: Partial<TransportApi> = {}): TransportApi {
 }
 
 describe('PCM transport lifecycle', () => {
-  it('keeps first setup and legacy coexistence on explicit cleartext', () => {
+  it('keeps first setup on explicit cleartext', () => {
     expect(transportActions(status())).toEqual({
       canStage: true,
       canVerify: false,
@@ -59,6 +61,23 @@ describe('PCM transport lifecycle', () => {
     ).toMatchObject({ canVerify: false, canActivate: true });
   });
 
+  it('shows one progressive journey step for each persisted state', () => {
+    expect(transportJourney(status())).toBe('opt-in');
+    expect(transportJourney(status({ pending_key_id: credential.key_id }))).toBe('provision');
+    expect(
+      transportJourney(status({ pending_key_id: credential.key_id, pending_verified: true })),
+    ).toBe('activate');
+    expect(transportJourney(status({ mode: 'tls-psk' }))).toBe('secure');
+    expect(
+      transportJourney(
+        status({
+          mode: 'tls-psk',
+          rollback_key_id: 'eli1-fedcba9876543210fedcba9876543210',
+        }),
+      ),
+    ).toBe('rotation');
+  });
+
   it('surfaces rotation rollback and retirement only when their keys exist', () => {
     expect(
       transportActions(
@@ -68,7 +87,7 @@ describe('PCM transport lifecycle', () => {
           rollback_key_id: 'eli1-fedcba9876543210fedcba9876543210',
         }),
       ),
-    ).toMatchObject({ canRollback: true, canRetire: true });
+    ).toMatchObject({ canStage: false, canRollback: true, canRetire: true });
   });
 
   it('keeps a one-time key visible after staging and supports a failed verification retry', async () => {
@@ -97,18 +116,16 @@ describe('PCM transport lifecycle', () => {
     expect(controller.revealed.value).toBeUndefined();
   });
 
-  it('uses the version and both listener ports when explicitly returning to cleartext', async () => {
+  it('uses the version when explicitly returning the one listener to cleartext', async () => {
     const api = fakeApi();
     const controller = new TransportController(api, async () => undefined);
     const config = { transport: status({ contract_version: 1 }) } as DeviceConfig;
 
-    await controller.useCleartext(config, 39100, 39101);
+    await controller.useCleartext(config);
 
     expect(api.configure).toHaveBeenCalledWith({
       contract_version: 1,
       mode: 'cleartext',
-      cleartext_port: 39100,
-      secure_port: 39101,
     });
   });
 });

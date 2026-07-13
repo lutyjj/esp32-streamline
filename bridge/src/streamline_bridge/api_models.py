@@ -89,10 +89,8 @@ class SourceSnapshot(ContractModel):
 
 class TransportSnapshot(ContractModel):
     contract_version: Literal[1]
-    cleartext_enabled: bool
-    tls_enabled: bool
-    cleartext_port: int = Field(ge=1, le=65535)
-    tls_port: int = Field(ge=1, le=65535)
+    mode: Literal["cleartext", "tls-psk"]
+    port: int = Field(ge=1, le=65535)
     key_ids: list[str]
     auth_successes: int = Field(ge=0)
     auth_failures: int = Field(ge=0)

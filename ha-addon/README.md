@@ -1,8 +1,8 @@
 # ESP32 StreamLine Bridge add-on
 
 This add-on runs the StreamLine bridge inside Home Assistant OS or Home
-Assistant Supervised. It accepts cleartext ESP32 PCM on TCP `39000`, optional
-authenticated TLS 1.3 PCM on TCP `39001`, and publishes live WAV, status, and
+Assistant Supervised. It accepts ESP32 PCM on TCP `39000` in one configured
+mode—cleartext or authenticated TLS 1.3—and publishes live WAV, status, and
 health on HTTP `8088`.
 
 ## Install
@@ -23,11 +23,12 @@ private working directory and exposes the recording flow as its Web UI.
 Recordings survive restarts and updates, but backups exclude them and a restore
 or uninstall removes them. Download every completed WAV you want to keep.
 
-To encrypt PCM, keep `cleartext_enabled` on for migration, turn on
+To encrypt PCM, generate the device's one-time bridge credential, turn on
 `tls_enabled`, and set a private `transport_api_token` of at least 16
-characters. Restart the add-on, then provision the device's one-time key in the
-Web UI. The [PCM transport workflow](../docs/tcp-transport.md#enable-encryption)
-owns cutover, rotation, recovery, and cleartext retirement.
+characters. Restart the add-on, provision the credential in the Web UI, then
+verify and activate it on the device. The coordinated switch briefly interrupts
+audio. The [PCM transport workflow](../docs/tcp-transport.md#enable-encryption)
+owns cutover, credential replacement, and recovery.
 
 ## Use
 

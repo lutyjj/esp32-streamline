@@ -32,10 +32,8 @@ const status: BridgeStatus = {
   sources: {},
   transport: {
     contract_version: 1,
-    cleartext_enabled: true,
-    tls_enabled: true,
-    cleartext_port: 39000,
-    tls_port: 39001,
+    mode: 'tls-psk',
+    port: 39000,
     key_ids: [],
     auth_successes: 0,
     auth_failures: 0,

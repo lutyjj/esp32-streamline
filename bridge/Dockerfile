@@ -46,7 +46,6 @@ RUN useradd --uid 10001 --no-create-home streamline \
 USER streamline
 
 EXPOSE 39000/tcp
-EXPOSE 39001/tcp
 EXPOSE 8088/tcp
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \

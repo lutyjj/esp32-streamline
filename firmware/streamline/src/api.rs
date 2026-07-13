@@ -169,7 +169,7 @@ endpoint!(
     post,
     "/api/settings/transport",
     authenticated,
-    summary = "Set PCM transport mode and ports",
+    summary = "Set the PCM transport mode",
     request_body(
         content = TransportSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
@@ -549,10 +549,6 @@ pub struct TargetSettingsRequest {
 pub struct TransportSettingsRequest {
     pub contract_version: u8,
     pub mode: crate::transport::TransportMode,
-    #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
-    pub cleartext_port: u16,
-    #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
-    pub secure_port: u16,
 }
 
 #[derive(Debug, Deserialize)]
@@ -710,9 +706,6 @@ pub struct ConfigResponse<'a> {
 pub struct TransportStatus<'a> {
     pub contract_version: u8,
     pub mode: crate::transport::TransportMode,
-    pub cleartext_port: u16,
-    pub secure_port: u16,
-    pub effective_port: u16,
     pub active_key_id: Option<&'a str>,
     pub pending_key_id: Option<&'a str>,
     pub pending_verified: bool,

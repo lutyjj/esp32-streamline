@@ -204,9 +204,6 @@ fn config_json(state: &ApiState) -> String {
         transport: api::TransportStatus {
             contract_version: config.transport.contract_version,
             mode: config.transport.mode,
-            cleartext_port: config.target_port,
-            secure_port: config.transport.secure_port,
-            effective_port: config.transport.effective_port(config.target_port),
             active_key_id: config.transport.keys.active().map(|key| key.id()),
             pending_key_id: config.transport.keys.pending().map(|key| key.id()),
             pending_verified: config.transport.keys.pending_verified(),

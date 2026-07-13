@@ -39,6 +39,8 @@ export interface TransportActions {
   canRetire: boolean;
 }
 
+export type TransportJourney = 'opt-in' | 'provision' | 'activate' | 'secure' | 'rotation';
+
 const runtimeApi: TransportApi = {
   stage: stageTransportKey,
   verify: verifyTransportKey,
@@ -51,12 +53,18 @@ const runtimeApi: TransportApi = {
 
 export function transportActions(status: TransportStatus): TransportActions {
   return {
-    canStage: !status.pending_key_id,
+    canStage: !status.pending_key_id && !status.rollback_key_id,
     canVerify: Boolean(status.pending_key_id) && !status.pending_verified,
     canActivate: Boolean(status.pending_key_id) && status.pending_verified,
     canRollback: status.mode === 'tls-psk' && Boolean(status.rollback_key_id),
     canRetire: Boolean(status.rollback_key_id),
   };
+}
+
+export function transportJourney(status: TransportStatus): TransportJourney {
+  if (status.pending_key_id) return status.pending_verified ? 'activate' : 'provision';
+  if (status.rollback_key_id) return 'rotation';
+  return status.mode === 'tls-psk' ? 'secure' : 'opt-in';
 }
 
 export class TransportController {
@@ -99,12 +107,10 @@ export class TransportController {
     return undefined;
   }
 
-  useCleartext(config: DeviceConfig, cleartextPort: number, securePort: number): Promise<Ack> {
+  useCleartext(config: DeviceConfig): Promise<Ack> {
     return this.api.configure({
       contract_version: config.transport.contract_version,
       mode: 'cleartext',
-      cleartext_port: cleartextPort,
-      secure_port: securePort,
     });
   }
 

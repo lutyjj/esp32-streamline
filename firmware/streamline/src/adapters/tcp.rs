@@ -40,7 +40,7 @@ pub struct TargetAddress {
 
 impl TargetAddress {
     pub fn resolve(config: &RuntimeConfig) -> Result<Self> {
-        let port = config.transport.effective_port(config.target_port);
+        let port = config.target_port;
         let socket = resolve_socket(&config.target_host, port)?;
         let security = match config.transport.mode {
             TransportMode::Cleartext => TransportSecurity::Cleartext,

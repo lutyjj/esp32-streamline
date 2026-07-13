@@ -7,7 +7,7 @@ import ipaddress
 import os
 from dataclasses import dataclass
 
-from streamline_bridge.transport import DEFAULT_CLEARTEXT_PORT, DEFAULT_TLS_PORT
+from streamline_bridge.transport import DEFAULT_PORT
 
 
 @dataclass(frozen=True)
@@ -45,10 +45,8 @@ class AddonControlOption:
 
 BRIDGE_OPTIONS = (
     BridgeOption("tcp_bind", "--tcp-bind", str, "0.0.0.0", "TCP bind address"),
-    BridgeOption("tcp_port", "--tcp-port", int, DEFAULT_CLEARTEXT_PORT, "TCP listen port", minimum=1),
-    BridgeOption("cleartext_enabled", "--cleartext-enabled", bool, True, "enable cleartext PCM input", addon=True),
+    BridgeOption("tcp_port", "--tcp-port", int, DEFAULT_PORT, "PCM listen port", minimum=1),
     BridgeOption("tls_enabled", "--tls-enabled", bool, False, "enable TLS 1.3 PSK PCM input", addon=True),
-    BridgeOption("tls_port", "--tls-port", int, DEFAULT_TLS_PORT, "TLS 1.3 PSK listen port", minimum=1, addon=True),
     BridgeOption("tls_keys_file", "--tls-keys-file", str, "", "private versioned transport key file"),
     BridgeOption(
         "source_allow",
@@ -196,10 +194,6 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
         raise SystemExit(f"--source-allow must be an IPv4 address: {exc}") from exc
     if len(args.source_allow) > args.max_sources:
         raise SystemExit("--max-sources must be at least the number of allowed sources")
-    if not args.cleartext_enabled and not args.tls_enabled:
-        raise SystemExit("at least one PCM listener must be enabled")
-    if args.cleartext_enabled and args.tls_enabled and args.tcp_port == args.tls_port:
-        raise SystemExit("--tcp-port and --tls-port must differ when both listeners are enabled")
     if args.tls_enabled and not args.tls_keys_file:
         raise SystemExit("--tls-keys-file is required when TLS transport is enabled")
     return args

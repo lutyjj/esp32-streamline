@@ -114,7 +114,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         },
         target: TargetTelemetry {
             host: config.target_host.clone(),
-            port: config.transport.effective_port(config.target_port),
+            port: config.target_port,
             transport: config.transport.mode.as_str(),
         },
         audio: AudioTelemetry {

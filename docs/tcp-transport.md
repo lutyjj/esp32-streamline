@@ -19,12 +19,11 @@ Encrypted mode requires this exact profile:
   `eli1-[0-9a-f]{32}`
 - no session tickets or early data
 
-The cleartext listener defaults to TCP `39000`; the encrypted listener defaults
-to TCP `39001`. They are independent listeners. A device selects one mode and
-port at boot. An encrypted device reconnects only to the encrypted port with
-the same active identity and key. Authentication, negotiation, or I/O failure
-drops that session and retries it; the device never tries cleartext
-automatically.
+The bridge and device use one target port, TCP `39000` by default. Each side
+selects exactly one mode. A cleartext bridge rejects TLS; a TLS bridge rejects
+cleartext. An encrypted device reconnects only with the same active identity
+and key. Authentication, negotiation, or I/O failure drops that session and
+retries TLS; the device never tries cleartext automatically.
 
 The bridge completes the TLS handshake and checks the exact version and cipher
 before it admits a source. The authenticated key id becomes the source id.
@@ -70,33 +69,36 @@ endpoints require the separate transport API token.
 
 ## Enable encryption
 
-First enable the encrypted bridge listener while leaving cleartext enabled.
-For standalone Compose, set these private environment values and recreate the
-service:
+The bridge and device cannot change the protocol on one port atomically. Plan a
+short interruption while they switch. If one bridge serves several devices,
+switch those devices together or run separate bridge instances during the
+migration.
+
+For standalone Compose, prepare these private environment values:
 
 ```dotenv
 STREAMLINE_TLS_ENABLED=true
-STREAMLINE_CLEARTEXT_ENABLED=true
 STREAMLINE_TRANSPORT_API_TOKEN=replace-with-at-least-16-random-characters
 ```
 
-For Home Assistant, set `tls_enabled`, `cleartext_enabled`, `tls_port`, and
-`transport_api_token` in the add-on configuration, then restart the add-on.
+For Home Assistant, set `tls_enabled` and `transport_api_token` in the add-on
+configuration.
 
 Open the device console and the bridge console:
 
-1. In the device **Network → PCM transport** card, select **Generate encrypted
-   key**. Copy the one-time key id and PSK.
-2. In the bridge **PCM transport** section, unlock with the transport API token
+1. In the device **Network → Stream target** card, select **Encrypt transport**
+   and **Generate bridge credential**. Copy the one-time key id and PSK.
+2. Enable TLS and restart the bridge. Its one PCM port now rejects cleartext, so
+   audio pauses until the device activates TLS.
+3. In the bridge **PCM transport** section, unlock with the transport API token
    and provision that key id and PSK.
-3. On the device, select **Verify with bridge**. The device performs a real TLS
-   handshake on the encrypted port and marks the pending key verified only
-   after it succeeds. Fix a wrong bridge key or listener setting and retry; the
-   device stays on cleartext.
-4. Select **Activate encryption**. Activation promotes the verified key,
+4. On the device, select **Verify with bridge**. The device performs a real TLS
+   handshake on the configured target port and marks the pending credential
+   verified only after it succeeds. Fix a wrong bridge key or mode and retry.
+5. Select **Activate encryption**. Activation promotes the verified key,
    selects `tls-psk`, and restarts the device as one failure-atomic state
    transition.
-5. Confirm the bridge reports the source by key id over `tls-psk` and audio
+6. Confirm the bridge reports the source by key id over `tls-psk` and audio
    continues.
 
 Every console operation is available through the APIs. The equivalent key
@@ -122,12 +124,18 @@ curl -X POST \
   http://192.0.2.10/api/transport/keys/activate
 ```
 
-The first response supplies the key id and PSK for the second request. Do not
-put a real response in shell history, source control, an issue, or a PR.
+Switch the bridge to TLS between staging the device credential and provisioning
+it through the bridge API. The stage response supplies the key id and PSK for
+the bridge request. Do not put a real response in shell history, source
+control, an issue, or a PR.
 
-## Rotate and retire
+## Replace and retire
 
-Rotation uses the same stage, bridge provision, verify, and activate sequence.
+Routine rotation is unnecessary: ephemeral ECDHE gives each session fresh
+traffic keys and forward secrecy. Replace the bridge credential after suspected
+exposure, device ownership transfer, or an explicit recovery. Replacement uses
+the same stage, bridge provision, verify, and activate sequence without
+changing the bridge mode.
 Activation retains the former key as the device rollback key. Keep both bridge
 keys during a bounded observation window.
 
@@ -143,10 +151,11 @@ the window closes.
 ## Recover
 
 If the active or pending PCM key is lost, open the device console with its admin
-key and select **Recover lost key**. The recovery write selects cleartext for
-the next boot, replaces any unusable pending key, and reveals the replacement
-PSK once. Copy it, provision it on the bridge, then select **Restart into
-cleartext**. Repeat the normal verification and activation flow.
+key and select **Replace lost credential** under **Advanced security**. The
+recovery write selects cleartext for the next boot, replaces any unusable
+pending key, and reveals the replacement PSK once. While the bridge is still in
+TLS mode, provision the replacement. Switch the bridge to cleartext, restart
+the device into cleartext, then repeat the normal coordinated TLS cutover.
 
 The programmable recovery is:
 
@@ -163,13 +172,12 @@ curl -X POST \
 A lost admin key requires the documented physical reflash recovery. The PCM
 transport cannot bypass HTTP administration.
 
-## Retire cleartext
+## Switch back to cleartext
 
-Keep both bridge listeners only while legacy devices are migrating. After every
-device reports `tls-psk` and has passed playback and restart checks, set
-`cleartext_enabled=false` and restart the bridge. An encrypted device is
-unaffected because it never uses the cleartext port. Re-enable the listener
-only as an explicit owner recovery action.
+Switch the bridge to cleartext first by setting `tls_enabled=false` and
+restarting it. Then disable encryption in the device's **Advanced security**
+controls. The device restarts in cleartext on the same host and port. The gap
+between those actions is expected; neither side accepts the other protocol.
 
 ## Hardware smoke criteria
 

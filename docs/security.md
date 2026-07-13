@@ -17,8 +17,7 @@ place, and the standing items we track or have accepted.
 | Setup AP | Open; writes open only until an admin key is set | Brief window at first commissioning |
 | OTA update (`/api/ota/update`) | Admin-key gated; HTTPS to GitHub, SHA-256 verified, auto-rollback | Owner-only; authenticity rests on TLS to GitHub, not a signing key |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; image pinned by the admin-supplied SHA-256 | Owner-only; the digest is the root of trust, so the URL may be plain HTTP |
-| PCM compatibility stream (`:39000`) | Explicit cleartext TCP mode | LAN peers can capture audio or impersonate a source while enabled |
-| PCM protected stream (`:39001`) | TLS 1.3 PSK + ephemeral ECDHE; per-device identity | Authenticates the source and protects audio from LAN capture; device compromise exposes that device's future sessions until rotation |
+| PCM stream (`:39000`) | Explicit cleartext TCP or TLS 1.3 PSK mode | Cleartext permits LAN capture and impersonation; TLS authenticates the source and protects audio |
 | Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access |
 | PCM device PSK | Plaintext in NVS, write-only and independently random | Recoverable with physical flash access; never returned by a read API |
 | Bridge PCM key map | Private `0600` atomic file; token-gated mutations | Bridge host access exposes enrolled device keys |
@@ -56,9 +55,11 @@ fresh handshake values, and the authenticated transcript reject captured
 records or sessions. The bridge disables tickets and early data and admits no
 source until the exact TLS version, cipher, identity, and key succeed.
 
-Cleartext and encrypted intake use separate listeners. Cleartext exists for
-first setup, migration, and explicit recovery. Secure firmware never retries
-against it. Disable cleartext intake after every device is encrypted.
+The bridge listener accepts exactly one mode. With TLS enabled it rejects
+cleartext before source admission; with TLS disabled it accepts cleartext and
+does not negotiate TLS. Secure firmware never retries cleartext. Switching
+modes requires a coordinated bridge and device cutover with a short expected
+interruption.
 
 Device and bridge key mutations require different bearer credentials. The
 device generates a PCM PSK from the ESP32 random source and reveals it only in
@@ -70,7 +71,7 @@ Neither side logs or reads back PSKs.
 
 | Item | Tracking | Notes |
 |---|---|---|
-| Cleartext PCM compatibility listener | owner-controlled | Keep it only during first setup, migration, or recovery. It provides no confidentiality or source authentication. |
+| Cleartext PCM mode | owner-controlled | It provides no confidentiality or source authentication. Use it only when encryption is not enabled or during explicit recovery. |
 | Admin key travels over plain HTTP | by design | PCM transport encryption does not protect the HTTP API. Terminate TLS at a reverse proxy with a real certificate before exposure beyond the LAN. |
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
 | Open setup AP during commissioning | by design | Accepts writes only until the first admin key is set — a brief, physically proximate window. |
@@ -79,7 +80,7 @@ Neither side logs or reads back PSKs.
 
 ## Bridge
 
-- Keep ports `39000`, `39001`, and `8088` on a trusted network; never expose them
+- Keep ports `39000` and `8088` on a trusted network; never expose them
   directly. The Home Assistant add-on exposes the same ports on the Home
   Assistant host.
 - Set `--source-allow <ESP32 IPv4>` (or `STREAMLINE_SOURCE_ALLOW`) to reject

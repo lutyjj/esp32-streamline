@@ -20,8 +20,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 CONTRACT_VERSION: Final = 1
-DEFAULT_CLEARTEXT_PORT: Final = 39000
-DEFAULT_TLS_PORT: Final = 39001
+DEFAULT_PORT: Final = 39000
 KEY_ID_PATTERN_TEXT: Final = r"^eli1-[0-9a-f]{32}$"
 KEY_ID_PATTERN = re.compile(KEY_ID_PATTERN_TEXT)
 PSK_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -201,18 +200,14 @@ class TransportControl:
         authenticator: TlsPskAuthenticator | None,
         token: str | None,
         *,
-        cleartext_enabled: bool,
         tls_enabled: bool,
-        cleartext_port: int,
-        tls_port: int,
+        port: int,
     ) -> None:
         self.keys = keys
         self.authenticator = authenticator
         self._token = token
-        self._cleartext_enabled = cleartext_enabled
         self._tls_enabled = tls_enabled
-        self._cleartext_port = cleartext_port
-        self._tls_port = tls_port
+        self._port = port
 
     def authorize(self, candidate: str) -> bool:
         return self._token is not None and hmac.compare_digest(candidate, self._token)
@@ -221,10 +216,8 @@ class TransportControl:
         successes, failures = self.authenticator.snapshot() if self.authenticator is not None else (0, 0)
         return {
             "contract_version": CONTRACT_VERSION,
-            "cleartext_enabled": self._cleartext_enabled,
-            "tls_enabled": self._tls_enabled,
-            "cleartext_port": self._cleartext_port,
-            "tls_port": self._tls_port,
+            "mode": "tls-psk" if self._tls_enabled else "cleartext",
+            "port": self._port,
             "key_ids": list(self.keys.ids()) if self.keys is not None else [],
             "auth_successes": successes,
             "auth_failures": failures,

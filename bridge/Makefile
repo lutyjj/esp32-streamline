@@ -7,7 +7,7 @@ LOCK_IMAGE := esp32-streamline-bridge-lock
 IMAGE := $(or $(BRIDGE_IMAGE),esp32-streamline-bridge)
 VERSION ?= $(call toml_version,pyproject.toml)
 BRIDGE_ARGS ?=
-BRIDGE_PORTS ?= -p 39000:39000 -p 39001:39001 -p 8088:8088
+BRIDGE_PORTS ?= -p 39000:39000 -p 8088:8088
 CONSOLE_ASSET := src/streamline_bridge/console.html
 
 # Run a check in the dev image with the source mounted and the shared ruff/mypy

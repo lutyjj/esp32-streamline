@@ -41,22 +41,24 @@ fn register_settings(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
         if !authorized_for(&request, &state, api::SET_TRANSPORT) {
             return unauthorized(request);
         }
-        let result = (|| -> Result<()> {
+        let result = (|| -> Result<bool> {
             let form: api::TransportSettingsRequest = form(&mut request)?;
-            let mut next = state
+            let current = state
                 .config
                 .lock()
                 .map_err(|_| anyhow!("configuration lock poisoned"))?
                 .clone();
-            next.target_port = form.cleartext_port;
+            let mut next = current.clone();
             next.transport.contract_version = form.contract_version;
             next.transport.mode = form.mode;
-            next.transport.secure_port = form.secure_port;
             next.transport.validate()?;
-            save_configuration(&state, next)
+            let restart = current.transport.requires_restart_to(&next.transport);
+            save_configuration(&state, next)?;
+            Ok(restart)
         })();
         match result {
-            Ok(()) => reboot_response(request),
+            Ok(true) => reboot_response(request),
+            Ok(false) => json_response(request, 200, &api::Ack::ok()),
             Err(error) => bad_request(request, error),
         }
     })
@@ -105,7 +107,8 @@ fn register_verify(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Re
                 .map_err(|_| anyhow!("configuration lock poisoned"))?
                 .clone();
             let target_host = next.target_host.clone();
-            transport::verify_pending(&mut next.transport, &target_host, verifier)?;
+            let target_port = next.target_port;
+            transport::verify_pending(&mut next.transport, &target_host, target_port, verifier)?;
             save_configuration(&state, next)
         })();
         match result {

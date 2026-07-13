@@ -35,7 +35,17 @@ class HttpContractTests(unittest.TestCase):
         self.assertEqual((health.status_code, health.text), (200, "ok\n"))
         self.assertEqual(status.json()["bridge_version"], "test")
         self.assertEqual(status.json()["sources"], {})
-        self.assertFalse(status.json()["transport"]["tls_enabled"])
+        self.assertEqual(
+            status.json()["transport"],
+            {
+                "contract_version": 1,
+                "mode": "cleartext",
+                "port": 39000,
+                "key_ids": [],
+                "auth_successes": 0,
+                "auth_failures": 0,
+            },
+        )
         self.assertEqual(malformed.status_code, 400)
         self.assertIn("IPv4", malformed.json()["error"]["message"])
         self.assertEqual(missing.status_code, 404)

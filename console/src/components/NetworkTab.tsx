@@ -88,6 +88,11 @@ export function NetworkTab() {
 
   const moving = packetsMoving.value;
   const playing = s?.metrics.playing ?? false;
+  const targetDirty = Boolean(
+    c &&
+      (targetHost.trim() !== c.target_host ||
+        (targetPort !== '' && Number(targetPort) !== c.target_port)),
+  );
 
   return (
     <CardStack>
@@ -196,6 +201,8 @@ export function NetworkTab() {
           </div>
         )}
 
+        <TransportCard targetDirty={targetDirty} />
+
         <CardFooter>
           <TransactButton transact={targetTransact} disabled={!writable} onClick={saveTarget}>
             Save &amp; restart
@@ -212,7 +219,6 @@ export function NetworkTab() {
           )}
         </CardFooter>
       </Card>
-      <TransportCard />
     </CardStack>
   );
 }

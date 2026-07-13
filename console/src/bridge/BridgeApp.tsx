@@ -123,16 +123,16 @@ function TransportKeys() {
       <div class="section-head">
         <h2>PCM transport</h2>
         <span class="eyebrow">
-          {status.tls_enabled ? `TLS 1.3 · port ${status.tls_port}` : 'encrypted listener disabled'}
+          {status.mode === 'tls-psk' ? 'TLS 1.3' : 'Cleartext'} · port {status.port}
         </span>
       </div>
       <p class="grouplead">
-        {status.cleartext_enabled
-          ? `Cleartext remains available on port ${status.cleartext_port}. Disable it in bridge configuration after every device has cut over.`
-          : 'Cleartext intake is disabled.'}
+        {status.mode === 'tls-psk'
+          ? 'This listener accepts authenticated TLS only. Cleartext connections are rejected.'
+          : 'This listener accepts cleartext PCM only. Enable TLS in bridge configuration to switch modes.'}
       </p>
       {state === 'disabled' ? (
-        <Card lead="Enable the encrypted listener and configure a transport API token, then restart the bridge.">
+        <Card lead="Set a transport API token, enable TLS, and restart the bridge before activating encryption on the device.">
           {null}
         </Card>
       ) : state === 'locked' ? (
@@ -178,7 +178,10 @@ function TransportKeyWorkspace({ keyIds }: { keyIds: string[] }) {
   const [psk, setPsk] = useState('');
   const [busy, setBusy] = useState(false);
   return (
-    <Card title="Device keys" lead="Paste the one-time credential shown by the device console.">
+    <Card
+      title="Device credentials"
+      lead="Paste the one-time credential shown by the device console."
+    >
       <form
         class="formgrid"
         onSubmit={async (event) => {
@@ -194,19 +197,23 @@ function TransportKeyWorkspace({ keyIds }: { keyIds: string[] }) {
           }
         }}
       >
-        <label class="field">
-          <span>Key ID</span>
+        <div class="field">
+          <label for="transport-key-id">Credential ID</label>
           <input
+            id="transport-key-id"
+            class="credential-input"
             value={keyId}
             pattern="eli1-[0-9a-f]{32}"
             autocomplete="off"
             onInput={(event) => setKeyId(event.currentTarget.value)}
             required
           />
-        </label>
-        <label class="field">
-          <span>PSK</span>
+        </div>
+        <div class="field">
+          <label for="transport-psk">PSK</label>
           <input
+            id="transport-psk"
+            class="credential-input"
             type="password"
             value={psk}
             pattern="[0-9a-f]{64}"
@@ -214,9 +221,9 @@ function TransportKeyWorkspace({ keyIds }: { keyIds: string[] }) {
             onInput={(event) => setPsk(event.currentTarget.value)}
             required
           />
-        </label>
+        </div>
         <Button kind="primary" type="submit" busy={busy}>
-          Provision key
+          Provision credential
         </Button>
       </form>
       <div class="bridge-list transport-key-list">
@@ -232,7 +239,7 @@ function TransportKeyWorkspace({ keyIds }: { keyIds: string[] }) {
             </div>
           ))
         ) : (
-          <div class="empty">No encrypted device key is provisioned.</div>
+          <div class="empty">No encrypted device credential is provisioned.</div>
         )}
       </div>
     </Card>

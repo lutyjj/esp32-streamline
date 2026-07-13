@@ -5,8 +5,7 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 
 pub const CONTRACT_VERSION: u8 = 1;
-pub const DEFAULT_CLEARTEXT_PORT: u16 = 39_000;
-pub const DEFAULT_SECURE_PORT: u16 = 39_001;
+pub const DEFAULT_PORT: u16 = 39_000;
 pub const PSK_BYTES: usize = 32;
 pub const KEY_ID_RANDOM_BYTES: usize = 16;
 pub const KEY_ID_PREFIX: &str = "eli1-";
@@ -128,6 +127,9 @@ impl TransportKeys {
     pub fn stage(&mut self, random: &mut impl RandomBytes) -> Result<TransportKey, TransportError> {
         if self.pending.is_some() {
             return Err(TransportError::PendingKeyExists);
+        }
+        if self.rollback().is_some() {
+            return Err(TransportError::RollbackKeyExists);
         }
         let slot = self.active.map_or(KeySlot::A, KeySlot::other);
         let mut id_random = [0_u8; KEY_ID_RANDOM_BYTES];
@@ -258,7 +260,6 @@ impl TransportKeys {
 pub struct TransportSettings {
     pub contract_version: u8,
     pub mode: TransportMode,
-    pub secure_port: u16,
     pub keys: TransportKeys,
 }
 
@@ -267,7 +268,6 @@ impl Default for TransportSettings {
         Self {
             contract_version: CONTRACT_VERSION,
             mode: TransportMode::Cleartext,
-            secure_port: DEFAULT_SECURE_PORT,
             keys: TransportKeys::default(),
         }
     }
@@ -278,9 +278,6 @@ impl TransportSettings {
         if self.contract_version != CONTRACT_VERSION {
             return Err(TransportError::UnsupportedVersion);
         }
-        if self.secure_port == 0 {
-            return Err(TransportError::InvalidSecurePort);
-        }
         self.keys.validate()?;
         if self.mode == TransportMode::TlsPsk && self.keys.active().is_none() {
             return Err(TransportError::NoActiveKey);
@@ -288,11 +285,9 @@ impl TransportSettings {
         Ok(())
     }
 
-    pub const fn effective_port(&self, cleartext_port: u16) -> u16 {
-        match self.mode {
-            TransportMode::Cleartext => cleartext_port,
-            TransportMode::TlsPsk => self.secure_port,
-        }
+    /// A mode flip changes the protocol expected on the one target socket.
+    pub fn requires_restart_to(&self, next: &Self) -> bool {
+        self.mode != next.mode
     }
 }
 
@@ -308,6 +303,7 @@ pub trait KeyVerifier: Send + Sync {
 pub fn verify_pending(
     settings: &mut TransportSettings,
     host: &str,
+    port: u16,
     verifier: &dyn KeyVerifier,
 ) -> Result<(), VerifyPendingError> {
     if host.is_empty() {
@@ -318,7 +314,7 @@ pub fn verify_pending(
         .pending()
         .ok_or(VerifyPendingError::NoPendingKey)?;
     verifier
-        .verify(host, settings.secure_port, key)
+        .verify(host, port, key)
         .map_err(VerifyPendingError::Rejected)?;
     settings
         .keys
@@ -424,11 +420,11 @@ impl std::error::Error for VerifyPendingError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TransportError {
     UnsupportedVersion,
-    InvalidSecurePort,
     InvalidKeyState,
     InvalidKeyId,
     DuplicateKeyId,
     PendingKeyExists,
+    RollbackKeyExists,
     NoPendingKey,
     PendingKeyUnverified,
     NoActiveKey,
@@ -439,11 +435,13 @@ impl fmt::Display for TransportError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::UnsupportedVersion => "unsupported PCM transport contract version",
-            Self::InvalidSecurePort => "secure PCM port must be non-zero",
             Self::InvalidKeyState => "invalid PCM transport key state",
             Self::InvalidKeyId => "invalid PCM transport key id",
             Self::DuplicateKeyId => "PCM transport key ids must be unique",
             Self::PendingKeyExists => "a pending PCM transport key already exists",
+            Self::RollbackKeyExists => {
+                "retire the PCM transport rollback key before staging another key"
+            }
             Self::NoPendingKey => "no pending PCM transport key exists",
             Self::PendingKeyUnverified => "pending PCM transport key has not been verified",
             Self::NoActiveKey => "no active PCM transport key exists",
@@ -543,8 +541,7 @@ mod tests {
             contract["modes"],
             serde_json::json!(["cleartext", "tls-psk"])
         );
-        assert_eq!(contract["cleartext_port"], DEFAULT_CLEARTEXT_PORT);
-        assert_eq!(contract["tls_port"], DEFAULT_SECURE_PORT);
+        assert_eq!(contract["port"], DEFAULT_PORT);
         assert_eq!(contract["identity_prefix"], TLS_IDENTITY_PREFIX);
         assert_eq!(contract["key_id_pattern"], KEY_ID_PATTERN_TEXT);
         assert_eq!(contract["psk_bytes"], PSK_BYTES);
@@ -566,6 +563,19 @@ mod tests {
             ..TransportSettings::default()
         };
         assert_eq!(settings.validate(), Err(TransportError::NoActiveKey));
+    }
+
+    #[test]
+    fn only_a_mode_change_requires_a_transport_restart() {
+        let cleartext = TransportSettings::default();
+        let secure = TransportSettings {
+            mode: TransportMode::TlsPsk,
+            ..cleartext.clone()
+        };
+
+        assert!(!cleartext.requires_restart_to(&cleartext));
+        assert!(cleartext.requires_restart_to(&secure));
+        assert!(secure.requires_restart_to(&cleartext));
     }
 
     #[test]
@@ -639,6 +649,10 @@ mod tests {
         keys.activate().expect("rotated");
         assert_eq!(keys.active().map(TransportKey::id), Some(second.id()));
         assert_eq!(keys.rollback().map(TransportKey::id), Some(first.id()));
+        assert_eq!(
+            keys.stage(&mut Sequence(128)),
+            Err(TransportError::RollbackKeyExists)
+        );
 
         keys.rollback_key().expect("rolled back");
         assert_eq!(keys.active().map(TransportKey::id), Some(first.id()));
@@ -693,14 +707,25 @@ mod tests {
         let mut settings = TransportSettings::default();
         settings.keys.stage(&mut Sequence(0)).expect("key");
 
-        let rejected = verify_pending(&mut settings, "bridge.local", &Verifier(Err("wrong key")));
+        let rejected = verify_pending(
+            &mut settings,
+            "bridge.local",
+            DEFAULT_PORT,
+            &Verifier(Err("wrong key")),
+        );
         assert_eq!(
             rejected,
             Err(VerifyPendingError::Rejected("wrong key".to_owned()))
         );
         assert!(!settings.keys.pending_verified());
 
-        verify_pending(&mut settings, "bridge.local", &Verifier(Ok(()))).expect("accepted");
+        verify_pending(
+            &mut settings,
+            "bridge.local",
+            DEFAULT_PORT,
+            &Verifier(Ok(())),
+        )
+        .expect("accepted");
         assert!(settings.keys.pending_verified());
     }
 }

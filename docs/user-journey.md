@@ -69,11 +69,18 @@ to Sending as soon as packets flow, so success is observable without leaving
 the console. Cleartext works without an encryption decision during first
 setup.
 
-The PCM transport card offers an owner-driven secure path after hookup: create
-one device key, provision it in the bridge console, verify it through a real
-device-to-bridge handshake, then activate and restart. Verification failure
-keeps cleartext active and the retry visible. The key is never hidden before
-the owner can copy it, and secure mode never silently falls back.
+The **Stream target** card owns one host, one port, and an **Encrypt transport**
+control. After the owner opts in, the card shows one valid next action at a
+time: create a bridge credential, switch the bridge to TLS, provision and
+verify the credential, then activate and restart. The coordinated switch causes
+a short audio interruption because each side accepts exactly one protocol.
+Verification failure keeps the retry visible and never changes the device mode.
+The PSK is masked by default, shown only on request, and never available again
+after the owner dismisses it.
+
+Once encryption is active, the card says no routine action is required.
+Credential replacement, rollback, and recovery stay under **Advanced
+security**. Routine PSK rotation is not part of the customer journey.
 
 Exit: the Bridge tile reads Sending while music plays.
 

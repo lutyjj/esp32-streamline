@@ -891,16 +891,6 @@
             "title": "Auth Successes",
             "type": "integer"
           },
-          "cleartext_enabled": {
-            "title": "Cleartext Enabled",
-            "type": "boolean"
-          },
-          "cleartext_port": {
-            "maximum": 65535.0,
-            "minimum": 1.0,
-            "title": "Cleartext Port",
-            "type": "integer"
-          },
           "contract_version": {
             "const": 1,
             "title": "Contract Version",
@@ -913,23 +903,25 @@
             "title": "Key Ids",
             "type": "array"
           },
-          "tls_enabled": {
-            "title": "Tls Enabled",
-            "type": "boolean"
+          "mode": {
+            "enum": [
+              "cleartext",
+              "tls-psk"
+            ],
+            "title": "Mode",
+            "type": "string"
           },
-          "tls_port": {
+          "port": {
             "maximum": 65535.0,
             "minimum": 1.0,
-            "title": "Tls Port",
+            "title": "Port",
             "type": "integer"
           }
         },
         "required": [
           "contract_version",
-          "cleartext_enabled",
-          "tls_enabled",
-          "cleartext_port",
-          "tls_port",
+          "mode",
+          "port",
           "key_ids",
           "auth_successes",
           "auth_failures"

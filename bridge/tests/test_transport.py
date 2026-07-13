@@ -18,8 +18,7 @@ from streamline_bridge.sources import SourceRegistry
 from streamline_bridge.tcp import AuthenticatedConnection
 from streamline_bridge.transport import (
     CONTRACT_VERSION,
-    DEFAULT_CLEARTEXT_PORT,
-    DEFAULT_TLS_PORT,
+    DEFAULT_PORT,
     KEY_ID_PATTERN_TEXT,
     MAX_KEYS,
     PSK_BYTES,
@@ -52,7 +51,7 @@ def tls_attempt(
 
     def authenticate() -> None:
         try:
-            result.put(authenticator.authenticate(server_socket, ("192.0.2.10", 39001)))
+            result.put(authenticator.authenticate(server_socket, ("192.0.2.10", 39000)))
         except BaseException as exc:
             result.put(exc)
 
@@ -137,8 +136,7 @@ class TransportAuthenticationTests(unittest.TestCase):
 
         self.assertEqual(contract["contract_version"], CONTRACT_VERSION)
         self.assertEqual(contract["modes"], ["cleartext", "tls-psk"])
-        self.assertEqual(contract["cleartext_port"], DEFAULT_CLEARTEXT_PORT)
-        self.assertEqual(contract["tls_port"], DEFAULT_TLS_PORT)
+        self.assertEqual(contract["port"], DEFAULT_PORT)
         self.assertEqual(contract["identity_prefix"], TLS_IDENTITY_PREFIX)
         self.assertEqual(contract["key_id_pattern"], KEY_ID_PATTERN_TEXT)
         self.assertEqual(contract["psk_bytes"], PSK_BYTES)
@@ -195,7 +193,7 @@ class TransportAuthenticationTests(unittest.TestCase):
 
             def authenticate() -> None:
                 try:
-                    authenticator.authenticate(server_socket, ("192.0.2.10", 39001))
+                    authenticator.authenticate(server_socket, ("192.0.2.10", 39000))
                 except BaseException as exc:
                     result.put(exc)
                 else:
@@ -252,10 +250,8 @@ class TransportAuthenticationTests(unittest.TestCase):
                 keys,
                 authenticator,
                 self.token,
-                cleartext_enabled=True,
                 tls_enabled=True,
-                cleartext_port=39000,
-                tls_port=39001,
+                port=39000,
             )
             client = TestClient(make_app(SourceRegistry(make_pipeline, 2), "test", transport=control))
             path = f"/api/transport/keys/{self.key_id}"

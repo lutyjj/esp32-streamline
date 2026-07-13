@@ -1,10 +1,10 @@
 # Bridge reference
 
-The bridge accepts cleartext StreamLine PCM on TCP `39000` and authenticated
-TLS 1.3 PCM on TCP `39001`. It serves live WAV on HTTP `8088`. It owns producer
-authentication, packet playout, source lifecycle, HTTP client fan-out, and an
-optional lossless recording store. It does not retain source pipelines across
-a restart or identify a device by hostname.
+The bridge accepts StreamLine PCM on TCP `39000` in one configured mode:
+cleartext or authenticated TLS 1.3. It serves live WAV on HTTP `8088`. It owns
+producer authentication, packet playout, source lifecycle, HTTP client fan-out,
+and an optional lossless recording store. It does not retain source pipelines
+across a restart or identify a device by hostname.
 
 ## Endpoints
 
@@ -53,10 +53,8 @@ that artifact to generate a typed client; do not edit generated client files.
 
 | Option | Default | Constraint | Meaning |
 | --- | ---: | --- | --- |
-| `--cleartext-enabled` | true | boolean | Enable compatibility PCM intake on `--tcp-port`. |
-| `--tls-enabled` | false | boolean | Enable authenticated TLS 1.3 PCM intake. |
-| `--tcp-port` | 39000 | integer >= 1 | Cleartext PCM listener. Must differ from the TLS port when both are enabled. |
-| `--tls-port` | 39001 | integer >= 1 | Encrypted PCM listener. |
+| `--tls-enabled` | false | boolean | Select TLS-only intake when true; select cleartext-only intake when false. |
+| `--tcp-port` | 39000 | integer >= 1 | PCM listener for the selected mode. |
 | `--tls-keys-file` | empty | path required with TLS | Private versioned device-key map. |
 | `--source-allow` | empty | IPv4 addresses | Repeat or comma-separate allowed producer addresses. |
 | `--max-sources` | 8 | integer >= 1 | Maximum retained source pipelines. |
@@ -83,7 +81,7 @@ bounded, validated on load, and replaced atomically after each mutation.
 
 The bridge console accepts the one-time key id and PSK from the device console.
 The same operation is available as an authenticated API request. Follow the
-[transport enable, rotation, recovery, and cleartext-retirement workflow](tcp-transport.md#enable-encryption)
+[transport enable, credential replacement, and recovery workflow](tcp-transport.md#enable-encryption)
 instead of editing the key file.
 
 ## Recordings

@@ -77,8 +77,9 @@ Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 
 **Home Assistant OS / Supervised**: add this repository as a Home Assistant
 add-on repository, install **ESP32 StreamLine Bridge**, and start it. The add-on
-publishes the same ports as the container: cleartext PCM on `39000/tcp`,
-encrypted PCM on `39001/tcp`, and HTTP WAV on `8088/tcp`.
+publishes the same ports as the container: PCM on `39000/tcp` and HTTP WAV on
+`8088/tcp`. The PCM port accepts either cleartext or TLS, as selected in the
+bridge configuration, never both.
 
 **Docker** — create `docker-compose.yml` on your server and start it with
 `docker compose up -d`:
@@ -90,7 +91,6 @@ services:
     restart: unless-stopped
     ports:
       - "39000:39000/tcp"
-      - "39001:39001/tcp"
       - "8088:8088/tcp"
     environment:
       STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
@@ -98,8 +98,6 @@ services:
       STREAMLINE_RECORDING_TOKEN: ${STREAMLINE_RECORDING_TOKEN:-}
       STREAMLINE_TRANSPORT_API_TOKEN: ${STREAMLINE_TRANSPORT_API_TOKEN:-}
     command:
-      - --cleartext-enabled
-      - ${STREAMLINE_CLEARTEXT_ENABLED:-true}
       - --tls-enabled
       - ${STREAMLINE_TLS_ENABLED:-false}
       - --tls-keys-file
@@ -143,8 +141,8 @@ focused bridge page manages stored files; the device console continues to own
 audio, network, and firmware settings.
 
 Set `STREAMLINE_SOURCE_ALLOW` to the device IPv4 address, or a comma-separated
-list, whenever those addresses are stable. Keep ports `39000`, `39001`, and
-`8088` on a trusted LAN; none is an internet-facing service.
+list, whenever those addresses are stable. Keep ports `39000` and `8088` on a
+trusted LAN; neither is an internet-facing service.
 
 ### 3. Configure the device
 
@@ -158,9 +156,10 @@ list, whenever those addresses are stable. Keep ports `39000`, `39001`, and
    calibrate from **Audio**. Save a source profile when several players need
    different input levels.
 
-Cleartext PCM is the compatibility default. To encrypt it, enable the bridge's
-TLS listener, generate and provision the per-device key from the two consoles,
-verify it from the device, then activate encryption. Follow the
+Cleartext PCM is the compatibility default. To encrypt it, generate the device
+credential, switch the bridge's PCM port to TLS, provision and verify the
+credential, then activate encryption on the device. This coordinated switch
+briefly interrupts audio. Follow the
 [complete cutover and recovery workflow](docs/tcp-transport.md#enable-encryption).
 
 Open the console at its `.local` name to tune audio, change settings, or reset

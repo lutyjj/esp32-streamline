@@ -53,18 +53,6 @@ def main() -> int:
         if len(recording_token) < 16:
             raise SystemExit("STREAMLINE_RECORDING_TOKEN must contain at least 16 characters when recording is enabled")
         recordings = RecordingService(sources, RecordingStore(Path(args.recordings_dir)))
-    connection_slots = threading.BoundedSemaphore(args.max_sources * 2)
-    if args.cleartext_enabled:
-        cleartext_server = TcpIngestServer(
-            sources,
-            args.tcp_bind,
-            args.tcp_port,
-            args.source_idle_timeout_seconds,
-            max_connections=args.max_sources * 2,
-            connection_slots=connection_slots,
-        )
-        threading.Thread(target=cleartext_server.serve_forever, daemon=True).start()
-
     transport_token = os.environ.get("STREAMLINE_TRANSPORT_API_TOKEN", "") or None
     key_store: TransportKeyStore | None = None
     tls_authenticator: TlsPskAuthenticator | None = None
@@ -73,24 +61,21 @@ def main() -> int:
             raise SystemExit("STREAMLINE_TRANSPORT_API_TOKEN must contain at least 16 characters when TLS is enabled")
         key_store = TransportKeyStore(Path(args.tls_keys_file), maximum=min(args.max_sources * 2, 64))
         tls_authenticator = TlsPskAuthenticator(key_store)
-        tls_server = TcpIngestServer(
-            sources,
-            args.tcp_bind,
-            args.tls_port,
-            args.source_idle_timeout_seconds,
-            max_connections=args.max_sources * 2,
-            authenticator=tls_authenticator,
-            connection_slots=connection_slots,
-        )
-        threading.Thread(target=tls_server.serve_forever, daemon=True).start()
+    pcm_server = TcpIngestServer(
+        sources,
+        args.tcp_bind,
+        args.tcp_port,
+        args.source_idle_timeout_seconds,
+        max_connections=args.max_sources * 2,
+        authenticator=tls_authenticator,
+    )
+    threading.Thread(target=pcm_server.serve_forever, daemon=True).start()
     transport = TransportControl(
         key_store,
         tls_authenticator,
         transport_token,
-        cleartext_enabled=args.cleartext_enabled,
         tls_enabled=args.tls_enabled,
-        cleartext_port=args.tcp_port,
-        tls_port=args.tls_port,
+        port=args.tcp_port,
     )
     server = uvicorn.Server(
         uvicorn.Config(

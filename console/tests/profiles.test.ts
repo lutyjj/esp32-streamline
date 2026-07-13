@@ -36,9 +36,6 @@ const config: DeviceConfig = {
   transport: {
     contract_version: 1,
     mode: 'cleartext',
-    cleartext_port: 39000,
-    secure_port: 39001,
-    effective_port: 39000,
     active_key_id: null,
     pending_key_id: null,
     pending_verified: false,

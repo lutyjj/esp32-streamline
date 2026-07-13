@@ -3,7 +3,7 @@
 use crate::{
     board::Board,
     config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
-    transport::DEFAULT_CLEARTEXT_PORT,
+    transport::DEFAULT_PORT,
 };
 
 /// The setup AP starts either with no durable configuration or with the last
@@ -13,7 +13,7 @@ pub fn setup_baseline(board: &Board, persisted: Option<RuntimeConfig>) -> Runtim
         ssid: String::new(),
         password: String::new(),
         target_host: String::new(),
-        target_port: DEFAULT_CLEARTEXT_PORT,
+        target_port: DEFAULT_PORT,
         transport: Default::default(),
         admin_secret: String::new(),
         device_name: String::new(),

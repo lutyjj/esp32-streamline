@@ -148,7 +148,7 @@ The PCM frame has two hand-written implementations. Keep changes byte-exact and 
 
 The device always runs the embedded console and API. A bridge runs separately in one of two supported shapes:
 
-- The standalone container exposes cleartext TCP `39000`, encrypted TCP `39001`, and HTTP `8088`.
+- The standalone container exposes PCM TCP `39000` in one configured mode and HTTP `8088`.
 - The Home Assistant add-on runs the same bridge package with Supervisor-owned options, private transport-key storage, and the same ports.
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;

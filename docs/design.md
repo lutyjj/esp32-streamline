@@ -129,11 +129,11 @@ make bridge-up
 
 Home Assistant OS and Supervised installs can run the same bridge through the
 `ha-addon/` add-on repository entry. The add-on exposes TCP `39000` for
-cleartext PCM, TCP `39001` for authenticated TLS 1.3 PCM, and HTTP `8088` for
-`/streamline.wav`, `/status`, and `/health`.
+cleartext or authenticated TLS 1.3 PCM and HTTP `8088` for `/streamline.wav`,
+`/status`, and `/health`.
 
-Set each ESP32 target to the bridge host. Cleartext uses port `39000`; the
-encrypted workflow selects port `39001` after key verification. Add
+Set each ESP32 target to the bridge host and port `39000`; the bridge and device
+select cleartext or TLS for that same destination. Add
 `http://<bridge-host>:8088/streamline.wav` to Music Assistant as a radio URL, or
 `http://<bridge-host>:8088/streamline.wav?source=<source-id>` to pick one of
 several sources. Start audio on the source before adding the URL: an idle device

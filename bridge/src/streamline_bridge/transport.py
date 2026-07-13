@@ -20,13 +20,18 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 CONTRACT_VERSION: Final = 1
+DEFAULT_CLEARTEXT_PORT: Final = 39000
+DEFAULT_TLS_PORT: Final = 39001
 KEY_ID_PATTERN_TEXT: Final = r"^eli1-[0-9a-f]{32}$"
 KEY_ID_PATTERN = re.compile(KEY_ID_PATTERN_TEXT)
 PSK_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+PSK_BYTES: Final = 32
 MAX_KEYS: Final = 64
 MAX_KEY_FILE_BYTES: Final = 16 * 1024
 TLS_CIPHER: Final = "TLS_AES_128_GCM_SHA256"
 TLS_IDENTITY_PREFIX: Final = f"eli1:{CONTRACT_VERSION}:"
+TLS_VERSION: Final = "TLSv1.3"
+TLS_KEY_EXCHANGE: Final = "psk_dhe_ke"
 
 
 class TransportKeyError(ValueError):

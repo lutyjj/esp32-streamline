@@ -34,6 +34,7 @@ from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
 from streamline_bridge.recording import RecordingError
 from streamline_bridge.recording_http import RecordingHttpService
 from streamline_bridge.sources import Source, SourceRegistry, SourceSelectionError
+from streamline_bridge.transport import DEFAULT_CLEARTEXT_PORT, DEFAULT_TLS_PORT
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator, Mapping
@@ -244,8 +245,8 @@ def make_app(
                 "contract_version": 1,
                 "cleartext_enabled": True,
                 "tls_enabled": False,
-                "cleartext_port": 39000,
-                "tls_port": 39001,
+                "cleartext_port": DEFAULT_CLEARTEXT_PORT,
+                "tls_port": DEFAULT_TLS_PORT,
                 "key_ids": [],
                 "auth_successes": 0,
                 "auth_failures": 0,

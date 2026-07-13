@@ -7,6 +7,8 @@ import ipaddress
 import os
 from dataclasses import dataclass
 
+from streamline_bridge.transport import DEFAULT_CLEARTEXT_PORT, DEFAULT_TLS_PORT
+
 
 @dataclass(frozen=True)
 class BridgeOption:
@@ -43,10 +45,10 @@ class AddonControlOption:
 
 BRIDGE_OPTIONS = (
     BridgeOption("tcp_bind", "--tcp-bind", str, "0.0.0.0", "TCP bind address"),
-    BridgeOption("tcp_port", "--tcp-port", int, 39000, "TCP listen port", minimum=1),
+    BridgeOption("tcp_port", "--tcp-port", int, DEFAULT_CLEARTEXT_PORT, "TCP listen port", minimum=1),
     BridgeOption("cleartext_enabled", "--cleartext-enabled", bool, True, "enable cleartext PCM input", addon=True),
     BridgeOption("tls_enabled", "--tls-enabled", bool, False, "enable TLS 1.3 PSK PCM input", addon=True),
-    BridgeOption("tls_port", "--tls-port", int, 39001, "TLS 1.3 PSK listen port", minimum=1, addon=True),
+    BridgeOption("tls_port", "--tls-port", int, DEFAULT_TLS_PORT, "TLS 1.3 PSK listen port", minimum=1, addon=True),
     BridgeOption("tls_keys_file", "--tls-keys-file", str, "", "private versioned transport key file"),
     BridgeOption(
         "source_allow",

@@ -1,0 +1,12 @@
+{
+  "contract_version": 1,
+  "modes": ["cleartext", "tls-psk"],
+  "cleartext_port": 39000,
+  "tls_port": 39001,
+  "identity_prefix": "eli1:1:",
+  "key_id_pattern": "^eli1-[0-9a-f]{32}$",
+  "psk_bytes": 32,
+  "tls_version": "TLSv1.3",
+  "tls_cipher": "TLS_AES_128_GCM_SHA256",
+  "tls_key_exchange": "psk_dhe_ke"
+}

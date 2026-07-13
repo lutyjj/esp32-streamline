@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -11,6 +12,16 @@ from streamline_bridge.http import make_app
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.sources import SourceRegistry
 from streamline_bridge.transport import (
+    CONTRACT_VERSION,
+    DEFAULT_CLEARTEXT_PORT,
+    DEFAULT_TLS_PORT,
+    KEY_ID_PATTERN_TEXT,
+    MAX_KEYS,
+    PSK_BYTES,
+    TLS_CIPHER,
+    TLS_IDENTITY_PREFIX,
+    TLS_KEY_EXCHANGE,
+    TLS_VERSION,
     TlsPskAuthenticator,
     TransportControl,
     TransportKeyError,
@@ -72,6 +83,21 @@ class TransportAuthenticationTests(unittest.TestCase):
     key_id = "eli1-00112233445566778899aabbccddeeff"
     psk = "ab" * 32
     token = "transport-test-token"
+
+    def test_implementation_matches_the_machine_readable_transport_contract(self) -> None:
+        contract = json.loads(Path("/repo/docs/pcm-transport.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(contract["contract_version"], CONTRACT_VERSION)
+        self.assertEqual(contract["modes"], ["cleartext", "tls-psk"])
+        self.assertEqual(contract["cleartext_port"], DEFAULT_CLEARTEXT_PORT)
+        self.assertEqual(contract["tls_port"], DEFAULT_TLS_PORT)
+        self.assertEqual(contract["identity_prefix"], TLS_IDENTITY_PREFIX)
+        self.assertEqual(contract["key_id_pattern"], KEY_ID_PATTERN_TEXT)
+        self.assertEqual(contract["psk_bytes"], PSK_BYTES)
+        self.assertEqual(contract["tls_version"], TLS_VERSION)
+        self.assertEqual(contract["tls_cipher"], TLS_CIPHER)
+        self.assertEqual(contract["tls_key_exchange"], TLS_KEY_EXCHANGE)
+        self.assertEqual(MAX_KEYS, 64)
 
     def test_identity_contract_rejects_unknown_versions_and_shapes(self) -> None:
         self.assertEqual(parse_identity(f"eli1:1:{self.key_id}"), self.key_id)

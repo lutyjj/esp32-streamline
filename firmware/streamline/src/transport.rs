@@ -5,10 +5,16 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 
 pub const CONTRACT_VERSION: u8 = 1;
+pub const DEFAULT_CLEARTEXT_PORT: u16 = 39_000;
 pub const DEFAULT_SECURE_PORT: u16 = 39_001;
 pub const PSK_BYTES: usize = 32;
 pub const KEY_ID_RANDOM_BYTES: usize = 16;
 pub const KEY_ID_PREFIX: &str = "eli1-";
+pub const KEY_ID_PATTERN_TEXT: &str = "^eli1-[0-9a-f]{32}$";
+pub const TLS_IDENTITY_PREFIX: &str = "eli1:1:";
+pub const TLS_VERSION: &str = "TLSv1.3";
+pub const TLS_CIPHER: &str = "TLS_AES_128_GCM_SHA256";
+pub const TLS_KEY_EXCHANGE: &str = "psk_dhe_ke";
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
@@ -68,7 +74,7 @@ impl TransportKey {
     }
 
     pub fn identity(&self) -> String {
-        format!("eli1:{CONTRACT_VERSION}:{}", self.id)
+        format!("{TLS_IDENTITY_PREFIX}{}", self.id)
     }
 }
 
@@ -411,6 +417,27 @@ mod tests {
     }
 
     struct Verifier(Result<(), &'static str>);
+
+    #[test]
+    fn implementation_matches_the_machine_readable_transport_contract() {
+        let contract: serde_json::Value =
+            serde_json::from_str(include_str!("../../../docs/pcm-transport.json"))
+                .expect("valid transport contract");
+
+        assert_eq!(contract["contract_version"], CONTRACT_VERSION);
+        assert_eq!(
+            contract["modes"],
+            serde_json::json!(["cleartext", "tls-psk"])
+        );
+        assert_eq!(contract["cleartext_port"], DEFAULT_CLEARTEXT_PORT);
+        assert_eq!(contract["tls_port"], DEFAULT_SECURE_PORT);
+        assert_eq!(contract["identity_prefix"], TLS_IDENTITY_PREFIX);
+        assert_eq!(contract["key_id_pattern"], KEY_ID_PATTERN_TEXT);
+        assert_eq!(contract["psk_bytes"], PSK_BYTES);
+        assert_eq!(contract["tls_version"], TLS_VERSION);
+        assert_eq!(contract["tls_cipher"], TLS_CIPHER);
+        assert_eq!(contract["tls_key_exchange"], TLS_KEY_EXCHANGE);
+    }
 
     impl KeyVerifier for Verifier {
         fn verify(&self, _host: &str, _port: u16, _key: &TransportKey) -> Result<(), String> {

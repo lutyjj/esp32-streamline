@@ -33,8 +33,9 @@ impl TransportMode {
     }
 }
 
-#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(transparent)]
+/// Serializes as 64 lowercase hex characters — the one PSK representation
+/// shared by the stage response, the bridge key file, and the NVS record.
+#[derive(Clone, Eq, PartialEq)]
 pub struct TransportPsk([u8; PSK_BYTES]);
 
 impl TransportPsk {
@@ -54,6 +55,21 @@ impl TransportPsk {
 impl fmt::Debug for TransportPsk {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("<redacted transport PSK>")
+    }
+}
+
+impl Serialize for TransportPsk {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for TransportPsk {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        decode_hex(&text)
+            .map(Self)
+            .ok_or_else(|| serde::de::Error::custom("expected 64 lowercase hex characters"))
     }
 }
 
@@ -479,6 +495,24 @@ fn encode_hex(bytes: &[u8]) -> String {
     encoded
 }
 
+fn decode_hex(text: &str) -> Option<[u8; PSK_BYTES]> {
+    fn nibble(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            _ => None,
+        }
+    }
+    if text.len() != PSK_BYTES * 2 {
+        return None;
+    }
+    let mut decoded = [0_u8; PSK_BYTES];
+    for (slot, pair) in decoded.iter_mut().zip(text.as_bytes().chunks_exact(2)) {
+        *slot = (nibble(pair[0])? << 4) | nibble(pair[1])?;
+    }
+    Some(decoded)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, collections::VecDeque, rc::Rc};
@@ -694,12 +728,26 @@ mod tests {
                 .expect("decodable stale state");
         assert_eq!(stale.validate(), Err(TransportError::InvalidKeyState));
 
-        let psk = vec!["0"; PSK_BYTES].join(",");
+        let psk = "00".repeat(PSK_BYTES);
         let invalid: TransportKeys = serde_json::from_str(&format!(
-            r#"{{"slot_a":{{"id":"wrong-id","psk":[{psk}]}},"active":"a"}}"#
+            r#"{{"slot_a":{{"id":"wrong-id","psk":"{psk}"}},"active":"a"}}"#
         ))
         .expect("decodable invalid id");
         assert_eq!(invalid.validate(), Err(TransportError::InvalidKeyId));
+    }
+
+    #[test]
+    fn persisted_psks_are_their_64_character_hex_form() {
+        let mut keys = TransportKeys::default();
+        let key = keys.stage(&mut Sequence(0)).expect("key");
+        let encoded = serde_json::to_string(&keys).expect("encodable");
+        assert!(encoded.contains(&format!(r#""psk":"{}""#, key.psk().hex())));
+        let decoded: TransportKeys = serde_json::from_str(&encoded).expect("decodable");
+        assert_eq!(decoded, keys);
+
+        for malformed in [r#""too-short""#, r#""GG""#, "[0,1,2]"] {
+            assert!(serde_json::from_str::<TransportPsk>(malformed).is_err());
+        }
     }
 
     #[test]

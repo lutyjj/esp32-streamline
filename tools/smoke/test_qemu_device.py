@@ -12,8 +12,10 @@ import http.server
 import json
 import os
 import threading
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import ADMIN_KEY, API_TIMEOUT, BOOT_TIMEOUT, EmulatedDevice
@@ -40,6 +42,31 @@ def _mode(device: EmulatedDevice) -> str:
     mode = json.loads(body)["mode"]
     assert isinstance(mode, str)
     return mode
+
+
+def _wait_for_ota_phase(device: EmulatedDevice, phase: str, timeout: float) -> dict[str, Any]:
+    """Poll `/api/status` until the OTA worker reports `phase`.
+
+    A device that answers this poll is one that did not reboot: a successful
+    install reboots (ending the QEMU process under `-no-reboot`), so reaching a
+    non-`installed` terminal phase while still serving HTTP is itself the proof
+    the failure path left the running slot in place."""
+    deadline = time.monotonic() + timeout
+    last = "no status response"
+    while time.monotonic() < deadline:
+        try:
+            code, body = device.api.fetch("/api/status")
+        except OSError as error:
+            last = str(error)
+        else:
+            if code == 200:
+                ota = json.loads(body)["ota"]
+                assert isinstance(ota, dict)
+                if ota["phase"] == phase:
+                    return ota
+                last = f"phase={ota['phase']}"
+        time.sleep(2.0)
+    raise AssertionError(f"OTA did not reach phase {phase!r} within {timeout:.0f}s: {last}")
 
 
 def test_fresh_boot_reaches_setup_console(boot_device: Callable[..., EmulatedDevice]) -> None:
@@ -136,3 +163,41 @@ def test_ota_install_boots_from_the_other_slot(
     updated.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
     _expect_api_up(updated)
     assert _mode(updated) == "provisioned"
+
+
+def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(
+    provisioned_device: EmulatedDevice,
+    served_ota_image: tuple[str, str],
+) -> None:
+    # Pin the real image to a digest it cannot match. The device accepts the
+    # trigger, downloads, hashes, and must reject the payload the checksum does
+    # not vouch for — the guarantee that makes an unverified image unbootable.
+    url, _correct_sha = served_ota_image
+    code, body = provisioned_device.api.post_form("/api/ota/update", {"url": url, "sha256": "0" * 64})
+    assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
+
+    ota = _wait_for_ota_phase(provisioned_device, "failed", timeout=180)
+    assert "checksum" in ota["message"].lower(), f"failed for the wrong reason: {ota['message']!r}"
+
+    # A rejected install never switches slots, so the device stays on the image
+    # it booted, still serving its API rather than rebooting into a bad slot.
+    assert _mode(provisioned_device) == "provisioned"
+
+
+def test_provisioned_device_reports_the_unemulated_codec_as_a_blocking_fault(
+    provisioned_device: EmulatedDevice,
+) -> None:
+    # Emulation brings up no audio codec, which the boot flow reports as an audio
+    # failure. That fact must reach the health verdict as a blocking codec fault,
+    # proving boot facts flow into /api/health and drive its 503 status code.
+    code, body = provisioned_device.api.fetch("/api/health")
+    assert code == 503, f"health was answered with HTTP {code}"
+    health = json.loads(body)
+    assert health["status"] == "blocking", health
+    codec = next((check for check in health["checks"] if check["id"] == "codec"), None)
+    assert codec is not None and codec["status"] == "fail", health["checks"]
+
+    # The console reads the same verdict from /api/status.
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    assert json.loads(body)["health"]["status"] == "blocking"

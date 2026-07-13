@@ -18,6 +18,7 @@ pub mod identity;
 pub mod indicator;
 pub mod levels;
 pub mod metrics;
+pub mod mutation;
 pub mod packet;
 pub mod play;
 pub mod profiles;

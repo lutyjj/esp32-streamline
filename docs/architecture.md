@@ -134,7 +134,7 @@ Persistent and cross-boundary values enter business logic only after parsing and
 | Device HTTP API | Rust `api` module | OpenAPI artifact, device registration check, console types |
 | Board descriptor | Rust `board` model and descriptor validation | Built-in JSON catalog, NVS custom descriptor, API capabilities, console controls |
 | Audio profile catalog | Rust `profiles` model | NVS records, HTTP JSON, generated console shape |
-| PCM frame | [PCM protocol](pcm-protocol.md) | Rust encoder and Python parser, checked by their component tests |
+| PCM frame | [PCM protocol](pcm-protocol.md) | Rust encoder and Python parser, checked byte-for-byte against [conformance vectors](pcm-frame-vectors.json) in both component tests |
 | PCM transport constants | [Machine contract](pcm-transport.json) | Rust and Python constants, mechanically checked by both component tests |
 | Bridge device-key map | Bridge transport store | Private versioned file with bounded atomic replacement |
 | Release version | Bridge `pyproject.toml`, firmware `Cargo.toml`, add-on `config.yaml` | `make version-check` requires equality |
@@ -142,7 +142,7 @@ Persistent and cross-boundary values enter business logic only after parsing and
 | Security posture | [Security notes](security.md) | Device, bridge, add-on, and deployment guidance |
 | Recording timeline and file lifecycle | [Lossless recordings](recordings.md) | Bridge service, HTTP adapter, page, and deployment adapters |
 
-The PCM frame has two hand-written implementations. Keep changes byte-exact and update the protocol, firmware, bridge, and tests together.
+The PCM frame has two hand-written implementations. Keep changes byte-exact: update the protocol doc, firmware, bridge, and their tests together, then regenerate `pcm-frame-vectors.json` with `make firmware-pcm-frame-vectors`.
 
 ## Deployment shapes
 

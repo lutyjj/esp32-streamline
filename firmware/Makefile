@@ -42,7 +42,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock-check build test openapi openapi-check flash monitor capture clean artifacts
+.PHONY: image console-asset format lint lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -82,6 +82,12 @@ openapi: image
 
 openapi-check: image
 	$(CONTAINER_RUN) bash -c 'cargo run --locked --quiet --features api-spec --bin streamline-openapi -- /tmp/openapi.json && diff -u $(CONTAINER_WORKSPACE)/docs/openapi.json /tmp/openapi.json'
+
+# Regenerate the cross-language PCM frame conformance corpus from the encoder.
+# `firmware-test` fails until the committed file matches; `bridge-test` fails
+# until the Python parser matches the file.
+pcm-frame-vectors: image
+	$(CONTAINER_RUN) cargo run --locked --quiet --features pcm-frame-vectors --bin streamline-pcm-frame-vectors -- $(CONTAINER_WORKSPACE)/docs/pcm-frame-vectors.json
 
 # Serial devices are host resources; Docker Desktop on macOS cannot expose the
 # /dev/cu.* device reliably. Install espflash on the host for these two targets.

@@ -34,6 +34,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | `console` | Device and bridge consoles, WebFlasher UI, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
 | `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
 | `ha-addon` | Home Assistant Supervisor metadata, writable recording storage mapping, and bridge process wiring | Bridge runtime behavior |
+| `ha-integration` (`custom_components/streamline`) | Home Assistant config entries, per-source entities, and recording control over the bridge API | Bridge runtime behavior, bridge deployment, device configuration |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
 | `tools` | Developer-only capture analysis, bounded serial capture, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
 | `.github`, root and component Makefiles | Change selection, checks, release assembly, publishing | Component behavior |
@@ -104,8 +105,10 @@ integrity contract.
 `bridge/src/streamline_bridge/http.py` owns bridge routes through FastAPI and
 their request and response shapes through Pydantic models. `make
 bridge-openapi` generates `docs/bridge-openapi.json` from that runtime app. The
-bridge serves the same contract at `GET /api/openapi.json`, and Orval generates
-the bridge console client from the checked artifact. The WAV route uses the
+bridge serves the same contract at `GET /api/openapi.json`. Orval generates
+the bridge console client from the checked artifact, and `make
+ha-integration-generate` derives the Home Assistant integration's response
+models from it. The WAV route uses the
 same application but keeps media delivery behind a transport-neutral bounded
 client stream.
 
@@ -150,9 +153,10 @@ The device always runs the embedded console and API. A bridge runs separately in
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
 `/health` is the bridge container liveness probe. A deployment with writable
-recording storage also serves `/recordings` and its authenticated API. Music
-Assistant, Snapcast, Icecast, editors, and media libraries remain downstream
-systems.
+recording storage also serves `/recordings` and its authenticated API. The
+[Home Assistant integration](home-assistant.md) observes and controls either
+bridge shape through that same API. Music Assistant, Snapcast, Icecast,
+editors, and media libraries remain downstream systems.
 
 ## Build, CI, and release
 
@@ -186,6 +190,7 @@ Use `node` only where an external platform defines that term. Use concrete board
 - This document owns component and dependency boundaries.
 - [Design notes](design.md) own architectural decisions and integration choices.
 - [Bridge reference](bridge.md) owns bridge endpoints, source lifecycle, and tuning options.
+- [Home Assistant integration](home-assistant.md) owns the integration's install, configuration, and entity contracts.
 - [Lossless recordings](recordings.md) owns bridge recording behavior, storage, and API semantics.
 - [User journey](user-journey.md) owns visible setup, steady-state, and recovery promises.
 - [PCM protocol](pcm-protocol.md) and [TCP transport](tcp-transport.md) own the audio wire and runtime transport contracts.

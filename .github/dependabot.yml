@@ -16,6 +16,9 @@ multi-ecosystem-groups:
   ha-addon:
     schedule:
       interval: weekly
+  ha-integration:
+    schedule:
+      interval: weekly
   tools:
     schedule:
       interval: weekly
@@ -87,6 +90,18 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: ha-addon
+
+  - package-ecosystem: uv
+    directory: /ha-integration
+    patterns:
+      - "*"
+    multi-ecosystem-group: ha-integration
+
+  - package-ecosystem: docker
+    directory: /ha-integration
+    patterns:
+      - "*"
+    multi-ecosystem-group: ha-integration
 
   - package-ecosystem: docker
     directory: /webflasher

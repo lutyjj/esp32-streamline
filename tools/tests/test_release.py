@@ -16,6 +16,10 @@ class PrepareReleaseTests(unittest.TestCase):
             self.assertIn('version = "1.2.3"', (root / "firmware/streamline/Cargo.toml").read_text())
             self.assertIn('version: "1.2.3"', (root / "ha-addon/config.yaml").read_text())
             self.assertIn(
+                '"version": "1.2.3"',
+                (root / "custom_components/streamline/manifest.json").read_text(),
+            )
+            self.assertIn(
                 'name = "streamline-firmware"\nversion = "1.2.3"',
                 (root / "firmware/streamline/Cargo.lock").read_text(),
             )
@@ -50,6 +54,10 @@ class ReleaseFixture:
         write(root / "bridge/pyproject.toml", 'version = "0.5.2"\n')
         write(root / "firmware/streamline/Cargo.toml", 'version = "0.5.2"\n')
         write(root / "ha-addon/config.yaml", 'version: "0.5.2"\n')
+        write(
+            root / "custom_components/streamline/manifest.json",
+            '{\n  "domain": "streamline",\n  "version": "0.5.2"\n}\n',
+        )
         write(root / "firmware/streamline/Cargo.lock", '[[package]]\nname = "streamline-firmware"\nversion = "0.5.2"\n')
         return root
 

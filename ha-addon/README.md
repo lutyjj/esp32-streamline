@@ -31,3 +31,6 @@ the source. Snapcast, Icecast, or any HTTP consumer reads the same URL.
 
 With several ESP32 sources, select one with
 `http://<home-assistant-host>:8088/streamline.wav?source=<esp32-ip>`.
+
+The optional [Home Assistant integration](../docs/home-assistant.md) adds
+per-source entities and recording control over this add-on's API.

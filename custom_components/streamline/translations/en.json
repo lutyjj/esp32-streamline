@@ -1,0 +1,69 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This bridge is already configured.",
+      "reauth_successful": "The recording token was updated.",
+      "reconfigure_successful": "The bridge settings were updated."
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the bridge. Check the URL and the network.",
+      "invalid_auth": "The bridge rejected this recording token.",
+      "invalid_response": "The bridge returned an unexpected response. Update the bridge and this integration to matching versions.",
+      "invalid_url": "Enter an HTTP or HTTPS bridge root URL without a path or query."
+    },
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "recording_token": "Recording token"
+        },
+        "description": "The bridge rejected the saved recording token. Enter the token configured on the bridge.",
+        "title": "Update the recording token"
+      },
+      "reconfigure": {
+        "data": {
+          "bridge_url": "Bridge URL",
+          "recording_token": "Recording token"
+        },
+        "data_description": {
+          "bridge_url": "Root URL of the bridge HTTP API, for example http://192.0.2.1:8088.",
+          "recording_token": "Recording token configured on the bridge. Leave empty to drop recording control."
+        },
+        "title": "Reconfigure the StreamLine bridge"
+      },
+      "user": {
+        "data": {
+          "bridge_url": "Bridge URL",
+          "recording_token": "Recording token"
+        },
+        "data_description": {
+          "bridge_url": "Root URL of the bridge HTTP API, for example http://192.0.2.1:8088.",
+          "recording_token": "Recording token configured on the bridge. Leave empty to skip recording control."
+        },
+        "title": "Connect to a StreamLine bridge"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "audio_streaming": {
+        "name": "Audio streaming"
+      }
+    },
+    "sensor": {
+      "listeners": {
+        "name": "Listeners"
+      },
+      "lost_packets": {
+        "name": "Lost packets"
+      },
+      "peak_level": {
+        "name": "Peak level"
+      }
+    },
+    "switch": {
+      "recording": {
+        "name": "Recording"
+      }
+    }
+  }
+}

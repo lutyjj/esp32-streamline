@@ -7,6 +7,7 @@ FIRMWARE_LOCK_VERSION := $(shell awk '\
   /^name = "streamline-firmware"$$/ { package = 1; next } \
   package && /^version = "/ { split($$0, fields, "\""); print fields[2]; exit }' firmware/streamline/Cargo.lock)
 ADDON_VERSION := $(shell sed -n 's/^version: "\([^"]*\)"/\1/p' ha-addon/config.yaml)
+HA_INTEGRATION_VERSION := $(shell sed -n 's/^  "version": "\([^"]*\)".*/\1/p' custom_components/streamline/manifest.json)
 VERSION ?= $(PROJECT_VERSION)
 PORT ?= /dev/cu.usbserial-0001
 CAPTURE_SECS ?= 20
@@ -46,14 +47,14 @@ git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
 .PHONY: check help lint test format clean release-tools-image changelog changelog-check release release-history release-prepare release-lock-check release-check release-verify release-package release-notes \
-	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check docs-check api-contract-check version-check
+	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check ha-integration-check repository-check docs-check api-contract-check version-check
 
-check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
+check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check ha-integration-check repository-check
 
 help:
 	@echo "Cross-project targets:"
 	@echo "  make lint | test | check | format   run across every component"
-	@echo "  make <c>-check                       c = bridge | console | firmware | tools | webflasher | ha-addon"
+	@echo "  make <c>-check                       c = bridge | console | firmware | tools | webflasher | ha-addon | ha-integration"
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
 	@echo "                                        e.g. firmware-flash PORT=..., bridge-run, bridge-up"
 	@echo "  make repository-check                  validate docs, repository metadata, and release versions"
@@ -62,14 +63,14 @@ help:
 	@echo "  make release VERSION=X.Y.Z           prepare and verify a release snapshot"
 	@echo "  make release-package VERSION=X.Y.Z   build verified release assets for publishing"
 
-format: bridge-format console-format firmware-format tools-format ha-addon-format
+format: bridge-format console-format firmware-format tools-format ha-addon-format ha-integration-format
 
 release-tools-image:
 	$(CONTAINER) build -f Dockerfile.release-tools -t $(GIT_CLIFF_IMAGE) .
 
-lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
+lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint ha-integration-lint
 
-test: bridge-test console-test firmware-test firmware-build tools-test ha-addon-test
+test: bridge-test console-test firmware-test firmware-build tools-test ha-addon-test ha-integration-test
 
 # Only the firmware writes build artifacts onto the host; every other component
 # builds inside containers and leaves nothing to clean.
@@ -84,6 +85,7 @@ firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;
+ha-integration-check: ha-integration-lock-check ha-integration-generate-check ha-integration-lint ha-integration-test ha-integration-hassfest ;
 repository-check: version-check
 	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
 	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs
@@ -118,12 +120,16 @@ webflasher-%:
 ha-addon-%:
 	$(MAKE) -C ha-addon $*
 
+ha-integration-%:
+	$(MAKE) -C ha-integration $*
+
 version-check:
 	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
 	@test "$(VERSION)" = "$(PROJECT_VERSION)" || (echo "VERSION=$(VERSION) does not match bridge/pyproject.toml ($(PROJECT_VERSION))" >&2; exit 2)
 	@test "$(VERSION)" = "$(FIRMWARE_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.toml ($(FIRMWARE_VERSION))" >&2; exit 2)
 	@test "$(VERSION)" = "$(FIRMWARE_LOCK_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.lock ($(FIRMWARE_LOCK_VERSION))" >&2; exit 2)
 	@test "$(VERSION)" = "$(ADDON_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(ADDON_VERSION))" >&2; exit 2)
+	@test "$(VERSION)" = "$(HA_INTEGRATION_VERSION)" || (echo "VERSION=$(VERSION) does not match custom_components/streamline/manifest.json ($(HA_INTEGRATION_VERSION))" >&2; exit 2)
 	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || (echo "VERSION must be a stable X.Y.Z release version" >&2; exit 2)
 
 # Prepare the only files that carry the product version, then regenerate the
@@ -149,7 +155,7 @@ release-lock-check: version-check bridge-lock-check firmware-lock-check ;
 
 # Run all release checks without compiling the firmware twice: the artifact
 # target below performs the cross build that ordinary `make test` would do.
-release-check: lint bridge-test console-test firmware-test ha-addon-test
+release-check: lint bridge-test console-test firmware-test ha-addon-test ha-integration-test ha-integration-hassfest
 
 # Verify a prepared release without changing its files. Release PRs and
 # promotion use this target against a fixed commit.

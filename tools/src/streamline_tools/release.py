@@ -13,6 +13,7 @@ VERSION_FILES = (
     (Path("bridge/pyproject.toml"), re.compile(r'(?m)^version = "[^"]+"$')),
     (Path("firmware/streamline/Cargo.toml"), re.compile(r'(?m)^version = "[^"]+"$')),
     (Path("ha-addon/config.yaml"), re.compile(r'(?m)^version: "[^"]+"$')),
+    (Path("custom_components/streamline/manifest.json"), re.compile(r'(?m)^  "version": "[^"]+"$')),
     (Path("firmware/streamline/Cargo.lock"), FIRMWARE_LOCK_VERSION),
 )
 
@@ -43,6 +44,8 @@ def _replacement(relative_path: Path, version: str) -> str:
         return rf"\g<1>{version}\g<2>"
     if relative_path == Path("ha-addon/config.yaml"):
         return f'version: "{version}"'
+    if relative_path == Path("custom_components/streamline/manifest.json"):
+        return f'  "version": "{version}"'
     return f'version = "{version}"'
 
 

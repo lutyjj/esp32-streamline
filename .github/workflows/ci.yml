@@ -45,6 +45,8 @@ jobs:
               - 'Dockerfile.release-tools'
               - 'README.md'
               - 'cliff.toml'
+              - 'custom_components/streamline/manifest.json'
+              - 'hacs.json'
               - 'repository.yaml'
               - 'docs/**'
             bridge:
@@ -72,6 +74,12 @@ jobs:
               - 'bridge/uv.lock'
               - 'bridge/src/**'
               - 'bridge/tests/**'
+            ha-integration:
+              - *shared
+              - 'custom_components/**'
+              - 'ha-integration/**'
+              - 'hacs.json'
+              - 'docs/bridge-openapi.json'
             firmware:
               - *shared
               - 'firmware/**'

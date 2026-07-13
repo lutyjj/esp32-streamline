@@ -38,118 +38,46 @@ and much simpler than encoding on the ESP32.
 
 ### Encrypted PCM transport
 
-Use TLS 1.2 with a 256-bit, per-device pre-shared key and
-`TLS_PSK_WITH_AES_128_GCM_SHA256` (`PSK-AES128-GCM-SHA256` in OpenSSL) for
-encrypted PCM. Keep the ELI1 frame unchanged inside the TLS byte stream. TLS
-terminates in the firmware TCP adapter and at the bridge socket edge, so
-capture, framing, retry policy, playout, and fanout remain host-testable and
-transport-independent.
+Encrypted PCM uses TLS 1.3 external PSK with ephemeral ECDHE (`psk_dhe_ke`) and
+`TLS_AES_128_GCM_SHA256`. Each device has an independent random 256-bit PSK and
+a versioned non-secret identity. ECDHE provides forward secrecy: learning a
+device PSK does not decrypt recorded sessions.
 
-This is an accepted implementation direction, not the current wire contract.
-The released device and bridge continue to use cleartext TCP until the linked
-implementation and migration work is complete.
+TLS terminates in the firmware TCP adapter and at the bridge socket edge.
+Capture, ELI1 framing, retry policy, playout, and fanout stay host-testable and
+transport-independent. [TCP transport](tcp-transport.md) owns the exact
+session, key lifecycle, migration, and recovery contract. The
+[machine-readable contract](pcm-transport.json) mechanically checks shared
+Rust and Python constants.
 
 #### Evidence
 
-Disposable prototypes exercised cleartext TCP,
-[Noise](https://noiseprotocol.org/noise.pdf)
-`Noise_NNpsk0_25519_ChaChaPoly_SHA256`, and TLS-PSK through the same firmware
-capture path and production bridge media pipeline. The supported ESP32 board
-streamed 48 kHz stereo for at least ten uninterrupted minutes per candidate.
-Measurements use the same packet size, Wi-Fi power policy, bridge
-host, container image, and instrumentation build. Device task CPU is a share
-of total two-core capacity. Send-block time is the firmware socket-write time,
-used as a transport-path latency proxy because ELI1 has no sender timestamp.
+The selection covers cleartext, Noise, custom AEAD records, certificate TLS,
+TLS 1.2 PSK, TLS 1.3 PSK, VPN encapsulation, DTLS, and QUIC.
 
-| Measurement | Cleartext control | Noise NNpsk0 | TLS 1.2 PSK |
-|---|---:|---:|---:|
-| Device handshake | 85.6 ms | 361.5 ms | 258.7 ms |
-| Bridge handshake | Not applicable | 49.4 ms | 41.5 ms |
-| Network task CPU, median (range) | 3.57% (3.33–3.60) | 21.10% (20.98–21.21) | 14.81% (14.76–14.86) |
-| Capture task CPU, median (range) | 4.91% (4.72–4.95) | 5.27% (5.22–5.29) | 4.13% (4.10–4.16) |
-| Send-block time, median (range) | 1.34 ms (1.29–1.70) | 4.99 ms (4.91–5.08) | 2.55 ms (2.53–2.59) |
-| Free heap after handshake | 102.9 KiB | 91.7 KiB | 75.4 KiB |
-| Minimum free heap during run | 65.1 KiB | 52.6 KiB | 45.0 KiB |
-| OTA application image | 1,651,616 B | 1,726,800 B | 1,641,968 B |
-| Bridge CPU, median (range) | 7.25% (6.95–7.71) | 12.94% (10.42–14.38) | 10.06% (8.67–11.41) |
-| Bridge RSS, median | 50.6 MiB | 49.6 MiB | 50.6 MiB |
-| Continuous connection | 606.8 s | 649.3 s | 639.7 s |
-| Device packets after snapshot | 113,738 | 110,273 | 107,777 |
-| Queue drops after snapshot | 35 (0.031%) | 648 (0.588%) | 31 (0.029%) |
-| Network errors during run | 0 | 0 | 0 |
-| Bridge underruns | 0 | 0 | 0 |
-| Bridge restart to source | 2.14 s | 1.65 s | 1.38 s |
-| Wrong-key result | Not applicable | Rejected | Rejected |
+| Candidate | Source authentication | Forward secrecy | Fit |
+|---|---|---|---|
+| Cleartext TCP | No | No | Compatibility mode only |
+| Noise NNpsk0 | Yes | Yes | ESP32 CPU/stack cost and immature Python packages |
+| Custom AEAD records | Depends on design | Depends on design | Duplicates protocol, replay, and key-schedule work |
+| Certificate TLS | Yes | Yes | Adds issuance, naming, and renewal to single-owner setup |
+| TLS 1.2 pure PSK | Yes | No | Lower handshake cost, but recorded sessions depend on PSK secrecy |
+| TLS 1.3 external PSK + ECDHE | Yes | Yes | Selected; native maintained boundaries and no certificate authority |
+| VPN | Depends on deployment | Depends on deployment | Makes device security depend on external infrastructure |
+| DTLS or QUIC | Yes | Yes | Replaces the proven ordered stream without a product need |
 
-All candidates sustained the 1.536 Mbit/s offered load. Steady-state free heap
-remained within 97.3–98.6 KiB for cleartext, 80.2–88.0 KiB for Noise, and
-62.0–71.8 KiB for TLS, with no downward trend. One-minute send-block maxima
-varied from 106 to 302 ms across candidates and were dominated by Wi-Fi
-stalls. Queue drops therefore reflect both radio conditions and transport
-headroom; Noise dropped the most packets despite the strongest measured radio
-signal. Each bridge restart result measures wall time from container start to
-an authenticated source, except cleartext, which has no authentication.
-
-Noise provides compact authenticated encryption and fresh ephemeral keys, but
-the prototype used about six times the cleartext network-task CPU, required a
-larger task stack for X25519, and added 75,184 bytes to the OTA image. The
-evaluated Python implementations are Alpha packages: the newer
-[`noiseframework`](https://pypi.org/project/noiseframework/) package failed a
-direct Snow NNpsk0 interop vector, while the interoperable
-[`noiseprotocol`](https://pypi.org/project/noiseprotocol/) 0.3.1 package has no
-release newer than 2020 and its
-[repository](https://github.com/plizonczyk/noiseprotocol) lists peer review and
-side-channel work as TODOs. Neither is an acceptable production trust
-boundary.
-
-TLS-PSK uses maintained
 [ESP-TLS](https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32/api-reference/protocols/esp_tls.html)
 and [Python/OpenSSL](https://docs.python.org/3.14/library/ssl.html#ssl.SSLContext.set_psk_server_callback)
-interfaces, stays within the measured device budget, and needs no certificate
-authority. The production bridge runtime must require Python 3.13 or newer for
-server-side PSK callbacks. Pure PSK cipher suites do not provide forward
-secrecy: compromise of a device PSK can expose sessions recorded with that key.
-DHE-PSK could add forward secrecy, but the supported ESP32 build does not
-enable finite-field Diffie-Hellman and its extra cost does not fit this LAN
-appliance threat model.
+provide the selected client and server boundaries. The firmware enables only
+TLS 1.3 PSK with ephemeral key exchange. The bridge requires the exact TLS
+version and cipher before it creates a source.
 
-A formal cleartext exception does not meet the goal because it neither hides
-audio nor authenticates a source. Certificate TLS adds certificate issuance,
-naming, and renewal without improving the single-owner commissioning path. A
-VPN makes encryption depend on external network infrastructure. A custom AEAD
-record layer duplicates mature protocol work, while DTLS and QUIC replace the
-proven reliable-stream transport. These remain deployment options or future
-decisions, not competing product transports.
-
-#### Security and lifecycle contract
-
-- Generate an independent random 256-bit PCM PSK per device. Never derive it
-  from or reuse the HTTP admin key.
-- Use a non-secret key id as the TLS client identity. The bridge maps key ids
-  to PSKs and supports many devices without sharing one fleet key.
-- Store active and pending key slots plus an active marker. Staging,
-  activation, rollback, and retirement are failure-atomic across flash writes.
-- Rotate by staging a key through the authenticated device API, provisioning
-  it on the bridge, proving a connection, activating it, and retiring the old
-  key after a bounded rollback window. Recover a lost PCM key through the
-  admin API; recover a lost admin key by reflashing.
-- Rely on the TLS AEAD sequence and fresh handshake randoms to reject record
-  replay and tampering within and across sessions. Treat the authenticated key
-  id, not the source IP address, as source identity.
-- Configure cleartext and TLS-PSK as explicit modes on separate listeners.
-  An encrypted device never retries in cleartext. A migration may run both
-  listeners for legacy devices, then disable the cleartext listener.
-- Keep provisioning, verification, rotation, rollback, and recovery available
-  through APIs. The console only drives those contracts.
-
-The implementation is split into reviewable contracts for
-[protocol versioning](https://github.com/lutyjj/esp32-streamline/issues/182),
-[key lifecycle](https://github.com/lutyjj/esp32-streamline/issues/184),
-[firmware](https://github.com/lutyjj/esp32-streamline/issues/185),
-[bridge](https://github.com/lutyjj/esp32-streamline/issues/188),
-[migration](https://github.com/lutyjj/esp32-streamline/issues/187),
-[documentation](https://github.com/lutyjj/esp32-streamline/issues/183), and
-[hardware qualification](https://github.com/lutyjj/esp32-streamline/issues/186).
+The supported ESP32 and Python 3.14 bridge negotiate the exact profile with a
+736.8 ms device handshake. The session consumes 36,476 bytes of device heap,
+keeps at least 75,300 bytes free, and streams more than 140 MB of 48 kHz stereo
+PCM for over ten uninterrupted minutes with zero network errors. The OTA image
+is 1,687,008 bytes, 83.04% of its application partition. Wrong keys and unknown
+identities fail before source admission.
 
 ## Server Integration Options
 
@@ -200,12 +128,14 @@ make bridge-up
 ```
 
 Home Assistant OS and Supervised installs can run the same bridge through the
-`ha-addon/` add-on repository entry. The add-on exposes TCP `39000` for ESP32
-PCM and HTTP `8088` for `/streamline.wav`, `/status`, and `/health`.
+`ha-addon/` add-on repository entry. The add-on exposes TCP `39000` for
+cleartext PCM, TCP `39001` for authenticated TLS 1.3 PCM, and HTTP `8088` for
+`/streamline.wav`, `/status`, and `/health`.
 
-Set each ESP32 TCP target to the bridge host IP and port `39000`. Add
+Set each ESP32 target to the bridge host. Cleartext uses port `39000`; the
+encrypted workflow selects port `39001` after key verification. Add
 `http://<bridge-host>:8088/streamline.wav` to Music Assistant as a radio URL, or
-`http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>` to pick one of
+`http://<bridge-host>:8088/streamline.wav?source=<source-id>` to pick one of
 several sources. Start audio on the source before adding the URL: an idle device
 sends no audio, and Music Assistant rejects a stream it cannot probe. To serve a
 client that needs an encoded stream, put Liquidsoap/Icecast after the bridge to

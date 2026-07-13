@@ -1,8 +1,9 @@
 # ESP32 StreamLine Bridge add-on
 
 This add-on runs the StreamLine bridge inside Home Assistant OS or Home
-Assistant Supervised. It accepts ESP32 PCM packets on TCP `39000` and publishes
-the live WAV stream, status API, and health check on HTTP `8088`.
+Assistant Supervised. It accepts cleartext ESP32 PCM on TCP `39000`, optional
+authenticated TLS 1.3 PCM on TCP `39001`, and publishes live WAV, status, and
+health on HTTP `8088`.
 
 ## Install
 
@@ -22,6 +23,12 @@ private working directory and exposes the recording flow as its Web UI.
 Recordings survive restarts and updates, but backups exclude them and a restore
 or uninstall removes them. Download every completed WAV you want to keep.
 
+To encrypt PCM, keep `cleartext_enabled` on for migration, turn on
+`tls_enabled`, and set a private `transport_api_token` of at least 16
+characters. Restart the add-on, then provision the device's one-time key in the
+Web UI. The [PCM transport workflow](../docs/tcp-transport.md#enable-encryption)
+owns cutover, rotation, recovery, and cleartext retirement.
+
 ## Use
 
 Point each ESP32 device at the Home Assistant host on port `39000`. Music
@@ -30,4 +37,4 @@ Assistant plays the stream as a radio URL: add
 the source. Snapcast, Icecast, or any HTTP consumer reads the same URL.
 
 With several ESP32 sources, select one with
-`http://<home-assistant-host>:8088/streamline.wav?source=<esp32-ip>`.
+`http://<home-assistant-host>:8088/streamline.wav?source=<source-id>`.

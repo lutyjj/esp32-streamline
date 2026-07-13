@@ -20,8 +20,9 @@ start](../README.md#quick-start); this document owns only the experience.
 - **No state without an exit.** Every screen, overlay, and mode offers a way
   back to a known state: cancelling calibration restores the previous levels,
   closing onboarding lands in the full console.
-- **Secrets are shown once, deliberately.** The admin key appears exactly
-  once per generation, with copy and remember affordances, and never again.
+- **Secrets are shown once, deliberately.** The admin key and each generated
+  PCM PSK appear exactly once, with copy affordances, and never through a read
+  API.
 - **Reads are open, writes are locked.** Anyone on the LAN can watch status;
   every change requires the unlock window. Locked controls look locked and
   say how to unlock. [security.md](security.md) owns the trust model.
@@ -63,9 +64,16 @@ meters move and calibration works before any bridge exists; only streaming
 waits.
 
 Promise: the Overview says plainly that no bridge is set and points at the
-Network tab. Host and port are one form; after the save, the Bridge tile
-flips to Sending as soon as packets flow, so success is observable without
-leaving the console.
+Network tab. Host and port are one form; after the save, the Bridge tile flips
+to Sending as soon as packets flow, so success is observable without leaving
+the console. Cleartext works without an encryption decision during first
+setup.
+
+The PCM transport card offers an owner-driven secure path after hookup: create
+one device key, provision it in the bridge console, verify it through a real
+device-to-bridge handshake, then activate and restart. Verification failure
+keeps cleartext active and the retry visible. The key is never hidden before
+the owner can copy it, and secure mode never silently falls back.
 
 Exit: the Bridge tile reads Sending while music plays.
 
@@ -144,6 +152,11 @@ Promise:
   erases, and lands in stage 2.
 - A lost admin key means reflashing (stage 1). The README states this where
   the key is introduced; the console must not pretend otherwise.
+- A lost PCM key keeps the HTTP console reachable. **Recover lost key** saves
+  explicit cleartext for the next boot, reveals one replacement key, and then
+  offers **Restart into cleartext**. The owner can provision and verify the
+  replacement before activating encryption again. Key rollback and the
+  prominent cleartext action remain visible exits during ordinary rotation.
 
 Exit: back to stage 5, or deliberately back to an earlier stage.
 

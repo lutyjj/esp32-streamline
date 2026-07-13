@@ -17,8 +17,11 @@ place, and the standing items we track or have accepted.
 | Setup AP | Open; writes open only until an admin key is set | Brief window at first commissioning |
 | OTA update (`/api/ota/update`) | Admin-key gated; HTTPS to GitHub, SHA-256 verified, auto-rollback | Owner-only; authenticity rests on TLS to GitHub, not a signing key |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; image pinned by the admin-supplied SHA-256 | Owner-only; the digest is the root of trust, so the URL may be plain HTTP |
-| PCM stream (`:39000`) | Cleartext TCP | LAN sniffer can capture audio |
+| PCM compatibility stream (`:39000`) | Explicit cleartext TCP mode | LAN peers can capture audio or impersonate a source while enabled |
+| PCM protected stream (`:39001`) | TLS 1.3 PSK + ephemeral ECDHE; per-device identity | Authenticates the source and protects audio from LAN capture; device compromise exposes that device's future sessions until rotation |
 | Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access |
+| PCM device PSK | Plaintext in NVS, write-only and independently random | Recoverable with physical flash access; never returned by a read API |
+| Bridge PCM key map | Private `0600` atomic file; token-gated mutations | Bridge host access exposes enrolled device keys |
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
 | Bridge recording API (`:8088`) | Disabled without writable storage; bearer-token gated when enabled | Token holder can record, list, download, and delete captures |
 | Bridge recording directory | Dedicated writable volume; link-safe file operations and validated metadata | A storage peer can delete or corrupt recordings, but cannot redirect bridge file access outside the directory |
@@ -30,7 +33,7 @@ place, and the standing items we track or have accepted.
   `/api/settings/board`, `/api/settings/audio-profiles`,
   `/api/settings/audio-profile`, `/api/settings/firmware`, `/api/restart`,
   `/api/factory-reset`, `/api/ota/check`, `/api/ota/update`,
-  `/api/ota/rollback`) and the no-op key
+  `/api/ota/rollback`, `/api/settings/transport`, and `/api/transport/*`) and the no-op key
   check (`/api/unlock`) require the
   admin key as a bearer token, checked with a constant-time compare. Reads are
   open and never return secrets.
@@ -44,11 +47,30 @@ place, and the standing items we track or have accepted.
   browser storage. Unlocking settings lasts 15 minutes. A lost key means
   reflashing to recover — there is no remote reset without the key.
 
+## PCM transport
+
+Encrypted PCM uses the exact TLS 1.3 profile in the
+[transport contract](tcp-transport.md). The PSK authenticates one device; the
+ephemeral ECDHE exchange provides forward secrecy. TLS record sequence numbers,
+fresh handshake values, and the authenticated transcript reject captured
+records or sessions. The bridge disables tickets and early data and admits no
+source until the exact TLS version, cipher, identity, and key succeed.
+
+Cleartext and encrypted intake use separate listeners. Cleartext exists for
+first setup, migration, and explicit recovery. Secure firmware never retries
+against it. Disable cleartext intake after every device is encrypted.
+
+Device and bridge key mutations require different bearer credentials. The
+device generates a PCM PSK from the ESP32 random source and reveals it only in
+the stage or recovery response. Device state transitions are failure-atomic.
+The bridge bounds its key map and publishes it with durable atomic replacement.
+Neither side logs or reads back PSKs.
+
 ## Tracked items
 
 | Item | Tracking | Notes |
 |---|---|---|
-| PCM stream is unencrypted | [transport rollout](https://github.com/lutyjj/esp32-streamline/issues/187) | [TLS-PSK is selected](design.md#encrypted-pcm-transport), but the current device and bridge remain cleartext until the implementation and migration contracts ship. |
+| Cleartext PCM compatibility listener | owner-controlled | Keep it only during first setup, migration, or recovery. It provides no confidentiality or source authentication. |
 | Admin key travels over plain HTTP | by design | PCM transport encryption does not protect the HTTP API. Terminate TLS at a reverse proxy with a real certificate before exposure beyond the LAN. |
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
 | Open setup AP during commissioning | by design | Accepts writes only until the first admin key is set — a brief, physically proximate window. |
@@ -57,12 +79,17 @@ place, and the standing items we track or have accepted.
 
 ## Bridge
 
-- Keep ports `39000` and `8088` on a trusted network; never expose them
+- Keep ports `39000`, `39001`, and `8088` on a trusted network; never expose them
   directly. The Home Assistant add-on exposes the same ports on the Home
   Assistant host.
 - Set `--source-allow <ESP32 IPv4>` (or `STREAMLINE_SOURCE_ALLOW`) to reject
   unexpected PCM sources. In the Home Assistant add-on, set `source_allow`.
   This is not a firewall replacement; restrict inbound at the boundary.
+- Encrypted source identity comes from the authenticated device key id. Configure
+  `STREAMLINE_TRANSPORT_API_TOKEN` with at least 16 random characters before
+  enabling TLS. The bridge page keeps this token in session storage and sends it
+  only to key mutation endpoints. The key status API returns ids, listener
+  state, and counters but never PSKs.
 - Recording requires `STREAMLINE_RECORDING_TOKEN`. The bridge page keeps it in
   browser session storage and sends it as a bearer token. The API never returns
   it. An authenticated request can mint a one-use download ticket that expires

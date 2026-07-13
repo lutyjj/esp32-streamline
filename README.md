@@ -23,6 +23,9 @@ HTTP consumer can read it too.
 - **Self-hosted bridge** — one Docker container turns the TCP PCM stream into
   a live HTTP WAV stream. A ~1 s playout buffer smooths Wi-Fi jitter and
   conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
+- **Opt-in encrypted PCM** — TLS 1.3 authenticates each device with its own
+  key and provides forward secrecy. Cleartext remains available for first
+  setup and explicit recovery. See [PCM transport](docs/tcp-transport.md).
 - **Lossless recording**: an optional bridge page and API preserve one source
   as a finite 48 kHz, 16-bit stereo WAV, with sequence gaps measured and
   represented as silence. See [lossless recordings](docs/recordings.md).
@@ -74,8 +77,8 @@ Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 
 **Home Assistant OS / Supervised**: add this repository as a Home Assistant
 add-on repository, install **ESP32 StreamLine Bridge**, and start it. The add-on
-publishes the same ports as the container: ESP32 PCM on `39000/tcp` and HTTP WAV
-on `8088/tcp`.
+publishes the same ports as the container: cleartext PCM on `39000/tcp`,
+encrypted PCM on `39001/tcp`, and HTTP WAV on `8088/tcp`.
 
 **Docker** — create `docker-compose.yml` on your server and start it with
 `docker compose up -d`:
@@ -87,11 +90,20 @@ services:
     restart: unless-stopped
     ports:
       - "39000:39000/tcp"
+      - "39001:39001/tcp"
       - "8088:8088/tcp"
     environment:
       STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
       STREAMLINE_RECORDINGS_DIR: ${STREAMLINE_RECORDINGS_DIR:-}
       STREAMLINE_RECORDING_TOKEN: ${STREAMLINE_RECORDING_TOKEN:-}
+      STREAMLINE_TRANSPORT_API_TOKEN: ${STREAMLINE_TRANSPORT_API_TOKEN:-}
+    command:
+      - --cleartext-enabled
+      - ${STREAMLINE_CLEARTEXT_ENABLED:-true}
+      - --tls-enabled
+      - ${STREAMLINE_TLS_ENABLED:-false}
+      - --tls-keys-file
+      - /data/transport-keys.json
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -101,16 +113,18 @@ services:
       - /tmp
     volumes:
       - streamline-recordings:/recordings
+      - streamline-transport:/data
 
 volumes:
   streamline-recordings:
+  streamline-transport:
 ```
 
 The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
 Music Assistant as a radio/URL stream, with audio already playing on the source:
 an idle device sends no audio, and Music Assistant rejects a stream it cannot
 probe. With several ESP32 sources, select one with
-`http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>`. `/status` serves
+`http://<bridge-host>:8088/streamline.wav?source=<source-id>`. `/status` serves
 per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning
 flags.
 
@@ -129,8 +143,8 @@ focused bridge page manages stored files; the device console continues to own
 audio, network, and firmware settings.
 
 Set `STREAMLINE_SOURCE_ALLOW` to the device IPv4 address, or a comma-separated
-list, whenever those addresses are stable. Keep ports `39000` and `8088` on a
-trusted LAN; neither is an internet-facing service.
+list, whenever those addresses are stable. Keep ports `39000`, `39001`, and
+`8088` on a trusted LAN; none is an internet-facing service.
 
 ### 3. Configure the device
 
@@ -143,6 +157,11 @@ trusted LAN; neither is an internet-facing service.
 5. Open the station console, then set the bridge host in **Network** and
    calibrate from **Audio**. Save a source profile when several players need
    different input levels.
+
+Cleartext PCM is the compatibility default. To encrypt it, enable the bridge's
+TLS listener, generate and provision the per-device key from the two consoles,
+verify it from the device, then activate encryption. Follow the
+[complete cutover and recovery workflow](docs/tcp-transport.md#enable-encryption).
 
 Open the console at its `.local` name to tune audio, change settings, or reset
 the device. Use the station IP if your network does not pass mDNS. For

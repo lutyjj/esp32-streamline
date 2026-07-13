@@ -3,7 +3,8 @@
 The ESP32 sends framed PCM to the bridge using a small fixed header followed by
 interleaved little-endian stereo PCM. The wire format is identical regardless of
 transport. The firmware carries it over a persistent TCP connection
-(Rust `std::net`). See `docs/tcp-transport.md` for the transport design.
+selected as cleartext or authenticated TLS 1.3 at boot. See
+[`tcp-transport.md`](tcp-transport.md) for the transport contract.
 
 ## Audio Format
 

@@ -10,8 +10,9 @@ This document maps component ownership and cross-component contracts. The linked
 flowchart LR
   input["Analog source"] --> codec["Board codec"]
   codec --> capture["Firmware capture and signal gate"]
-  capture --> tcp["ELI1 PCM over TCP"]
-  tcp --> bridge["Bridge source registry and playout buffer"]
+  capture --> tcp["ELI1 over cleartext or TLS 1.3 TCP"]
+  tcp --> auth["Bridge transport authentication"]
+  auth --> bridge["Source registry and playout buffer"]
   bridge --> wav["HTTP WAV clients"]
   bridge --> recording["Optional lossless recording store"]
 
@@ -33,7 +34,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | `firmware/streamline` | Board selection, codec and I2S capture, signal gating, device configuration, telemetry, HTTP API, TCP sender, OTA | Jitter buffering, audio encoding, playback |
 | `console` | Device and bridge consoles, WebFlasher UI, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
 | `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
-| `ha-addon` | Home Assistant Supervisor metadata, writable recording storage mapping, and bridge process wiring | Bridge runtime behavior |
+| `ha-addon` | Home Assistant Supervisor metadata, private recording and transport-key storage mapping, and bridge process wiring | Bridge runtime behavior |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
 | `tools` | Developer-only capture analysis, bounded serial capture, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
 | `.github`, root and component Makefiles | Change selection, checks, release assembly, publishing | Component behavior |
@@ -71,7 +72,7 @@ The [user journey](user-journey.md) owns the visible behavior of these states. T
 
 The selected board descriptor supplies codec identity, GPIO wiring, input labels, and control limits. The codec adapter configures the hardware, and the I2S adapter reads 48 kHz, 16-bit stereo PCM.
 
-For each captured packet, portable code computes levels and updates the signal gate. The firmware increments the sequence while idle but sends packets only while the gate reports playback. A bounded drop-oldest queue prevents a stalled network from blocking capture. The [PCM protocol](pcm-protocol.md) owns the bytes; the [TCP transport record](tcp-transport.md) owns task placement, timeouts, and queue behavior.
+For each captured packet, portable code computes levels and updates the signal gate. The firmware increments the sequence while idle but sends packets only while the gate reports playback. A bounded drop-oldest queue prevents a stalled network from blocking capture. The [PCM protocol](pcm-protocol.md) owns the bytes; the [PCM transport record](tcp-transport.md) owns mode selection, key lifecycle, task placement, timeouts, and reconnect behavior.
 
 ### Device API
 
@@ -90,7 +91,7 @@ flowchart LR
 
 ## Bridge boundaries
 
-The bridge accepts one persistent TCP connection per source IPv4 address. Each source owns an independent playout pipeline. A newer connection from the same address replaces the older session so packets from a rebooted device cannot mix with stale packets.
+The bridge runs separate compatibility and authenticated PCM listeners. A cleartext source is identified by peer IPv4 address. A TLS source is admitted only after the exact TLS 1.3 PSK profile succeeds and is identified by its authenticated device key id; peer IPv4 remains available for allowlist policy and diagnostics. Each source owns an independent playout pipeline. A newer connection for the same source id replaces the older session so packets from a rebooted device cannot mix with stale packets.
 
 The pipeline buffers packets before playout, follows sequence numbers, attenuates repeated audio across short gaps, emits silence for longer gaps, and re-buffers after a sustained outage. Each HTTP client has a bounded output queue; the bridge disconnects a client that cannot keep up. The [PCM protocol](pcm-protocol.md) owns the media and concealment contract.
 
@@ -115,7 +116,7 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 
 | State | Owner | Lifetime |
 |---|---|---|
-| Wi-Fi, target, audio, admin key, board selection, audio profile catalog | Firmware NVS adapter | Across reboots and firmware updates; the adapter commits a complete inactive generation, then switches one active marker; factory reset selects an empty generation |
+| Wi-Fi, target, transport mode and keys, audio, admin key, board selection, audio profile catalog | Firmware NVS adapter | Across reboots and firmware updates; the adapter commits a complete inactive generation, then switches one active marker; factory reset selects an empty generation |
 | Stream counters and level state | Firmware runtime | One boot |
 | OTA progress | Firmware OTA worker | One boot; final diagnostic note persists in NVS |
 | Bridge source pipelines and client queues | Bridge process | One bridge process |
@@ -134,6 +135,8 @@ Persistent and cross-boundary values enter business logic only after parsing and
 | Board descriptor | Rust `board` model and descriptor validation | Built-in JSON catalog, NVS custom descriptor, API capabilities, console controls |
 | Audio profile catalog | Rust `profiles` model | NVS records, HTTP JSON, generated console shape |
 | PCM frame | [PCM protocol](pcm-protocol.md) | Rust encoder and Python parser, checked by their component tests |
+| PCM transport constants | [Machine contract](pcm-transport.json) | Rust and Python constants, mechanically checked by both component tests |
+| Bridge device-key map | Bridge transport store | Private versioned file with bounded atomic replacement |
 | Release version | Bridge `pyproject.toml`, firmware `Cargo.toml`, add-on `config.yaml` | `make version-check` requires equality |
 | User-visible stages | [User journey](user-journey.md) | Console and firmware behavior |
 | Security posture | [Security notes](security.md) | Device, bridge, add-on, and deployment guidance |
@@ -145,8 +148,8 @@ The PCM frame has two hand-written implementations. Keep changes byte-exact and 
 
 The device always runs the embedded console and API. A bridge runs separately in one of two supported shapes:
 
-- The standalone container exposes TCP `39000` and HTTP `8088`.
-- The Home Assistant add-on runs the same bridge package with Supervisor-owned options and ports.
+- The standalone container exposes cleartext TCP `39000`, encrypted TCP `39001`, and HTTP `8088`.
+- The Home Assistant add-on runs the same bridge package with Supervisor-owned options, private transport-key storage, and the same ports.
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
 `/health` is the bridge container liveness probe. A deployment with writable
@@ -172,7 +175,7 @@ Use these terms across code, APIs, and docs:
 |---|---|
 | device | One ESP32 StreamLine appliance |
 | board | The physical ESP32 audio board described by a board descriptor |
-| source | A bridge-side PCM producer, identified by device IPv4 address |
+| source | A bridge-side PCM producer, identified by peer IPv4 in cleartext mode or authenticated device key id in TLS mode |
 | bridge | The process that converts PCM packets to HTTP WAV |
 | stream target | The bridge host and TCP port configured on a device |
 | client | A consumer reading the bridge's HTTP WAV stream |

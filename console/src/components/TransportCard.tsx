@@ -7,14 +7,23 @@ import { toast } from '../state/toasts';
 import { transport, transportActions, transportJourney } from '../state/transport';
 import { Button } from './Button';
 import { CardFooter } from './Card';
+import { Chip } from './Chip';
+import { ConfirmButton } from './ConfirmButton';
+import { Disclosure } from './Disclosure';
+import { Kv } from './Kv';
 import { ActionState, TransactButton } from './Transact';
 
+/**
+ * The Encrypt transport section of the Stream target card. Sub-sections are
+ * `Disclosure`s (Advanced security, with Recovery nested inside), credential
+ * facts render through `Kv`, and every action row is a `CardFooter` — the
+ * same building blocks as the rest of the console.
+ */
 export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }) {
   const writable = useWritable();
   const current = config.value;
   const credential = transport.revealed.value;
   const lifecycle = useTransact();
-  const fallback = useTransact();
   const recovery = useTransact();
   const [setupOpen, setSetupOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -28,8 +37,8 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
   const actions = transportActions(status);
   const journey = transportJourney(status);
   const secure = status.mode === 'tls-psk';
-  const expanded = journey !== 'opt-in' || setupOpen;
   const steady = journey === 'secure' || journey === 'rotation';
+  const expanded = journey !== 'opt-in' || setupOpen;
   const pskVisible = pskReveal.keyId === credential?.key_id && pskReveal.visible;
 
   const copy = (value: string, label: string) => {
@@ -38,6 +47,139 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
       (error) => toast(error.message, 'err'),
     );
   };
+
+  const credentialRows: [string, string][] = [];
+  if (status.active_key_id) credentialRows.push(['Active credential', status.active_key_id]);
+  if (status.pending_key_id) credentialRows.push(['Pending credential', status.pending_key_id]);
+  if (status.rollback_key_id) credentialRows.push(['Previous credential', status.rollback_key_id]);
+
+  const lifecycleFooter = (
+    <CardFooter compact>
+      {actions.canStage && (
+        <TransactButton
+          transact={lifecycle}
+          disabled={!writable}
+          onClick={() =>
+            lifecycle.run(() => transport.stage(), { okText: 'Key generated — copy it now' })
+          }
+        >
+          {status.active_key_id ? 'Replace bridge credential' : 'Generate bridge credential'}
+        </TransactButton>
+      )}
+      {actions.canVerify && (
+        <TransactButton
+          transact={lifecycle}
+          disabled={!writable}
+          onClick={() =>
+            lifecycle.run(() => transport.verify(), {
+              busyText: 'Verifying with bridge…',
+              okText: 'Bridge accepted the pending key',
+            })
+          }
+        >
+          Verify with bridge
+        </TransactButton>
+      )}
+      {actions.canActivate && (
+        <TransactButton
+          transact={lifecycle}
+          disabled={!writable}
+          onClick={() =>
+            lifecycle.run(() => transport.activate(), { reboots: 'the encrypted PCM transport' })
+          }
+        >
+          Activate encryption
+        </TransactButton>
+      )}
+      {actions.canRollback && (
+        <TransactButton
+          transact={lifecycle}
+          kind="secondary"
+          disabled={!writable}
+          onClick={() =>
+            lifecycle.run(() => transport.rollback(), { reboots: 'the previous PCM key' })
+          }
+        >
+          Use previous credential
+        </TransactButton>
+      )}
+      {actions.canRetire && (
+        <TransactButton
+          transact={lifecycle}
+          kind="secondary"
+          disabled={!writable}
+          onClick={() => lifecycle.run(() => transport.retire())}
+        >
+          Forget previous credential
+        </TransactButton>
+      )}
+      <ActionState state={lifecycle.state} />
+    </CardFooter>
+  );
+
+  const recoverySection = (
+    <Disclosure
+      title="Recovery"
+      className="transport-recovery"
+      open={recoveryOpen}
+      onToggle={setRecoveryOpen}
+    >
+      <p class="help">
+        {secure
+          ? 'If the bridge lost this device’s key, switch the bridge to cleartext first, then disable encryption here.'
+          : 'Lost the one-time secret? Replace the pending key, or discard it to stay on cleartext.'}
+      </p>
+      <CardFooter compact flush>
+        {secure && (
+          <ConfirmButton
+            label="Disable encryption & restart"
+            confirmLabel="Disable & restart"
+            disabled={!writable}
+            message="The device restarts and streams unencrypted. Switch the bridge to cleartext first or audio stays paused."
+            onConfirm={() =>
+              recovery.run(() => transport.useCleartext(current), {
+                reboots: 'cleartext PCM transport',
+              })
+            }
+          />
+        )}
+        <TransactButton
+          transact={recovery}
+          kind="secondary"
+          disabled={!writable}
+          onClick={() =>
+            recovery.run(() => transport.recover(), {
+              okText: 'Replacement generated — copy it now',
+            })
+          }
+        >
+          {secure ? 'Replace lost credential' : 'Replace generated credential'}
+        </TransactButton>
+        {actions.canDiscard && (
+          <ConfirmButton
+            label="Discard pending credential"
+            confirmLabel="Discard it"
+            disabled={!writable}
+            message="The staged key is deleted and this device stays on cleartext. The bridge copy, if provisioned, can be removed from its console."
+            onConfirm={() =>
+              recovery.run(() => transport.discard(), { okText: 'Pending credential discarded' })
+            }
+          />
+        )}
+        {credential?.recovery && (
+          <TransactButton
+            transact={recovery}
+            kind="danger"
+            disabled={!writable}
+            onClick={() => recovery.run(() => restart(), { reboots: 'transport recovery' })}
+          >
+            Restart into cleartext
+          </TransactButton>
+        )}
+        <ActionState state={recovery.state} />
+      </CardFooter>
+    </Disclosure>
+  );
 
   return (
     <section class="transport-section">
@@ -52,16 +194,25 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
             } else if (journey === 'opt-in') {
               setSetupOpen(false);
             } else {
+              // Leaving encryption is an explicit choice that lives under
+              // Recovery; unchecking opens the path instead of acting.
               setAdvancedOpen(true);
               setRecoveryOpen(true);
             }
           }}
         />
         <span>
-          <strong>Encrypt transport</strong>
+          <span class="transport-title">
+            <strong>Encrypt transport</strong>
+            {secure && (
+              <Chip tone="good" dot>
+                encrypted
+              </Chip>
+            )}
+          </span>
           <small>
             {secure
-              ? `TLS 1.3 is active on ${current.target_host}:${current.target_port}.`
+              ? `TLS 1.3 to ${current.target_host}:${current.target_port}. No routine action is needed.`
               : 'Use authenticated TLS 1.3 on this same host and port.'}
           </small>
         </span>
@@ -70,28 +221,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
 
       {expanded && (
         <>
-          <JourneyStep journey={journey} />
-
-          {(!steady || advancedOpen) &&
-            (status.active_key_id || status.pending_key_id || status.rollback_key_id) && (
-              <div class="meta transport-meta">
-                {status.active_key_id && (
-                  <span>
-                    Active credential <code>{status.active_key_id}</code>
-                  </span>
-                )}
-                {status.pending_key_id && (
-                  <span>
-                    Pending credential <code>{status.pending_key_id}</code>
-                  </span>
-                )}
-                {status.rollback_key_id && (
-                  <span>
-                    Previous credential <code>{status.rollback_key_id}</code>
-                  </span>
-                )}
-              </div>
-            )}
+          {journey !== 'secure' && journey !== 'rotation' && <JourneyStep journey={journey} />}
 
           {credential && (
             <div class="keypanel transport-credential">
@@ -102,17 +232,21 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
               </p>
               <span class="streamlabel">Credential ID</span>
               <div class="keyblock">{credential.key_id}</div>
-              <Button disabled={!writable} onClick={() => copy(credential.key_id, 'Key ID')}>
-                Copy key ID
-              </Button>
               <span class="streamlabel">PSK</span>
               <div class="keyblock">{pskVisible ? credential.psk : '•••• •••• •••• ••••'}</div>
               <p class="help">
                 Secret. Anyone with this PSK can impersonate the device to this bridge.
               </p>
               <div class="inputrow inputrow-center">
-                <Button disabled={!writable} onClick={() => copy(credential.psk, 'PSK')}>
+                <Button
+                  kind="primary"
+                  disabled={!writable}
+                  onClick={() => copy(credential.psk, 'PSK')}
+                >
                   Copy PSK
+                </Button>
+                <Button disabled={!writable} onClick={() => copy(credential.key_id, 'Key ID')}>
+                  Copy key ID
                 </Button>
                 <Button
                   onClick={() => setPskReveal({ keyId: credential.key_id, visible: !pskVisible })}
@@ -130,160 +264,32 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
             </div>
           )}
 
-          {(!steady || advancedOpen) && (
-            <CardFooter compact>
-              {actions.canStage && (
-                <TransactButton
-                  transact={lifecycle}
-                  disabled={!writable}
-                  onClick={() =>
-                    lifecycle.run(() => transport.stage(), {
-                      okText: 'Key generated — copy it now',
-                    })
-                  }
-                >
-                  {status.active_key_id
-                    ? 'Replace bridge credential'
-                    : 'Generate bridge credential'}
-                </TransactButton>
-              )}
-              {actions.canVerify && (
-                <TransactButton
-                  transact={lifecycle}
-                  disabled={!writable}
-                  onClick={() =>
-                    lifecycle.run(() => transport.verify(), {
-                      busyText: 'Verifying with bridge…',
-                      okText: 'Bridge accepted the pending key',
-                    })
-                  }
-                >
-                  Verify with bridge
-                </TransactButton>
-              )}
-              {actions.canActivate && (
-                <TransactButton
-                  transact={lifecycle}
-                  disabled={!writable}
-                  onClick={() =>
-                    lifecycle.run(() => transport.activate(), {
-                      reboots: 'the encrypted PCM transport',
-                    })
-                  }
-                >
-                  Activate encryption
-                </TransactButton>
-              )}
-              {actions.canRollback && (
-                <TransactButton
-                  transact={lifecycle}
-                  kind="secondary"
-                  disabled={!writable}
-                  onClick={() =>
-                    lifecycle.run(() => transport.rollback(), { reboots: 'the previous PCM key' })
-                  }
-                >
-                  Use previous credential
-                </TransactButton>
-              )}
-              {actions.canRetire && (
-                <TransactButton
-                  transact={lifecycle}
-                  disabled={!writable}
-                  onClick={() => lifecycle.run(() => transport.retire())}
-                >
-                  Forget previous credential
-                </TransactButton>
-              )}
-              <ActionState state={lifecycle.state} />
-            </CardFooter>
-          )}
-
-          {steady && (
-            <div class="transport-secondary">
-              <Button
-                onClick={() =>
-                  setAdvancedOpen((open) => {
-                    if (open) setRecoveryOpen(false);
-                    return !open;
-                  })
-                }
-              >
-                {advancedOpen ? 'Hide advanced security' : 'Advanced security'}
-              </Button>
-            </div>
-          )}
-
-          {journey !== 'opt-in' && (!steady || advancedOpen) && (
-            <div class="transport-secondary">
-              <Button onClick={() => setRecoveryOpen((open) => !open)}>
-                {recoveryOpen ? 'Hide recovery options' : 'Recovery options'}
-              </Button>
-            </div>
-          )}
-
-          {recoveryOpen && (
-            <div class="notice transport-fallback">
-              <strong>{secure ? 'Connection recovery.' : 'Pending credential options.'}</strong>
-              <p>
-                {secure
-                  ? 'Switch the bridge to cleartext first. Then disable encryption here and restart the device.'
-                  : 'Replace the pending key if its one-time secret was lost, or discard it to stay on cleartext.'}
-              </p>
-              <div class="actions">
-                {secure && (
-                  <TransactButton
-                    transact={fallback}
-                    kind="danger"
-                    disabled={!writable}
-                    onClick={() =>
-                      fallback.run(() => transport.useCleartext(current), {
-                        reboots: 'cleartext PCM transport',
-                      })
-                    }
-                  >
-                    Disable encryption &amp; restart
-                  </TransactButton>
-                )}
-                <TransactButton
-                  transact={recovery}
-                  kind="secondary"
-                  disabled={!writable}
-                  onClick={() =>
-                    recovery.run(() => transport.recover(), {
-                      okText: 'Replacement generated — copy it now',
-                    })
-                  }
-                >
-                  {secure ? 'Replace lost credential' : 'Replace generated credential'}
-                </TransactButton>
-                {actions.canDiscard && (
-                  <TransactButton
-                    transact={recovery}
-                    kind="danger"
-                    disabled={!writable}
-                    onClick={() =>
-                      recovery.run(() => transport.discard(), {
-                        okText: 'Pending credential discarded',
-                      })
-                    }
-                  >
-                    Discard pending credential
-                  </TransactButton>
-                )}
-                {credential?.recovery && (
-                  <TransactButton
-                    transact={recovery}
-                    kind="danger"
-                    disabled={!writable}
-                    onClick={() => recovery.run(() => restart(), { reboots: 'transport recovery' })}
-                  >
-                    Restart into cleartext
-                  </TransactButton>
-                )}
+          {steady ? (
+            <Disclosure
+              title="Advanced security"
+              className="transport-advanced"
+              open={advancedOpen}
+              onToggle={(open) => {
+                setAdvancedOpen(open);
+                if (!open) setRecoveryOpen(false);
+              }}
+            >
+              <div class="transport-keys">
+                <Kv rows={credentialRows} />
               </div>
-              <ActionState state={fallback.state.text ? fallback.state : recovery.state} />
-            </div>
+              {lifecycleFooter}
+              {recoverySection}
+            </Disclosure>
+          ) : (
+            <>
+              {credentialRows.length > 0 && (
+                <div class="transport-keys">
+                  <Kv rows={credentialRows} />
+                </div>
+              )}
+              {lifecycleFooter}
+              {journey !== 'opt-in' && recoverySection}
+            </>
           )}
         </>
       )}
@@ -291,7 +297,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
   );
 }
 
-function JourneyStep({ journey }: { journey: ReturnType<typeof transportJourney> }) {
+function JourneyStep({ journey }: { journey: 'opt-in' | 'provision' | 'activate' }) {
   const content = {
     'opt-in': [
       'Step 1 of 3 · Create a bridge credential',
@@ -304,14 +310,6 @@ function JourneyStep({ journey }: { journey: ReturnType<typeof transportJourney>
     activate: [
       'Step 3 of 3 · Activate',
       'The bridge accepted the key. Activation restarts the device into encrypted mode.',
-    ],
-    secure: [
-      'Encryption is on',
-      'No routine action is required. Replace the bridge credential only if it may be exposed.',
-    ],
-    rotation: [
-      'Encryption is on',
-      'A previous credential is retained after replacement. No immediate action is required.',
     ],
   }[journey];
   return (

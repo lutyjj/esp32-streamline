@@ -5,7 +5,7 @@ use std::{sync::Arc, time::Instant};
 use anyhow::Result;
 use esp_idf_svc::hal::{delay::FreeRtos, gpio::PinDriver};
 
-use crate::{adapters::pins, board::StatusLed, health::Severity, indicator, runtime::StreamStatus};
+use crate::{adapters::pins, board::StatusLed, health::Severity, indicator, stream::StreamStatus};
 
 const REFRESH_MS: u32 = 50;
 

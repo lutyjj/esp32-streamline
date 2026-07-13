@@ -80,26 +80,29 @@ impl TcpClient {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum FailureKind {
-    Connect,
-    SecureHandshake,
-    Write,
-}
-
 #[derive(Debug)]
 pub struct TcpSendError {
-    kind: FailureKind,
+    secure_handshake: bool,
     source: anyhow::Error,
 }
 
 impl TcpSendError {
     pub const fn is_secure_handshake(&self) -> bool {
-        matches!(self.kind, FailureKind::SecureHandshake)
+        self.secure_handshake
     }
 
-    fn new(kind: FailureKind, source: anyhow::Error) -> Self {
-        Self { kind, source }
+    fn handshake(source: anyhow::Error) -> Self {
+        Self {
+            secure_handshake: true,
+            source,
+        }
+    }
+
+    fn io(source: impl Into<anyhow::Error>) -> Self {
+        Self {
+            secure_handshake: false,
+            source: source.into(),
+        }
     }
 }
 
@@ -126,31 +129,26 @@ impl PcmConnector for AdapterConnector {
             TransportSecurity::Cleartext => {
                 let stream = TcpStream::connect_timeout(&self.0.socket, CLEARTEXT_TIMEOUT)
                     .with_context(|| format!("TCP connect to {} failed", self.0.socket))
-                    .map_err(|error| TcpSendError::new(FailureKind::Connect, error))?;
-                stream
-                    .set_nodelay(true)
-                    .map_err(anyhow::Error::from)
-                    .map_err(|error| TcpSendError::new(FailureKind::Connect, error))?;
+                    .map_err(TcpSendError::io)?;
+                stream.set_nodelay(true).map_err(TcpSendError::io)?;
                 stream
                     .set_write_timeout(Some(CLEARTEXT_TIMEOUT))
-                    .map_err(anyhow::Error::from)
-                    .map_err(|error| TcpSendError::new(FailureKind::Connect, error))?;
+                    .map_err(TcpSendError::io)?;
                 Ok(Connection::Cleartext(stream))
             }
             TransportSecurity::TlsPsk(key) => TlsConnection::connect(self.0.socket, key.clone())
                 .map(Connection::Tls)
-                .map_err(|error| TcpSendError::new(FailureKind::SecureHandshake, error)),
+                .map_err(TcpSendError::handshake),
         }
     }
 }
 
 impl PcmStream<TcpSendError> for Connection {
     fn send_all(&mut self, bytes: &[u8]) -> std::result::Result<(), TcpSendError> {
-        let result = match self {
-            Self::Cleartext(stream) => stream.write_all(bytes).map_err(anyhow::Error::from),
-            Self::Tls(stream) => stream.write_all(bytes),
-        };
-        result.map_err(|error| TcpSendError::new(FailureKind::Write, error))
+        match self {
+            Self::Cleartext(stream) => stream.write_all(bytes).map_err(TcpSendError::io),
+            Self::Tls(stream) => stream.write_all(bytes).map_err(TcpSendError::io),
+        }
     }
 }
 

@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-streamline-analyze = "streamline_tools.analyze_capture:main"
+streamline-analyze = "streamline_tools.analysis.report:main"
 streamline-capture = "streamline_tools.serial_capture:main"
 streamline-smoke = "streamline_tools.smoke:main"
 
@@ -39,7 +39,7 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 files = ["src/streamline_tools", "tests", "smoke"]
-mypy_path = ["src"]
+mypy_path = ["src", "tests"]
 
 # pytest-embedded ships no py.typed marker; its DUT objects stay dynamically
 # typed at the fixture boundary while our own check logic remains strictly typed.

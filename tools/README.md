@@ -16,8 +16,13 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
   library.
 - `smoke/` — the device test suite (pytest + pytest-embedded) over the same
   library.
-- `src/streamline_tools/analyze_capture.py`, `serial_capture.py`,
-  `release.py` — standalone tools with their own entry points.
+- `src/streamline_tools/analysis/` — the capture-versus-reference analyzer.
+  One module per concern: `signal` is the shared stereo-frame type, `decode`
+  reads files into frames, `align` recovers the lag, `transform` scores channel
+  mappings, `measure` reports level and spectral stats, and `report` renders
+  those typed results behind the `streamline-analyze` CLI.
+- `src/streamline_tools/serial_capture.py`, `release.py` — standalone tools
+  with their own entry points.
 
 ## Tools
 

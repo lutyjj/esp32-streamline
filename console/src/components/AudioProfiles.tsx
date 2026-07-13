@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'preact/hooks';
-import { setActiveAudioProfile, setAudioProfiles } from '../lib/api';
+import { type AudioProfileCatalog, setActiveAudioProfile, setAudioProfiles } from '../lib/api';
+import { errorMessage } from '../lib/errors';
 import { useTransact, useWritable } from '../lib/hooks';
 import {
+  addProfile,
   exportAudioProfileCatalog,
-  nextProfileId,
   parseAudioProfileCatalog,
-  profileFromConfig,
+  removeProfile,
+  updateProfile,
 } from '../lib/profiles';
 import {
   audioProfileLimits,
@@ -55,113 +57,83 @@ export function AudioProfiles() {
     setName(currentCatalog.profiles.find((profile) => profile.id === id)?.name ?? '');
   }
 
-  function runCatalogWrite(next: typeof currentCatalog, okText: string) {
+  /**
+   * Build the next catalog — which may reject the edit — then persist it and
+   * re-read the device so the applied state and this form cannot drift.
+   */
+  function commitCatalog(
+    build: () => AudioProfileCatalog,
+    okText: (catalog: AudioProfileCatalog) => string,
+  ) {
+    let next: AudioProfileCatalog;
+    try {
+      next = build();
+    } catch (error) {
+      transact.setState({ text: errorMessage(error), cls: 'err' });
+      return;
+    }
     transact.run(
       async () => {
         const ack = await setAudioProfiles(next);
         await loadDeviceSettings();
         return ack;
       },
-      { busyText: 'Saving profiles…', okText },
+      { busyText: 'Saving profiles…', okText: okText(next) },
     );
   }
 
   function saveNew() {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      transact.setState({ text: 'Enter a profile name', cls: 'err' });
-      return;
-    }
-    if ([...trimmed].length > currentLimits.nameMaxChars) {
-      transact.setState({
-        text: `Profile names are limited to ${currentLimits.nameMaxChars} characters`,
-        cls: 'err',
-      });
-      return;
-    }
-    if (currentCatalog.profiles.length >= currentLimits.maxProfiles) {
-      transact.setState({
-        text: `This device stores up to ${currentLimits.maxProfiles} profiles`,
-        cls: 'err',
-      });
-      return;
-    }
-    const id = nextProfileId(
-      trimmed,
-      currentCatalog.profiles.map((profile) => profile.id),
-    );
-    runCatalogWrite(
-      {
-        ...currentCatalog,
-        profiles: [...currentCatalog.profiles, profileFromConfig(id, trimmed, currentConfig)],
+    commitCatalog(
+      () => {
+        const edit = addProfile(currentCatalog, name, currentConfig, currentLimits);
+        setSelectedId(edit.id);
+        return edit.catalog;
       },
-      `Saved ${trimmed} — apply it when this source is selected`,
+      () => `Saved ${name.trim()} — apply it when this source is selected`,
     );
-    setSelectedId(id);
   }
 
   function updateSelected() {
     if (!selected) return;
-    const trimmed = name.trim();
-    if (!trimmed || [...trimmed].length > currentLimits.nameMaxChars) {
-      transact.setState({ text: 'Enter a profile name of 1–32 characters', cls: 'err' });
-      return;
-    }
-    runCatalogWrite(
-      {
-        ...currentCatalog,
-        profiles: currentCatalog.profiles.map((profile) =>
-          profile.id === selected.id
-            ? profileFromConfig(profile.id, trimmed, currentConfig)
-            : profile,
-        ),
-      },
-      `Updated ${trimmed} from the current applied settings`,
+    const target = selected;
+    commitCatalog(
+      () => updateProfile(currentCatalog, target.id, name, currentConfig, currentLimits),
+      () => `Updated ${name.trim()} from the current applied settings`,
     );
   }
 
   function deleteSelected() {
     if (!selected) return;
-    runCatalogWrite(
-      {
-        ...currentCatalog,
-        active_profile_id:
-          currentCatalog.active_profile_id === selected.id
-            ? null
-            : currentCatalog.active_profile_id,
-        profiles: currentCatalog.profiles.filter((profile) => profile.id !== selected.id),
+    const target = selected;
+    commitCatalog(
+      () => {
+        const next = removeProfile(currentCatalog, target.id);
+        setSelectedId('');
+        setName('');
+        return next;
       },
-      `Deleted ${selected.name}`,
+      () => `Deleted ${target.name}`,
     );
-    setSelectedId('');
-    setName('');
   }
 
   function applySelected() {
     if (!selected) return;
+    const target = selected;
     transact.run(
       async () => {
-        const ack = await setActiveAudioProfile(selected.id);
+        const ack = await setActiveAudioProfile(target.id);
         await loadDeviceSettings();
         return ack;
       },
-      { busyText: `Applying ${selected.name}…`, okText: `${selected.name} is active` },
+      { busyText: `Applying ${target.name}…`, okText: `${target.name} is active` },
     );
   }
 
   function importCatalog() {
-    try {
-      const imported = parseAudioProfileCatalog(sharedJson, currentCapabilities, currentLimits);
-      runCatalogWrite(
-        imported,
-        `Imported ${imported.profiles.length} profiles — current levels are unchanged`,
-      );
-    } catch (error) {
-      transact.setState({
-        text: error instanceof Error ? error.message : String(error),
-        cls: 'err',
-      });
-    }
+    commitCatalog(
+      () => parseAudioProfileCatalog(sharedJson, currentCapabilities, currentLimits),
+      (catalog) => `Imported ${catalog.profiles.length} profiles — current levels are unchanged`,
+    );
   }
 
   return (

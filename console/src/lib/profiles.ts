@@ -22,6 +22,70 @@ export function profileFromConfig(id: string, name: string, config: DeviceConfig
   };
 }
 
+/** A name the device will store: trimmed, present, and within the length limit. */
+function validProfileName(name: string, limits: AudioProfileConstraints): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('Enter a profile name');
+  if ([...trimmed].length > limits.nameMaxChars) {
+    throw new Error(`Profile names are limited to ${limits.nameMaxChars} characters`);
+  }
+  return trimmed;
+}
+
+/**
+ * Add a profile that snapshots the applied settings. Rejects a blank or
+ * over-long name and a catalog already at the device's profile limit, and
+ * returns the new id so the caller can select it.
+ */
+export function addProfile(
+  catalog: AudioProfileCatalog,
+  name: string,
+  config: DeviceConfig,
+  limits: AudioProfileConstraints,
+): { catalog: AudioProfileCatalog; id: string } {
+  const trimmed = validProfileName(name, limits);
+  if (catalog.profiles.length >= limits.maxProfiles) {
+    throw new Error(`This device stores up to ${limits.maxProfiles} profiles`);
+  }
+  const id = nextProfileId(
+    trimmed,
+    catalog.profiles.map((profile) => profile.id),
+  );
+  return {
+    catalog: {
+      ...catalog,
+      profiles: [...catalog.profiles, profileFromConfig(id, trimmed, config)],
+    },
+    id,
+  };
+}
+
+/** Re-snapshot an existing profile from the applied settings under a valid name. */
+export function updateProfile(
+  catalog: AudioProfileCatalog,
+  id: string,
+  name: string,
+  config: DeviceConfig,
+  limits: AudioProfileConstraints,
+): AudioProfileCatalog {
+  const trimmed = validProfileName(name, limits);
+  return {
+    ...catalog,
+    profiles: catalog.profiles.map((profile) =>
+      profile.id === id ? profileFromConfig(id, trimmed, config) : profile,
+    ),
+  };
+}
+
+/** Remove a profile, clearing the active pointer when it named the removed one. */
+export function removeProfile(catalog: AudioProfileCatalog, id: string): AudioProfileCatalog {
+  return {
+    ...catalog,
+    active_profile_id: catalog.active_profile_id === id ? null : catalog.active_profile_id,
+    profiles: catalog.profiles.filter((profile) => profile.id !== id),
+  };
+}
+
 export function nextProfileId(name: string, usedIds: Iterable<string>): string {
   const used = new Set(usedIds);
   const base =

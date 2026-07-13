@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { AudioProfileCatalog, BoardCapabilities, DeviceConfig } from '../src/lib/api';
 import {
   type AudioProfileImportLimits,
+  addProfile,
   exportAudioProfileCatalog,
   nextProfileId,
   parseAudioProfileCatalog,
   profileFromConfig,
+  removeProfile,
+  updateProfile,
 } from '../src/lib/profiles';
 
 const capabilities: BoardCapabilities = {
@@ -124,5 +127,78 @@ describe('audio profile model', () => {
       profiles: [profileFromConfig('vinyl', 'Vinyl', config)],
     };
     expect(JSON.parse(exportAudioProfileCatalog(catalog)).active_profile_id).toBeNull();
+  });
+});
+
+// Stage 4/5: the Audio tab saves the applied settings as named profiles and
+// switches them live. These edits are the tab's rules, kept pure so success,
+// validation, and the delete-the-active case are provable without a device.
+describe('audio profile edits', () => {
+  const empty: AudioProfileCatalog = {
+    schema_version: 1,
+    board_id: 'board-a',
+    active_profile_id: null,
+    profiles: [],
+  };
+
+  it('adds a profile that snapshots the applied settings and yields its id', () => {
+    const { catalog, id } = addProfile(empty, ' Vinyl ', config, limits);
+    expect(id).toBe('vinyl');
+    expect(catalog.profiles).toEqual([
+      {
+        id: 'vinyl',
+        name: 'Vinyl',
+        audio: { input_line: 2, input_gain: 7, adc_attenuation_db: 12 },
+      },
+    ]);
+    // Pure: the source catalog is never mutated in place.
+    expect(empty.profiles).toHaveLength(0);
+  });
+
+  it('rejects a blank name, an over-long name, and a full catalog', () => {
+    expect(() => addProfile(empty, '   ', config, limits)).toThrow(/Enter a profile name/);
+    const long = 'x'.repeat(limits.nameMaxChars + 1);
+    expect(() => addProfile(empty, long, config, limits)).toThrow(/limited to 32 characters/);
+
+    const full: AudioProfileCatalog = {
+      ...empty,
+      profiles: Array.from({ length: limits.maxProfiles }, (_, i) =>
+        profileFromConfig(`p-${i}`, 'Source', config),
+      ),
+    };
+    expect(() => addProfile(full, 'One more', config, limits)).toThrow(/up to 8 profiles/);
+  });
+
+  it('re-snapshots the selected profile from the current applied settings', () => {
+    const seeded = addProfile(empty, 'Vinyl', config, limits).catalog;
+    const louder: DeviceConfig = { ...config, adc_attenuation_db: 24 };
+    const next = updateProfile(seeded, 'vinyl', 'Vinyl HD', louder, limits);
+    expect(next.profiles).toEqual([
+      {
+        id: 'vinyl',
+        name: 'Vinyl HD',
+        audio: { input_line: 2, input_gain: 7, adc_attenuation_db: 24 },
+      },
+    ]);
+    expect(() => updateProfile(seeded, 'vinyl', '', config, limits)).toThrow(
+      /Enter a profile name/,
+    );
+  });
+
+  it('deletes a profile and clears the active pointer only when it named it', () => {
+    const two: AudioProfileCatalog = {
+      ...empty,
+      active_profile_id: 'vinyl',
+      profiles: [
+        profileFromConfig('vinyl', 'Vinyl', config),
+        profileFromConfig('cd', 'CD', config),
+      ],
+    };
+    const afterActive = removeProfile(two, 'vinyl');
+    expect(afterActive.profiles.map((p) => p.id)).toEqual(['cd']);
+    expect(afterActive.active_profile_id).toBeNull();
+
+    const afterOther = removeProfile(two, 'cd');
+    expect(afterOther.active_profile_id).toBe('vinyl');
   });
 });

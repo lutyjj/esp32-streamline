@@ -151,3 +151,27 @@ def device_api(request: pytest.FixtureRequest) -> DeviceApi:
     ready = wait_for_api(api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
     return api
+
+
+@pytest.fixture
+def authed_device_api(request: pytest.FixtureRequest) -> DeviceApi:
+    """The device under test as an authenticated client, on either target.
+
+    Hardware target: the configured base URL carrying `STREAMLINE_ADMIN_KEY`
+    (skips when that key is unset). QEMU target: a commissioned emulated device
+    whose API already carries the throwaway `ADMIN_KEY`. Tests using this fixture
+    drive the authenticated surface identically on both, so keep them
+    non-destructive — reject paths and stateless checks, not persistent writes.
+    """
+    url = _hardware_url()
+    if url is not None:
+        key = os.environ.get("STREAMLINE_ADMIN_KEY", "")
+        if not key:
+            pytest.skip("STREAMLINE_ADMIN_KEY unset; cannot drive the authenticated API on hardware")
+        api = DeviceApi(base_url=url, admin_key=key)
+    else:
+        device: EmulatedDevice = request.getfixturevalue("provisioned_device")
+        api = device.api
+    ready = wait_for_api(api.fetch, API_TIMEOUT)
+    assert ready.passed, ready.detail
+    return api

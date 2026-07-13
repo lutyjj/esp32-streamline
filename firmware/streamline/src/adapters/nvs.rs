@@ -295,6 +295,7 @@ impl ConfigStore {
             password: self.required_string(KEY_PASSWORD)?,
             target_host: self.required_string(KEY_TARGET_HOST)?,
             target_port: self.required_u16(KEY_TARGET_PORT)?,
+            transport: Default::default(),
             admin_secret: self.required_string(KEY_ADMIN_SECRET)?,
             // Optional: absent on stores written before names existed, so it
             // reads best-effort instead of forcing a schema bump that would

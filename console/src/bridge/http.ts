@@ -1,6 +1,7 @@
 import { ApiError, type FetchLike } from '../lib/http';
 
 const TOKEN_KEY = 'streamline.recordingToken';
+const TRANSPORT_TOKEN_KEY = 'streamline.transportToken';
 
 let transport: FetchLike = (request) => fetch(request);
 
@@ -23,6 +24,14 @@ export function forgetRecordingToken(): void {
   sessionStorage.removeItem(TOKEN_KEY);
 }
 
+export function rememberTransportToken(token: string): void {
+  sessionStorage.setItem(TRANSPORT_TOKEN_KEY, token);
+}
+
+export function forgetTransportToken(): void {
+  sessionStorage.removeItem(TRANSPORT_TOKEN_KEY);
+}
+
 export function bridgeBase(): string {
   const raw = document.querySelector<HTMLMetaElement>('meta[name="ingress-base"]')?.content || '';
   return /^(\/[A-Za-z0-9._~-]+)*$/.test(raw) ? raw : '';
@@ -32,6 +41,10 @@ export async function bridgeFetch<T>(path: string, options: RequestInit): Promis
   const request = new Request(`${bridgeBase()}${path}`, options);
   if (path.startsWith('/api/recordings') && !path.includes('/capabilities')) {
     const token = recordingToken();
+    if (token) request.headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (path.startsWith('/api/transport/keys/')) {
+    const token = sessionStorage.getItem(TRANSPORT_TOKEN_KEY) || '';
     if (token) request.headers.set('Authorization', `Bearer ${token}`);
   }
   const response = await transport(request);

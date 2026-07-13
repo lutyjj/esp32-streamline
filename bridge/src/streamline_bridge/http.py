@@ -25,11 +25,16 @@ from streamline_bridge.api_models import (
     RecordingList,
     RecordingResult,
     StartRecordingRequest,
+    TransportKeyDeleteResult,
+    TransportKeyRequest,
+    TransportKeyResult,
+    TransportSnapshot,
 )
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
 from streamline_bridge.recording import RecordingError
 from streamline_bridge.recording_http import RecordingHttpService
 from streamline_bridge.sources import Source, SourceRegistry, SourceSelectionError
+from streamline_bridge.transport import DEFAULT_PORT, TransportControl
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator, Mapping
@@ -44,7 +49,9 @@ DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS = 10.0
 CONSOLE_PAGE = files("streamline_bridge").joinpath("console.html").read_bytes()
 INGRESS_BASE_PATTERN = re.compile(r"(?:/[A-Za-z0-9._~-]+)*")
 RECORDING_ID_PATTERN = r"^[a-zA-Z0-9-]+$"
+TRANSPORT_KEY_ID_PATTERN = r"^eli1-[0-9a-f]{32}$"
 RecordingId = Annotated[str, Path(pattern=RECORDING_ID_PATTERN)]
+TransportKeyId = Annotated[str, Path(pattern=TRANSPORT_KEY_ID_PATTERN)]
 bearer = HTTPBearer(auto_error=False, scheme_name="bearer_auth")
 
 
@@ -150,7 +157,7 @@ def recording_error(exc: RecordingError) -> JSONResponse:
 
 def stream_wav_body(
     sources: SourceRegistry[AudioPipeline], source: Source[AudioPipeline], remote_addr: str, path: str
-) -> Generator[bytes, None, None]:
+) -> Generator[bytes]:
     """Yield one WAV client stream and release all lifecycle state on close."""
     sources.retain_http(source)
     stream = source.hub.register_client(remote_addr, path)
@@ -170,6 +177,7 @@ def make_app(
     bridge_version: str,
     recordings: RecordingService | None = None,
     recording_token: str | None = None,
+    transport: TransportControl | None = None,
 ) -> FastAPI:
     """Build the runtime app whose routes and models own the OpenAPI contract."""
     app = BridgeApi(
@@ -181,6 +189,8 @@ def make_app(
     )
     app.add_middleware(BodyLimitMiddleware)
     recording_api = RecordingHttpService(recordings, recording_token)
+    if transport is None:
+        transport = TransportControl(None, None, None, tls_enabled=False, port=DEFAULT_PORT)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -201,6 +211,16 @@ def make_app(
                 headers={"WWW-Authenticate": 'Bearer realm="StreamLine recordings"'},
             )
 
+    def authorize_transport(
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)],
+    ) -> None:
+        if credentials is None or credentials.scheme != "Bearer" or not transport.authorize(credentials.credentials):
+            raise HTTPException(
+                status_code=401,
+                detail={"code": "unauthorized", "message": "Enter the transport API token configured on this bridge."},
+                headers={"WWW-Authenticate": 'Bearer realm="StreamLine transport"'},
+            )
+
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
         raw_detail: object = exc.detail
@@ -214,11 +234,59 @@ def make_app(
         summary="Read bridge and source status",
     )
     def get_status() -> BridgeStatus:
-        return BridgeStatus.model_validate({"bridge_version": bridge_version, "sources": sources.snapshot()})
+        return BridgeStatus.model_validate(
+            {"bridge_version": bridge_version, "sources": sources.snapshot(), "transport": transport.snapshot()}
+        )
 
     @app.get("/health", response_class=PlainTextResponse, operation_id="getBridgeHealth", summary="Check bridge health")
     def get_health() -> str:
         return "ok\n"
+
+    @app.get(
+        "/api/transport",
+        response_model=TransportSnapshot,
+        operation_id="getTransport",
+        summary="Read PCM transport listeners, key ids, and authentication counters",
+    )
+    def get_transport() -> TransportSnapshot:
+        return TransportSnapshot.model_validate(transport.snapshot())
+
+    transport_authenticated = [Depends(authorize_transport)]
+
+    @app.put(
+        "/api/transport/keys/{key_id}",
+        response_model=TransportKeyResult,
+        responses=error_responses(400, 401, 409, 503),
+        status_code=201,
+        dependencies=transport_authenticated,
+        operation_id="putTransportKey",
+        summary="Provision or replace one device PCM transport key",
+    )
+    def put_transport_key(key_id: TransportKeyId, body: TransportKeyRequest) -> Response | TransportKeyResult:
+        if transport.keys is None:
+            return error_response(503, "transport-unavailable", "TLS transport is disabled.")
+        try:
+            transport.keys.put(key_id, body.psk)
+        except ValueError as exc:
+            return error_response(409, "transport-key-rejected", str(exc))
+        return TransportKeyResult(key_id=key_id)
+
+    @app.delete(
+        "/api/transport/keys/{key_id}",
+        response_model=TransportKeyDeleteResult,
+        responses=error_responses(400, 401, 404, 503),
+        dependencies=transport_authenticated,
+        operation_id="deleteTransportKey",
+        summary="Remove one device PCM transport key",
+    )
+    def delete_transport_key(key_id: TransportKeyId) -> Response | TransportKeyDeleteResult:
+        if transport.keys is None:
+            return error_response(503, "transport-unavailable", "TLS transport is disabled.")
+        try:
+            transport.keys.delete(key_id)
+        except ValueError as exc:
+            return error_response(404, "transport-key-not-found", str(exc))
+        return TransportKeyDeleteResult(deleted=key_id)
 
     @app.get(
         "/streamline.wav",

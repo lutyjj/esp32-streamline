@@ -6,7 +6,10 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::board::Board;
+use crate::{
+    board::Board,
+    transport::{TransportError, TransportSettings},
+};
 
 pub const MIN_PORT: u16 = 1;
 /// Longest friendly device name, in characters. Fits an NVS string entry and
@@ -134,6 +137,7 @@ pub enum ConfigError {
     InvalidAdcAttenuation,
     WeakAdminSecret,
     DeviceNameTooLong,
+    InvalidTransport(TransportError),
 }
 
 /// The application-owned configuration loaded from persistent storage.
@@ -150,6 +154,11 @@ pub struct RuntimeConfig {
     /// not stream.
     pub target_host: String,
     pub target_port: u16,
+    /// Versioned PCM transport policy and write-only per-device keys. Missing
+    /// on installations created before secure transport and therefore
+    /// defaults to cleartext without invalidating their configuration.
+    #[serde(default)]
+    pub transport: TransportSettings,
     /// Admin key required on the mutating HTTP API. Set during commissioning
     /// and write-only: it is persisted but never returned through the API.
     pub admin_secret: String,
@@ -175,6 +184,9 @@ impl RuntimeConfig {
         if self.device_name.chars().count() > MAX_DEVICE_NAME_CHARS {
             return Err(ConfigError::DeviceNameTooLong);
         }
+        self.transport
+            .validate()
+            .map_err(ConfigError::InvalidTransport)?;
         self.audio.validate(board)?;
         Ok(())
     }
@@ -311,6 +323,7 @@ mod tests {
             password: "secret".to_owned(),
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
+            transport: Default::default(),
             admin_secret: "console-secret".to_owned(),
             device_name: String::new(),
             auto_update_schedule: AutoUpdateSchedule::Daily,

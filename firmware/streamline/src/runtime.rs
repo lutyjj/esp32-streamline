@@ -40,6 +40,7 @@ pub struct StreamStatus {
     short_reads: Counter64,
     queue_drops: Counter64,
     network_errors: Counter64,
+    tls_handshake_failures: Counter64,
     reconnects: Counter64,
     queue_depth: AtomicU32,
     peak_left: AtomicU32,
@@ -69,6 +70,7 @@ impl StreamStatus {
             short_reads: self.short_reads.load(),
             queue_drops: self.queue_drops.load(),
             network_errors: self.network_errors.load(),
+            tls_handshake_failures: self.tls_handshake_failures.load(),
             reconnects: self.reconnects.load(),
             queue_depth: self.queue_depth.load(Ordering::Relaxed),
             peak_left: self.peak_left.load(Ordering::Relaxed),
@@ -105,6 +107,7 @@ pub struct StreamSnapshot {
     pub short_reads: u64,
     pub queue_drops: u64,
     pub network_errors: u64,
+    pub tls_handshake_failures: u64,
     pub reconnects: u64,
     pub queue_depth: u32,
     pub peak_left: u32,
@@ -256,6 +259,9 @@ fn network_loop(mut tcp: TcpClient, queue: Arc<PacketQueue>, status: Arc<StreamS
                 }
                 Err(error) => {
                     status.network_errors.add(1);
+                    if error.is_secure_handshake() {
+                        status.tls_handshake_failures.add(1);
+                    }
                     log::warn!("TCP stream error: {error:#}");
                     FreeRtos::delay_ms(250);
                 }

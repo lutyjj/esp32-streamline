@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 import socket
 import threading
-from typing import TYPE_CHECKING, NoReturn
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, NoReturn, Protocol
 
 from streamline_bridge.protocol import HEADER, parse_header
 from streamline_bridge.sources import Source, SourceAdmissionError, SourceRegistry
@@ -14,6 +15,22 @@ if TYPE_CHECKING:
     from streamline_bridge.pipeline import AudioPipeline
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AuthenticatedConnection:
+    socket: socket.socket
+    source_key: str
+    transport: str
+
+
+class ConnectionAuthenticator(Protocol):
+    def authenticate(self, conn: socket.socket, addr: tuple[str, int]) -> AuthenticatedConnection: ...
+
+
+class CleartextAuthenticator:
+    def authenticate(self, conn: socket.socket, addr: tuple[str, int]) -> AuthenticatedConnection:
+        return AuthenticatedConnection(conn, addr[0], "cleartext")
 
 
 def recv_exact(conn: socket.socket, size: int) -> bytes | None:
@@ -71,6 +88,8 @@ class TcpIngestServer:
         port: int,
         idle_timeout_seconds: float,
         max_connections: int,
+        authenticator: ConnectionAuthenticator | None = None,
+        connection_slots: threading.BoundedSemaphore | None = None,
     ) -> None:
         if max_connections < 1:
             raise ValueError("TCP connection limit must be positive")
@@ -78,7 +97,8 @@ class TcpIngestServer:
         self._bind = bind
         self._port = port
         self._idle_timeout_seconds = idle_timeout_seconds
-        self._connection_slots = threading.BoundedSemaphore(max_connections)
+        self._connection_slots = connection_slots or threading.BoundedSemaphore(max_connections)
+        self._authenticator = authenticator or CleartextAuthenticator()
 
     def serve_forever(self) -> NoReturn:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
@@ -96,36 +116,38 @@ class TcpIngestServer:
             conn.close()
             return
         try:
-            source = self._sources.acquire(addr[0])
-        except SourceAdmissionError as exc:
-            logger.warning("rejected TCP source %s:%s: %s", addr[0], addr[1], exc)
-            conn.close()
-            self._connection_slots.release()
-            return
-        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        conn.settimeout(self._idle_timeout_seconds)
-        generation = self._sources.connect(source, conn)
-        logger.info("source %s:%s connected", addr[0], addr[1])
-        try:
             threading.Thread(
-                target=self._receive_source,
-                args=(source, generation, conn, addr),
+                target=self._authenticate_and_receive,
+                args=(conn, addr),
                 daemon=True,
             ).start()
         except BaseException:
-            self._sources.disconnect(source, generation, conn)
             conn.close()
             self._connection_slots.release()
             raise
 
-    def _receive_source(
-        self,
-        source: Source[AudioPipeline],
-        generation: int,
-        conn: socket.socket,
-        addr: tuple[str, int],
-    ) -> None:
+    def _authenticate_and_receive(self, conn: socket.socket, addr: tuple[str, int]) -> None:
         try:
-            receive_source(self._sources, source, generation, conn, addr)
+            conn.settimeout(self._idle_timeout_seconds)
+            authenticated = self._authenticator.authenticate(conn, addr)
+            stream = authenticated.socket
+            stream.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            stream.settimeout(self._idle_timeout_seconds)
+            try:
+                source = self._sources.acquire(
+                    authenticated.source_key,
+                    peer_ip=addr[0],
+                    transport=authenticated.transport,
+                )
+            except SourceAdmissionError as exc:
+                logger.warning("rejected %s source: %s", authenticated.transport, exc)
+                stream.close()
+                return
+            generation = self._sources.connect(source, stream)
+            logger.info("source %s connected over %s", source.key, authenticated.transport)
+            receive_source(self._sources, source, generation, stream, addr)
+        except (OSError, ValueError) as exc:
+            conn.close()
+            logger.warning("rejected producer connection: %s", exc)
         finally:
             self._connection_slots.release()

@@ -8,7 +8,7 @@ from typing import cast
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT, HEADER, MAGIC, VERSION
 from streamline_bridge.sources import Source, SourceRegistry
-from streamline_bridge.tcp import TcpIngestServer, receive_source
+from streamline_bridge.tcp import AuthenticatedConnection, TcpIngestServer, receive_source
 
 
 def packet(sequence: int, magic: bytes = MAGIC) -> bytes:
@@ -105,8 +105,13 @@ class TcpAdapterTests(unittest.TestCase):
             self.assertEqual(second.fileno(), -1)
             first_peer.close()
             deadline = time.monotonic() + 1
+            lifecycle: dict[str, object] = {}
             while time.monotonic() < deadline:
-                lifecycle = cast("dict[str, object]", registry.snapshot()[first_addr[0]]["lifecycle"])
+                snapshot = registry.snapshot().get(first_addr[0])
+                if snapshot is None:
+                    time.sleep(0.01)
+                    continue
+                lifecycle = cast("dict[str, object]", snapshot["lifecycle"])
                 if lifecycle["state"] == "disconnected":
                     break
                 time.sleep(0.01)
@@ -115,3 +120,20 @@ class TcpAdapterTests(unittest.TestCase):
             first_peer.close()
             second_peer.close()
             listener.close()
+
+    def test_authentication_failure_creates_no_source_pipeline(self) -> None:
+        class Reject:
+            def authenticate(self, _conn: socket.socket, _addr: tuple[str, int]) -> AuthenticatedConnection:
+                raise ValueError("authentication failed")
+
+        registry = SourceRegistry(make_pipeline, max_sources=1)
+        ingest = TcpIngestServer(registry, "127.0.0.1", 0, 1.0, max_connections=1, authenticator=Reject())
+        server, peer = socket.socketpair()
+        try:
+            ingest.accept(server, ("192.0.2.10", 1234))
+            deadline = time.monotonic() + 1
+            while server.fileno() != -1 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertEqual(registry.snapshot(), {})
+        finally:
+            peer.close()

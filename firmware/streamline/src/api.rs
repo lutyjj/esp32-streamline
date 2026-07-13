@@ -163,6 +163,123 @@ endpoint!(
     )
 );
 endpoint!(
+    SET_TRANSPORT,
+    set_transport_mode,
+    Post,
+    post,
+    "/api/settings/transport",
+    authenticated,
+    summary = "Set the PCM transport mode",
+    request_body(
+        content = TransportSettingsRequest,
+        content_type = "application/x-www-form-urlencoded"
+    ),
+    responses(
+        (status = 200, body = Ack),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
+    TRANSPORT_KEY_STAGE,
+    stage_transport_key,
+    Post,
+    post,
+    "/api/transport/keys/stage",
+    authenticated,
+    summary = "Generate and stage a per-device PCM transport key",
+    responses(
+        (status = 200, body = TransportKeyResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
+    TRANSPORT_KEY_VERIFY,
+    verify_transport_key,
+    Post,
+    post,
+    "/api/transport/keys/verify",
+    authenticated,
+    summary = "Verify the pending PCM transport key against the bridge",
+    responses(
+        (status = 200, body = Ack),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 503, body = ErrorResponse)
+    )
+);
+endpoint!(
+    TRANSPORT_KEY_ACTIVATE,
+    activate_transport_key,
+    Post,
+    post,
+    "/api/transport/keys/activate",
+    authenticated,
+    summary = "Activate the verified PCM transport key",
+    responses(
+        (status = 200, body = Ack),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
+    TRANSPORT_KEY_DISCARD,
+    discard_transport_key,
+    Post,
+    post,
+    "/api/transport/keys/discard",
+    authenticated,
+    summary = "Discard the pending PCM transport key",
+    responses(
+        (status = 200, body = Ack),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
+    TRANSPORT_KEY_ROLLBACK,
+    rollback_transport_key,
+    Post,
+    post,
+    "/api/transport/keys/rollback",
+    authenticated,
+    summary = "Restore the previous PCM transport key",
+    responses(
+        (status = 200, body = Ack),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
+    TRANSPORT_KEY_RETIRE,
+    retire_transport_key,
+    Post,
+    post,
+    "/api/transport/keys/retire",
+    authenticated,
+    summary = "Retire the PCM transport rollback key",
+    responses(
+        (status = 200, body = Ack),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
+    TRANSPORT_RECOVER,
+    recover_transport,
+    Post,
+    post,
+    "/api/transport/recover",
+    authenticated,
+    summary = "Return to cleartext and replace an unusable pending key",
+    responses(
+        (status = 200, body = TransportKeyResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
     SET_BOARD,
     set_board,
     Post,
@@ -385,6 +502,14 @@ pub const ENDPOINTS: &[Endpoint] = &[
     OPENAPI,
     SET_WIFI,
     SET_TARGET,
+    SET_TRANSPORT,
+    TRANSPORT_KEY_STAGE,
+    TRANSPORT_KEY_VERIFY,
+    TRANSPORT_KEY_ACTIVATE,
+    TRANSPORT_KEY_DISCARD,
+    TRANSPORT_KEY_ROLLBACK,
+    TRANSPORT_KEY_RETIRE,
+    TRANSPORT_RECOVER,
     SET_BOARD,
     SET_AUDIO,
     SET_AUDIO_PROFILES,
@@ -431,6 +556,14 @@ pub struct TargetSettingsRequest {
     pub target_host: String,
     #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
     pub target_port: Option<u16>,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TransportSettingsRequest {
+    pub contract_version: u8,
+    pub mode: crate::transport::TransportMode,
 }
 
 #[derive(Debug, Deserialize)]
@@ -575,11 +708,33 @@ pub struct ConfigResponse<'a> {
     pub ssid: &'a str,
     pub target_host: &'a str,
     pub target_port: u16,
+    pub transport: TransportStatus<'a>,
     pub input_line: u8,
     pub input_gain: u8,
     pub adc_attenuation_db: u8,
     pub auto_update_schedule: AutoUpdateScheduleRequest,
     pub config_source: &'a str,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct TransportStatus<'a> {
+    pub contract_version: u8,
+    pub mode: crate::transport::TransportMode,
+    pub active_key_id: Option<&'a str>,
+    pub pending_key_id: Option<&'a str>,
+    pub pending_verified: bool,
+    pub rollback_key_id: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct TransportKeyResponse {
+    pub contract_version: u8,
+    pub key_id: String,
+    /// Shown once. The device never returns this PSK through a read endpoint.
+    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[0-9a-f]{64}$"))]
+    pub psk: String,
 }
 
 #[derive(Serialize)]
@@ -757,6 +912,7 @@ pub struct MetricsStatus {
     pub queue_depth: u32,
     pub queue_drops_total: u64,
     pub network_errors_total: u64,
+    pub tls_handshake_failures_total: u64,
     pub reconnects_total: u64,
     pub clip_threshold_abs: u16,
     pub peak_abs_left: u32,
@@ -796,7 +952,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_board, set_audio, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]

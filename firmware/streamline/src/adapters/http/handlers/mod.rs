@@ -6,6 +6,7 @@ mod ota;
 mod settings;
 mod status;
 mod system;
+mod transport;
 
 use std::sync::Arc;
 
@@ -20,6 +21,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     board::register_read(server, state)?;
     system::register_contract(server)?;
     settings::register_network_writes(server, state)?;
+    transport::register(server, state)?;
     board::register_write(server, state)?;
     audio::register_writes(server, state)?;
     settings::register_identity_writes(server, state)?;

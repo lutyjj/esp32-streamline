@@ -11,6 +11,12 @@ services:
       STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
       STREAMLINE_RECORDINGS_DIR: ${STREAMLINE_RECORDINGS_DIR:-}
       STREAMLINE_RECORDING_TOKEN: ${STREAMLINE_RECORDING_TOKEN:-}
+      STREAMLINE_TRANSPORT_API_TOKEN: ${STREAMLINE_TRANSPORT_API_TOKEN:-}
+    command:
+      - --tls-enabled
+      - ${STREAMLINE_TLS_ENABLED:-false}
+      - --tls-keys-file
+      - /data/transport-keys.json
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -20,9 +26,11 @@ services:
       - /tmp
     volumes:
       - recordings:/recordings
+      - transport-data:/data
     ports:
       - "39000:39000/tcp"
       - "8088:8088/tcp"
 
 volumes:
   recordings:
+  transport-data:

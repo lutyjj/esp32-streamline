@@ -16,6 +16,7 @@ from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.recording import RecordingService, RecordingStore
 from streamline_bridge.sources import SourceRegistry
 from streamline_bridge.tcp import TcpIngestServer
+from streamline_bridge.transport import TlsPskAuthenticator, TransportControl, TransportKeyStore
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +53,33 @@ def main() -> int:
         if len(recording_token) < 16:
             raise SystemExit("STREAMLINE_RECORDING_TOKEN must contain at least 16 characters when recording is enabled")
         recordings = RecordingService(sources, RecordingStore(Path(args.recordings_dir)))
-    tcp_server = TcpIngestServer(
+    transport_token = os.environ.get("STREAMLINE_TRANSPORT_API_TOKEN", "") or None
+    key_store: TransportKeyStore | None = None
+    tls_authenticator: TlsPskAuthenticator | None = None
+    if args.tls_enabled:
+        if transport_token is None or len(transport_token) < 16:
+            raise SystemExit("STREAMLINE_TRANSPORT_API_TOKEN must contain at least 16 characters when TLS is enabled")
+        key_store = TransportKeyStore(Path(args.tls_keys_file), maximum=min(args.max_sources * 2, 64))
+        tls_authenticator = TlsPskAuthenticator(key_store)
+    pcm_server = TcpIngestServer(
         sources,
         args.tcp_bind,
         args.tcp_port,
         args.source_idle_timeout_seconds,
         max_connections=args.max_sources * 2,
+        authenticator=tls_authenticator,
     )
-    threading.Thread(target=tcp_server.serve_forever, daemon=True).start()
+    threading.Thread(target=pcm_server.serve_forever, daemon=True).start()
+    transport = TransportControl(
+        key_store,
+        tls_authenticator,
+        transport_token,
+        tls_enabled=args.tls_enabled,
+        port=args.tcp_port,
+    )
     server = uvicorn.Server(
         uvicorn.Config(
-            make_app(sources, bridge_version(), recordings, recording_token),
+            make_app(sources, bridge_version(), recordings, recording_token, transport),
             host=args.http_bind,
             port=args.http_port,
             log_config=None,

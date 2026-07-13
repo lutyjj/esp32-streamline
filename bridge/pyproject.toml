@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "streamline-bridge"
 version = "0.5.7"
 description = "ESP32 StreamLine TCP PCM to HTTP WAV bridge"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
   "fastapi>=0.116,<1",
@@ -26,13 +26,13 @@ dev = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "T20", "T10", "G", "LOG", "RUF", "C4", "PIE", "RET", "ISC", "TC"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 warn_unreachable = true
 files = ["src/streamline_bridge", "tests"]

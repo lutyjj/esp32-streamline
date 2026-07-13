@@ -285,7 +285,19 @@ mod tests {
         board,
         config::{AudioSettings, AutoUpdateSchedule},
         profiles::{AudioProfile, AUDIO_PROFILE_SCHEMA_VERSION},
+        transport::{RandomBytes, TransportMode},
     };
+
+    struct Sequence(u8);
+
+    impl RandomBytes for Sequence {
+        fn fill(&mut self, output: &mut [u8]) {
+            for byte in output {
+                *byte = self.0;
+                self.0 = self.0.wrapping_add(1);
+            }
+        }
+    }
 
     #[derive(Default)]
     struct FakeStorage {
@@ -347,6 +359,7 @@ mod tests {
                 password: format!("{name}-password"),
                 target_host: "bridge.local".to_owned(),
                 target_port: 39_000,
+                transport: Default::default(),
                 admin_secret: format!("{name}-admin-key"),
                 device_name: name.to_owned(),
                 auto_update_schedule: AutoUpdateSchedule::Daily,
@@ -406,6 +419,132 @@ mod tests {
                 Ok(Some(before.clone())),
                 "boundary {boundary}"
             );
+        }
+    }
+
+    #[test]
+    fn every_transport_key_transition_is_failure_atomic_at_every_write_boundary() {
+        let cleartext = state("transport-device");
+        let mut staged = cleartext.clone();
+        staged
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .stage(&mut Sequence(0))
+            .expect("stage first key");
+        let mut verified = staged.clone();
+        verified
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .mark_pending_verified()
+            .expect("verify first key");
+        let mut activated = verified.clone();
+        let active_transport = &mut activated.config.as_mut().expect("config").transport;
+        active_transport
+            .keys
+            .activate()
+            .expect("activate first key");
+        active_transport.mode = TransportMode::TlsPsk;
+
+        let mut rotation_staged = activated.clone();
+        rotation_staged
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .stage(&mut Sequence(64))
+            .expect("stage rotation key");
+        let mut rotation_verified = rotation_staged.clone();
+        rotation_verified
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .mark_pending_verified()
+            .expect("verify rotation key");
+        let mut rotated = rotation_verified.clone();
+        rotated
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .activate()
+            .expect("activate rotation key");
+        let mut rolled_back = rotated.clone();
+        rolled_back
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .rollback_key()
+            .expect("roll back key");
+        let mut retired = rolled_back.clone();
+        retired
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .retire_rollback()
+            .expect("retire rollback key");
+        let mut recovered = rotation_staged.clone();
+        recovered.config.as_mut().expect("config").transport.mode = TransportMode::Cleartext;
+        recovered
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .recover(&mut Sequence(128))
+            .expect("recover key");
+
+        let mut discarded = rotation_staged.clone();
+        discarded
+            .config
+            .as_mut()
+            .expect("config")
+            .transport
+            .keys
+            .discard_pending()
+            .expect("discard pending key");
+        assert_eq!(discarded, activated);
+
+        let transitions = [
+            ("stage", &cleartext, &staged),
+            ("verify", &staged, &verified),
+            ("activate", &verified, &activated),
+            ("rotation stage", &activated, &rotation_staged),
+            ("rotation verify", &rotation_staged, &rotation_verified),
+            ("rotation activate", &rotation_verified, &rotated),
+            ("rollback", &rotated, &rolled_back),
+            ("retire", &rolled_back, &retired),
+            ("discard", &rotation_staged, &discarded),
+            ("recovery", &rotation_staged, &recovered),
+        ];
+
+        for (transition, before, after) in transitions {
+            let initial_store = StateStore::new(FakeStorage::default());
+            initial_store.save(before).expect("save starting state");
+            let values = initial_store.into_inner().values();
+
+            for boundary in 1..=5 {
+                let store = StateStore::new(FakeStorage::from_values(values.clone(), boundary));
+                assert_eq!(store.save(after), Err(StateError::Storage("interrupted")));
+                assert_eq!(
+                    store.load(),
+                    Ok(Some(before.clone())),
+                    "{transition} at boundary {boundary}"
+                );
+            }
         }
     }
 

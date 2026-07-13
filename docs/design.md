@@ -36,6 +36,49 @@ At 48 kHz stereo 16-bit, the raw payload bitrate is about 1.536 Mbit/s before
 header/TCP/IP/Wi-Fi overhead. That is comfortable for a local Wi-Fi network
 and much simpler than encoding on the ESP32.
 
+### Encrypted PCM transport
+
+Encrypted PCM uses TLS 1.3 external PSK with ephemeral ECDHE (`psk_dhe_ke`) and
+`TLS_AES_128_GCM_SHA256`. Each device has an independent random 256-bit PSK and
+a versioned non-secret identity. ECDHE provides forward secrecy: learning a
+device PSK does not decrypt recorded sessions.
+
+TLS terminates in the firmware TCP adapter and at the bridge socket edge.
+Capture, ELI1 framing, retry policy, playout, and fanout stay host-testable and
+transport-independent. [TCP transport](tcp-transport.md) owns the exact
+session, key lifecycle, migration, and recovery contract. The
+[machine-readable contract](pcm-transport.json) mechanically checks shared
+Rust and Python constants.
+
+#### Evidence
+
+The selection covers cleartext, Noise, custom AEAD records, certificate TLS,
+TLS 1.2 PSK, TLS 1.3 PSK, VPN encapsulation, DTLS, and QUIC.
+
+| Candidate | Source authentication | Forward secrecy | Fit |
+|---|---|---|---|
+| Cleartext TCP | No | No | Compatibility mode only |
+| Noise NNpsk0 | Yes | Yes | ESP32 CPU/stack cost and immature Python packages |
+| Custom AEAD records | Depends on design | Depends on design | Duplicates protocol, replay, and key-schedule work |
+| Certificate TLS | Yes | Yes | Adds issuance, naming, and renewal to single-owner setup |
+| TLS 1.2 pure PSK | Yes | No | Lower handshake cost, but recorded sessions depend on PSK secrecy |
+| TLS 1.3 external PSK + ECDHE | Yes | Yes | Selected; native maintained boundaries and no certificate authority |
+| VPN | Depends on deployment | Depends on deployment | Makes device security depend on external infrastructure |
+| DTLS or QUIC | Yes | Yes | Replaces the proven ordered stream without a product need |
+
+[ESP-TLS](https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32/api-reference/protocols/esp_tls.html)
+and [Python/OpenSSL](https://docs.python.org/3.14/library/ssl.html#ssl.SSLContext.set_psk_server_callback)
+provide the selected client and server boundaries. The firmware enables only
+TLS 1.3 PSK with ephemeral key exchange. The bridge requires the exact TLS
+version and cipher before it creates a source.
+
+The supported ESP32 and Python 3.14 bridge negotiate the exact profile with a
+736.8 ms device handshake. The session consumes 36,476 bytes of device heap,
+keeps at least 75,300 bytes free, and streams more than 140 MB of 48 kHz stereo
+PCM for over ten uninterrupted minutes with zero network errors. The OTA image
+is 1,687,008 bytes, 83.04% of its application partition. Wrong keys and unknown
+identities fail before source admission.
+
 ## Server Integration Options
 
 ### Music Assistant
@@ -85,12 +128,14 @@ make bridge-up
 ```
 
 Home Assistant OS and Supervised installs can run the same bridge through the
-`ha-addon/` add-on repository entry. The add-on exposes TCP `39000` for ESP32
-PCM and HTTP `8088` for `/streamline.wav`, `/status`, and `/health`.
+`ha-addon/` add-on repository entry. The add-on exposes TCP `39000` for
+cleartext or authenticated TLS 1.3 PCM and HTTP `8088` for `/streamline.wav`,
+`/status`, and `/health`.
 
-Set each ESP32 TCP target to the bridge host IP and port `39000`. Add
+Set each ESP32 target to the bridge host and port `39000`; the bridge and device
+select cleartext or TLS for that same destination. Add
 `http://<bridge-host>:8088/streamline.wav` to Music Assistant as a radio URL, or
-`http://<bridge-host>:8088/streamline.wav?source=<esp32-ip>` to pick one of
+`http://<bridge-host>:8088/streamline.wav?source=<source-id>` to pick one of
 several sources. Start audio on the source before adding the URL: an idle device
 sends no audio, and Music Assistant rejects a stream it cannot probe. To serve a
 client that needs an encoded stream, put Liquidsoap/Icecast after the bridge to

@@ -115,7 +115,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         target: TargetTelemetry {
             host: config.target_host.clone(),
             port: config.target_port,
-            transport: "tcp",
+            transport: config.transport.mode.as_str(),
         },
         audio: AudioTelemetry {
             input_line: config.audio.input_line,
@@ -142,6 +142,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             queue_depth: metrics.queue_depth,
             queue_drops_total: metrics.queue_drops,
             network_errors_total: metrics.network_errors,
+            tls_handshake_failures_total: metrics.tls_handshake_failures,
             reconnects_total: metrics.reconnects,
         },
         diagnostics: DiagnosticsTelemetry {
@@ -231,6 +232,7 @@ impl<'a> api::StatusResponse<'a> {
                 queue_depth: snapshot.stream.queue_depth,
                 queue_drops_total: snapshot.stream.queue_drops_total,
                 network_errors_total: snapshot.stream.network_errors_total,
+                tls_handshake_failures_total: snapshot.stream.tls_handshake_failures_total,
                 reconnects_total: snapshot.stream.reconnects_total,
                 clip_threshold_abs: snapshot.audio.clip_threshold_abs,
                 peak_abs_left: snapshot.audio.peak_abs_left,

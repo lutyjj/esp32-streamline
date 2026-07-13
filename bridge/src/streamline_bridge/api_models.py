@@ -34,6 +34,8 @@ class SourceLifecycle(ContractModel):
     recording_sessions: int = Field(ge=0)
     idle_seconds: float = Field(ge=0)
     eviction_idle_seconds: float | None = Field(default=None, ge=0)
+    peer_ip: str
+    transport: Literal["cleartext", "tls-psk"]
 
 
 class ClientSnapshot(ContractModel):
@@ -85,9 +87,31 @@ class SourceSnapshot(ContractModel):
     lifecycle: SourceLifecycle
 
 
+class TransportSnapshot(ContractModel):
+    contract_version: Literal[1]
+    mode: Literal["cleartext", "tls-psk"]
+    port: int = Field(ge=1, le=65535)
+    key_ids: list[str]
+    auth_successes: int = Field(ge=0)
+    auth_failures: int = Field(ge=0)
+
+
 class BridgeStatus(ContractModel):
     bridge_version: str
     sources: dict[str, SourceSnapshot]
+    transport: TransportSnapshot
+
+
+class TransportKeyRequest(ContractModel):
+    psk: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class TransportKeyResult(ContractModel):
+    key_id: str
+
+
+class TransportKeyDeleteResult(ContractModel):
+    deleted: str
 
 
 class RecordingFormat(ContractModel):

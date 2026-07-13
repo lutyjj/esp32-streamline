@@ -26,6 +26,7 @@ ports_description:
   39000/tcp: ESP32 PCM input
   8088/tcp: HTTP WAV stream and status API
 options:
+  tls_enabled: false
   source_allow: ""
   max_sources: 8
   max_http_connections: 32
@@ -38,7 +39,9 @@ options:
   source_eviction_idle_seconds: 300.0
   recordings_enabled: false
   recording_token: ""
+  transport_api_token: ""
 schema:
+  tls_enabled: bool
   source_allow: str
   max_sources: "int(1,)"
   max_http_connections: "int(1,)"
@@ -51,3 +54,4 @@ schema:
   source_eviction_idle_seconds: "float(0.001,)"
   recordings_enabled: bool
   recording_token: password
+  transport_api_token: password

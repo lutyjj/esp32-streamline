@@ -917,6 +917,9 @@ select:disabled {
 .field-narrow {
   max-width: 320px;
 }
+.credential-input {
+  font-family: var(--mono);
+}
 .unit {
   position: relative;
 }
@@ -1250,6 +1253,84 @@ select:disabled {
 /* When armed inside a card footer, drop the box to its own full-width line. */
 .cardfoot > .confirmbox {
   flex-basis: 100%;
+}
+
+/* ---------- Encrypted transport journey ---------- */
+.transport-section {
+  margin-top: 18px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 16px;
+}
+.transport-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.transport-choice input {
+  width: 17px;
+  height: 17px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.transport-choice > span {
+  display: grid;
+  gap: 2px;
+}
+.transport-choice small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.transport-section > .help {
+  display: block;
+  margin: 6px 0 0 27px;
+}
+.transport-step {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--inset);
+  padding: 10px 12px;
+}
+.transport-step p,
+.transport-fallback p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.transport-meta,
+.transport-credential,
+.transport-secondary {
+  margin-top: 16px;
+}
+.transport-meta {
+  display: grid;
+  gap: 8px;
+}
+.transport-meta span {
+  display: grid;
+  gap: 3px;
+}
+.transport-meta code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.transport-secondary {
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.transport-fallback {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+}
+.transport-fallback .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 2px;
 }
 
 /* ---------- Log ---------- */

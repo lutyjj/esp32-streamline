@@ -40,8 +40,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 COPY --from=build /opt/venv /opt/venv
 RUN useradd --uid 10001 --no-create-home streamline \
-    && mkdir /recordings \
-    && chown streamline:streamline /recordings
+    && mkdir /recordings /data \
+    && chown streamline:streamline /recordings /data
 
 USER streamline
 

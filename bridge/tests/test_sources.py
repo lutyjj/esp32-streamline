@@ -113,3 +113,16 @@ class SourceRegistryTests(unittest.TestCase):
             registry.select("192.0.2.10")
         self.assertEqual(malformed.exception.status, HTTPStatus.BAD_REQUEST)
         self.assertEqual(missing.exception.status, HTTPStatus.NOT_FOUND)
+
+    def test_authenticated_key_id_is_the_source_while_allowlist_checks_the_peer(self) -> None:
+        registry = self.registry(1, frozenset({"192.0.2.10"}))
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+
+        source = registry.acquire(key_id, peer_ip="192.0.2.10", transport="tls-psk")
+
+        self.assertIs(registry.select(key_id), source)
+        lifecycle = self.lifecycle(registry.snapshot()[key_id])
+        self.assertEqual(lifecycle["peer_ip"], "192.0.2.10")
+        self.assertEqual(lifecycle["transport"], "tls-psk")
+        with self.assertRaises(SourceAdmissionError):
+            registry.acquire("eli1-ffeeddccbbaa99887766554433221100", peer_ip="192.0.2.11", transport="tls-psk")

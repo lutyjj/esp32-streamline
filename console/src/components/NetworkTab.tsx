@@ -10,6 +10,7 @@ import { Card, CardFooter, CardStack } from './Card';
 import { Chip } from './Chip';
 import { KeyReveal } from './KeyReveal';
 import { ActionState, TransactButton } from './Transact';
+import { TransportCard } from './TransportCard';
 
 export function NetworkTab() {
   const writable = useWritable();
@@ -87,6 +88,11 @@ export function NetworkTab() {
 
   const moving = packetsMoving.value;
   const playing = s?.metrics.playing ?? false;
+  const targetDirty = Boolean(
+    c &&
+      (targetHost.trim() !== c.target_host ||
+        (targetPort !== '' && Number(targetPort) !== c.target_port)),
+  );
 
   return (
     <CardStack>
@@ -194,6 +200,8 @@ export function NetworkTab() {
             <KeyReveal secret={setupKey.value} remember={rememberKey} onRemember={setRememberKey} />
           </div>
         )}
+
+        <TransportCard targetDirty={targetDirty} />
 
         <CardFooter>
           <TransactButton transact={targetTransact} disabled={!writable} onClick={saveTarget}>

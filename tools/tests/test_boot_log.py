@@ -1,9 +1,9 @@
-"""Contract tests for boot-transcript and API smoke checks."""
+"""Contract tests for boot-transcript analysis."""
 
-import json
 import unittest
 
-from streamline_tools.smoke_checks import CheckResult, api_checks, boot_checks, strip_ansi
+from streamline_tools.device.boot_log import boot_checks, strip_ansi
+from streamline_tools.device.checks import CheckResult
 
 HEALTHY_BOOT = """\
 rst:0x1 (POWERON_RESET),boot:0x12 (SPI_FAST_FLASH_BOOT)
@@ -72,40 +72,6 @@ class BootChecksTest(unittest.TestCase):
 
     def test_strip_ansi_removes_color_codes(self) -> None:
         self.assertEqual(strip_ansi("\x1b[0;32mI (1) boot:\x1b[0m ok"), "I (1) boot: ok")
-
-
-class ApiChecksTest(unittest.TestCase):
-    def test_healthy_api_passes(self) -> None:
-        bodies = {
-            "/api/status": json.dumps({"mode": "provisioned", "firmware_version": "0.5.5"}),
-            "/api/openapi.json": json.dumps({"openapi": "3.1.0"}),
-        }
-        results = api_checks(lambda path: (200, bodies[path].encode()))
-        self.assertTrue(all(item.passed for item in results), results)
-        self.assertIn("mode=provisioned", result(results, "status-readable").detail)
-
-    def test_http_error_status_fails(self) -> None:
-        results = api_checks(lambda path: (503, b""))
-        self.assertFalse(result(results, "status-readable").passed)
-        self.assertIn("503", result(results, "status-readable").detail)
-
-    def test_invalid_json_fails(self) -> None:
-        results = api_checks(lambda path: (200, b"<html>not json</html>"))
-        self.assertFalse(result(results, "status-readable").passed)
-
-    def test_missing_status_fields_fail(self) -> None:
-        results = api_checks(lambda path: (200, json.dumps({"openapi": "3.1.0", "mode": "provisioned"}).encode()))
-        item = result(results, "status-readable")
-        self.assertFalse(item.passed)
-        self.assertIn("firmware_version", item.detail)
-
-    def test_connection_error_fails_instead_of_raising(self) -> None:
-        def fetch(path: str) -> tuple[int, bytes]:
-            raise OSError("connection refused")
-
-        results = api_checks(fetch)
-        self.assertFalse(result(results, "status-readable").passed)
-        self.assertIn("connection refused", result(results, "status-readable").detail)
 
 
 if __name__ == "__main__":

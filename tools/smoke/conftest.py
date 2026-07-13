@@ -12,9 +12,7 @@ are skipped on hardware targets.
 import os
 import shutil
 import socket
-import urllib.parse
-import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,11 +20,14 @@ from typing import Any
 import pytest
 from pytest_embedded.dut_factory import DutFactory
 
-from streamline_tools.smoke import http_fetch, pad_flash_image, wait_for_api
+from streamline_tools.device.api import DeviceApi, wait_for_api
+from streamline_tools.device.flash_image import pad_flash_image
 
 BOOT_TIMEOUT = 120.0
 API_TIMEOUT = 60.0
-_HTTP_TIMEOUT = 10.0
+# Synthetic commissioning credential; it exists only inside throwaway
+# emulated flash copies.
+ADMIN_KEY = "qemu-smoke-admin"
 
 
 def _hardware_url() -> str | None:
@@ -67,29 +68,6 @@ def _free_port() -> int:
 
 
 @dataclass(frozen=True)
-class DeviceApi:
-    """One device's HTTP surface, hardware and emulated alike."""
-
-    base_url: str
-
-    def fetch(self, path: str) -> tuple[int, bytes]:
-        return http_fetch(self.base_url, path)
-
-    def post_form(self, path: str, fields: dict[str, str]) -> tuple[int, bytes]:
-        request = urllib.request.Request(
-            self.base_url + path,
-            data=urllib.parse.urlencode(fields).encode(),
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT) as response:
-                return response.status, response.read()
-        except urllib.error.HTTPError as error:
-            return error.code, error.read()
-
-
-@dataclass(frozen=True)
 class EmulatedDevice:
     """One booted QEMU device: its serial expectations, API, and flash file."""
 
@@ -99,16 +77,19 @@ class EmulatedDevice:
 
 
 @pytest.fixture
-def boot_device(padded_image: Path, tmp_path: Path) -> Callable[..., EmulatedDevice]:
+def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., EmulatedDevice]]:
     """Boot an emulated device on a fresh flash copy, or re-boot an existing one.
 
     A guest-initiated restart is out of contract under QEMU (the emulated NIC
     survives a warm reset and crashes the next boot), so `-no-reboot` turns
     every reset into a QEMU exit. Persistence across reboots is proven by
-    booting a second QEMU process on the same flash file.
+    booting a second QEMU process on the same flash file. Every QEMU this
+    factory started is terminated at test teardown so leftover emulators
+    cannot starve later tests.
     """
+    booted: list[EmulatedDevice] = []
 
-    def _boot(flash: Path | None = None) -> EmulatedDevice:
+    def _boot(flash: Path | None = None, admin_key: str | None = None) -> EmulatedDevice:
         if flash is None:
             flash = tmp_path / f"flash-{len(list(tmp_path.glob('flash-*.bin')))}.bin"
             shutil.copy(padded_image, flash)
@@ -119,9 +100,37 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Callable[..., EmulatedDev
             skip_regenerate_image=True,
             qemu_extra_args=f"-no-reboot -nic user,model=open_eth,hostfwd=tcp:127.0.0.1:{port}-:80",
         )
-        return EmulatedDevice(dut=dut, api=DeviceApi(base_url=f"http://127.0.0.1:{port}"), flash=flash)
+        api = DeviceApi(base_url=f"http://127.0.0.1:{port}", admin_key=admin_key)
+        device = EmulatedDevice(dut=dut, api=api, flash=flash)
+        booted.append(device)
+        return device
 
-    return _boot
+    yield _boot
+    for device in booted:
+        device.dut.qemu.terminate()
+
+
+@pytest.fixture
+def provisioned_device(boot_device: Callable[..., EmulatedDevice]) -> EmulatedDevice:
+    """An emulated device commissioned with `ADMIN_KEY` and rebooted into
+    provisioned mode. Its API carries the key; act as a stranger with
+    `dataclasses.replace(device.api, admin_key=None)`."""
+    setup_boot = boot_device()
+    setup_boot.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
+    ready = wait_for_api(setup_boot.api.fetch, API_TIMEOUT)
+    assert ready.passed, ready.detail
+    code, body = setup_boot.api.post_form(
+        "/api/settings/wifi",
+        {"ssid": "qemu-smoke-lab", "admin_secret": ADMIN_KEY},
+    )
+    assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
+    setup_boot.dut.qemu.wait(timeout=60)
+
+    device = boot_device(flash=setup_boot.flash, admin_key=ADMIN_KEY)
+    device.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    ready = wait_for_api(device.api.fetch, API_TIMEOUT)
+    assert ready.passed, ready.detail
+    return device
 
 
 @pytest.fixture

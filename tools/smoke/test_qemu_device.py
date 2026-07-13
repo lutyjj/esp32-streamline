@@ -1,20 +1,32 @@
-"""Emulated-device smoke: boot markers and the provisioning cycle.
+"""Emulated-device smoke: boot, provisioning, security, recovery, and OTA.
 
 These tests need what only the QEMU target offers — a fresh unprovisioned
-flash and serial boot expectations — so they carry the `emulated` marker and
-skip on hardware targets. The device-agnostic API contract lives in
-`test_device_api.py`.
+flash, serial boot expectations, and destructive lifecycle transitions — so
+they carry the `emulated` marker and skip on hardware targets. The
+device-agnostic API contract lives in `test_device_api.py`.
 """
 
+import dataclasses
+import hashlib
+import http.server
 import json
-from collections.abc import Callable
+import os
+import threading
+from collections.abc import Callable, Iterator
+from pathlib import Path
 
 import pytest
-from conftest import API_TIMEOUT, BOOT_TIMEOUT, EmulatedDevice
+from conftest import ADMIN_KEY, API_TIMEOUT, BOOT_TIMEOUT, EmulatedDevice
 
-from streamline_tools.smoke import wait_for_api
+from streamline_tools.device.api import wait_for_api
 
 pytestmark = pytest.mark.emulated
+
+# QEMU's user-mode network exposes the host loopback to the guest here.
+_SLIRP_HOST_ALIAS = "10.0.2.2"
+# The two-slot layout from firmware/streamline/partitions.csv: a fresh image
+# boots ota_0, and a successful OTA must land in and boot from ota_1.
+_OTA_1_OFFSET = "0x210000"
 
 
 def _expect_api_up(device: EmulatedDevice) -> None:
@@ -39,27 +51,88 @@ def test_fresh_boot_reaches_setup_console(boot_device: Callable[..., EmulatedDev
     assert _mode(device) == "setup"
 
 
-def test_provisioning_persists_across_reboot(boot_device: Callable[..., EmulatedDevice]) -> None:
-    first_boot = boot_device()
-    first_boot.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
-    _expect_api_up(first_boot)
+def test_provisioning_persists_across_reboot(provisioned_device: EmulatedDevice) -> None:
+    # The fixture performed the commissioning write and the reboot; what is
+    # left to assert is the durable outcome.
+    assert _mode(provisioned_device) == "provisioned"
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    version = json.loads(body)["firmware_version"]
+    assert isinstance(version, str) and version
 
-    # First commissioning must establish an admin key; this one is synthetic
-    # and lives only inside the throwaway emulated flash. The full 200 body
-    # must arrive before the device reboots — clients block on it.
-    code, body = first_boot.api.post_form(
-        "/api/settings/wifi",
-        {"ssid": "qemu-smoke-lab", "admin_secret": "qemu-smoke-admin"},
-    )
-    assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
+
+def test_provisioned_device_gates_writes_behind_the_key(provisioned_device: EmulatedDevice) -> None:
+    stranger = dataclasses.replace(provisioned_device.api, admin_key=None)
+    code, _ = stranger.post_form("/api/settings/name", {"name": "intruder"})
+    assert code == 401, f"unkeyed write was answered with HTTP {code}"
+
+    imposter = dataclasses.replace(provisioned_device.api, admin_key="wrong-key-entirely")
+    code, _ = imposter.post_form("/api/settings/name", {"name": "intruder"})
+    assert code == 401, f"wrongly keyed write was answered with HTTP {code}"
+
+    code, _ = provisioned_device.api.post_form("/api/settings/name", {"name": "qemu-renamed"})
+    assert code == 200, f"keyed write was answered with HTTP {code}"
+    code, body = provisioned_device.api.fetch("/api/settings")
+    assert code == 200 and "qemu-renamed" in body.decode(errors="replace")
+
+
+def test_factory_reset_returns_to_setup(
+    provisioned_device: EmulatedDevice, boot_device: Callable[..., EmulatedDevice]
+) -> None:
+    code, body = provisioned_device.api.post_form("/api/factory-reset", {})
+    assert code == 200, f"factory reset was answered with HTTP {code}: {body[:200]!r}"
     assert json.loads(body)["rebooting"] is True
 
-    # The settings write restarts the device, which under -no-reboot ends the
-    # QEMU process; waiting for that exit also guarantees the flash file is
-    # released. Booting a second process on the same flash proves the
-    # commissioning write survived the reboot in NVS, not process memory.
-    first_boot.dut.qemu.wait(timeout=60)
-    second_boot = boot_device(flash=first_boot.flash)
-    second_boot.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
-    _expect_api_up(second_boot)
-    assert _mode(second_boot) == "provisioned"
+    provisioned_device.dut.qemu.wait(timeout=60)
+    wiped = boot_device(flash=provisioned_device.flash)
+    wiped.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
+    _expect_api_up(wiped)
+    assert _mode(wiped) == "setup"
+
+
+@pytest.fixture
+def served_ota_image() -> Iterator[tuple[str, str]]:
+    """The OTA application image served over HTTP as the guest reaches it:
+    a (URL, sha256) pair. Skips when the image was not built."""
+    source = os.environ.get("STREAMLINE_QEMU_OTA_IMAGE", "")
+    if not source:
+        pytest.skip("STREAMLINE_QEMU_OTA_IMAGE not set; build it with: make -C firmware qemu-artifacts")
+    payload = Path(source).read_bytes()
+    digest = hashlib.sha256(payload).hexdigest()
+
+    class OtaImageHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), OtaImageHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://{_SLIRP_HOST_ALIAS}:{server.server_address[1]}/streamline-qemu-ota.bin", digest
+    finally:
+        server.shutdown()
+
+
+def test_ota_install_boots_from_the_other_slot(
+    provisioned_device: EmulatedDevice,
+    boot_device: Callable[..., EmulatedDevice],
+    served_ota_image: tuple[str, str],
+) -> None:
+    url, sha256 = served_ota_image
+    code, body = provisioned_device.api.post_form("/api/ota/update", {"url": url, "sha256": sha256})
+    assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
+
+    # The device downloads through the emulated network, writes the inactive
+    # slot, and reboots — which under -no-reboot ends the QEMU process.
+    provisioned_device.dut.qemu.wait(timeout=180)
+
+    updated = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
+    updated.dut.expect_exact(f"Loaded app from partition at offset {_OTA_1_OFFSET}", timeout=BOOT_TIMEOUT)
+    updated.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    _expect_api_up(updated)
+    assert _mode(updated) == "provisioned"

@@ -119,7 +119,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
                 >
                   {pskVisible ? 'Hide PSK' : 'Reveal PSK'}
                 </Button>
-                <Button onClick={() => transport.dismissReveal()}>Hide secret</Button>
+                <Button onClick={() => transport.dismissReveal()}>Done — I copied it</Button>
               </div>
               {credential.recovery && (
                 <p class="help">

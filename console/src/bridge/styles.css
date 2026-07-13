@@ -6,12 +6,6 @@
   display: grid;
   gap: 12px;
 }
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: start;
-  gap: 14px 16px;
-}
 .bridge-console > .notice,
 .bridge-console > .unlockpanel {
   margin-bottom: 0;
@@ -98,12 +92,8 @@
   gap: 8px;
   flex-wrap: wrap;
 }
-.storage-value {
-  font: 600 18px var(--mono);
-}
 @media (max-width: 700px) {
-  .recording,
-  .grid {
+  .recording {
     grid-template-columns: 1fr;
   }
 }

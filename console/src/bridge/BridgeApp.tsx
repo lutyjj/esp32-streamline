@@ -203,53 +203,52 @@ function RecordingWorkspace() {
   if (!data) return <EmptyState>Loading recordings…</EmptyState>;
   return (
     <div class="cardstack">
-      <div class="grid">
-        <Card title="New recording" lead="Start first, then play the source.">
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (await bridge.startRecording({ source: selectedSource, title })) setTitle('');
-            }}
-          >
-            <div class="formgrid">
-              <div class="field">
-                <label for="rec-source">Source</label>
-                <select
-                  id="rec-source"
-                  value={selectedSource}
-                  onChange={(event) => setSource(event.currentTarget.value)}
-                  required
-                >
-                  {sources.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div class="field">
-                <label for="rec-title">Title</label>
-                <input
-                  id="rec-title"
-                  type="text"
-                  value={title}
-                  maxlength={80}
-                  onInput={(event) => setTitle(event.currentTarget.value)}
-                  required
-                />
-              </div>
+      <Card
+        title="New recording"
+        lead="Start first, then play the source. WAV uses about 11 MiB per minute."
+      >
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (await bridge.startRecording({ source: selectedSource, title })) setTitle('');
+          }}
+        >
+          <div class="formgrid">
+            <div class="field">
+              <label for="rec-source">Source</label>
+              <select
+                id="rec-source"
+                value={selectedSource}
+                onChange={(event) => setSource(event.currentTarget.value)}
+                required
+              >
+                {sources.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
             </div>
-            <CardFooter>
-              <Button kind="primary" type="submit" disabled={!selectedSource}>
-                Start recording
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-        <Card title="Storage" lead="WAV uses about 11 MiB per minute.">
-          <div class="storage-value">{formatBytes(data.storage.free_bytes)} free</div>
-        </Card>
-      </div>
+            <div class="field">
+              <label for="rec-title">Title</label>
+              <input
+                id="rec-title"
+                type="text"
+                value={title}
+                maxlength={80}
+                onInput={(event) => setTitle(event.currentTarget.value)}
+                required
+              />
+            </div>
+          </div>
+          <CardFooter>
+            <Button kind="primary" type="submit" disabled={!selectedSource}>
+              Start recording
+            </Button>
+            <span class="actionstate">{formatBytes(data.storage.free_bytes)} free</span>
+          </CardFooter>
+        </form>
+      </Card>
       <RecordingList title="Active" items={data.active} active />
       <RecordingList title="Saved" items={data.saved} />
     </div>

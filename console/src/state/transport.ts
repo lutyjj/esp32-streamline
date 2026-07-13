@@ -133,3 +133,10 @@ export class TransportController {
 }
 
 export const transport = new TransportController();
+
+/**
+ * The bridge wizard hands the encryption opt-in to the Stream target card
+ * rather than duplicating it. Setting this opens the card's opt-in on the
+ * Network tab; the card clears it once consumed.
+ */
+export const optInRequested = signal(false);

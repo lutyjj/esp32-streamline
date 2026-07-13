@@ -1657,6 +1657,46 @@ select:disabled {
   margin: 10px 0 0;
   color: var(--warn);
 }
+.wizhint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.wizhint.ok {
+  color: var(--good);
+}
+.choicelist {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.choice:has(:checked) {
+  border-color: var(--accent);
+  background: var(--inset);
+}
+.wizentry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--inset);
+  font-size: 13px;
+  color: var(--muted);
+}
 .wizlog {
   margin-top: 12px;
   min-height: 64px;

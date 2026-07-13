@@ -58,6 +58,21 @@ export const noBridge = computed(
     !status.value.target.target_host,
 );
 
+/**
+ * The bridge link as one word, derived once so the Overview tile and the setup
+ * wizard narrate the same state and cannot drift. `sending` means packets moved
+ * between the last two polls — the observable proof audio reaches the bridge.
+ */
+export type BridgeConnection = 'setup' | 'unset' | 'idle' | 'connecting' | 'sending';
+export const bridgeConnection = computed<BridgeConnection>(() => {
+  const s = status.value;
+  if (!s) return 'unset';
+  if (s.mode === 'setup') return 'setup';
+  if (!s.target.target_host) return 'unset';
+  if (packetsMoving.value) return 'sending';
+  return s.metrics.playing ? 'connecting' : 'idle';
+});
+
 let refreshing = false;
 
 /** One status poll; safe to call on an interval, overlaps are skipped. */

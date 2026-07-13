@@ -63,16 +63,24 @@ Entry: a provisioned device with no stream target. Capture already runs:
 meters move and calibration works before any bridge exists; only streaming
 waits.
 
-Promise: the Overview says plainly that no bridge is set and points at the
-Network tab. Host and port are one form; after the save, the Bridge tile flips
-to Sending as soon as packets flow, so success is observable without leaving
-the console. Cleartext works without an encryption decision during first
-setup.
+Promise: an owner who does not know what a bridge is still reaches streaming.
+The Overview raises a **No bridge yet** callout whose **Set up bridge** action
+opens a guided **Bridge setup** wizard. The wizard walks the whole stage: pick
+where the bridge runs — a Home Assistant add-on, Docker, or one already running
+— and it names that choice's install step and the address to enter; save the
+target; then read the Bridge tile, which the wizard narrates from restarting to
+the same **Sending** signal the tile computes, so success is observable without
+leaving the console. Every step stays skippable, and the Network tab's plain
+host-and-port form and the `/api/settings/target` endpoint remain the escape
+hatch: the wizard only sequences them. Cleartext works without an encryption
+decision during first setup.
 
-The **Stream target** card owns one host, one port, and an **Encrypt transport**
-control. After the owner opts in, the card shows one valid next action at a
-time: create a bridge credential, switch the bridge to TLS, provision and
-verify the credential, then activate and restart. The coordinated switch causes
+The wizard's final step offers encryption and hands to the **Stream target**
+card rather than duplicating it. The card owns one host, one port, and an
+**Encrypt transport** control. After the owner opts in, the card shows one valid
+next action at a time: create a bridge credential, switch the bridge to TLS,
+provision and verify the credential, then activate and restart. The coordinated
+switch causes
 a short audio interruption because each side accepts exactly one protocol.
 Verification failure keeps the retry visible and never changes the device mode.
 Until activation, **Recovery** can discard the pending credential, so

@@ -12,6 +12,9 @@ export function recordingToken(): string {
   return sessionStorage.getItem(TOKEN_KEY) || '';
 }
 
+// The token is a shared deployment secret, so it never persists past the tab —
+// unlike the per-device admin key. See docs/security.md ("no persistent token
+// storage").
 export function rememberRecordingToken(token: string): void {
   sessionStorage.setItem(TOKEN_KEY, token);
 }

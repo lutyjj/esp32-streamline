@@ -3,6 +3,7 @@ import { ApiTab } from './components/ApiTab';
 import { AudioTab } from './components/AudioTab';
 import { Masthead } from './components/Masthead';
 import { NetworkTab } from './components/NetworkTab';
+import { Notice } from './components/Notice';
 import { OnboardingOverlay } from './components/OnboardingOverlay';
 import { OverviewTab } from './components/OverviewTab';
 import { SystemTab } from './components/SystemTab';
@@ -75,9 +76,9 @@ export function App() {
       <Masthead />
 
       {handoff.value ? (
-        <div class="connbanner">{handoffMessage()}</div>
+        <Notice tone="warn">{handoffMessage()}</Notice>
       ) : (
-        unreachable.value && <div class="connbanner">Device unreachable — retrying…</div>
+        unreachable.value && <Notice tone="warn">Device unreachable — retrying…</Notice>
       )}
 
       <nav class="tabs" aria-label="Console">

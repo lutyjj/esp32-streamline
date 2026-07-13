@@ -135,6 +135,12 @@ make test` only for cross-component, CI, release, or integration changes, or
 when explicitly requested. A console or webflasher-only change does not build
 or test firmware.
 
+A change also updates any documentation it makes stale, in the same change. If
+the diff alters behavior a doc, comment, or example describes, correct that
+prose too — a `README.md`, `docs/` page, or contract table that now describes
+the old behavior is part of the change, not a follow-up. Grep the docs for the
+names and paths the change touches before calling it ready.
+
 ## Prove firmware on a device
 
 A firmware change is ready only after the new image ran on real hardware,

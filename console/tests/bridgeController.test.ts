@@ -109,6 +109,18 @@ describe('bridge controller', () => {
     expect(scheduled).toHaveLength(0);
   });
 
+  it('holds an unlocked token to the tab and clears it on lock', async () => {
+    const controller = new BridgeController(fakeApi());
+
+    await controller.unlock('secret');
+    expect(sessionStorage.getItem('streamline.recordingToken')).toBe('secret');
+    expect(controller.recordingState.value).toBe('unlocked');
+
+    controller.lock();
+    expect(sessionStorage.getItem('streamline.recordingToken')).toBeNull();
+    expect(controller.recordingState.value).toBe('locked');
+  });
+
   it('forgets a rejected token and remains locked', async () => {
     const api = fakeApi({
       recordings: vi.fn(async () => Promise.reject(new Error('unauthorized'))),

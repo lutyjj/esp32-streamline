@@ -326,6 +326,77 @@ pub fn verify_pending(
         .map_err(|_| VerifyPendingError::NoPendingKey)
 }
 
+/// One established PCM byte stream. Socket and TLS details stay in adapters.
+pub trait PcmStream<E> {
+    fn send_all(&mut self, bytes: &[u8]) -> Result<(), E>;
+}
+
+/// Creates streams for the one transport profile selected at boot.
+pub trait PcmConnector {
+    type Error;
+    type Stream: PcmStream<Self::Error>;
+
+    fn connect(&mut self) -> Result<Self::Stream, Self::Error>;
+}
+
+/// Host-testable reconnect policy shared by cleartext and secure adapters.
+pub struct ReconnectingSender<C: PcmConnector> {
+    connector: C,
+    stream: Option<C::Stream>,
+}
+
+impl<C: PcmConnector> ReconnectingSender<C> {
+    pub const fn new(connector: C) -> Self {
+        Self {
+            connector,
+            stream: None,
+        }
+    }
+
+    /// Connect lazily and discard a failed stream so the next call retries the
+    /// same selected profile. The connector has no fallback profile to try.
+    pub fn send_all(&mut self, bytes: &[u8]) -> Result<bool, C::Error> {
+        let connected = if self.stream.is_none() {
+            self.stream = Some(self.connector.connect()?);
+            true
+        } else {
+            false
+        };
+        if let Err(error) = self
+            .stream
+            .as_mut()
+            .expect("connected above")
+            .send_all(bytes)
+        {
+            self.stream = None;
+            return Err(error);
+        }
+        Ok(connected)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WriteAllError<E> {
+    Write(E),
+    Closed,
+}
+
+/// Complete a byte write even when the transport accepts only a prefix.
+pub fn write_all_with<E>(
+    bytes: &[u8],
+    mut write: impl FnMut(&[u8]) -> Result<usize, E>,
+) -> Result<(), WriteAllError<E>> {
+    let mut sent = 0;
+    while sent < bytes.len() {
+        let written = write(&bytes[sent..]).map_err(WriteAllError::Write)?;
+        if written == 0 || written > bytes.len() - sent {
+            return Err(WriteAllError::Closed);
+        }
+        sent += written;
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VerifyPendingError {
     MissingTarget,
@@ -403,6 +474,8 @@ fn encode_hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+
     use super::*;
 
     struct Sequence(u8);
@@ -417,6 +490,47 @@ mod tests {
     }
 
     struct Verifier(Result<(), &'static str>);
+
+    #[derive(Clone)]
+    struct FakeConnector {
+        attempts: Rc<RefCell<usize>>,
+        results: Rc<RefCell<VecDeque<Result<VecDeque<Result<(), &'static str>>, &'static str>>>>,
+    }
+
+    struct FakeStream(VecDeque<Result<(), &'static str>>);
+
+    impl PcmStream<&'static str> for FakeStream {
+        fn send_all(&mut self, _bytes: &[u8]) -> Result<(), &'static str> {
+            self.0.pop_front().unwrap_or(Ok(()))
+        }
+    }
+
+    impl PcmConnector for FakeConnector {
+        type Error = &'static str;
+        type Stream = FakeStream;
+
+        fn connect(&mut self) -> Result<Self::Stream, Self::Error> {
+            *self.attempts.borrow_mut() += 1;
+            self.results
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or_else(|| Ok(VecDeque::new()))
+                .map(FakeStream)
+        }
+    }
+
+    fn connector(
+        results: impl IntoIterator<Item = Result<VecDeque<Result<(), &'static str>>, &'static str>>,
+    ) -> (FakeConnector, Rc<RefCell<usize>>) {
+        let attempts = Rc::new(RefCell::new(0));
+        (
+            FakeConnector {
+                attempts: Rc::clone(&attempts),
+                results: Rc::new(RefCell::new(results.into_iter().collect())),
+            },
+            attempts,
+        )
+    }
 
     #[test]
     fn implementation_matches_the_machine_readable_transport_contract() {
@@ -452,6 +566,60 @@ mod tests {
             ..TransportSettings::default()
         };
         assert_eq!(settings.validate(), Err(TransportError::NoActiveKey));
+    }
+
+    #[test]
+    fn sender_reuses_a_good_connection_and_reconnects_after_a_write_failure() {
+        let (connector, attempts) = connector([
+            Ok(VecDeque::from([Ok(()), Err("disconnected")])),
+            Ok(VecDeque::from([Ok(())])),
+        ]);
+        let mut sender = ReconnectingSender::new(connector);
+
+        assert_eq!(sender.send_all(b"one"), Ok(true));
+        assert_eq!(sender.send_all(b"two"), Err("disconnected"));
+        assert_eq!(sender.send_all(b"three"), Ok(true));
+        assert_eq!(*attempts.borrow(), 2);
+    }
+
+    #[test]
+    fn authentication_and_downgrade_failures_retry_only_the_selected_connector() {
+        let (connector, attempts) = connector([
+            Err("authentication failed"),
+            Err("unsupported TLS version"),
+            Ok(VecDeque::from([Ok(())])),
+        ]);
+        let mut sender = ReconnectingSender::new(connector);
+
+        assert_eq!(sender.send_all(b"frame"), Err("authentication failed"));
+        assert_eq!(sender.send_all(b"frame"), Err("unsupported TLS version"));
+        assert_eq!(sender.send_all(b"frame"), Ok(true));
+        assert_eq!(*attempts.borrow(), 3);
+    }
+
+    #[test]
+    fn write_all_retries_short_writes_and_rejects_zero_or_oversized_progress() {
+        let mut accepted = VecDeque::from([2, 1, 3]);
+        assert_eq!(
+            write_all_with(b"abcdef", |remaining| {
+                let count = accepted.pop_front().expect("bounded writes");
+                assert!(count <= remaining.len());
+                Ok::<_, &'static str>(count)
+            }),
+            Ok(())
+        );
+        assert_eq!(
+            write_all_with(b"a", |_| Ok::<_, &'static str>(0)),
+            Err(WriteAllError::Closed)
+        );
+        assert_eq!(
+            write_all_with(b"a", |_| Ok::<_, &'static str>(2)),
+            Err(WriteAllError::Closed)
+        );
+        assert_eq!(
+            write_all_with(b"a", |_| Err("socket error")),
+            Err(WriteAllError::Write("socket error"))
+        );
     }
 
     #[test]
@@ -494,6 +662,21 @@ mod tests {
         assert_eq!(keys.pending().map(TransportKey::id), Some(recovered.id()));
         assert!(!keys.pending_verified());
         assert!(keys.active().is_some());
+    }
+
+    #[test]
+    fn stale_pending_markers_and_wrong_persisted_key_ids_fail_validation() {
+        let stale: TransportKeys =
+            serde_json::from_str(r#"{"pending":"a","pending_verified":true}"#)
+                .expect("decodable stale state");
+        assert_eq!(stale.validate(), Err(TransportError::InvalidKeyState));
+
+        let psk = vec!["0"; PSK_BYTES].join(",");
+        let invalid: TransportKeys = serde_json::from_str(&format!(
+            r#"{{"slot_a":{{"id":"wrong-id","psk":[{psk}]}},"active":"a"}}"#
+        ))
+        .expect("decodable invalid id");
+        assert_eq!(invalid.validate(), Err(TransportError::InvalidKeyId));
     }
 
     #[test]

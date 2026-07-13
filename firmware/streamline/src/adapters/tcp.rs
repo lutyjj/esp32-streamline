@@ -2,6 +2,7 @@
 
 use std::{
     ffi::CString,
+    fmt,
     io::Write,
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     time::Duration,
@@ -12,7 +13,10 @@ use esp_idf_svc::sys;
 
 use crate::{
     config::RuntimeConfig,
-    transport::{KeyVerifier, TransportKey, TransportMode},
+    transport::{
+        write_all_with, KeyVerifier, PcmConnector, PcmStream, ReconnectingSender, TransportKey,
+        TransportMode, WriteAllError,
+    },
 };
 
 const CLEARTEXT_TIMEOUT: Duration = Duration::from_millis(250);
@@ -54,8 +58,7 @@ impl TargetAddress {
 /// A lazily connected sender. Any I/O or authentication failure drops the
 /// connection; secure mode never retries against the cleartext listener.
 pub struct TcpClient {
-    target: TargetAddress,
-    connection: Option<Connection>,
+    sender: ReconnectingSender<AdapterConnector>,
 }
 
 enum Connection {
@@ -64,44 +67,88 @@ enum Connection {
 }
 
 impl TcpClient {
-    pub const fn new(target: TargetAddress) -> Self {
+    pub fn new(target: TargetAddress) -> Self {
         Self {
-            target,
-            connection: None,
+            sender: ReconnectingSender::new(AdapterConnector(target)),
         }
     }
 
-    pub fn send_all(&mut self, bytes: &[u8]) -> Result<bool> {
-        let connected = self.connect_if_needed()?;
-        let result = match self.connection.as_mut().expect("connected just above") {
-            Connection::Cleartext(stream) => stream.write_all(bytes).map_err(anyhow::Error::from),
-            Connection::Tls(stream) => stream.write_all(bytes),
-        };
-        if let Err(error) = result {
-            self.connection = None;
-            return Err(error);
-        }
-        Ok(connected)
+    pub fn send_all(&mut self, bytes: &[u8]) -> std::result::Result<bool, TcpSendError> {
+        self.sender.send_all(bytes)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FailureKind {
+    Connect,
+    SecureHandshake,
+    Write,
+}
+
+#[derive(Debug)]
+pub struct TcpSendError {
+    kind: FailureKind,
+    source: anyhow::Error,
+}
+
+impl TcpSendError {
+    pub const fn is_secure_handshake(&self) -> bool {
+        matches!(self.kind, FailureKind::SecureHandshake)
     }
 
-    fn connect_if_needed(&mut self) -> Result<bool> {
-        if self.connection.is_some() {
-            return Ok(false);
-        }
-        let connection = match &self.target.security {
+    fn new(kind: FailureKind, source: anyhow::Error) -> Self {
+        Self { kind, source }
+    }
+}
+
+impl fmt::Display for TcpSendError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.source, formatter)
+    }
+}
+
+impl std::error::Error for TcpSendError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+struct AdapterConnector(TargetAddress);
+
+impl PcmConnector for AdapterConnector {
+    type Error = TcpSendError;
+    type Stream = Connection;
+
+    fn connect(&mut self) -> std::result::Result<Self::Stream, Self::Error> {
+        match &self.0.security {
             TransportSecurity::Cleartext => {
-                let stream = TcpStream::connect_timeout(&self.target.socket, CLEARTEXT_TIMEOUT)
-                    .with_context(|| format!("TCP connect to {} failed", self.target.socket))?;
-                stream.set_nodelay(true)?;
-                stream.set_write_timeout(Some(CLEARTEXT_TIMEOUT))?;
-                Connection::Cleartext(stream)
+                let stream = TcpStream::connect_timeout(&self.0.socket, CLEARTEXT_TIMEOUT)
+                    .with_context(|| format!("TCP connect to {} failed", self.0.socket))
+                    .map_err(|error| TcpSendError::new(FailureKind::Connect, error))?;
+                stream
+                    .set_nodelay(true)
+                    .map_err(anyhow::Error::from)
+                    .map_err(|error| TcpSendError::new(FailureKind::Connect, error))?;
+                stream
+                    .set_write_timeout(Some(CLEARTEXT_TIMEOUT))
+                    .map_err(anyhow::Error::from)
+                    .map_err(|error| TcpSendError::new(FailureKind::Connect, error))?;
+                Ok(Connection::Cleartext(stream))
             }
-            TransportSecurity::TlsPsk(key) => {
-                Connection::Tls(TlsConnection::connect(self.target.socket, key.clone())?)
-            }
+            TransportSecurity::TlsPsk(key) => TlsConnection::connect(self.0.socket, key.clone())
+                .map(Connection::Tls)
+                .map_err(|error| TcpSendError::new(FailureKind::SecureHandshake, error)),
+        }
+    }
+}
+
+impl PcmStream<TcpSendError> for Connection {
+    fn send_all(&mut self, bytes: &[u8]) -> std::result::Result<(), TcpSendError> {
+        let result = match self {
+            Self::Cleartext(stream) => stream.write_all(bytes).map_err(anyhow::Error::from),
+            Self::Tls(stream) => stream.write_all(bytes),
         };
-        self.connection = Some(connection);
-        Ok(true)
+        result.map_err(|error| TcpSendError::new(FailureKind::Write, error))
     }
 }
 
@@ -154,21 +201,20 @@ impl TlsConnection {
     }
 
     fn write_all(&mut self, bytes: &[u8]) -> Result<()> {
-        let mut sent = 0;
-        while sent < bytes.len() {
+        write_all_with(bytes, |remaining| {
             let written = unsafe {
-                sys::esp_tls_conn_write(
-                    self.handle,
-                    bytes[sent..].as_ptr().cast(),
-                    bytes.len() - sent,
-                )
+                sys::esp_tls_conn_write(self.handle, remaining.as_ptr().cast(), remaining.len())
             };
-            if written <= 0 {
-                return Err(anyhow!("TLS PCM send failed ({written})"));
+            if written < 0 {
+                Err(anyhow!("TLS PCM send failed ({written})"))
+            } else {
+                Ok(written as usize)
             }
-            sent += written as usize;
-        }
-        Ok(())
+        })
+        .map_err(|error| match error {
+            WriteAllError::Write(error) => error,
+            WriteAllError::Closed => anyhow!("TLS PCM stream closed during write"),
+        })
     }
 }
 

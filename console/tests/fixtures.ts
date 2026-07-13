@@ -70,6 +70,7 @@ export function deviceStatus(
       queue_depth: 0,
       queue_drops_total: 0,
       network_errors_total: 0,
+      tls_handshake_failures_total: 0,
       reconnects_total: 0,
       clip_threshold_abs: 32760,
       peak_abs_left: 0,

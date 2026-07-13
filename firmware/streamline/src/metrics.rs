@@ -130,6 +130,11 @@ impl<W: Write> PrometheusWriter<W> {
             snapshot.stream.network_errors_total,
         )?;
         self.counter(
+            "streamline_tls_handshake_failures_total",
+            "TLS handshakes that did not authenticate the configured secure target.",
+            snapshot.stream.tls_handshake_failures_total,
+        )?;
+        self.counter(
             "streamline_network_reconnects_total",
             "TCP reconnects after successful streaming began.",
             snapshot.stream.reconnects_total,
@@ -341,6 +346,9 @@ streamline_queue_drops_total 4\n\
 # HELP streamline_network_errors_total TCP send errors.\n\
 # TYPE streamline_network_errors_total counter\n\
 streamline_network_errors_total 6\n\
+# HELP streamline_tls_handshake_failures_total TLS handshakes that did not authenticate the configured secure target.\n\
+# TYPE streamline_tls_handshake_failures_total counter\n\
+streamline_tls_handshake_failures_total 8\n\
 # HELP streamline_network_reconnects_total TCP reconnects after successful streaming began.\n\
 # TYPE streamline_network_reconnects_total counter\n\
 streamline_network_reconnects_total 7\n\
@@ -438,6 +446,7 @@ streamline_ota_busy 0\n"
                 queue_depth: 3,
                 queue_drops_total: 4,
                 network_errors_total: 6,
+                tls_handshake_failures_total: 8,
                 reconnects_total: 7,
             },
             diagnostics: DiagnosticsTelemetry {

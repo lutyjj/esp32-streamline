@@ -177,6 +177,7 @@ changelog: release-history release-tools-image
 # Supervisor will render. Render the same tag into stdout and compare it
 # without changing the working tree.
 changelog-check: release-history release-tools-image version-check
+	@test -z "$$(grep -F 'timestamp | date' cliff.toml)" || (echo "release changelog must not depend on the generator clock." >&2; exit 1)
 	@$(call git_cliff,--tag v$(VERSION)) | diff -u "$(CHANGELOG_FILE)" - || { \
 		status=$$?; \
 		if [ "$$status" -eq 1 ]; then \

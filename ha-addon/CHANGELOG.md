@@ -1,13 +1,13 @@
 # Changelog
 
 Notable changes per release, grouped by type.
-## [0.5.6] - 2026-07-12
+## [0.5.6]
 
 ### 🐛 Bug Fixes
 - Show the firmware version with a live status dot
 - Rebuild the recordings console and serve it through HA ingress
 
-## [0.5.5] - 2026-07-12
+## [0.5.5]
 
 ### 🚀 Features
 - Unify navigation and design system
@@ -19,7 +19,7 @@ Notable changes per release, grouped by type.
 - Generate API client with Orval
 - Simplify dependency ownership
 
-## [0.5.4] - 2026-07-11
+## [0.5.4]
 
 ### 🚀 Features
 - Configure recording storage
@@ -45,7 +45,7 @@ Notable changes per release, grouped by type.
 - Design lossless bridge recordings
 - Remove internal note from customer-facing changelog (#138)
 
-## [0.5.3] - 2026-07-11
+## [0.5.3]
 
 ### 🐛 Bug Fixes
 - Enforce generated changelog (#117)
@@ -54,13 +54,13 @@ Notable changes per release, grouped by type.
 ### 📚 Documentation
 - Document architecture and debt audit (#136)
 
-## [0.5.2] - 2026-07-10
+## [0.5.2]
 
 ### 🚀 Features
 - Derive device contract and console client (#115)
 - Add status light (#114)
 
-## [0.5.1] - 2026-07-10
+## [0.5.1]
 
 ### 🚀 Features
 - Add source audio profiles (#111)
@@ -78,13 +78,13 @@ Notable changes per release, grouped by type.
 ### 📚 Documentation
 - Lead with the Home Assistant add-on to Music Assistant path
 
-## [0.5.0] - 2026-07-07
+## [0.5.0]
 
 ### 🚀 Features
 - Adopt 4 MB flash partition layout (#90)
 - Split network settings into wifi and target endpoints (#89)
 
-## [0.4.2] - 2026-07-06
+## [0.4.2]
 
 ### 🐛 Bug Fixes
 - Run HA add-on with Supervisor data access
@@ -92,7 +92,7 @@ Notable changes per release, grouped by type.
 ### ⚡ Performance
 - Read rollback availability once at boot
 
-## [0.4.1] - 2026-07-06
+## [0.4.1]
 
 ### 🚀 Features
 - Package bridge as Home Assistant add-on (#85)
@@ -117,7 +117,7 @@ Notable changes per release, grouped by type.
 - Every capability is an API first
 - Testing, on-device proof, journey, and privacy rules
 
-## [0.4.0] - 2026-07-04
+## [0.4.0]
 
 ### 🚀 Features
 - Reimplement console component
@@ -135,7 +135,7 @@ Notable changes per release, grouped by type.
 ### 🚜 Refactor
 - Structure API paths around nouns and verbs (#61)
 
-## [0.3.4] - 2026-07-03
+## [0.3.4]
 
 ### 🚀 Features
 - Expose firmware prometheus metrics
@@ -143,7 +143,7 @@ Notable changes per release, grouped by type.
 ### 🐛 Bug Fixes
 - Require explicit Wi-Fi password changes
 
-## [0.3.3] - 2026-07-03
+## [0.3.3]
 
 ### 🚀 Features
 - Install pinned custom images over the air
@@ -152,7 +152,7 @@ Notable changes per release, grouped by type.
 - Verify unlock keys and harden the OTA flow
 - Harden source selection and error reporting
 
-## [0.3.2] - 2026-07-02
+## [0.3.2]
 
 ### 🚀 Features
 - Support multiple TCP producers (#41)
@@ -170,7 +170,7 @@ Notable changes per release, grouped by type.
 - Rewrite for concision, active voice, and single-source facts
 - Refresh to current state
 
-## [0.3.1] - 2026-07-01
+## [0.3.1]
 
 ### 🚀 Features
 - Generate admin key during setup (#26)
@@ -182,7 +182,7 @@ Notable changes per release, grouped by type.
 ### 🐛 Bug Fixes
 - Correct browser support and clean-install copy
 
-## [0.3.0] - 2026-06-22
+## [0.3.0]
 
 ### 🚀 Features
 - Add verified OTA firmware updates
@@ -196,7 +196,7 @@ Notable changes per release, grouped by type.
 ### 📚 Documentation
 - Add core/adapter coding standards to AGENTS.md
 
-## [0.2.1] - 2026-06-20
+## [0.2.1]
 
 ### 🚀 Features
 - Authenticate mutating HTTP API with a console secret (#13)
@@ -204,17 +204,17 @@ Notable changes per release, grouped by type.
 ### 📚 Documentation
 - Prioritize pre-built artifacts in quickstart (#15)
 
-## [0.2.0] - 2026-06-20
+## [0.2.0]
 
 ### 🚜 Refactor
 - Isolate component build environments (#3)
 
-## [0.1.2] - 2026-06-19
+## [0.1.2]
 
 ### 🐛 Bug Fixes
 - Publish one-file firmware release image (#2)
 
-## [0.1.1] - 2026-06-19
+## [0.1.1]
 
 ### 🚜 Refactor
 - Organize components and release flow (#1)
@@ -223,9 +223,8 @@ Notable changes per release, grouped by type.
 - AI attribution
 - Add AGENTS.md
 
-## [0.1.0] - 2026-06-19
+## [0.1.0]
 
 ### 🚀 Features
 - 0.1.0
-
 

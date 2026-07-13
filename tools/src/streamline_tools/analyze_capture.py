@@ -19,6 +19,16 @@ CHANNELS = 2
 BLOCK = 1024
 FINE_ALIGN_SECONDS = 12.0
 FINE_SEARCH_SECONDS = 2.0
+CLIP_THRESHOLD = 0.999
+FREQ_BANDS: tuple[tuple[float, float], ...] = (
+    (20, 60),
+    (60, 120),
+    (120, 250),
+    (250, 1000),
+    (1000, 5000),
+    (5000, 15000),
+)
+FREQ_REFERENCE_BAND = (250.0, 1000.0)
 type FloatArray = npt.NDArray[np.floating[Any]]
 
 
@@ -28,6 +38,43 @@ class AlignedAudio:
     capture: FloatArray
     lag_frames: int
     seconds: float
+
+
+@dataclass
+class ChannelStats:
+    """Per-channel level summary of one aligned window."""
+
+    peak_dbfs: tuple[float, float]
+    rms_dbfs: tuple[float, float]
+    dc_offset: tuple[float, float]
+    clips: int
+
+
+@dataclass
+class MidSideBalance:
+    """Mid energy and the side-minus-mid ratio of one aligned window."""
+
+    mid_rms_dbfs: float
+    side_minus_mid_db: float
+
+
+@dataclass
+class TransformScore:
+    """How well one simple channel transform matches the reference."""
+
+    name: str
+    nrmse: float
+    corr: float
+    gains: tuple[float, float]
+
+
+@dataclass
+class BandDelta:
+    """Capture-minus-reference level for one frequency band, mid-normalized."""
+
+    lo: float
+    hi: float
+    capture_minus_reference_db: float
 
 
 def parse_args() -> argparse.Namespace:
@@ -259,6 +306,20 @@ def score_transform(reference: FloatArray, candidate: FloatArray) -> tuple[float
     return nrmse, corr, gains
 
 
+def score_transforms(reference: FloatArray, capture: FloatArray) -> list[TransformScore]:
+    """Score every simple channel transform of the capture against the reference."""
+    scores = []
+    for name, candidate in transforms(capture).items():
+        nrmse, corr, gains = score_transform(reference, candidate)
+        scores.append(TransformScore(name=name, nrmse=nrmse, corr=corr, gains=(float(gains[0]), float(gains[1]))))
+    return scores
+
+
+def best_transform(scores: list[TransformScore]) -> TransformScore:
+    """Pick the closest transform: lowest NRMSE, then highest correlation."""
+    return min(scores, key=lambda score: (score.nrmse, -score.corr, score.name))
+
+
 def fitted_matrix(reference: FloatArray, capture: FloatArray) -> FloatArray:
     ref = center(reference)
     cap = center(capture)
@@ -298,34 +359,60 @@ def band_level(freqs: FloatArray, psd: FloatArray, lo: float, hi: float) -> floa
     return 10.0 * math.log10(max(float(np.mean(psd[mask])), 1e-30))
 
 
-def print_frequency_delta(reference: FloatArray, capture: FloatArray) -> None:
-    ref_f, ref_psd = mono_bands(reference)
-    cap_f, cap_psd = mono_bands(capture)
-    bands = [(20, 60), (60, 120), (120, 250), (250, 1000), (1000, 5000), (5000, 15000)]
-    ref_mid = band_level(ref_f, ref_psd, 250, 1000)
-    cap_mid = band_level(cap_f, cap_psd, 250, 1000)
-    print("\nFrequency response, mono, relative to 250-1000 Hz:")
-    for lo, hi in bands:
-        ref_band = band_level(ref_f, ref_psd, lo, hi) - ref_mid
-        cap_band = band_level(cap_f, cap_psd, lo, hi) - cap_mid
-        print(f"  {lo:5.0f}-{hi:<5.0f} Hz  capture-reference {cap_band - ref_band:+6.2f} dB")
+def basic_stats(audio: FloatArray) -> ChannelStats:
+    """Summarize per-channel peak, RMS, DC offset, and full-scale clip count."""
+    dc = np.mean(audio, axis=0)
+    clips = int(np.sum(np.abs(audio) >= CLIP_THRESHOLD))
+    return ChannelStats(
+        peak_dbfs=(peak_db(audio[:, 0]), peak_db(audio[:, 1])),
+        rms_dbfs=(rms_db(audio[:, 0]), rms_db(audio[:, 1])),
+        dc_offset=(float(dc[0]), float(dc[1])),
+        clips=clips,
+    )
 
 
-def print_mid_side(label: str, audio: FloatArray) -> None:
+def mid_side(audio: FloatArray) -> MidSideBalance:
+    """Measure mid RMS and how far side energy sits below it."""
     mid = (audio[:, 0] + audio[:, 1]) * 0.5
     side = (audio[:, 0] - audio[:, 1]) * 0.5
-    ratio = rms_db(side) - rms_db(mid)
-    print(f"  {label:<10} mid_rms={rms_db(mid):7.2f} dBFS  side-mid={ratio:+6.2f} dB")
+    return MidSideBalance(mid_rms_dbfs=rms_db(mid), side_minus_mid_db=rms_db(side) - rms_db(mid))
 
 
-def print_basic_stats(label: str, audio: FloatArray) -> None:
-    clips = np.sum(np.abs(audio) >= 0.999)
-    dc = np.mean(audio, axis=0)
-    print(
-        f"  {label:<10} peak L/R={peak_db(audio[:, 0]):6.2f}/{peak_db(audio[:, 1]):6.2f} dBFS  "
-        f"rms L/R={rms_db(audio[:, 0]):6.2f}/{rms_db(audio[:, 1]):6.2f} dBFS  "
-        f"dc L/R={dc[0]:+.5f}/{dc[1]:+.5f}  clips={int(clips)}"
+def frequency_delta(reference: FloatArray, capture: FloatArray) -> list[BandDelta]:
+    """Per-band capture-minus-reference level, each side normalized to its mid band."""
+    ref_f, ref_psd = mono_bands(reference)
+    cap_f, cap_psd = mono_bands(capture)
+    ref_mid = band_level(ref_f, ref_psd, *FREQ_REFERENCE_BAND)
+    cap_mid = band_level(cap_f, cap_psd, *FREQ_REFERENCE_BAND)
+    deltas = []
+    for lo, hi in FREQ_BANDS:
+        ref_band = band_level(ref_f, ref_psd, lo, hi) - ref_mid
+        cap_band = band_level(cap_f, cap_psd, lo, hi) - cap_mid
+        deltas.append(BandDelta(lo=lo, hi=hi, capture_minus_reference_db=cap_band - ref_band))
+    return deltas
+
+
+def format_basic_stats(label: str, stats: ChannelStats) -> str:
+    return (
+        f"  {label:<10} peak L/R={stats.peak_dbfs[0]:6.2f}/{stats.peak_dbfs[1]:6.2f} dBFS  "
+        f"rms L/R={stats.rms_dbfs[0]:6.2f}/{stats.rms_dbfs[1]:6.2f} dBFS  "
+        f"dc L/R={stats.dc_offset[0]:+.5f}/{stats.dc_offset[1]:+.5f}  clips={stats.clips}"
     )
+
+
+def format_mid_side(label: str, balance: MidSideBalance) -> str:
+    return f"  {label:<10} mid_rms={balance.mid_rms_dbfs:7.2f} dBFS  side-mid={balance.side_minus_mid_db:+6.2f} dB"
+
+
+def format_transform_score(score: TransformScore) -> str:
+    return (
+        f"  {score.name:<18} nrmse={score.nrmse:6.3f}  corr={score.corr:7.4f}  "
+        f"gains L/R={score.gains[0]:+.3f}/{score.gains[1]:+.3f}"
+    )
+
+
+def format_frequency_delta(delta: BandDelta) -> str:
+    return f"  {delta.lo:5.0f}-{delta.hi:<5.0f} Hz  capture-reference {delta.capture_minus_reference_db:+6.2f} dB"
 
 
 def main() -> int:
@@ -347,26 +434,23 @@ def main() -> int:
     print(f"Aligned:   lag={aligned.lag_frames / SAMPLE_RATE:+.3f}s  analyzed={aligned.seconds:.2f}s")
 
     print("\nBasic stats:")
-    print_basic_stats("reference", aligned.reference)
-    print_basic_stats("capture", aligned.capture)
+    print(format_basic_stats("reference", basic_stats(aligned.reference)))
+    print(format_basic_stats("capture", basic_stats(aligned.capture)))
 
     print("\nMid/side balance:")
-    print_mid_side("reference", aligned.reference)
-    print_mid_side("capture", aligned.capture)
+    print(format_mid_side("reference", mid_side(aligned.reference)))
+    print(format_mid_side("capture", mid_side(aligned.capture)))
 
     print("\nChannel transform scores, lower NRMSE and higher corr are better:")
-    scored = []
-    for name, candidate in transforms(aligned.capture).items():
-        nrmse, corr, gains = score_transform(aligned.reference, candidate)
-        scored.append((nrmse, -corr, name, corr, gains, candidate))
-        print(f"  {name:<18} nrmse={nrmse:6.3f}  corr={corr:7.4f}  gains L/R={gains[0]:+.3f}/{gains[1]:+.3f}")
-    scored.sort()
-    _nrmse, _neg_corr, best_name, best_corr, best_gains, best_candidate = scored[0]
+    scores = score_transforms(aligned.reference, aligned.capture)
+    for score in scores:
+        print(format_transform_score(score))
+    best = best_transform(scores)
 
-    corrected = best_candidate.copy()
-    corrected[:, 0] *= best_gains[0]
-    corrected[:, 1] *= best_gains[1]
-    print(f"\nBest simple transform: {best_name} (corr={best_corr:.4f})")
+    corrected = transforms(aligned.capture)[best.name].copy()
+    corrected[:, 0] *= best.gains[0]
+    corrected[:, 1] *= best.gains[1]
+    print(f"\nBest simple transform: {best.name} (corr={best.corr:.4f})")
 
     matrix = fitted_matrix(aligned.reference, aligned.capture)
     scale = max(float(np.max(np.abs(matrix))), 1e-12)
@@ -376,7 +460,9 @@ def main() -> int:
     print(f"  normalized: [{matrix[0, 0] / scale:+.3f} {matrix[0, 1] / scale:+.3f}]")
     print(f"              [{matrix[1, 0] / scale:+.3f} {matrix[1, 1] / scale:+.3f}]")
 
-    print_frequency_delta(aligned.reference, corrected)
+    print("\nFrequency response, mono, relative to 250-1000 Hz:")
+    for delta in frequency_delta(aligned.reference, corrected):
+        print(format_frequency_delta(delta))
     return 0
 
 

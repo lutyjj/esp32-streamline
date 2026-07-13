@@ -1,0 +1,114 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This StreamLine bridge is already configured.",
+      "reauth_successful": "The recording token was updated."
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the StreamLine bridge.",
+      "invalid_auth": "The bridge rejected the recording token.",
+      "invalid_response": "The server is not a compatible StreamLine bridge.",
+      "invalid_url": "Enter the bridge root URL without a path or credentials."
+    },
+    "step": {
+      "hassio_confirm": {
+        "description": "Set up the {addon} app as a StreamLine bridge?",
+        "title": "StreamLine app discovered"
+      },
+      "reauth_confirm": {
+        "data": {
+          "recording_token": "Recording token"
+        },
+        "description": "Enter the recording token configured on this bridge.",
+        "title": "Update recording access"
+      },
+      "reconfigure": {
+        "data": {
+          "bridge_url": "Bridge URL",
+          "recording_token": "Recording token (optional)"
+        },
+        "description": "Home Assistant reads bridge status without authentication. Add the recording token to control and play recordings.",
+        "title": "Configure StreamLine"
+      },
+      "user": {
+        "data": {
+          "bridge_url": "Bridge URL",
+          "recording_token": "Recording token (optional)"
+        },
+        "description": "Enter the direct bridge URL. Home Assistant reads status without authentication. Add the recording token to control and play recordings.",
+        "title": "Add a StreamLine bridge"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "audio_streaming": {
+        "name": "Audio streaming"
+      }
+    },
+    "sensor": {
+      "listeners": {
+        "name": "Listeners"
+      },
+      "lost_packets": {
+        "name": "Lost packets"
+      },
+      "peak_level": {
+        "name": "Peak level"
+      }
+    },
+    "switch": {
+      "recording": {
+        "name": "Recording"
+      }
+    }
+  },
+  "services": {
+    "delete_recording": {
+      "description": "Delete one inactive recording from bridge storage.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Configured StreamLine bridge.",
+          "name": "Bridge"
+        },
+        "recording_id": {
+          "description": "Recording ID returned by the bridge API or recording switch.",
+          "name": "Recording ID"
+        }
+      },
+      "name": "Delete recording"
+    },
+    "start_recording": {
+      "description": "Start a named lossless recording for one bridge source.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Configured StreamLine bridge.",
+          "name": "Bridge"
+        },
+        "source": {
+          "description": "Source IPv4 address reported by the bridge.",
+          "name": "Source"
+        },
+        "title": {
+          "description": "Recording title, up to 80 characters.",
+          "name": "Title"
+        }
+      },
+      "name": "Start recording"
+    },
+    "stop_recording": {
+      "description": "Stop and finalize one active recording.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Configured StreamLine bridge.",
+          "name": "Bridge"
+        },
+        "recording_id": {
+          "description": "Active recording ID returned by the bridge API or recording switch.",
+          "name": "Recording ID"
+        }
+      },
+      "name": "Stop recording"
+    }
+  }
+}

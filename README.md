@@ -26,6 +26,9 @@ HTTP consumer can read it too.
 - **Lossless recording**: an optional bridge page and API preserve one source
   as a finite 48 kHz, 16-bit stereo WAV, with sequence gaps measured and
   represented as silence. See [lossless recordings](docs/recordings.md).
+- **Home Assistant integration**: HACS adds source entities, recording controls,
+  and saved WAV files under Media. See
+  [Home Assistant integration](docs/home-assistant.md).
 - **Verified automatic OTA updates** — the device pulls new GitHub releases
   over HTTPS, verifies their SHA-256, and rolls back automatically if an image
   fails to boot. See [OTA updates](docs/ota.md).
@@ -75,7 +78,8 @@ Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 **Home Assistant OS / Supervised**: add this repository as a Home Assistant
 add-on repository, install **ESP32 StreamLine Bridge**, and start it. The add-on
 publishes the same ports as the container: ESP32 PCM on `39000/tcp` and HTTP WAV
-on `8088/tcp`.
+on `8088/tcp`. Install the HACS integration from the same repository to add
+entities, recording actions, and the StreamLine media source.
 
 **Docker** — create `docker-compose.yml` on your server and start it with
 `docker compose up -d`:
@@ -178,6 +182,7 @@ expose serial devices. Install the tool once: `cargo install espflash`.
 
 Docs: [architecture](docs/architecture.md) ·
 [bridge reference](docs/bridge.md) ·
+[Home Assistant](docs/home-assistant.md) ·
 [lossless recordings](docs/recordings.md) ·
 [design](docs/design.md) ·
 [user journey](docs/user-journey.md) ·

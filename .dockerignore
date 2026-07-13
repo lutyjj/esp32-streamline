@@ -4,6 +4,8 @@
 .ruff_cache
 __pycache__
 *.py[cod]
+**/__pycache__
+**/*.py[cod]
 firmware/streamline/.embuild
 firmware/streamline/.cargo-home
 firmware/streamline/target

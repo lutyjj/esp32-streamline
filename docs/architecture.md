@@ -14,6 +14,8 @@ flowchart LR
   tcp --> bridge["Bridge source registry and playout buffer"]
   bridge --> wav["HTTP WAV clients"]
   bridge --> recording["Optional lossless recording store"]
+  ha["Home Assistant integration"] --> bridge
+  ha --> recording
 
   browser["Device console"] --> api["Device HTTP API"]
   api --> config["Validated device model"]
@@ -34,6 +36,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | `console` | Device and bridge consoles, WebFlasher UI, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
 | `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
 | `ha-addon` | Home Assistant Supervisor metadata, writable recording storage mapping, and bridge process wiring | Bridge runtime behavior |
+| `custom_components/streamline`, `ha-integration` | Home Assistant config entries, source entities, recording actions, media source, tests, and HACS packaging | Bridge runtime behavior, device configuration, recording storage |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
 | `tools` | Developer-only capture analysis, bounded serial capture, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
 | `.github`, root and component Makefiles | Change selection, checks, release assembly, publishing | Component behavior |
@@ -111,6 +114,15 @@ client stream.
 
 The standalone container and Home Assistant add-on run the same `streamline-bridge` process. `streamline-ha-addon` only translates Supervisor options into bridge CLI arguments. The [bridge reference](bridge.md) owns the runtime endpoints, lifecycle states, and tuning options.
 
+The add-on publishes a Supervisor discovery message for the optional HACS
+integration. The message carries the add-on's internal bridge address and
+recording token to a user-confirmed config flow. The integration polls the
+bridge API through one validated client and coordinator. Source platforms,
+recording actions, the media source, and the authenticated Home Assistant WAV
+proxy consume that coordinator or client. The bridge OpenAPI artifact generates
+the integration's Pydantic models. A narrow shared-session HTTP adapter owns
+transport, while a contract test binds its operations to the runtime API.
+
 ## State ownership
 
 | State | Owner | Lifetime |
@@ -121,6 +133,7 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 | Bridge source pipelines and client queues | Bridge process | One bridge process |
 | Active recording sessions | Bridge recording service | Until stop, a resource limit, or bridge shutdown |
 | WAV recordings and manifests | Bridge recording store | Until an authenticated delete or external storage management |
+| Bridge URL and recording token | Home Assistant config entry | Until reconfigured or removed; never exposed as entity state, media ID, player URL, or diagnostics |
 | Admin key copy and unlock deadline | Browser session storage, with explicit local-storage opt-in | One tab or browser profile |
 | Built console, firmware images, release notes | Build and release automation | Generated artifact; never source state |
 
@@ -138,6 +151,7 @@ Persistent and cross-boundary values enter business logic only after parsing and
 | User-visible stages | [User journey](user-journey.md) | Console and firmware behavior |
 | Security posture | [Security notes](security.md) | Device, bridge, add-on, and deployment guidance |
 | Recording timeline and file lifecycle | [Lossless recordings](recordings.md) | Bridge service, HTTP adapter, page, and deployment adapters |
+| Home Assistant bridge client | Bridge OpenAPI artifact | Generated Pydantic models and integration operation parity test |
 
 The PCM frame has two hand-written implementations. Keep changes byte-exact and update the protocol, firmware, bridge, and tests together.
 
@@ -147,12 +161,16 @@ The device always runs the embedded console and API. A bridge runs separately in
 
 - The standalone container exposes TCP `39000` and HTTP `8088`.
 - The Home Assistant add-on runs the same bridge package with Supervisor-owned options and ports.
+- The HACS integration connects to either deployment and registers Home Assistant entities, actions, and media.
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
 `/health` is the bridge container liveness probe. A deployment with writable
 recording storage also serves `/recordings` and its authenticated API. Music
 Assistant, Snapcast, Icecast, editors, and media libraries remain downstream
 systems.
+
+The [Home Assistant integration](home-assistant.md) owns installation, entity,
+action, media, and removal behavior.
 
 ## Build, CI, and release
 
@@ -187,6 +205,7 @@ Use `node` only where an external platform defines that term. Use concrete board
 - [Design notes](design.md) own architectural decisions and integration choices.
 - [Bridge reference](bridge.md) owns bridge endpoints, source lifecycle, and tuning options.
 - [Lossless recordings](recordings.md) owns bridge recording behavior, storage, and API semantics.
+- [Home Assistant integration](home-assistant.md) owns the HACS install and Home Assistant user contract.
 - [User journey](user-journey.md) owns visible setup, steady-state, and recovery promises.
 - [PCM protocol](pcm-protocol.md) and [TCP transport](tcp-transport.md) own the audio wire and runtime transport contracts.
 - [Audio profiles](audio-profiles.md), [OTA](ota.md), and [security](security.md) own their feature and risk contracts.

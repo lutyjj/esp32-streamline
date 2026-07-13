@@ -4,8 +4,17 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+from urllib.error import URLError
 
-from streamline_bridge.ha_addon import bridge_argv, load_options, normalize_source_allow, recording_environment
+from streamline_bridge.ha_addon import (
+    bridge_argv,
+    discovery_config,
+    load_options,
+    normalize_source_allow,
+    publish_discovery,
+    recording_environment,
+)
 from streamline_bridge.options import ADDON_CONTROL_OPTIONS, AddonControlOption, BridgeOption, addon_options
 
 
@@ -66,6 +75,46 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "at least 16 characters"):
             bridge_argv({"recordings_enabled": True, "recording_token": "short"})
 
+    def test_discovery_hands_the_internal_bridge_and_recording_token_to_home_assistant(self) -> None:
+        options = {"recordings_enabled": True, "recording_token": "long-recording-token"}
+
+        self.assertEqual(
+            discovery_config(options, "streamline-addon"),
+            {
+                "host": "streamline-addon",
+                "port": 8088,
+                "recording_token": "long-recording-token",
+            },
+        )
+
+    @patch("streamline_bridge.ha_addon.socket.gethostname", return_value="streamline-addon")
+    @patch("streamline_bridge.ha_addon.urlopen")
+    def test_discovery_uses_the_supervisor_api_without_exposing_the_token_in_the_url(
+        self, open_url: MagicMock, _hostname: MagicMock
+    ) -> None:
+        response = MagicMock()
+        response.__enter__.return_value.status = 200
+        open_url.return_value = response
+
+        published = publish_discovery(
+            {"recordings_enabled": True, "recording_token": "long-recording-token"},
+            {"SUPERVISOR_TOKEN": "test-supervisor-token"},
+        )
+
+        self.assertTrue(published)
+        request = open_url.call_args.args[0]
+        self.assertEqual(request.full_url, "http://supervisor/discovery")
+        self.assertNotIn("long-recording-token", request.full_url)
+        self.assertIn(b'"service": "streamline"', request.data)
+        self.assertIn(b'"recording_token": "long-recording-token"', request.data)
+
+    def test_missing_supervisor_token_does_not_block_bridge_startup(self) -> None:
+        self.assertFalse(publish_discovery({}, {}))
+
+    @patch("streamline_bridge.ha_addon.urlopen", side_effect=URLError("offline"))
+    def test_supervisor_failure_does_not_block_bridge_startup(self, _open_url: MagicMock) -> None:
+        self.assertFalse(publish_discovery({}, {"SUPERVISOR_TOKEN": "test-supervisor-token"}))
+
     def test_source_allow_accepts_a_list(self) -> None:
         self.assertEqual(
             normalize_source_allow(["192.0.2.10", " 198.51.100.20 ", ""]),
@@ -117,6 +166,8 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
 
         self.assertNotIn("\nmap:\n", config)
         self.assertIn("\nbackup_exclude:\n  - recordings\n", config)
+        self.assertIn("\ndiscovery:\n  - streamline\n", config)
+        self.assertNotIn("hassio_api", config)
 
     @staticmethod
     def _yaml_section(config: str, name: str) -> dict[str, str]:

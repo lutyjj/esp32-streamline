@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 256">
+  <rect width="512" height="256" rx="48" fill="#102a2a"/>
+  <path d="M42 104h28l14-32 22 65 25-79 20 46h43" fill="none" stroke="#6ee7b7" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+  <text x="42" y="194" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="700">StreamLine</text>
+  <text x="226" y="105" fill="#a7f3d0" font-family="Arial, Helvetica, sans-serif" font-size="30">ESP32 audio</text>
+</svg>

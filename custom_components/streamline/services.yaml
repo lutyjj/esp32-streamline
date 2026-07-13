@@ -1,0 +1,39 @@
+start_recording:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: streamline
+    source:
+      example: 192.0.2.10
+      required: true
+      selector:
+        text:
+    title:
+      example: Album side A
+      required: true
+      selector:
+        text:
+stop_recording:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: streamline
+    recording_id:
+      required: true
+      selector:
+        text:
+delete_recording:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: streamline
+    recording_id:
+      required: true
+      selector:
+        text:

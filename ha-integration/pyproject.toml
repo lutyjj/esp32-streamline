@@ -1,0 +1,36 @@
+[project]
+name = "esp32-streamline-home-assistant"
+version = "0.5.6"
+requires-python = ">=3.14.2"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "datamodel-code-generator==0.66.1",
+  "homeassistant==2026.7.2",
+  "mypy>=1.18,<2",
+  "pytest>=8.4,<10",
+  "pytest-homeassistant-custom-component==0.13.346",
+  "ruff>=0.12,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "T20", "T10", "G", "LOG", "RUF", "C4", "PIE", "RET", "ISC", "TC", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+explicit_package_bases = true
+warn_unreachable = true
+files = ["../custom_components/streamline", "tests"]

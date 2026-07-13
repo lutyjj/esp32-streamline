@@ -22,6 +22,7 @@ place, and the standing items we track or have accepted.
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
 | Bridge recording API (`:8088`) | Disabled without writable storage; bearer-token gated when enabled | Token holder can record, list, download, and delete captures |
 | Bridge recording directory | Dedicated writable volume; link-safe file operations and validated metadata | A storage peer can delete or corrupt recordings, but cannot redirect bridge file access outside the directory |
+| Home Assistant integration | Recording token in a Home Assistant config entry; authenticated proxy for WAV playback | A Home Assistant administrator or config-storage reader can control and play bridge recordings |
 
 ## Authentication
 
@@ -68,6 +69,13 @@ place, and the standing items we track or have accepted.
   it. An authenticated request can mint a one-use download ticket that expires
   after 60 seconds. Keep recordings on trusted storage and terminate TLS at a
   reverse proxy before crossing a trust boundary.
+- The add-on sends its internal bridge address and recording token through the
+  Supervisor discovery store. Home Assistant saves the token in the confirmed
+  integration config entry. The integration never exposes it in entity state,
+  media IDs, player URLs, logs, or diagnostics.
+- Media playback uses a signed Home Assistant path. Each request mints a fresh
+  one-use bridge ticket and streams the response without publishing the ticket
+  to the player.
 - HTTP bodies, connection workers, socket inactivity, producer workers,
   retained sources, client queues, recording queues, recording duration,
   sequence gaps, download tickets, manifest sizes, directory scans, and list

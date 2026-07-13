@@ -37,6 +37,11 @@ directly.
 6. The operator downloads the file for permanent storage or deletes it from
    the bridge. Bridge storage is a working area, not a media library.
 
+With the HACS integration installed, finalized files also appear under
+**Media → StreamLine**. Home Assistant proxies playback through a fresh one-use
+download ticket. [Home Assistant integration](home-assistant.md#media) owns that
+browse and playback flow.
+
 The page narrates each wait and failure. Stopping a session that received no
 audio creates no empty file.
 
@@ -49,6 +54,7 @@ audio creates no empty file.
 | Recording service | Validate commands, own session states, reconstruct the source timeline, and enforce resource limits. |
 | Recording store | Create, recover, list, download, and delete files inside one configured directory. |
 | Recording page | Call the recording API. It owns no recording state beyond the token held in browser session storage. |
+| Home Assistant integration | Call the same API for entities, actions, and media; proxy ticketed WAV playback through an authenticated Home Assistant URL. |
 | Deployment adapter | Opt into writable storage and provide the recording token without placing it in process arguments. |
 
 The recorder taps accepted packets before live playout. Live loss concealment

@@ -26,6 +26,7 @@ jobs:
       components: ${{ steps.matrix.outputs.components }}
       firmware: ${{ steps.filter.outputs.firmware }}
       api_contract: ${{ steps.filter.outputs.api_contract }}
+      ha_validation: ${{ steps.filter.outputs.ha_validation }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
@@ -45,6 +46,9 @@ jobs:
               - 'Dockerfile.release-tools'
               - 'README.md'
               - 'cliff.toml'
+              - 'custom_components/streamline/manifest.json'
+              - 'hacs.json'
+              - 'ha-integration/pyproject.toml'
               - 'repository.yaml'
               - 'docs/**'
             bridge:
@@ -72,6 +76,15 @@ jobs:
               - 'bridge/uv.lock'
               - 'bridge/src/**'
               - 'bridge/tests/**'
+            ha-integration: &ha-integration
+              - *shared
+              - 'custom_components/**'
+              - 'ha-integration/**'
+              - 'hacs.json'
+              - 'docs/bridge-openapi.json'
+              - 'bridge/src/streamline_bridge/api_models.py'
+              - 'bridge/src/streamline_bridge/http.py'
+            ha_validation: *ha-integration
             firmware:
               - *shared
               - 'firmware/**'
@@ -82,7 +95,7 @@ jobs:
         # and the internal `shared` and `api_contract` pseudo-filters.
         run: |
           components=$(echo '${{ steps.filter.outputs.changes }}' \
-            | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract")]')
+            | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract" and . != "ha_validation")]')
           echo "components=$components" >> "$GITHUB_OUTPUT"
 
   # One job, every lightweight component. The command is uniform because each
@@ -160,6 +173,18 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - run: make api-contract-check
 
+  ha-validation:
+    name: Home Assistant metadata
+    needs: changes
+    if: needs.changes.outputs.ha_validation == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: HACS validation
+        uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main
+        with:
+          category: integration
+
   release-verify:
     name: Release snapshot
     if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
@@ -181,16 +206,16 @@ jobs:
   ci-complete:
     name: CI complete
     if: ${{ always() }}
-    needs: [changes, checks, firmware, api-contract, release-verify]
+    needs: [changes, checks, firmware, api-contract, ha-validation, release-verify]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
         run: |
-          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }} api_contract=${{ needs.api-contract.result }} release=${{ needs.release-verify.result }}"
+          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }} api_contract=${{ needs.api-contract.result }} ha_validation=${{ needs.ha-validation.result }} release=${{ needs.release-verify.result }}"
           if [ "${{ needs.changes.result }}" != "success" ]; then
             echo "::error::change detection failed"; exit 1
           fi
-          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}" "${{ needs.api-contract.result }}" "${{ needs.release-verify.result }}"; do
+          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}" "${{ needs.api-contract.result }}" "${{ needs.ha-validation.result }}" "${{ needs.release-verify.result }}"; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a required job did not pass ($r)"; exit 1 ;;

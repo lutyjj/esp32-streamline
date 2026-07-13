@@ -95,7 +95,7 @@ protocol has generation tooling.
 ## Components share one build contract
 
 Each component (`bridge/`, `console/`, `firmware/`, `tools/`, `webflasher/`,
-`ha-addon/`) owns its Makefile, container image or build target, dependency
+`ha-addon/`, `ha-integration/`) owns its Makefile, container image or build target, dependency
 pins, and tool config. Component Makefiles expose the same verbs where they
 apply — `format`, `lint`, `test`, `image` — and include `mk/common.mk` for
 cross-cutting values. The root `Makefile` is the public interface:

@@ -59,3 +59,15 @@ list of ESP32 IPv4 addresses to reject unexpected PCM producers.
 
 The [bridge reference](../docs/bridge.md) defines every add-on tuning option,
 its default, and its validation rule.
+
+## Add Home Assistant entities and media
+
+Install the ESP32 StreamLine HACS integration from this repository and restart
+Home Assistant. The add-on publishes a Supervisor discovery prompt containing
+its internal API address and recording access. Confirm it under **Settings →
+Devices & services**.
+
+The integration adds source entities and recording controls. Finalized WAV
+files appear under **Media → StreamLine** and play through an authenticated Home
+Assistant proxy. [Home Assistant integration](../docs/home-assistant.md) owns
+installation, actions, media behavior, and troubleshooting.

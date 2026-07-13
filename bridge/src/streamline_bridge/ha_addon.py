@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import socket
+from collections.abc import Mapping
 from pathlib import Path
 from typing import NoReturn
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from streamline_bridge.options import ADDON_CONTROL_OPTIONS, addon_options, option_value
 
@@ -13,6 +18,12 @@ BRIDGE_EXECUTABLE = "streamline-bridge"
 OPTIONS_PATH = Path("/data/options.json")
 RECORDINGS_DIR = "/data/recordings"
 RECORDING_TOKEN_ENV = "STREAMLINE_RECORDING_TOKEN"
+SUPERVISOR_TOKEN_ENV = "SUPERVISOR_TOKEN"
+SUPERVISOR_DISCOVERY_URL = "http://supervisor/discovery"
+DISCOVERY_SERVICE = "streamline"
+HTTP_PORT = 8088
+
+LOGGER = logging.getLogger(__name__)
 
 
 def load_options(path: Path = OPTIONS_PATH) -> dict[str, object]:
@@ -72,6 +83,39 @@ def recording_environment(options: dict[str, object]) -> dict[str, str]:
     return {RECORDING_TOKEN_ENV: validate_recording_token(options)}
 
 
+def discovery_config(options: dict[str, object], hostname: str) -> dict[str, object]:
+    """Build the Supervisor-to-integration handoff without logging credentials."""
+    config: dict[str, object] = {"host": hostname, "port": HTTP_PORT}
+    if recordings_enabled(options):
+        config["recording_token"] = validate_recording_token(options)
+    return config
+
+
+def publish_discovery(options: dict[str, object], environment: Mapping[str, str] = os.environ) -> bool:
+    """Publish best-effort Supervisor discovery for the HACS integration."""
+    supervisor_token = environment.get(SUPERVISOR_TOKEN_ENV, "")
+    if not supervisor_token:
+        return False
+    body = json.dumps(
+        {"service": DISCOVERY_SERVICE, "config": discovery_config(options, socket.gethostname())}
+    ).encode()
+    request = Request(
+        SUPERVISOR_DISCOVERY_URL,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {supervisor_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            return int(response.status) == 200
+    except (OSError, URLError):
+        LOGGER.warning("Could not publish StreamLine discovery to Home Assistant")
+        return False
+
+
 def normalize_source_allow(value: object) -> str:
     if value is None or value == "":
         return ""
@@ -96,5 +140,6 @@ def main() -> NoReturn:
     options = load_options()
     argv = bridge_argv(options)
     environment = os.environ | recording_environment(options)
+    publish_discovery(options, environment)
     os.execvpe(argv[0], argv, environment)
     raise SystemExit(127)

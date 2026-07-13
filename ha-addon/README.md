@@ -22,6 +22,12 @@ private working directory and exposes the recording flow as its Web UI.
 Recordings survive restarts and updates, but backups exclude them and a restore
 or uninstall removes them. Download every completed WAV you want to keep.
 
+Install the HACS integration from this repository for source entities,
+recording controls, and saved files under Home Assistant Media. The add-on
+publishes its internal bridge address and recording token through Supervisor
+discovery; Home Assistant asks before creating the integration entry. See the
+[Home Assistant integration](../docs/home-assistant.md).
+
 ## Use
 
 Point each ESP32 device at the Home Assistant host on port `39000`. Music

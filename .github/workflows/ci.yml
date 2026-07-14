@@ -54,6 +54,8 @@ jobs:
               - 'docs/bridge-openapi.json'
               - 'docs/pcm-transport.json'
               - 'docs/pcm-frame-vectors.json'
+              # The bridge option-contract test pins the add-on's config.
+              - 'ha-addon/config.yaml'
             console:
               - *shared
               - 'console/**'

@@ -6,7 +6,6 @@ import { AnalogPassthrough } from './AnalogPassthrough';
 import { AudioProfiles } from './AudioProfiles';
 import { Card, CardFooter } from './Card';
 import { GuidePrompt } from './GuidePrompt';
-import { Meter } from './Meter';
 import { ActionState, TransactButton } from './Transact';
 
 export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
@@ -42,7 +41,7 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
       },
       {
         busyText: 'Saving…',
-        okText: 'Saved — the meter shows the new levels',
+        okText: 'Saved — the Overview meter shows the new levels',
         // In setup mode the codec is not running, so the device restarts instead.
         reboots: 'the audio settings',
       },
@@ -55,7 +54,7 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
       <Card
         gated
         title="Input settings"
-        lead="Changes apply instantly and return to Custom settings. Watch the live level below."
+        lead="Changes apply instantly and return to Custom settings. The Overview shows the live input level."
       >
         <GuidePrompt
           text="Not sure? The guide measures your source and sets everything for you."
@@ -128,10 +127,6 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
             provisioned={status.value.mode === 'provisioned'}
           />
         )}
-      </Card>
-
-      <Card title="Input level" lead="Watch the effect of a change here. Clipping lights the lamp.">
-        <Meter />
       </Card>
     </>
   );

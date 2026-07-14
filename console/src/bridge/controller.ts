@@ -83,8 +83,12 @@ export class BridgeController {
 
   constructor(
     private readonly api: BridgeApi = runtimeApi,
-    private readonly schedule: Scheduler = window.setTimeout,
-    private readonly cancel: (id: number) => void = window.clearTimeout,
+    // Wrapped so the browser sees `window` as the receiver: a bare
+    // `window.setTimeout` reference invoked through `this.schedule` throws
+    // "called on an object that does not implement interface Window" and
+    // silently ends the poll loop after its first tick.
+    private readonly schedule: Scheduler = (callback, delay) => window.setTimeout(callback, delay),
+    private readonly cancel: (id: number) => void = (id) => window.clearTimeout(id),
     private readonly storedToken: () => string = bridgeToken,
   ) {}
 

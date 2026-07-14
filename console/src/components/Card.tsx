@@ -21,18 +21,12 @@ export function Card({ children, title, lead, gated = false, className = '' }: C
 
 export function CardFooter({
   children,
-  flush = false,
   compact = false,
 }: {
   children: ComponentChildren;
-  flush?: boolean;
   compact?: boolean;
 }) {
-  return (
-    <div class={`cardfoot${flush ? ' cardfoot-flush' : ''}${compact ? ' cardfoot-compact' : ''}`}>
-      {children}
-    </div>
-  );
+  return <div class={`cardfoot${compact ? ' cardfoot-compact' : ''}`}>{children}</div>;
 }
 
 export function CardStack({ children }: { children: ComponentChildren }) {

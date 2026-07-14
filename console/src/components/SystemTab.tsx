@@ -324,7 +324,7 @@ function AccessCard() {
     >
       <form onSubmit={save}>
         {!staged && (
-          <CardFooter flush>
+          <CardFooter>
             <Button disabled={!manageable} onClick={() => setStaged(generateAdminKey())}>
               Replace admin key
             </Button>
@@ -367,7 +367,7 @@ function ResetCard() {
 
   return (
     <Card gated title="Reset">
-      <CardFooter flush compact>
+      <CardFooter compact>
         <TransactButton
           transact={restart}
           kind="secondary"
@@ -404,7 +404,7 @@ function RawStatusCard() {
     <Card>
       <Disclosure title="Developer — raw status">
         <div class="log apidump card-section">{JSON.stringify(status.value, null, 2)}</div>
-        <CardFooter flush compact>
+        <CardFooter compact>
           <span class="actionstate">
             Full JSON at <code>/api/status</code> · Prometheus at <code>/api/metrics</code>
           </span>

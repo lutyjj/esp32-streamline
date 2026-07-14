@@ -58,7 +58,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           ? 'If the bridge lost this device’s key, switch the bridge to cleartext first, then disable encryption here.'
           : 'Lost the one-time secret? Replace the pending key, or discard it to stay on cleartext.'}
       </p>
-      <CardFooter compact flush>
+      <CardFooter compact>
         {secure && (
           <ConfirmButton
             label="Disable encryption & restart"

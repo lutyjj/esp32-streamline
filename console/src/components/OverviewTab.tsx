@@ -147,7 +147,9 @@ export function OverviewTab({
           <span class="sub">
             {bridgeless
               ? 'no bridge configured yet'
-              : `${s.target.target_host}:${s.target.target_port}`}
+              : `${s.target.target_host}:${s.target.target_port}${
+                  s.target.transport === 'tls-psk' ? ' · encrypted' : ''
+                }`}
           </span>
         </div>
       </div>

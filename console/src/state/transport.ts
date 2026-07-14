@@ -135,8 +135,17 @@ export class TransportController {
 export const transport = new TransportController();
 
 /**
- * The bridge wizard hands the encryption opt-in to the Stream target card
- * rather than duplicating it. Setting this opens the card's opt-in on the
- * Network tab; the card clears it once consumed.
+ * Every entry point into encryption setup — the bridge wizard's last step,
+ * the Stream target card's opt-in, a mid-journey resume, a credential
+ * replacement — opens the one guided TransportWizard. The app root renders
+ * it while this is set.
  */
-export const optInRequested = signal(false);
+export const setupWizardRequested = signal(false);
+
+export type SetupWizardStep = 'credential' | 'enroll' | 'activate' | 'done';
+
+/** Where the guided setup resumes for the device's current key state. */
+export function setupWizardStep(status: TransportStatus): SetupWizardStep {
+  if (!status.pending_key_id) return 'credential';
+  return status.pending_verified ? 'activate' : 'enroll';
+}

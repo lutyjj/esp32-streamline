@@ -9,6 +9,7 @@ import { OnboardingOverlay } from './components/OnboardingOverlay';
 import { OverviewTab } from './components/OverviewTab';
 import { SystemTab } from './components/SystemTab';
 import { Toasts } from './components/Toasts';
+import { TransportWizard } from './components/TransportWizard';
 import { WizardOverlay } from './components/WizardOverlay';
 import { useWritable } from './lib/hooks';
 import { setupMode, status, unreachable } from './state/device';
@@ -21,6 +22,7 @@ import {
   viewHref,
 } from './state/navigation';
 import { toast } from './state/toasts';
+import { setupWizardRequested } from './state/transport';
 
 export function App() {
   const view = useConsoleView();
@@ -110,6 +112,13 @@ export function App() {
 
       {wizardOpen && <WizardOverlay onClose={() => setWizardOpen(false)} />}
       {bridgeWizardOpen && <BridgeWizard onClose={() => setBridgeWizardOpen(false)} />}
+      {setupWizardRequested.value && (
+        <TransportWizard
+          onClose={() => {
+            setupWizardRequested.value = false;
+          }}
+        />
+      )}
       {onboardingOpen && (
         <OnboardingOverlay
           onClose={() => {

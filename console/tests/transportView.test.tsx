@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { TransportCard } from '../src/components/TransportCard';
 import type { DeviceConfig, TransportStatus } from '../src/lib/api';
 import { config, status } from '../src/state/device';
-import { transport } from '../src/state/transport';
+import { setupWizardRequested, transport } from '../src/state/transport';
 import { deviceStatus } from './fixtures';
 
 function transportStatus(overrides: Partial<TransportStatus> = {}): TransportStatus {
@@ -51,63 +51,57 @@ function open(host: HTMLElement, title: string): void {
   act(() => summary?.click());
 }
 
+function toggle(host: HTMLElement): HTMLInputElement | null {
+  return host.querySelector<HTMLInputElement>('input[role="switch"]');
+}
+
 describe('PCM encryption journey', () => {
   beforeEach(() => {
     status.value = deviceStatus({ auth_required: false });
     config.value = deviceConfig(transportStatus());
     transport.revealed.value = undefined;
+    setupWizardRequested.value = false;
   });
 
-  it('keeps encryption controls behind one opt-in action', () => {
+  it('routes the opt-in straight into the guided setup', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
     expect(buttonLabels(host)).toEqual([]);
     expect(summaries(host)).toEqual([]);
+    expect(toggle(host)?.checked).toBe(false);
 
-    const toggle = host.querySelector<HTMLInputElement>('input[role="switch"]');
+    const control = toggle(host);
     act(() => {
-      if (!toggle) return;
-      toggle.checked = true;
-      toggle.dispatchEvent(new Event('change', { bubbles: true }));
+      if (!control) return;
+      control.checked = true;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
-    expect(host.textContent).toContain('Step 1 of 3 · Create a bridge credential');
-    expect(buttonLabels(host)).toEqual(['Generate bridge credential']);
+    expect(setupWizardRequested.value).toBe(true);
   });
 
-  it('shows the valid provisioning action with recovery as a collapsed sub-section', () => {
+  it('shows a resume action and the discard exit while setup is underway', () => {
     config.value = deviceConfig(
       transportStatus({ pending_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
     );
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    expect(host.textContent).toContain('Step 2 of 3 · Enroll on the bridge and verify');
-    expect(buttonLabels(host)).toEqual(['Verify with bridge']);
-    expect(summaries(host).map((s) => s.textContent)).toEqual(['Recovery']);
+    expect(toggle(host)?.checked).toBe(true);
+    expect(host.textContent).toContain('setting up');
     expect(host.textContent).toContain('Pending credential');
-  });
+    expect(buttonLabels(host)).toContain('Resume guided setup');
 
-  it('offers a discard exit back to plain cleartext while a key is pending', () => {
-    config.value = deviceConfig(
-      transportStatus({ pending_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
+    const resume = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Resume guided setup',
     );
-    const host = document.createElement('div');
-    render(<TransportCard />, host);
+    act(() => resume?.click());
+    expect(setupWizardRequested.value).toBe(true);
 
     open(host, 'Recovery');
-
     expect(buttonLabels(host)).toContain('Discard pending credential');
     expect(buttonLabels(host)).not.toContain('Disable encryption & restart');
-
-    const discard = [...host.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Discard pending credential',
-    );
-    act(() => discard?.click());
-
-    expect(buttonLabels(host)).toContain('Discard it');
-    expect(buttonLabels(host)).toContain('Cancel');
   });
 
   it('masks the one-time PSK until the owner explicitly reveals it', () => {
@@ -142,7 +136,6 @@ describe('PCM encryption journey', () => {
 
     expect(host.textContent).toContain('encrypted');
     expect(host.textContent).toContain('No routine action is needed.');
-    expect(host.textContent).not.toContain('Step ');
     expect(buttonLabels(host)).toEqual([]);
     expect(summaries(host).map((s) => s.textContent)).toEqual(['Advanced security']);
 
@@ -161,6 +154,22 @@ describe('PCM encryption journey', () => {
     open(host, 'Advanced security');
     const advanced = summaries(host).find((s) => s.textContent === 'Advanced security');
     expect(advanced?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('hands credential replacement to the guided setup', () => {
+    config.value = deviceConfig(
+      transportStatus({ mode: 'tls-psk', active_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
+    );
+    const host = document.createElement('div');
+    render(<TransportCard />, host);
+
+    open(host, 'Advanced security');
+    const replace = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Replace bridge credential',
+    );
+    act(() => replace?.click());
+
+    expect(setupWizardRequested.value).toBe(true);
   });
 
   it('confirms before disabling encryption', () => {
@@ -189,15 +198,16 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    const toggle = host.querySelector<HTMLInputElement>('input[role="switch"]');
-    expect(toggle?.checked).toBe(true);
+    const control = toggle(host);
+    expect(control?.checked).toBe(true);
     act(() => {
-      if (!toggle) return;
-      toggle.checked = false;
-      toggle.dispatchEvent(new Event('change', { bubbles: true }));
+      if (!control) return;
+      control.checked = false;
+      control.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
-    expect(toggle?.checked).toBe(true);
+    expect(toggle(host)?.checked).toBe(true);
+    expect(setupWizardRequested.value).toBe(false);
     expect(buttonLabels(host)).toContain('Disable encryption & restart');
   });
 
@@ -205,7 +215,7 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard targetDirty />, host);
 
-    expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.disabled).toBe(true);
+    expect(toggle(host)?.disabled).toBe(true);
     expect(host.textContent).toContain('Save the stream target before changing encryption.');
   });
 });

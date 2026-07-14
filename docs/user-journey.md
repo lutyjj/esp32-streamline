@@ -75,19 +75,24 @@ host-and-port form and the `/api/settings/target` endpoint remain the escape
 hatch: the wizard only sequences them. Cleartext works without an encryption
 decision during first setup.
 
-The wizard's final step offers encryption and hands to the **Stream target**
-card rather than duplicating it. The card owns one host, one port, and an
-**Encrypt transport** switch. After the owner opts in, the card shows one valid
-next action at a time: create a bridge credential, enroll it in the bridge
-console and switch the bridge to encrypted there, verify, then activate and
-restart. Audio keeps streaming through enrollment and pauses only between the
-bridge's switch and the device's restart, because each side accepts exactly
-one protocol. A verification failure names its cause and the next step — an
-unreachable port, a bridge still in cleartext, or a credential the bridge does
-not accept — keeps the retry visible, and never changes the device mode.
-Until activation, **Recovery** can discard the pending credential, so
-opting in never traps the owner mid-setup. The PSK is masked by default, shown
-only on request, and never available again after the owner dismisses it.
+The wizard's final step offers encryption and continues straight into the
+guided **Encryption setup** sheet — the same step-dot dialog as calibration,
+so every guided task reads the same way. Its steps mirror the state machine:
+create the bridge credential, enroll it in the bridge console and switch the
+bridge to encrypted there, verify, then activate and restart. Audio keeps
+streaming through enrollment and pauses only between the bridge's switch and
+the device's restart, because each side accepts exactly one protocol. A
+verification failure names its cause and the next step — an unreachable port,
+a bridge still in cleartext, or a credential the bridge does not accept —
+keeps the retry visible, and never changes the device mode.
+
+The **Stream target** card owns one host, one port, and an **Encrypt
+transport** switch that opens the same guide; a setup left mid-way shows a
+"setting up" state with a resume action, and **Recovery** can discard the
+pending credential, so opting in never traps the owner. Closing the sheet
+keeps the staged state and says how to resume. The PSK is masked by default,
+shown only on request, and never available again after the owner dismisses
+it.
 
 The bridge console mirrors the device console's lock: one masthead lock chip,
 unlocked by the owner-set bridge API token, gates every bridge change —
@@ -136,12 +141,13 @@ profile or says `Custom settings`. An external automation can activate the same
 profile through the API when it knows the physical selector state. StreamLine
 never guesses the source from overlapping waveform characteristics.
 
-When the selected board advertises a local analog output, Input settings names
-the physical jack and offers one **Local analog output** switch. It reports
-Active, Off, or Fault from device state and explains that the fixed
-line-level route stays analog. Input gain, ADC attenuation, calibration,
-silence detection, and streaming do not act as output-volume controls. Boards
-without the capability show no local output control.
+When the selected board advertises a local analog output, Input settings
+carries one **Analog passthrough** switch below its base fields, naming the
+physical jack and the fixed line-level analog route. The switch is the state;
+a codec fault surfaces as a callout that names the fault and how to retry.
+Input gain, ADC attenuation, calibration, silence detection, and streaming do
+not act as output-volume controls. Boards without the capability show no
+passthrough control.
 
 Optional lossless recording is a bridge-hosted task. The bridge page lets the
 owner choose a source, start before playing it, observe whether audio has

@@ -1,0 +1,61 @@
+import { useState } from 'preact/hooks';
+import { copyText } from '../lib/adminKey';
+import { toast } from '../state/toasts';
+import type { RevealedTransportKey } from '../state/transport';
+import { Button } from './Button';
+
+/**
+ * The one-time bridge credential panel shared by the Stream target card and
+ * the encryption setup wizard: ID and PSK blocks, copy actions, and a masked
+ * PSK that reveals only on request. The PSK is gone once dismissed.
+ */
+export function CredentialReveal({
+  credential,
+  writable,
+  onDone,
+}: {
+  credential: RevealedTransportKey;
+  writable: boolean;
+  /** Present where dismissing the reveal is the owner's own step. */
+  onDone?: () => void;
+}) {
+  const [pskVisible, setPskVisible] = useState(false);
+
+  const copy = (value: string, label: string) => {
+    copyText(value).then(
+      () => toast(`${label} copied`, 'ok'),
+      (error) => toast(error.message, 'err'),
+    );
+  };
+
+  return (
+    <div class="keypanel transport-credential">
+      <p>
+        <strong class="strong">Copy this bridge credential now.</strong> The PSK is shown only once.
+      </p>
+      <span class="streamlabel">Credential ID</span>
+      <div class="keyblock">{credential.key_id}</div>
+      <span class="streamlabel">PSK</span>
+      <div class="keyblock">{pskVisible ? credential.psk : '•••• •••• •••• ••••'}</div>
+      <p class="help">Secret. Anyone with this PSK can impersonate the device to this bridge.</p>
+      <div class="inputrow inputrow-center">
+        <Button kind="primary" disabled={!writable} onClick={() => copy(credential.psk, 'PSK')}>
+          Copy PSK
+        </Button>
+        <Button disabled={!writable} onClick={() => copy(credential.key_id, 'Key ID')}>
+          Copy key ID
+        </Button>
+        <Button onClick={() => setPskVisible((visible) => !visible)}>
+          {pskVisible ? 'Hide PSK' : 'Reveal PSK'}
+        </Button>
+        {onDone && <Button onClick={onDone}>Done — I copied it</Button>}
+      </div>
+      {credential.recovery && (
+        <p class="help">
+          Recovery is saved. Enroll this replacement on the bridge, then restart into cleartext
+          before verifying and activating it.
+        </p>
+      )}
+    </div>
+  );
+}

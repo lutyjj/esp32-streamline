@@ -207,9 +207,9 @@ Docs: [architecture](docs/architecture.md) ·
 
 ### Releases
 
-Use **Actions → Prepare release** with a stable `X.Y.Z` target version. The workflow creates
-a draft `release/X.Y.Z` PR after it prepares and validates the release snapshot.
-Merging that PR verifies its merge commit again, creates `vX.Y.Z`, and starts
+Use **Actions → Prepare release** with a stable `X.Y.Z` target version. The workflow
+prepares the release snapshot and opens a draft `release/X.Y.Z` PR, which CI verifies
+in full. Merging that PR re-verifies the exact merge commit, creates `vX.Y.Z`, and starts
 publishing from the tag.
 
 For a local release snapshot, start from a clean release branch and run:

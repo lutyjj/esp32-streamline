@@ -48,10 +48,14 @@ jobs:
             exit 1
           fi
 
-      - name: Create and validate the release snapshot
+      # Only build the snapshot here. The release PR's own CI runs the full
+      # `make release-verify`, and promotion re-verifies the exact merge commit,
+      # so verifying now would recompile the firmware and images that the PR
+      # check rebuilds seconds later.
+      - name: Create the release snapshot
         run: |
           git switch --create "release/$VERSION"
-          make release VERSION="$VERSION"
+          make release-prepare VERSION="$VERSION"
 
       - name: Commit and open the release PR
         run: |

@@ -130,7 +130,7 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
         )}
       </Card>
 
-      <Card title="Live level" lead="Watch the effect of a change here. Clipping lights the lamp.">
+      <Card title="Input level" lead="Watch the effect of a change here. Clipping lights the lamp.">
         <Meter />
       </Card>
     </>

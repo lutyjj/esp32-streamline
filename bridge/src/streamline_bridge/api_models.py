@@ -90,6 +90,7 @@ class SourceSnapshot(ContractModel):
 class TransportSnapshot(ContractModel):
     contract_version: Literal[1]
     mode: Literal["cleartext", "tls-psk"]
+    configurable: bool
     port: int = Field(ge=1, le=65535)
     key_ids: list[str]
     auth_successes: int = Field(ge=0)
@@ -98,8 +99,17 @@ class TransportSnapshot(ContractModel):
 
 class BridgeStatus(ContractModel):
     bridge_version: str
+    api_token_configured: bool
     sources: dict[str, SourceSnapshot]
     transport: TransportSnapshot
+
+
+class UnlockResult(ContractModel):
+    ok: Literal[True]
+
+
+class TransportModeRequest(ContractModel):
+    mode: Literal["cleartext", "tls-psk"]
 
 
 class TransportKeyRequest(ContractModel):

@@ -29,10 +29,12 @@ const capabilities: RecordingCapabilities = {
 const emptyRecordings: RecordingList = { active: [], saved: [], storage: { free_bytes: 1000 } };
 const status: BridgeStatus = {
   bridge_version: 'test',
+  api_token_configured: true,
   sources: {},
   transport: {
     contract_version: 1,
     mode: 'tls-psk',
+    configurable: true,
     port: 39000,
     key_ids: [],
     auth_successes: 0,
@@ -49,6 +51,8 @@ function fakeApi(overrides: Partial<BridgeApi> = {}): BridgeApi {
     stop: vi.fn(async () => undefined),
     delete: vi.fn(async () => undefined),
     ticket: vi.fn(async (): Promise<DownloadTicket> => ({ url: '/file', expires_in_seconds: 60 })),
+    unlock: vi.fn(async () => undefined),
+    setTransportMode: vi.fn(async () => undefined),
     putTransportKey: vi.fn(async () => undefined),
     deleteTransportKey: vi.fn(async () => undefined),
     ...overrides,
@@ -67,7 +71,8 @@ describe('bridge controller', () => {
     });
 
     await controller.pollStatus();
-    await controller.unlock('recording-token');
+    await controller.loadCapabilities();
+    await controller.unlock('bridge-api-token');
 
     expect(controller.status.value).toEqual(status);
     expect(api.recordings).toHaveBeenCalledTimes(1);
@@ -89,7 +94,8 @@ describe('bridge controller', () => {
       return scheduled.length;
     });
 
-    await controller.unlock('recording-token');
+    await controller.loadCapabilities();
+    await controller.unlock('bridge-api-token');
 
     expect(scheduled).toHaveLength(1);
     scheduled[0]();
@@ -112,7 +118,8 @@ describe('bridge controller', () => {
       return scheduled.length;
     });
 
-    await controller.unlock('recording-token');
+    await controller.loadCapabilities();
+    await controller.unlock('bridge-api-token');
     scheduled.shift()?.();
     await vi.waitFor(() => expect(recordings).toHaveBeenCalledTimes(2));
 
@@ -122,28 +129,72 @@ describe('bridge controller', () => {
     expect(scheduled).toHaveLength(0);
   });
 
-  it('holds an unlocked token to the tab and clears it on lock', async () => {
+  it('unlocks the whole console only after the bridge accepts the token', async () => {
     const controller = new BridgeController(fakeApi());
 
+    await controller.pollStatus();
+    expect(controller.access.value).toBe('locked');
+
     await controller.unlock('secret');
-    expect(sessionStorage.getItem('streamline.recordingToken')).toBe('secret');
-    expect(controller.recordingState.value).toBe('unlocked');
+    expect(sessionStorage.getItem('streamline.bridgeToken')).toBe('secret');
+    expect(controller.access.value).toBe('unlocked');
 
     controller.lock();
-    expect(sessionStorage.getItem('streamline.recordingToken')).toBeNull();
-    expect(controller.recordingState.value).toBe('locked');
+    expect(sessionStorage.getItem('streamline.bridgeToken')).toBeNull();
+    expect(controller.access.value).toBe('locked');
   });
 
   it('forgets a rejected token and remains locked', async () => {
     const api = fakeApi({
-      recordings: vi.fn(async () => Promise.reject(new Error('unauthorized'))),
+      unlock: vi.fn(async () => Promise.reject(new Error('unauthorized'))),
     });
     const controller = new BridgeController(api);
 
     await expect(controller.unlock('wrong')).rejects.toThrow('unauthorized');
 
-    expect(sessionStorage.getItem('streamline.recordingToken')).toBeNull();
-    expect(controller.recordingState.value).toBe('locked');
+    expect(sessionStorage.getItem('streamline.bridgeToken')).toBeNull();
+    expect(controller.access.value).toBe('locked');
+    expect(controller.error.value).toBe('unauthorized');
+  });
+
+  it('reports a deployment without a token instead of offering an unlock', async () => {
+    const unconfigured = { ...status, api_token_configured: false };
+    const controller = new BridgeController(fakeApi({ status: vi.fn(async () => unconfigured) }));
+
+    await controller.pollStatus();
+
+    expect(controller.access.value).toBe('no-token');
+  });
+
+  it('resumes an unlocked session from a token the tab already holds', async () => {
+    const api = fakeApi();
+    const controller = new BridgeController(
+      api,
+      () => 0,
+      () => undefined,
+      () => 'held-token',
+    );
+
+    controller.start();
+    await vi.waitFor(() => expect(controller.access.value).toBe('unlocked'));
+    expect(api.unlock).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches the listener mode and reports a failure without unlocking state loss', async () => {
+    const setTransportMode = vi
+      .fn<BridgeApi['setTransportMode']>()
+      .mockRejectedValueOnce(new Error('transport-unavailable'))
+      .mockResolvedValueOnce(undefined);
+    const api = fakeApi({ setTransportMode });
+    const controller = new BridgeController(api);
+    await controller.unlock('bridge-api-token');
+
+    await expect(controller.setEncryption(true)).resolves.toBe(false);
+    expect(controller.error.value).toBe('transport-unavailable');
+    expect(controller.access.value).toBe('unlocked');
+
+    await expect(controller.setEncryption(true)).resolves.toBe(true);
+    expect(setTransportMode).toHaveBeenLastCalledWith('tls-psk');
   });
 
   it('reports recording action failures without rejecting into the view', async () => {
@@ -157,19 +208,19 @@ describe('bridge controller', () => {
     expect(api.recordings).not.toHaveBeenCalled();
   });
 
-  it('keeps transport provisioning unlocked after a rejected key so it can be retried', async () => {
+  it('keeps the console unlocked after a rejected key so provisioning can be retried', async () => {
     const putTransportKey = vi
       .fn<BridgeApi['putTransportKey']>()
-      .mockRejectedValueOnce(new Error('unauthorized'))
+      .mockRejectedValueOnce(new Error('transport-key-rejected'))
       .mockResolvedValueOnce(undefined);
     const controller = new BridgeController(fakeApi({ putTransportKey }));
-    controller.unlockTransport('wrong-token');
+    await controller.unlock('bridge-api-token');
 
     await expect(
       controller.provisionTransportKey('eli1-a'.padEnd(37, 'a'), '01'.repeat(32)),
     ).resolves.toBe(false);
-    expect(controller.transportState.value).toBe('unlocked');
-    expect(controller.error.value).toBe('unauthorized');
+    expect(controller.access.value).toBe('unlocked');
+    expect(controller.error.value).toBe('transport-key-rejected');
     await expect(
       controller.provisionTransportKey('eli1-a'.padEnd(37, 'a'), '01'.repeat(32)),
     ).resolves.toBe(true);

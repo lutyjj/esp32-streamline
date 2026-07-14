@@ -16,18 +16,18 @@ device console manages capture hardware, audio settings, Wi-Fi, and its PCM
 target. The bridge page manages sessions and files owned by one bridge.
 
 Serving bridge controls from a device would require the device page to discover
-the bridge's separate HTTP address, cross browser origins, hold a second token,
-and present files from sources other than that device. Keeping the API and page
+the bridge's separate HTTP address, cross browser origins, hold the bridge's
+token, and present files from sources other than that device. Keeping the API and page
 on the bridge preserves one origin and one owner. Home Assistant opens the page
 through the add-on's ingress Web UI; standalone users open the bridge URL
 directly.
 
 ## User flow
 
-1. The operator enables recordings and assigns a recording token in the bridge
-   deployment.
-2. The operator opens `/recordings`, unlocks the page with that token, chooses
-   a known source, and names the recording.
+1. The operator enables recordings in the bridge deployment, which requires
+   the bridge API token ([bridge reference](bridge.md)).
+2. The operator opens `/recordings`, unlocks the console with that token,
+   chooses a known source, and names the recording.
 3. **Start recording** puts the session in `waiting-for-audio`. The operator
    starts the source after the bridge is ready.
 4. The first PCM packet starts the file. The page shows elapsed audio, file
@@ -49,7 +49,7 @@ audio creates no empty file.
 | Recording service | Validate commands, own session states, reconstruct the source timeline, and enforce resource limits. |
 | Recording store | Create, recover, list, download, and delete files inside one configured directory. |
 | Recording page | Call the recording API. It owns no recording state beyond the token held in browser session storage. |
-| Deployment adapter | Opt into writable storage and provide the recording token without placing it in process arguments. |
+| Deployment adapter | Opt into writable storage and provide the bridge API token without placing it in process arguments. |
 
 The recorder taps accepted packets before live playout. Live loss concealment
 may repeat audio to make listening less disruptive; an archive must not invent
@@ -89,7 +89,7 @@ At 192,000 bytes per second, a recording uses about 11 MiB per minute or
 
 `GET /api/recordings/capabilities` is open and reports whether the deployment
 enabled recording plus its format and limits. Every other recording operation
-requires `Authorization: Bearer <recording-token>`.
+requires `Authorization: Bearer <bridge-api-token>`.
 
 | Operation | Contract |
 | --- | --- |
@@ -107,19 +107,19 @@ and a message that names the next action.
 ## Deployment and security
 
 Standalone containers enable the feature with `--recordings-dir`; the path
-must be a writable mounted directory. `STREAMLINE_RECORDING_TOKEN` must be set
-to at least 16 characters when the directory is configured. Compose owns the
-writable `/recordings` volume while the rest of the container stays read-only.
-Recording stays disabled when `STREAMLINE_RECORDINGS_DIR` is empty.
+must be a writable mounted directory. `STREAMLINE_API_TOKEN` must be set when
+the directory is configured. Compose owns the writable `/recordings` volume
+while the rest of the container stays read-only. Recording stays disabled when
+`STREAMLINE_RECORDINGS_DIR` is empty.
 
-The Home Assistant add-on exposes an opt-in `recordings_enabled` option and a
-password-type `recording_token` option. It stores files in its private
+The Home Assistant add-on exposes an opt-in `recordings_enabled` option, which
+requires the add-on's `api_token`. It stores files in its private
 `/data/recordings` directory without mapping another writable host folder.
 Recordings survive add-on restarts and updates, but the add-on excludes them
 from Home Assistant backups. Restoring the add-on or uninstalling it removes
 these working files. Download every completed WAV that must be retained.
 
-The recording page stores the token in `sessionStorage`, never in a URL,
+The console stores the token in `sessionStorage`, never in a URL,
 cookie, file name, status response, or log. A bearer-authenticated request
 creates each one-use, 60-second download ticket, so the browser can stream a
 large WAV through its native download path without exposing the recording

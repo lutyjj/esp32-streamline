@@ -46,8 +46,13 @@ class AddonControlOption:
 BRIDGE_OPTIONS = (
     BridgeOption("tcp_bind", "--tcp-bind", str, "0.0.0.0", "TCP bind address"),
     BridgeOption("tcp_port", "--tcp-port", int, DEFAULT_PORT, "PCM listen port", minimum=1),
-    BridgeOption("tls_enabled", "--tls-enabled", bool, False, "enable TLS 1.3 PSK PCM input", addon=True),
-    BridgeOption("tls_keys_file", "--tls-keys-file", str, "", "private versioned transport key file"),
+    BridgeOption(
+        "transport_state_file",
+        "--transport-state-file",
+        str,
+        "",
+        "private transport state file (listener mode and device keys); encryption control is disabled when empty",
+    ),
     BridgeOption(
         "source_allow",
         "--source-allow",
@@ -137,8 +142,7 @@ BRIDGE_OPTIONS = (
 OPTIONS_BY_NAME = {option.name: option for option in BRIDGE_OPTIONS}
 ADDON_CONTROL_OPTIONS = (
     AddonControlOption("recordings_enabled", False, "bool"),
-    AddonControlOption("recording_token", "", "password"),
-    AddonControlOption("transport_api_token", "", "password"),
+    AddonControlOption("api_token", "", "password"),
 )
 
 
@@ -194,8 +198,6 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
         raise SystemExit(f"--source-allow must be an IPv4 address: {exc}") from exc
     if len(args.source_allow) > args.max_sources:
         raise SystemExit("--max-sources must be at least the number of allowed sources")
-    if args.tls_enabled and not args.tls_keys_file:
-        raise SystemExit("--tls-keys-file is required when TLS transport is enabled")
     return args
 
 

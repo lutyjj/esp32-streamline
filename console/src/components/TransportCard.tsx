@@ -1,23 +1,29 @@
-import { useEffect, useState } from 'preact/hooks';
-import { copyText } from '../lib/adminKey';
+import { useState } from 'preact/hooks';
 import { restart } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, setupMode } from '../state/device';
-import { toast } from '../state/toasts';
-import { optInRequested, transport, transportActions, transportJourney } from '../state/transport';
+import {
+  setupWizardRequested,
+  transport,
+  transportActions,
+  transportJourney,
+} from '../state/transport';
 import { Button } from './Button';
-import { CardFooter } from './Card';
+import { Card, CardFooter } from './Card';
 import { Chip } from './Chip';
 import { ConfirmButton } from './ConfirmButton';
+import { CredentialReveal } from './CredentialReveal';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
+import { Notice } from './Notice';
+import { Toggle } from './Toggle';
 import { ActionState, TransactButton } from './Transact';
 
 /**
- * The Encrypt transport section of the Stream target card. Sub-sections are
- * `Disclosure`s (Advanced security, with Recovery nested inside), credential
- * facts render through `Kv`, and every action row is a `CardFooter` — the
- * same building blocks as the rest of the console.
+ * The Encryption card on the Network tab. Setup — create, enroll, verify,
+ * activate — runs in the guided TransportWizard; this card owns the steady
+ * state and every exit: credential facts through `Kv`, rollback and
+ * retirement, and Recovery nested under Advanced security.
  */
 export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }) {
   const writable = useWritable();
@@ -25,105 +31,20 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
   const credential = transport.revealed.value;
   const lifecycle = useTransact();
   const recovery = useTransact();
-  const [setupOpen, setSetupOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
-  const [pskReveal, setPskReveal] = useState<{ keyId?: string; visible: boolean }>({
-    visible: false,
-  });
-
-  // The bridge wizard hands off here: open the opt-in and clear the request.
-  const wantsOptIn = optInRequested.value;
-  useEffect(() => {
-    if (!wantsOptIn) return;
-    optInRequested.value = false;
-    setSetupOpen(true);
-  }, [wantsOptIn]);
 
   if (!current || setupMode.value) return null;
   const status = current.transport;
   const actions = transportActions(status);
   const journey = transportJourney(status);
   const secure = status.mode === 'tls-psk';
-  const steady = journey === 'secure' || journey === 'rotation';
-  const expanded = journey !== 'opt-in' || setupOpen;
-  const pskVisible = pskReveal.keyId === credential?.key_id && pskReveal.visible;
-
-  const copy = (value: string, label: string) => {
-    copyText(value).then(
-      () => toast(`${label} copied`, 'ok'),
-      (error) => toast(error.message, 'err'),
-    );
-  };
+  const setupUnderway = journey === 'provision' || journey === 'activate';
 
   const credentialRows: [string, string][] = [];
   if (status.active_key_id) credentialRows.push(['Active credential', status.active_key_id]);
   if (status.pending_key_id) credentialRows.push(['Pending credential', status.pending_key_id]);
   if (status.rollback_key_id) credentialRows.push(['Previous credential', status.rollback_key_id]);
-
-  const lifecycleFooter = (
-    <CardFooter compact>
-      {actions.canStage && (
-        <TransactButton
-          transact={lifecycle}
-          disabled={!writable}
-          onClick={() =>
-            lifecycle.run(() => transport.stage(), { okText: 'Key generated — copy it now' })
-          }
-        >
-          {status.active_key_id ? 'Replace bridge credential' : 'Generate bridge credential'}
-        </TransactButton>
-      )}
-      {actions.canVerify && (
-        <TransactButton
-          transact={lifecycle}
-          disabled={!writable}
-          onClick={() =>
-            lifecycle.run(() => transport.verify(), {
-              busyText: 'Verifying with bridge…',
-              okText: 'Bridge accepted the pending key',
-            })
-          }
-        >
-          Verify with bridge
-        </TransactButton>
-      )}
-      {actions.canActivate && (
-        <TransactButton
-          transact={lifecycle}
-          disabled={!writable}
-          onClick={() =>
-            lifecycle.run(() => transport.activate(), { reboots: 'the encrypted PCM transport' })
-          }
-        >
-          Activate encryption
-        </TransactButton>
-      )}
-      {actions.canRollback && (
-        <TransactButton
-          transact={lifecycle}
-          kind="secondary"
-          disabled={!writable}
-          onClick={() =>
-            lifecycle.run(() => transport.rollback(), { reboots: 'the previous PCM key' })
-          }
-        >
-          Use previous credential
-        </TransactButton>
-      )}
-      {actions.canRetire && (
-        <TransactButton
-          transact={lifecycle}
-          kind="secondary"
-          disabled={!writable}
-          onClick={() => lifecycle.run(() => transport.retire())}
-        >
-          Forget previous credential
-        </TransactButton>
-      )}
-      <ActionState state={lifecycle.state} />
-    </CardFooter>
-  );
 
   const recoverySection = (
     <Disclosure
@@ -168,7 +89,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
             label="Discard pending credential"
             confirmLabel="Discard it"
             disabled={!writable}
-            message="The staged key is deleted and this device stays on cleartext. The bridge copy, if provisioned, can be removed from its console."
+            message="The staged key is deleted and this device stays on cleartext. The bridge copy, if enrolled, can be removed from its console."
             onConfirm={() =>
               recovery.run(() => transport.discard(), { okText: 'Pending credential discarded' })
             }
@@ -190,140 +111,147 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
   );
 
   return (
-    <section class="transport-section">
-      <label class="transport-choice">
-        <input
-          type="checkbox"
-          checked={expanded}
-          disabled={!writable || targetDirty}
-          onInput={(event) => {
-            if (event.currentTarget.checked) {
-              setSetupOpen(true);
-            } else if (journey === 'opt-in') {
-              setSetupOpen(false);
-            } else {
-              // Leaving encryption is an explicit choice that lives under
-              // Recovery; unchecking opens the path instead of acting.
-              setAdvancedOpen(true);
-              setRecoveryOpen(true);
-            }
-          }}
-        />
-        <span>
+    <Card
+      gated
+      title="Encryption"
+      lead="Authenticated TLS 1.3, so only this device can send audio to your bridge."
+      className="transport-card"
+    >
+      {journey === 'opt-in' && (
+        <Notice tone="info">
+          Your audio streams unencrypted. Encryption is recommended: it lets only this device send
+          to the bridge and hides the audio from anyone else on your network. A guide walks you
+          through it in about a minute.
+        </Notice>
+      )}
+      <Toggle
+        checked={secure || setupUnderway}
+        disabled={!writable || targetDirty}
+        onChange={(checked) => {
+          if (checked) {
+            // Setup is guided; the toggle is its entry point.
+            setupWizardRequested.value = true;
+          } else if (setupUnderway) {
+            // Backing out mid-setup is the discard edge under Recovery.
+            setRecoveryOpen(true);
+          } else {
+            // Leaving encryption is an explicit choice that lives under
+            // Recovery; unchecking opens the path instead of acting.
+            setAdvancedOpen(true);
+            setRecoveryOpen(true);
+          }
+        }}
+        label={
           <span class="transport-title">
-            <strong>Encrypt transport</strong>
+            Encrypt audio to the bridge
             {secure && (
               <Chip tone="good" dot>
                 encrypted
               </Chip>
             )}
+            {setupUnderway && (
+              <Chip tone="warn" dot>
+                setting up
+              </Chip>
+            )}
           </span>
-          <small>
-            {secure
-              ? `TLS 1.3 to ${current.target_host}:${current.target_port}. No routine action is needed.`
-              : 'Use authenticated TLS 1.3 on this same host and port.'}
-          </small>
-        </span>
-      </label>
+        }
+        description={
+          secure
+            ? `TLS 1.3 to ${current.target_host}:${current.target_port}. No routine action is needed.`
+            : setupUnderway
+              ? 'Setup is underway — a credential is staged but not active. Cleartext keeps streaming.'
+              : 'Turning this on starts the guided setup. Cleartext keeps streaming until you finish.'
+        }
+      />
       {targetDirty && <span class="help">Save the stream target before changing encryption.</span>}
 
-      {expanded && (
+      {credential && !setupUnderway && (
+        <CredentialReveal
+          credential={credential}
+          writable={writable}
+          onDone={() => transport.dismissReveal()}
+        />
+      )}
+
+      {setupUnderway && (
         <>
-          {journey !== 'secure' && journey !== 'rotation' && <JourneyStep journey={journey} />}
-
           {credential && (
-            <div class="keypanel transport-credential">
-              <p>
-                <strong class="strong">Copy this bridge credential now.</strong> Switch the bridge
-                to TLS on this port, then add the credential in its console. The PSK is shown only
-                once.
-              </p>
-              <span class="streamlabel">Credential ID</span>
-              <div class="keyblock">{credential.key_id}</div>
-              <span class="streamlabel">PSK</span>
-              <div class="keyblock">{pskVisible ? credential.psk : '•••• •••• •••• ••••'}</div>
-              <p class="help">
-                Secret. Anyone with this PSK can impersonate the device to this bridge.
-              </p>
-              <div class="inputrow inputrow-center">
-                <Button
-                  kind="primary"
-                  disabled={!writable}
-                  onClick={() => copy(credential.psk, 'PSK')}
-                >
-                  Copy PSK
-                </Button>
-                <Button disabled={!writable} onClick={() => copy(credential.key_id, 'Key ID')}>
-                  Copy key ID
-                </Button>
-                <Button
-                  onClick={() => setPskReveal({ keyId: credential.key_id, visible: !pskVisible })}
-                >
-                  {pskVisible ? 'Hide PSK' : 'Reveal PSK'}
-                </Button>
-                <Button onClick={() => transport.dismissReveal()}>Done — I copied it</Button>
-              </div>
-              {credential.recovery && (
-                <p class="help">
-                  Recovery is saved. Provision this replacement on the bridge, then restart into
-                  cleartext before verifying and activating it.
-                </p>
-              )}
-            </div>
+            <CredentialReveal
+              credential={credential}
+              writable={writable}
+              onDone={() => transport.dismissReveal()}
+            />
           )}
-
-          {steady ? (
-            <Disclosure
-              title="Advanced security"
-              className="transport-advanced"
-              open={advancedOpen}
-              onToggle={(open) => {
-                setAdvancedOpen(open);
-                if (!open) setRecoveryOpen(false);
+          <div class="transport-keys">
+            <Kv rows={credentialRows} />
+          </div>
+          <CardFooter compact>
+            <Button
+              kind="primary"
+              disabled={!writable}
+              onClick={() => {
+                setupWizardRequested.value = true;
               }}
             >
-              <div class="transport-keys">
-                <Kv rows={credentialRows} />
-              </div>
-              {lifecycleFooter}
-              {recoverySection}
-            </Disclosure>
-          ) : (
-            <>
-              {credentialRows.length > 0 && (
-                <div class="transport-keys">
-                  <Kv rows={credentialRows} />
-                </div>
-              )}
-              {lifecycleFooter}
-              {journey !== 'opt-in' && recoverySection}
-            </>
-          )}
+              Resume guided setup
+            </Button>
+          </CardFooter>
+          {recoverySection}
         </>
       )}
-    </section>
-  );
-}
 
-function JourneyStep({ journey }: { journey: 'opt-in' | 'provision' | 'activate' }) {
-  const content = {
-    'opt-in': [
-      'Step 1 of 3 · Create a bridge credential',
-      'The device shows the bridge credential once. Cleartext keeps streaming.',
-    ],
-    provision: [
-      'Step 2 of 3 · Switch the bridge and verify',
-      'Switch this bridge port to TLS-only, provision the credential, then verify it here.',
-    ],
-    activate: [
-      'Step 3 of 3 · Activate',
-      'The bridge accepted the key. Activation restarts the device into encrypted mode.',
-    ],
-  }[journey];
-  return (
-    <div class="transport-step">
-      <strong>{content[0]}</strong>
-      <p>{content[1]}</p>
-    </div>
+      {(secure || journey === 'rotation') && (
+        <Disclosure
+          title="Advanced security"
+          className="transport-advanced"
+          open={advancedOpen}
+          onToggle={(open) => {
+            setAdvancedOpen(open);
+            if (!open) setRecoveryOpen(false);
+          }}
+        >
+          <div class="transport-keys">
+            <Kv rows={credentialRows} />
+          </div>
+          <CardFooter compact>
+            {actions.canStage && (
+              <Button
+                disabled={!writable}
+                onClick={() => {
+                  setupWizardRequested.value = true;
+                }}
+              >
+                Replace bridge credential
+              </Button>
+            )}
+            {actions.canRollback && (
+              <TransactButton
+                transact={lifecycle}
+                kind="secondary"
+                disabled={!writable}
+                onClick={() =>
+                  lifecycle.run(() => transport.rollback(), { reboots: 'the previous PCM key' })
+                }
+              >
+                Use previous credential
+              </TransactButton>
+            )}
+            {actions.canRetire && (
+              <TransactButton
+                transact={lifecycle}
+                kind="secondary"
+                disabled={!writable}
+                onClick={() => lifecycle.run(() => transport.retire())}
+              >
+                Forget previous credential
+              </TransactButton>
+            )}
+            <ActionState state={lifecycle.state} />
+          </CardFooter>
+          {recoverySection}
+        </Disclosure>
+      )}
+    </Card>
   );
 }

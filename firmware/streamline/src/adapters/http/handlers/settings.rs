@@ -80,11 +80,14 @@ pub(super) fn register_network_writes(
             let current = lock_config(&state_for_target)?.clone();
             let target_host = form.target_host.trim().to_owned();
             let target_port = form.target_port.unwrap_or(current.target_port);
-            let next = RuntimeConfig {
+            let mut next = RuntimeConfig {
                 target_host,
                 target_port,
                 ..current
             };
+            if next.target_host != current.target_host || next.target_port != current.target_port {
+                next.transport.keys.reset_pending_verification();
+            }
             save_configuration(&state_for_target, next)
         })();
         match result {

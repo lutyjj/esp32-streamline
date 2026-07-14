@@ -18,6 +18,7 @@ use crate::{
         write_all_with, KeyVerifier, PcmConnector, PcmStream, ReconnectingSender, TransportKey,
         TransportMode, WriteAllError,
     },
+    transport_diagnostics::TlsFailure,
 };
 
 const CLEARTEXT_TIMEOUT: Duration = Duration::from_millis(250);
@@ -202,8 +203,9 @@ impl TlsConnection {
             )
         };
         if result != 1 {
+            let failure = classify_failure(handle);
             unsafe { sys::esp_tls_conn_destroy(handle) };
-            return Err(anyhow!("TLS 1.3 PSK authentication failed ({result})"));
+            return Err(anyhow!("{}", failure.describe(&target)));
         }
         if let Err(error) = validate_tls_profile(handle) {
             unsafe { sys::esp_tls_conn_destroy(handle) };
@@ -232,6 +234,49 @@ impl TlsConnection {
             WriteAllError::Write(error) => error,
             WriteAllError::Closed => anyhow!("TLS PCM stream closed during write"),
         })
+    }
+}
+
+/// mbedTLS network-layer codes esp-tls forwards; absent from the generated
+/// bindings because only the ssl-layer headers are bound.
+const MBEDTLS_ERR_NET_RECV_FAILED: i32 = -0x004C;
+const MBEDTLS_ERR_NET_CONN_RESET: i32 = -0x0050;
+
+/// Reduce the esp-tls error record of a failed connect to one [`TlsFailure`].
+fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
+    let mut record = sys::esp_tls_last_error::default();
+    let mut error_handle: sys::esp_tls_error_handle_t = std::ptr::null_mut();
+    if unsafe { sys::esp_tls_get_error_handle(handle, &mut error_handle) } == 0
+        && !error_handle.is_null()
+    {
+        record = unsafe { *error_handle };
+    }
+    // esp-tls captures the mbedTLS return value negated; flip it back so it
+    // compares against the MBEDTLS_ERR_* constants.
+    let detail = -record.esp_tls_error_code;
+    match record.last_error {
+        sys::ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME
+        | sys::ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET
+        | sys::ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST => TlsFailure::Unreachable,
+        sys::ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT | sys::ESP_ERR_ESP_TLS_SERVER_HANDSHAKE_TIMEOUT => {
+            TlsFailure::Timeout
+        }
+        sys::ESP_ERR_ESP_TLS_TCP_CLOSED_FIN => TlsFailure::ClosedBeforeHandshake,
+        code => match detail {
+            sys::MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE | sys::MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE => {
+                TlsFailure::CredentialRejected
+            }
+            sys::MBEDTLS_ERR_SSL_CONN_EOF
+            | sys::MBEDTLS_ERR_SSL_INVALID_RECORD
+            | sys::MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE
+            | MBEDTLS_ERR_NET_RECV_FAILED
+            | MBEDTLS_ERR_NET_CONN_RESET => TlsFailure::ClosedBeforeHandshake,
+            sys::MBEDTLS_ERR_SSL_TIMEOUT => TlsFailure::Timeout,
+            _ => TlsFailure::Other {
+                code,
+                detail: record.esp_tls_error_code,
+            },
+        },
     }
 }
 

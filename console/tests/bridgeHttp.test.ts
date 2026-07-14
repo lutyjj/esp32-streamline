@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bridgeBase,
   bridgeFetch,
-  rememberRecordingToken,
-  rememberTransportToken,
+  rememberBridgeToken,
   setBridgeTransport,
 } from '../src/bridge/http';
 
@@ -14,7 +13,7 @@ describe('bridge HTTP transport', () => {
   });
 
   it('scopes requests to Home Assistant ingress and authenticates recording operations', async () => {
-    rememberRecordingToken('secret');
+    rememberBridgeToken('secret');
     const transport = vi.fn<(request: Request) => Promise<Response>>(
       async () => new Response('{}'),
     );
@@ -34,8 +33,8 @@ describe('bridge HTTP transport', () => {
     expect(bridgeBase()).toBe('');
   });
 
-  it('uses a separate session token only for transport key mutations', async () => {
-    rememberTransportToken('transport-secret');
+  it('sends the one bridge token to every mutating route and to no open read', async () => {
+    rememberBridgeToken('bridge-secret');
     const transport = vi.fn<(request: Request) => Promise<Response>>(
       async () => new Response('{}'),
     );
@@ -44,11 +43,18 @@ describe('bridge HTTP transport', () => {
     await bridgeFetch('/api/transport/keys/eli1-0123456789abcdef0123456789abcdef', {
       method: 'PUT',
     });
+    await bridgeFetch('/api/transport/mode', { method: 'PUT' });
+    await bridgeFetch('/api/unlock', { method: 'POST' });
     await bridgeFetch('/api/transport', { method: 'GET' });
+    await bridgeFetch('/api/recordings/capabilities', { method: 'GET' });
 
-    expect(transport.mock.calls[0]?.[0].headers.get('Authorization')).toBe(
-      'Bearer transport-secret',
-    );
-    expect(transport.mock.calls[1]?.[0].headers.has('Authorization')).toBe(false);
+    const authorization = transport.mock.calls.map((call) => call[0].headers.get('Authorization'));
+    expect(authorization).toEqual([
+      'Bearer bridge-secret',
+      'Bearer bridge-secret',
+      'Bearer bridge-secret',
+      null,
+      null,
+    ]);
   });
 });

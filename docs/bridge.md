@@ -1,10 +1,15 @@
 # Bridge reference
 
-The bridge accepts StreamLine PCM on TCP `39000` in one configured mode:
-cleartext or authenticated TLS 1.3. It serves live WAV on HTTP `8088`. It owns
-producer authentication, packet playout, source lifecycle, HTTP client fan-out,
-and an optional lossless recording store. It does not retain source pipelines
-across a restart or identify a device by hostname.
+The bridge accepts StreamLine PCM on TCP `39000` in one selected mode at a
+time: cleartext or authenticated TLS 1.3. It serves live WAV on HTTP `8088`.
+It owns producer authentication, packet playout, source lifecycle, HTTP client
+fan-out, and an optional lossless recording store. It does not retain source
+pipelines across a restart or identify a device by hostname.
+
+One owner-set **bridge API token** (`STREAMLINE_API_TOKEN`, or the add-on's
+`api_token` option) authorizes every bridge mutation: the listener mode, the
+device-key map, and recordings. The bridge console unlocks with it once and
+locks all of those controls together.
 
 ## Endpoints
 
@@ -18,7 +23,9 @@ across a restart or identify a device by hostname.
 | `/` and `/recordings` | Bridge console with live sources and optional recordings. The Home Assistant add-on serves it through ingress. |
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 | `/api/transport` | Listener state, enrolled key ids, and authentication counters; never PSKs. |
-| `/api/transport/keys/<key-id>` | Transport-token authenticated `PUT` and `DELETE` key mutations. |
+| `/api/transport/mode` | Authenticated `PUT` selecting `cleartext` or `tls-psk`; a change drops live producers. |
+| `/api/transport/keys/<key-id>` | Authenticated `PUT` and `DELETE` key mutations, available in either mode. |
+| `/api/unlock` | Authenticated no-op the console uses to check the bridge API token. |
 
 When more than one source exists, an unqualified `/streamline.wav` request
 returns `409` and lists the available source ids. Invalid source values return
@@ -53,9 +60,8 @@ that artifact to generate a typed client; do not edit generated client files.
 
 | Option | Default | Constraint | Meaning |
 | --- | ---: | --- | --- |
-| `--tls-enabled` | false | boolean | Select TLS-only intake when true; select cleartext-only intake when false. |
 | `--tcp-port` | 39000 | integer >= 1 | PCM listener for the selected mode. |
-| `--tls-keys-file` | empty | path required with TLS | Private versioned device-key map. |
+| `--transport-state-file` | empty | writable path | Private listener mode and device-key state. Encryption control is disabled when empty. |
 | `--source-allow` | empty | IPv4 addresses | Repeat or comma-separate allowed producer addresses. |
 | `--max-sources` | 8 | integer >= 1 | Maximum retained source pipelines. |
 | `--max-http-connections` | 32 | integer >= 1 | Maximum simultaneous HTTP workers. Excess connections are rejected. |
@@ -67,33 +73,35 @@ that artifact to generate a typed client; do not edit generated client files.
 | `--source-idle-timeout-seconds` | 5.0 | number >= 0.001 | Inactive TCP connection timeout. |
 | `--source-eviction-idle-seconds` | 300.0 | number >= 0.001 | Inactive dynamic source retention interval. |
 
-Home Assistant exposes the owner-facing listener and tuning options. Its add-on
-adapter owns the private key-file path, normalizes `source_allow`, and omits
+Home Assistant exposes the owner-facing tuning options. Its add-on adapter
+owns the private transport-state path, normalizes `source_allow`, and omits
 settings that the Supervisor did not provide.
 
 ## Encrypted devices
 
-Set `STREAMLINE_TRANSPORT_API_TOKEN` to at least 16 private characters and
-provide `--tls-keys-file` when TLS is enabled. Compose uses the private
-`transport-data` volume at `/data/transport-keys.json`. The Home Assistant
-add-on uses its Supervisor-owned `/data` directory. The key file is mode `0600`,
-bounded, validated on load, and replaced atomically after each mutation.
+Encryption is switched from the bridge console (or `PUT /api/transport/mode`),
+not by a deployment option, so the coordinated cutover with the device happens
+in one place. The mode and the enrolled device keys persist together in the
+transport state file: Compose uses the private `transport-data` volume at
+`/data/transport.json`; the Home Assistant add-on uses its
+Supervisor-owned `/data` directory. The file is mode `0600`, bounded,
+validated on load, and replaced atomically after each mutation.
 
-The bridge console accepts the one-time key id and PSK from the device console.
-The same operation is available as an authenticated API request. Follow the
+The bridge console accepts the one-time key id and PSK from the device console
+in either listener mode, so a credential can be enrolled before the switch.
+The same operations are available as authenticated API requests. Follow the
 [transport enable, credential replacement, and recovery workflow](tcp-transport.md#enable-encryption)
-instead of editing the key file.
+instead of editing the state file.
 
 ## Recordings
 
 Recording is disabled unless the deployment supplies writable storage. Set
-`--recordings-dir` (or `STREAMLINE_RECORDINGS_DIR`) and a
-`STREAMLINE_RECORDING_TOKEN` of at least 16 characters for a standalone
-bridge. For Compose, set the directory to `/recordings`; its named volume owns
-the files. Home Assistant users enable recordings and set the token in the
-add-on options. Open `http://<bridge-host>:8088/` (or `/recordings`) to record,
-download, or delete files. Home Assistant opens the same console through the
-add-on's ingress Web UI.
+`--recordings-dir` (or `STREAMLINE_RECORDINGS_DIR`) and the bridge API token
+for a standalone bridge. For Compose, set the directory to `/recordings`; its
+named volume owns the files. Home Assistant users enable recordings in the
+add-on options. Open `http://<bridge-host>:8088/` (or `/recordings`) to
+record, download, or delete files. Home Assistant opens the same console
+through the add-on's ingress Web UI.
 
 [Lossless recordings](recordings.md) defines the user flow, API, resource
 limits, timeline reconstruction, and storage lifecycle.

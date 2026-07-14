@@ -61,53 +61,54 @@ creates it. The admin key and PCM PSK are independent.
 Each lifecycle write saves a complete inactive state generation, then switches
 one marker. Power loss before that marker leaves the prior generation active.
 The failure-atomic transitions are stage, verify, activate, discard, rotation,
-rollback, retirement, and recovery.
+rollback, retirement, and recovery. Verification proves the pending key
+against the configured stream target, so changing the target host or port
+voids it; activation then demands a fresh verify against the new bridge.
 
-The bridge stores a bounded versioned key map in a private `0600` file. Updates
-use a durable atomic replacement. The API lists only key ids. Its key mutation
-endpoints require the separate transport API token.
+The bridge persists its listener mode and a bounded versioned key map together
+in a private `0600` state file. Updates use a durable atomic replacement. The
+API lists only key ids. Mode and key mutations require the bridge API token
+([bridge reference](bridge.md)), and key enrollment works in either mode, so a
+credential can be in place before the switch.
 
 ## Enable encryption
 
-The bridge and device cannot change the protocol on one port atomically. Plan a
-short interruption while they switch. If one bridge serves several devices,
-switch those devices together or run separate bridge instances during the
-migration.
+The bridge and device cannot change the protocol on one port atomically. The
+consoles sequence the switch so audio pauses only between the bridge's mode
+change and the device's restart. If one bridge serves several devices, switch
+those devices together or run separate bridge instances during the migration.
 
-For standalone Compose, prepare these private environment values:
-
-```dotenv
-STREAMLINE_TLS_ENABLED=true
-STREAMLINE_TRANSPORT_API_TOKEN=replace-with-at-least-16-random-characters
-```
-
-For Home Assistant, set `tls_enabled` and `transport_api_token` in the add-on
-configuration.
+Prerequisite: a bridge API token. For standalone Compose set
+`STREAMLINE_API_TOKEN` to at least 16 private characters; for Home Assistant
+set `api_token` in the add-on configuration.
 
 Open the device console and the bridge console:
 
-1. In the device **Network → Stream target** card, select **Encrypt transport**
-   and **Generate bridge credential**. Copy the one-time key id and PSK.
-2. Enable TLS and restart the bridge. Its one PCM port now rejects cleartext, so
-   audio pauses until the device activates TLS.
-3. In the bridge **PCM transport** section, unlock with the transport API token
-   and provision that key id and PSK.
+1. In the device **Network → Stream target** card, turn on **Encrypt
+   transport** and select **Generate bridge credential**. Copy the one-time
+   key id and PSK. Cleartext keeps streaming.
+2. In the bridge console, unlock with the bridge API token and add that key id
+   and PSK under **Device credentials**. Audio still streams.
+3. In the bridge **PCM transport** section, switch on encrypted mode. The one
+   PCM port now rejects cleartext, so audio pauses until the device follows.
 4. On the device, select **Verify with bridge**. The device performs a real TLS
    handshake on the configured target port and marks the pending credential
-   verified only after it succeeds. Fix a wrong bridge key or mode and retry.
+   verified only after it succeeds. A failure names what to fix: an
+   unreachable port, a bridge still in cleartext, or a credential the bridge
+   does not accept.
 5. Select **Activate encryption**. Activation promotes the verified key,
    selects `tls-psk`, and restarts the device as one failure-atomic state
-   transition.
-6. Confirm the bridge reports the source by key id over `tls-psk` and audio
-   continues.
+   transition. Audio resumes encrypted.
+6. Confirm the bridge reports the source by key id over `tls-psk`.
 
 To back out before activation, select **Recovery → Discard pending
-credential** or `POST /api/transport/keys/discard`. The device abandons the
-staged key, stays on cleartext, and returns to the opt-in state; remove any
-already-provisioned bridge key with `DELETE /api/transport/keys/<key-id>`.
+credential** or `POST /api/transport/keys/discard`, and switch the bridge back
+to cleartext. The device abandons the staged key, stays on cleartext, and
+returns to the opt-in state; remove any already-enrolled bridge key with
+`DELETE /api/transport/keys/<key-id>`.
 
-Every console operation is available through the APIs. The equivalent key
-provisioning sequence uses placeholders only:
+Every console operation is available through the APIs. The equivalent sequence
+uses placeholders only:
 
 ```sh
 curl -X POST \
@@ -115,10 +116,16 @@ curl -X POST \
   http://192.0.2.10/api/transport/keys/stage
 
 curl -X PUT \
-  -H 'Authorization: Bearer <bridge-transport-token>' \
+  -H 'Authorization: Bearer <bridge-api-token>' \
   -H 'Content-Type: application/json' \
   -d '{"psk":"<64-lowercase-hex-characters>"}' \
   http://192.0.2.20:8088/api/transport/keys/<key-id>
+
+curl -X PUT \
+  -H 'Authorization: Bearer <bridge-api-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"tls-psk"}' \
+  http://192.0.2.20:8088/api/transport/mode
 
 curl -X POST \
   -H 'Authorization: Bearer <device-admin-key>' \
@@ -129,10 +136,8 @@ curl -X POST \
   http://192.0.2.10/api/transport/keys/activate
 ```
 
-Switch the bridge to TLS between staging the device credential and provisioning
-it through the bridge API. The stage response supplies the key id and PSK for
-the bridge request. Do not put a real response in shell history, source
-control, an issue, or a PR.
+The stage response supplies the key id and PSK for the bridge request. Do not
+put a real response in shell history, source control, an issue, or a PR.
 
 ## Replace and retire
 
@@ -158,9 +163,9 @@ the window closes.
 If the active or pending PCM key is lost, open the device console with its admin
 key and select **Replace lost credential** under **Advanced security**. The
 recovery write selects cleartext for the next boot, replaces any unusable
-pending key, and reveals the replacement PSK once. While the bridge is still in
-TLS mode, provision the replacement. Switch the bridge to cleartext, restart
-the device into cleartext, then repeat the normal coordinated TLS cutover.
+pending key, and reveals the replacement PSK once. Enroll the replacement in
+the bridge console, switch the bridge to cleartext, restart the device into
+cleartext, then repeat the normal coordinated TLS cutover.
 
 The programmable recovery is:
 
@@ -179,10 +184,11 @@ transport cannot bypass HTTP administration.
 
 ## Switch back to cleartext
 
-Switch the bridge to cleartext first by setting `tls_enabled=false` and
-restarting it. Then disable encryption in the device's **Advanced security**
-controls. The device restarts in cleartext on the same host and port. The gap
-between those actions is expected; neither side accepts the other protocol.
+Switch the bridge to cleartext first, in its console or with
+`PUT /api/transport/mode`. Then disable encryption in the device's **Advanced
+security** controls. The device restarts in cleartext on the same host and
+port. The gap between those actions is expected; neither side accepts the
+other protocol.
 
 ## Hardware smoke criteria
 

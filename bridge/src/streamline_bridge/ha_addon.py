@@ -12,9 +12,8 @@ from streamline_bridge.options import ADDON_CONTROL_OPTIONS, addon_options, opti
 BRIDGE_EXECUTABLE = "streamline-bridge"
 OPTIONS_PATH = Path("/data/options.json")
 RECORDINGS_DIR = "/data/recordings"
-RECORDING_TOKEN_ENV = "STREAMLINE_RECORDING_TOKEN"
-TRANSPORT_KEYS_FILE = "/data/transport-keys.json"
-TRANSPORT_TOKEN_ENV = "STREAMLINE_TRANSPORT_API_TOKEN"
+API_TOKEN_ENV = "STREAMLINE_API_TOKEN"
+TRANSPORT_STATE_FILE = "/data/transport.json"
 
 
 def load_options(path: Path = OPTIONS_PATH) -> dict[str, object]:
@@ -35,15 +34,12 @@ def bridge_argv(options: dict[str, object]) -> list[str]:
     unknown_options = sorted(set(options) - known_options)
     if unknown_options:
         raise SystemExit(f"unknown Home Assistant option(s): {', '.join(unknown_options)}")
-    argv = [BRIDGE_EXECUTABLE]
+    argv = [BRIDGE_EXECUTABLE, "--transport-state-file", TRANSPORT_STATE_FILE]
 
     if recordings_enabled(options):
-        validate_recording_token(options)
+        if not api_token(options):
+            raise SystemExit("api_token is required when recordings are enabled")
         argv.extend(("--recordings-dir", RECORDINGS_DIR))
-
-    if tls_enabled(options):
-        validate_transport_token(options)
-        argv.extend(("--tls-keys-file", TRANSPORT_KEYS_FILE))
 
     source_allow = normalize_source_allow(options.get("source_allow", ""))
     if source_allow:
@@ -63,38 +59,18 @@ def recordings_enabled(options: dict[str, object]) -> bool:
     return enabled
 
 
-def validate_recording_token(options: dict[str, object]) -> str:
-    token = options.get("recording_token", "")
+def api_token(options: dict[str, object]) -> str:
+    token = options.get("api_token", "")
     if not isinstance(token, str):
-        raise SystemExit("recording_token must be a string")
-    if len(token) < 16:
-        raise SystemExit("recording_token must contain at least 16 characters when recordings are enabled")
+        raise SystemExit("api_token must be a string")
+    if token and len(token) < 16:
+        raise SystemExit("api_token must contain at least 16 characters")
     return token
 
 
-def recording_environment(options: dict[str, object]) -> dict[str, str]:
-    environment: dict[str, str] = {}
-    if recordings_enabled(options):
-        environment[RECORDING_TOKEN_ENV] = validate_recording_token(options)
-    if tls_enabled(options):
-        environment[TRANSPORT_TOKEN_ENV] = validate_transport_token(options)
-    return environment
-
-
-def tls_enabled(options: dict[str, object]) -> bool:
-    enabled = options.get("tls_enabled", False)
-    if not isinstance(enabled, bool):
-        raise SystemExit("tls_enabled must be a boolean")
-    return enabled
-
-
-def validate_transport_token(options: dict[str, object]) -> str:
-    token = options.get("transport_api_token", "")
-    if not isinstance(token, str):
-        raise SystemExit("transport_api_token must be a string")
-    if len(token) < 16:
-        raise SystemExit("transport_api_token must contain at least 16 characters when TLS is enabled")
-    return token
+def bridge_environment(options: dict[str, object]) -> dict[str, str]:
+    token = api_token(options)
+    return {API_TOKEN_ENV: token} if token else {}
 
 
 def normalize_source_allow(value: object) -> str:
@@ -120,6 +96,6 @@ def normalize_source_allow(value: object) -> str:
 def main() -> NoReturn:
     options = load_options()
     argv = bridge_argv(options)
-    environment = os.environ | recording_environment(options)
+    environment = os.environ | bridge_environment(options)
     os.execvpe(argv[0], argv, environment)
     raise SystemExit(127)

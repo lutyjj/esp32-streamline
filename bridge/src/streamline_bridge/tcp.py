@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import socket
 import threading
@@ -28,9 +29,51 @@ class ConnectionAuthenticator(Protocol):
     def authenticate(self, conn: socket.socket, addr: tuple[str, int]) -> AuthenticatedConnection: ...
 
 
+class AuthenticatorSource(Protocol):
+    """Supplies the authenticator matching the transport mode at accept time."""
+
+    def producer_authenticator(self) -> ConnectionAuthenticator: ...
+
+
 class CleartextAuthenticator:
     def authenticate(self, conn: socket.socket, addr: tuple[str, int]) -> AuthenticatedConnection:
         return AuthenticatedConnection(conn, addr[0], "cleartext")
+
+
+class _FixedAuthenticatorSource:
+    def __init__(self, authenticator: ConnectionAuthenticator) -> None:
+        self._authenticator = authenticator
+
+    def producer_authenticator(self) -> ConnectionAuthenticator:
+        return self._authenticator
+
+
+class _LiveConnections:
+    """Track live producer sockets so a mode switch can drop them all."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sockets: set[socket.socket] = set()
+
+    def add(self, sock: socket.socket) -> None:
+        with self._lock:
+            self._sockets.add(sock)
+
+    def replace(self, old: socket.socket, new: socket.socket) -> None:
+        with self._lock:
+            self._sockets.discard(old)
+            self._sockets.add(new)
+
+    def discard(self, sock: socket.socket) -> None:
+        with self._lock:
+            self._sockets.discard(sock)
+
+    def shutdown_all(self) -> None:
+        with self._lock:
+            live = tuple(self._sockets)
+        for sock in live:
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
 
 
 def recv_exact(conn: socket.socket, size: int) -> bytes | None:
@@ -88,7 +131,7 @@ class TcpIngestServer:
         port: int,
         idle_timeout_seconds: float,
         max_connections: int,
-        authenticator: ConnectionAuthenticator | None = None,
+        authenticators: AuthenticatorSource | None = None,
         connection_slots: threading.BoundedSemaphore | None = None,
     ) -> None:
         if max_connections < 1:
@@ -98,7 +141,8 @@ class TcpIngestServer:
         self._port = port
         self._idle_timeout_seconds = idle_timeout_seconds
         self._connection_slots = connection_slots or threading.BoundedSemaphore(max_connections)
-        self._authenticator = authenticator or CleartextAuthenticator()
+        self._authenticators = authenticators or _FixedAuthenticatorSource(CleartextAuthenticator())
+        self._live = _LiveConnections()
 
     def serve_forever(self) -> NoReturn:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
@@ -126,11 +170,18 @@ class TcpIngestServer:
             self._connection_slots.release()
             raise
 
+    def close_producers(self) -> None:
+        """Drop every live producer so the next connect renegotiates the mode."""
+        self._live.shutdown_all()
+
     def _authenticate_and_receive(self, conn: socket.socket, addr: tuple[str, int]) -> None:
+        self._live.add(conn)
+        stream = conn
         try:
             conn.settimeout(self._idle_timeout_seconds)
-            authenticated = self._authenticator.authenticate(conn, addr)
+            authenticated = self._authenticators.producer_authenticator().authenticate(conn, addr)
             stream = authenticated.socket
+            self._live.replace(conn, stream)
             stream.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             stream.settimeout(self._idle_timeout_seconds)
             try:
@@ -150,4 +201,6 @@ class TcpIngestServer:
             conn.close()
             logger.warning("rejected producer connection: %s", exc)
         finally:
+            self._live.discard(stream)
+            self._live.discard(conn)
             self._connection_slots.release()

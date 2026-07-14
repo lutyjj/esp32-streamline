@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from streamline_bridge.http import make_app
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.sources import SourceRegistry
-from streamline_bridge.tcp import AuthenticatedConnection
+from streamline_bridge.tcp import AuthenticatedConnection, CleartextAuthenticator
 from streamline_bridge.transport import (
     CONTRACT_VERSION,
     DEFAULT_PORT,
@@ -28,8 +28,8 @@ from streamline_bridge.transport import (
     TLS_VERSION,
     TlsPskAuthenticator,
     TransportControl,
-    TransportKeyError,
-    TransportKeyStore,
+    TransportStateError,
+    TransportStateStore,
     parse_identity,
 )
 
@@ -81,33 +81,33 @@ def tls_attempt(
     return client_error, server_result
 
 
-class TransportKeyStoreTests(unittest.TestCase):
+class TransportStateStoreTests(unittest.TestCase):
     key_id = "eli1-00112233445566778899aabbccddeeff"
     psk = "ab" * 32
 
     def test_key_file_round_trips_atomically_with_private_permissions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "transport-keys.json"
-            store = TransportKeyStore(path, maximum=2)
+            path = Path(temporary) / "transport.json"
+            store = TransportStateStore(path, maximum=2)
 
             store.put(self.key_id, self.psk)
 
-            self.assertEqual(TransportKeyStore(path).get(self.key_id), bytes.fromhex(self.psk))
+            self.assertEqual(TransportStateStore(path).get(self.key_id), bytes.fromhex(self.psk))
             self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
             self.assertNotIn(self.psk, repr(store))
 
     def test_invalid_unknown_and_over_limit_mutations_leave_the_file_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "transport-keys.json"
-            store = TransportKeyStore(path, maximum=1)
+            path = Path(temporary) / "transport.json"
+            store = TransportStateStore(path, maximum=1)
             store.put(self.key_id, self.psk)
             before = path.read_bytes()
 
-            with self.assertRaises(TransportKeyError):
+            with self.assertRaises(TransportStateError):
                 store.put("eli1-ffeeddccbbaa99887766554433221100", "cd" * 32)
-            with self.assertRaises(TransportKeyError):
+            with self.assertRaises(TransportStateError):
                 store.delete("eli1-ffeeddccbbaa99887766554433221100")
-            with self.assertRaises(TransportKeyError):
+            with self.assertRaises(TransportStateError):
                 store.put(self.key_id, "not-a-key")
 
             self.assertEqual(path.read_bytes(), before)
@@ -117,13 +117,72 @@ class TransportKeyStoreTests(unittest.TestCase):
             root = Path(temporary)
             invalid = root / "invalid.json"
             invalid.write_text('{"version":2,"keys":{}}', encoding="utf-8")
-            with self.assertRaises(TransportKeyError):
-                TransportKeyStore(invalid)
+            with self.assertRaises(TransportStateError):
+                TransportStateStore(invalid)
+
+            non_boolean_mode = root / "non-boolean.json"
+            non_boolean_mode.write_text('{"version":1,"tls_enabled":"yes","keys":{}}', encoding="utf-8")
+            with self.assertRaises(TransportStateError):
+                TransportStateStore(non_boolean_mode)
 
             link = root / "link.json"
             link.symlink_to(invalid)
             with self.assertRaises(OSError):
-                TransportKeyStore(link)
+                TransportStateStore(link)
+
+    def test_listener_mode_persists_with_the_keys_and_partial_shapes_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "transport.json"
+            store = TransportStateStore(path)
+            store.put(self.key_id, self.psk)
+
+            store.set_tls_enabled(True)
+
+            reopened = TransportStateStore(path)
+            self.assertTrue(reopened.tls_enabled)
+            self.assertEqual(reopened.get(self.key_id), bytes.fromhex(self.psk))
+
+            keys_only = Path(temporary) / "keys-only.json"
+            keys_only.write_text(json.dumps({"version": 1, "keys": {self.key_id: self.psk}}), encoding="utf-8")
+            with self.assertRaises(TransportStateError):
+                TransportStateStore(keys_only)
+
+
+class TransportControlTests(unittest.TestCase):
+    def test_mode_switch_persists_selects_the_authenticator_and_drops_producers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "state.json"
+            store = TransportStateStore(path)
+            authenticator = TlsPskAuthenticator(store)
+            control = TransportControl(store, authenticator, port=39000)
+            drops: list[bool] = []
+            control.bind_producer_disconnect(lambda: drops.append(True))
+
+            self.assertIsInstance(control.producer_authenticator(), CleartextAuthenticator)
+            self.assertEqual(control.snapshot()["mode"], "cleartext")
+
+            control.set_tls_enabled(True)
+            self.assertIs(control.producer_authenticator(), authenticator)
+            self.assertEqual(control.snapshot()["mode"], "tls-psk")
+            self.assertEqual(len(drops), 1)
+            self.assertTrue(TransportStateStore(path).tls_enabled)
+
+            control.set_tls_enabled(True)
+            self.assertEqual(len(drops), 1)
+
+            control.set_tls_enabled(False)
+            self.assertIsInstance(control.producer_authenticator(), CleartextAuthenticator)
+            self.assertEqual(len(drops), 2)
+
+    def test_unconfigured_control_stays_cleartext_and_refuses_mode_changes(self) -> None:
+        control = TransportControl(None, None, port=39000)
+
+        self.assertFalse(control.configurable)
+        self.assertFalse(control.snapshot()["configurable"])
+        self.assertEqual(control.snapshot()["mode"], "cleartext")
+        self.assertIsInstance(control.producer_authenticator(), CleartextAuthenticator)
+        with self.assertRaises(TransportStateError):
+            control.set_tls_enabled(True)
 
 
 class TransportAuthenticationTests(unittest.TestCase):
@@ -153,7 +212,7 @@ class TransportAuthenticationTests(unittest.TestCase):
 
     def test_non_exact_cipher_wrong_unknown_and_downgrade_clients_fail(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            keys = TransportKeyStore(Path(temporary) / "keys.json")
+            keys = TransportStateStore(Path(temporary) / "keys.json")
             keys.put(self.key_id, self.psk)
             authenticator = TlsPskAuthenticator(keys)
             identity = f"eli1:1:{self.key_id}"
@@ -186,7 +245,7 @@ class TransportAuthenticationTests(unittest.TestCase):
 
     def test_cleartext_bytes_fail_before_authentication(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            authenticator = TlsPskAuthenticator(TransportKeyStore(Path(temporary) / "keys.json"))
+            authenticator = TlsPskAuthenticator(TransportStateStore(Path(temporary) / "keys.json"))
             server_socket, client_socket = socket.socketpair()
             server_socket.settimeout(1)
             result: queue.Queue[BaseException | None] = queue.Queue(maxsize=1)
@@ -214,7 +273,7 @@ class TransportAuthenticationTests(unittest.TestCase):
         second_id = "eli1-ffeeddccbbaa99887766554433221100"
         second_psk = "cd" * 32
         with tempfile.TemporaryDirectory() as temporary:
-            keys = TransportKeyStore(Path(temporary) / "keys.json")
+            keys = TransportStateStore(Path(temporary) / "keys.json")
             keys.put(self.key_id, self.psk)
             keys.put(second_id, second_psk)
             authenticator = TlsPskAuthenticator(keys)
@@ -244,16 +303,12 @@ class TransportAuthenticationTests(unittest.TestCase):
 
     def test_key_api_is_authenticated_and_never_reads_psks(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            keys = TransportKeyStore(Path(temporary) / "keys.json")
+            keys = TransportStateStore(Path(temporary) / "keys.json")
             authenticator = TlsPskAuthenticator(keys)
-            control = TransportControl(
-                keys,
-                authenticator,
-                self.token,
-                tls_enabled=True,
-                port=39000,
+            control = TransportControl(keys, authenticator, port=39000)
+            client = TestClient(
+                make_app(SourceRegistry(make_pipeline, 2), "test", api_token=self.token, transport=control)
             )
-            client = TestClient(make_app(SourceRegistry(make_pipeline, 2), "test", transport=control))
             path = f"/api/transport/keys/{self.key_id}"
 
             missing = client.put(path, json={"psk": self.psk})

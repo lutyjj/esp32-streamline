@@ -2,10 +2,10 @@ import { useEffect, useState } from 'preact/hooks';
 import { setAudio } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, loadDeviceSettings, status } from '../state/device';
+import { AnalogPassthrough } from './AnalogPassthrough';
 import { AudioProfiles } from './AudioProfiles';
-import { Button } from './Button';
 import { Card, CardFooter } from './Card';
-import { LocalOutput } from './LocalOutput';
+import { GuidePrompt } from './GuidePrompt';
 import { Meter } from './Meter';
 import { ActionState, TransactButton } from './Transact';
 
@@ -57,6 +57,12 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
         title="Input settings"
         lead="Changes apply instantly and return to Custom settings. Watch the live level below."
       >
+        <GuidePrompt
+          text="Not sure about levels? A guide measures your source and sets these."
+          action="Calibrate levels"
+          disabled={!writable}
+          onAction={onCalibrate}
+        />
         <form onSubmit={save}>
           <div class="formgrid">
             <div class="field">
@@ -106,26 +112,6 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
               </div>
               <span class="help">Raise until loud passages stop clipping.</span>
             </div>
-            <div class="field">
-              <label for="calibrateButton">Not sure?</label>
-              <Button
-                id="calibrateButton"
-                className="field-action"
-                disabled={!writable}
-                onClick={onCalibrate}
-              >
-                Calibrate levels
-              </Button>
-              <span class="help">Measures your source and sets these for you.</span>
-            </div>
-            {status.value && (
-              <LocalOutput
-                capability={caps?.analog_passthrough}
-                status={status.value.analog_passthrough}
-                writable={writable}
-                provisioned={status.value.mode === 'provisioned'}
-              />
-            )}
           </div>
           <CardFooter>
             <TransactButton transact={transact} type="submit" disabled={!writable}>
@@ -134,6 +120,14 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
             <ActionState state={transact.state} />
           </CardFooter>
         </form>
+        {status.value && (
+          <AnalogPassthrough
+            capability={caps?.analog_passthrough}
+            status={status.value.analog_passthrough}
+            writable={writable}
+            provisioned={status.value.mode === 'provisioned'}
+          />
+        )}
       </Card>
 
       <Card title="Live level" lead="Watch the effect of a change here. Clipping lights the lamp.">

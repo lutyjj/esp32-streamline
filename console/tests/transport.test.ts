@@ -108,6 +108,16 @@ describe('PCM transport lifecycle', () => {
     expect(reload).toHaveBeenCalledTimes(2);
   });
 
+  it('spends the one-time reveal when the key is activated', async () => {
+    const controller = new TransportController(fakeApi(), async () => undefined);
+
+    await controller.stage();
+    expect(controller.revealed.value).toBeDefined();
+    await controller.activate();
+
+    expect(controller.revealed.value).toBeUndefined();
+  });
+
   it('discards a pending key with its one-time reveal so setup can be abandoned', async () => {
     const api = fakeApi();
     const reload = vi.fn(async () => undefined);

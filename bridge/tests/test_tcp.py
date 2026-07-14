@@ -126,8 +126,12 @@ class TcpAdapterTests(unittest.TestCase):
             def authenticate(self, _conn: socket.socket, _addr: tuple[str, int]) -> AuthenticatedConnection:
                 raise ValueError("authentication failed")
 
+        class RejectSource:
+            def producer_authenticator(self) -> Reject:
+                return Reject()
+
         registry = SourceRegistry(make_pipeline, max_sources=1)
-        ingest = TcpIngestServer(registry, "127.0.0.1", 0, 1.0, max_connections=1, authenticator=Reject())
+        ingest = TcpIngestServer(registry, "127.0.0.1", 0, 1.0, max_connections=1, authenticators=RejectSource())
         server, peer = socket.socketpair()
         try:
             ingest.accept(server, ("192.0.2.10", 1234))
@@ -137,3 +141,35 @@ class TcpAdapterTests(unittest.TestCase):
             self.assertEqual(registry.snapshot(), {})
         finally:
             peer.close()
+
+    def test_close_producers_drops_a_live_connection(self) -> None:
+        registry = SourceRegistry(make_pipeline, max_sources=1)
+        ingest = TcpIngestServer(registry, "127.0.0.1", 0, 5.0, max_connections=1)
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        peer = socket.create_connection(listener.getsockname())
+        conn, addr = listener.accept()
+        try:
+            ingest.accept(conn, addr)
+            self.assertEqual(self.wait_for_state(registry, addr[0], "connected"), "connected")
+
+            ingest.close_producers()
+
+            self.assertEqual(self.wait_for_state(registry, addr[0], "disconnected"), "disconnected")
+        finally:
+            peer.close()
+            listener.close()
+
+    @staticmethod
+    def wait_for_state(registry: SourceRegistry[AudioPipeline], key: str, wanted: str) -> str:
+        deadline = time.monotonic() + 1
+        state = ""
+        while time.monotonic() < deadline:
+            snapshot = registry.snapshot().get(key)
+            if snapshot is not None:
+                state = str(cast("dict[str, object]", snapshot["lifecycle"])["state"])
+                if state == wanted:
+                    return state
+            time.sleep(0.01)
+        return state

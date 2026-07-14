@@ -15,6 +15,7 @@ from streamline_bridge.protocol import DEFAULT_FORMAT
 from streamline_bridge.recording import RecordingService, RecordingStore
 from streamline_bridge.recording_http import MAX_DOWNLOAD_TICKETS, RecordingHttpService
 from streamline_bridge.sources import SourceRegistry
+from streamline_bridge.transport import TlsPskAuthenticator, TransportControl, TransportStateStore
 
 
 def make_pipeline() -> AudioPipeline:
@@ -34,12 +35,14 @@ class HttpContractTests(unittest.TestCase):
 
         self.assertEqual((health.status_code, health.text), (200, "ok\n"))
         self.assertEqual(status.json()["bridge_version"], "test")
+        self.assertFalse(status.json()["api_token_configured"])
         self.assertEqual(status.json()["sources"], {})
         self.assertEqual(
             status.json()["transport"],
             {
                 "contract_version": 1,
                 "mode": "cleartext",
+                "configurable": False,
                 "port": 39000,
                 "key_ids": [],
                 "auth_successes": 0,
@@ -70,6 +73,12 @@ class HttpContractTests(unittest.TestCase):
         self.assertEqual(document["paths"]["/status"]["get"]["operationId"], "getBridgeStatus")
         self.assertEqual(document["paths"]["/api/recordings"]["post"]["operationId"], "startRecording")
         self.assertEqual(document["paths"]["/api/transport/keys/{key_id}"]["put"]["operationId"], "putTransportKey")
+        self.assertEqual(document["paths"]["/api/unlock"]["post"]["operationId"], "unlockBridge")
+        self.assertEqual(document["paths"]["/api/transport/mode"]["put"]["operationId"], "setTransportMode")
+        self.assertEqual(
+            document["paths"]["/api/transport/mode"]["put"]["security"],
+            [{"bearer_auth": []}],
+        )
         self.assertEqual(
             document["paths"]["/api/recordings"]["get"]["security"],
             [{"bearer_auth": []}],
@@ -110,6 +119,67 @@ class HttpContractTests(unittest.TestCase):
         lifecycle = cast("dict[str, object]", snapshot["lifecycle"])
         self.assertEqual(snapshot["clients"], 0)
         self.assertEqual(lifecycle["http_clients"], 0)
+
+
+class TransportApiTests(unittest.TestCase):
+    token = "bridge-api-test-token"
+
+    @staticmethod
+    def make_client(temporary: str, token: str | None) -> TestClient:
+        store = TransportStateStore(Path(temporary) / "state.json")
+        control = TransportControl(store, TlsPskAuthenticator(store), port=39000)
+        sources = SourceRegistry(make_pipeline, max_sources=2)
+        return TestClient(make_app(sources, "test", api_token=token, transport=control))
+
+    def test_unlock_checks_the_bridge_api_token(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            client = self.make_client(temporary, self.token)
+
+            accepted = client.post("/api/unlock", headers={"Authorization": f"Bearer {self.token}"})
+            wrong = client.post("/api/unlock", headers={"Authorization": "Bearer wrong"})
+            missing = client.post("/api/unlock")
+
+            self.assertEqual((accepted.status_code, accepted.json()), (200, {"ok": True}))
+            self.assertEqual(wrong.status_code, 401)
+            self.assertEqual(missing.status_code, 401)
+
+    def test_an_unset_token_names_the_fix_instead_of_rejecting_the_credential(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            client = self.make_client(temporary, token=None)
+
+            response = client.post("/api/unlock", headers={"Authorization": "Bearer anything"})
+
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.json()["error"]["code"], "control-disabled")
+            self.assertIn("api_token", response.json()["error"]["message"])
+
+    def test_mode_endpoint_switches_and_persists_the_listener_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            client = self.make_client(temporary, self.token)
+            headers = {"Authorization": f"Bearer {self.token}"}
+
+            denied = client.put("/api/transport/mode", json={"mode": "tls-psk"})
+            enabled = client.put("/api/transport/mode", headers=headers, json={"mode": "tls-psk"})
+            status = client.get("/api/transport")
+
+            self.assertEqual(denied.status_code, 401)
+            self.assertEqual(enabled.status_code, 200)
+            self.assertEqual(enabled.json()["mode"], "tls-psk")
+            self.assertEqual(status.json()["mode"], "tls-psk")
+            self.assertTrue(TransportStateStore(Path(temporary) / "state.json").tls_enabled)
+
+    def test_mode_endpoint_without_state_storage_is_unavailable(self) -> None:
+        sources = SourceRegistry(make_pipeline, max_sources=2)
+        client = TestClient(make_app(sources, "test", api_token=self.token))
+
+        response = client.put(
+            "/api/transport/mode",
+            headers={"Authorization": f"Bearer {self.token}"},
+            json={"mode": "tls-psk"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["error"]["code"], "transport-unavailable")
 
 
 class RecordingApiTests(unittest.TestCase):
@@ -189,7 +259,7 @@ class RecordingApiTests(unittest.TestCase):
         recording_id = started.json()["recording"]["id"]
         self.source.hub.ingest(1, bytes(DEFAULT_FORMAT.payload_bytes))
         self.client.post(f"/api/recordings/{recording_id}/stop", headers=self.headers)
-        service = RecordingHttpService(self.recordings, self.token)
+        service = RecordingHttpService(self.recordings)
         urls = [service.issue_download(recording_id)["url"] for _ in range(MAX_DOWNLOAD_TICKETS + 1)]
 
         first = urlsplit(cast("str", urls[0]))

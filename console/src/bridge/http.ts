@@ -1,7 +1,6 @@
 import { ApiError, type FetchLike } from '../lib/http';
 
-const TOKEN_KEY = 'streamline.recordingToken';
-const TRANSPORT_TOKEN_KEY = 'streamline.transportToken';
+const TOKEN_KEY = 'streamline.bridgeToken';
 
 let transport: FetchLike = (request) => fetch(request);
 
@@ -9,27 +8,19 @@ export function setBridgeTransport(next: FetchLike): void {
   transport = next;
 }
 
-export function recordingToken(): string {
+export function bridgeToken(): string {
   return sessionStorage.getItem(TOKEN_KEY) || '';
 }
 
 // The token is a shared deployment secret, so it never persists past the tab —
 // unlike the per-device admin key. See docs/security.md ("no persistent token
 // storage").
-export function rememberRecordingToken(token: string): void {
+export function rememberBridgeToken(token: string): void {
   sessionStorage.setItem(TOKEN_KEY, token);
 }
 
-export function forgetRecordingToken(): void {
+export function forgetBridgeToken(): void {
   sessionStorage.removeItem(TOKEN_KEY);
-}
-
-export function rememberTransportToken(token: string): void {
-  sessionStorage.setItem(TRANSPORT_TOKEN_KEY, token);
-}
-
-export function forgetTransportToken(): void {
-  sessionStorage.removeItem(TRANSPORT_TOKEN_KEY);
 }
 
 export function bridgeBase(): string {
@@ -37,14 +28,17 @@ export function bridgeBase(): string {
   return /^(\/[A-Za-z0-9._~-]+)*$/.test(raw) ? raw : '';
 }
 
+/** Every mutating bridge route; reads stay open per docs/security.md. */
+function requiresToken(path: string): boolean {
+  if (path === '/api/unlock' || path === '/api/transport/mode') return true;
+  if (path.startsWith('/api/transport/keys/')) return true;
+  return path.startsWith('/api/recordings') && !path.includes('/capabilities');
+}
+
 export async function bridgeFetch<T>(path: string, options: RequestInit): Promise<T> {
   const request = new Request(`${bridgeBase()}${path}`, options);
-  if (path.startsWith('/api/recordings') && !path.includes('/capabilities')) {
-    const token = recordingToken();
-    if (token) request.headers.set('Authorization', `Bearer ${token}`);
-  }
-  if (path.startsWith('/api/transport/keys/')) {
-    const token = sessionStorage.getItem(TRANSPORT_TOKEN_KEY) || '';
+  if (requiresToken(path)) {
+    const token = bridgeToken();
     if (token) request.headers.set('Authorization', `Bearer ${token}`);
   }
   const response = await transport(request);

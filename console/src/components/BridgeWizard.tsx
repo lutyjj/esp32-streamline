@@ -3,9 +3,8 @@ import { setTarget } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
 import { bridgeConnection, config } from '../state/device';
-import { navigateTo } from '../state/navigation';
 import { rebootWait } from '../state/rebootWait';
-import { optInRequested } from '../state/transport';
+import { setupWizardRequested } from '../state/transport';
 import { Button } from './Button';
 import { DialogSheet } from './DialogSheet';
 import { ActionState, TransactButton } from './Transact';
@@ -63,7 +62,7 @@ function connectLine(): { text: string; cls: '' | 'ok' } {
 
 /**
  * Bridge hookup wizard: choose where the bridge runs, point the device at it,
- * then optionally hand the encryption opt-in to the Stream target card. It only
+ * then optionally continue into the guided encryption setup. It only
  * sequences existing endpoints; the plain form on the Network tab stays as the
  * escape hatch.
  */
@@ -97,10 +96,9 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
     );
   }
 
-  /** Hand the encryption opt-in to the Stream target card and leave. */
+  /** Continue straight into the guided encryption setup sheet. */
   function encrypt() {
-    optInRequested.value = true;
-    navigateTo('network');
+    setupWizardRequested.value = true;
     onClose();
   }
 
@@ -235,9 +233,9 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
                   Streaming works now over plain TCP, which is fine on a home network you trust.
                 </p>
                 <p>
-                  You can also wrap it in TLS 1.3 so each device authenticates with its own key.
-                  Turning it on switches both sides together and pauses audio for a few seconds. It
-                  stays available any time.
+                  You can also wrap it in TLS 1.3 so each device authenticates with its own key. A
+                  guide walks you through it — have the bridge API token from your bridge
+                  configuration ready. You can come back to it any time from the Network tab.
                 </p>
               </>
             )}

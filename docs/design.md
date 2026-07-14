@@ -244,8 +244,8 @@ network.
 The selected input drives both PCM capture and local output. An input change
 mutes the output around the route switch. Input gain, ADC attenuation, level
 calibration, silence detection, and network faults do not change or disable the
-analog path. The console calls this feature **Local output** and exposes no
-firmware volume control; listening volume belongs to connected equipment.
+analog path. The console calls this feature **Analog passthrough** and exposes
+no firmware volume control; listening volume belongs to connected equipment.
 
 Named audio profiles group the input, gain, and attenuation settings behind a
 versioned board-bound model. The device keeps up to eight short profile records

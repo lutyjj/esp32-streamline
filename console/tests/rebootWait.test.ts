@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   beginRebootWait,
+  REBOOT_SETTLE_MS,
   REBOOT_WARN_POLLS,
   rebootWait,
   rebootWaitTick,
@@ -57,6 +58,19 @@ describe('reboot-wait narration', () => {
     rebootWaitTick(true);
     expect(rebootWaitTick(false)).toBe(true);
     expect(recovered).toBe(1);
+  });
+
+  it('recovers past the settle window even if no poll caught the downtime', () => {
+    beginRebootWait('encrypted streaming');
+    toasts.value = [];
+    // A fast reboot or a backgrounded tab: the poller never observed an offline
+    // poll, but enough time has passed that a reachable device means it rebooted.
+    const wait = rebootWait.value;
+    if (wait) wait.startedAt = Date.now() - (REBOOT_SETTLE_MS + 1);
+
+    expect(rebootWaitTick(false)).toBe(true);
+    expect(rebootWait.value).toBeNull();
+    expect(toasts.value.map((t) => t.text)).toEqual(['Back online — encrypted streaming applied']);
   });
 
   it('warns when the reboot is overdue', () => {

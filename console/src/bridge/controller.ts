@@ -12,15 +12,13 @@ import {
   type RecordingCapabilities,
   type RecordingList,
   type StartRecordingRequest,
+  setTransportMode,
   startRecording,
   stopRecording,
+  type TransportModeRequestMode,
+  unlockBridge,
 } from '../generated/bridge';
-import {
-  forgetRecordingToken,
-  forgetTransportToken,
-  rememberRecordingToken,
-  rememberTransportToken,
-} from './http';
+import { bridgeToken, forgetBridgeToken, rememberBridgeToken } from './http';
 
 export interface BridgeApi {
   status(): Promise<BridgeStatus>;
@@ -30,11 +28,19 @@ export interface BridgeApi {
   stop(id: string): Promise<void>;
   delete(id: string): Promise<void>;
   ticket(id: string): Promise<DownloadTicket>;
+  unlock(): Promise<void>;
+  setTransportMode(mode: TransportModeRequestMode): Promise<void>;
   putTransportKey(keyId: string, psk: string): Promise<void>;
   deleteTransportKey(keyId: string): Promise<void>;
 }
 
 export type Scheduler = (callback: () => void, delay: number) => number;
+
+/**
+ * One lock for the whole bridge console. `no-token` means the deployment has
+ * no bridge API token yet, so there is nothing to unlock with.
+ */
+export type BridgeAccess = 'checking' | 'no-token' | 'locked' | 'unlocked';
 
 const runtimeApi: BridgeApi = {
   status: getBridgeStatus,
@@ -50,6 +56,12 @@ const runtimeApi: BridgeApi = {
     await deleteRecording(id);
   },
   ticket: createRecordingDownloadTicket,
+  unlock: async () => {
+    await unlockBridge();
+  },
+  setTransportMode: async (mode) => {
+    await setTransportMode({ mode });
+  },
   putTransportKey: async (keyId, psk) => {
     await putTransportKey(keyId, { psk });
   },
@@ -63,8 +75,7 @@ export class BridgeController {
   readonly capabilities = signal<RecordingCapabilities>();
   readonly recordings = signal<RecordingList>();
   readonly unreachable = signal(false);
-  readonly recordingState = signal<'checking' | 'disabled' | 'locked' | 'unlocked'>('checking');
-  readonly transportState = signal<'checking' | 'disabled' | 'locked' | 'unlocked'>('checking');
+  readonly access = signal<BridgeAccess>('checking');
   readonly error = signal('');
 
   private recordingTimer?: number;
@@ -74,11 +85,13 @@ export class BridgeController {
     private readonly api: BridgeApi = runtimeApi,
     private readonly schedule: Scheduler = window.setTimeout,
     private readonly cancel: (id: number) => void = window.clearTimeout,
+    private readonly storedToken: () => string = bridgeToken,
   ) {}
 
   start(): void {
     void this.pollStatus();
     void this.loadCapabilities();
+    if (this.storedToken()) void this.resume();
   }
 
   stop(): void {
@@ -89,13 +102,10 @@ export class BridgeController {
   async pollStatus(): Promise<void> {
     try {
       this.status.value = await this.api.status();
-      if (this.status.value.transport.mode !== 'tls-psk') {
-        this.transportState.value = 'disabled';
-      } else if (
-        this.transportState.value === 'checking' ||
-        this.transportState.value === 'disabled'
-      ) {
-        this.transportState.value = 'locked';
+      if (!this.status.value.api_token_configured) {
+        this.access.value = 'no-token';
+      } else if (this.access.value === 'checking' || this.access.value === 'no-token') {
+        this.access.value = 'locked';
       }
       this.unreachable.value = false;
     } catch {
@@ -107,47 +117,48 @@ export class BridgeController {
 
   async loadCapabilities(): Promise<void> {
     try {
-      const capabilities = await this.api.capabilities();
-      this.capabilities.value = capabilities;
-      this.recordingState.value = capabilities.enabled ? 'locked' : 'disabled';
+      this.capabilities.value = await this.api.capabilities();
+      await this.maybeLoadRecordings();
     } catch (error) {
       this.error.value = message(error);
     }
   }
 
+  /** Validate the token against the bridge before showing anything unlocked. */
   async unlock(token: string): Promise<void> {
-    rememberRecordingToken(token);
+    rememberBridgeToken(token.trim());
     try {
-      const recordings = await this.api.recordings();
-      this.recordingState.value = 'unlocked';
+      await this.api.unlock();
+      this.access.value = 'unlocked';
       this.error.value = '';
-      this.updateRecordings(recordings);
+      await this.maybeLoadRecordings();
     } catch (error) {
-      forgetRecordingToken();
-      this.recordingState.value = 'locked';
+      forgetBridgeToken();
+      if (this.access.value !== 'no-token') this.access.value = 'locked';
       this.error.value = message(error);
       throw error;
     }
   }
 
   lock(): void {
-    forgetRecordingToken();
+    forgetBridgeToken();
     if (this.recordingTimer !== undefined) this.cancel(this.recordingTimer);
     this.recordingTimer = undefined;
     this.recordings.value = undefined;
-    this.recordingState.value = 'locked';
+    if (this.access.value === 'unlocked') this.access.value = 'locked';
   }
 
-  unlockTransport(token: string): void {
-    rememberTransportToken(token);
-    this.transportState.value = 'unlocked';
-    this.error.value = '';
-  }
-
-  lockTransport(): void {
-    forgetTransportToken();
-    this.transportState.value =
-      this.status.value?.transport.mode === 'tls-psk' ? 'locked' : 'disabled';
+  /** Switch the PCM listener; a change drops live producers on the bridge. */
+  async setEncryption(enabled: boolean): Promise<boolean> {
+    try {
+      await this.api.setTransportMode(enabled ? 'tls-psk' : 'cleartext');
+      await this.pollStatusOnce();
+      this.error.value = '';
+      return true;
+    } catch (error) {
+      this.error.value = message(error);
+      return false;
+    }
   }
 
   async provisionTransportKey(keyId: string, psk: string): Promise<boolean> {
@@ -203,6 +214,23 @@ export class BridgeController {
     } catch (error) {
       this.error.value = message(error);
       return undefined;
+    }
+  }
+
+  /** Re-enter the unlocked state with a token this browser tab already holds. */
+  private async resume(): Promise<void> {
+    try {
+      await this.api.unlock();
+      this.access.value = 'unlocked';
+      await this.maybeLoadRecordings();
+    } catch {
+      forgetBridgeToken();
+    }
+  }
+
+  private async maybeLoadRecordings(): Promise<void> {
+    if (this.access.value === 'unlocked' && this.capabilities.value?.enabled) {
+      await this.refreshRecordings();
     }
   }
 

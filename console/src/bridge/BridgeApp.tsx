@@ -4,14 +4,15 @@ import { Card, CardFooter } from '../components/Card';
 import { Chip, type Tone } from '../components/Chip';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
-import { LockChip } from '../components/LockChip';
+import { LockChip, type LockState } from '../components/LockChip';
 import { MeterRow } from '../components/Meter';
 import { Notice } from '../components/Notice';
 import { SectionHead } from '../components/SectionHead';
 import { ThemeSwitch } from '../components/ThemeSwitch';
 import { Toasts } from '../components/Toasts';
+import { Toggle } from '../components/Toggle';
 import { UnlockPanel } from '../components/UnlockPanel';
-import type { RecordingSnapshot, SourceSnapshot } from '../generated/bridge';
+import type { RecordingSnapshot, SourceSnapshot, TransportSnapshot } from '../generated/bridge';
 import { dbfs } from '../lib/format';
 import { toast } from '../state/toasts';
 import { bridgeBase } from './http';
@@ -43,15 +44,24 @@ function StateChip({ state }: { state: string }) {
 
 export function BridgeApp() {
   const status = bridge.status.value;
-  const recordingState = bridge.recordingState.value;
+  const access = bridge.access.value;
   const [panelOpen, setPanelOpen] = useState(false);
 
+  const chip: { state: LockState; text: string; sub: string } =
+    access === 'checking'
+      ? { state: 'neutral', text: 'Checking…', sub: '' }
+      : access === 'no-token'
+        ? { state: 'neutral', text: 'No API token', sub: '· set api_token to manage' }
+        : access === 'unlocked'
+          ? { state: 'unlocked', text: 'Unlocked', sub: '· click to lock' }
+          : { state: 'locked', text: 'Locked', sub: '· click to unlock' };
+
   function onLockClick() {
-    if (bridge.recordingState.value === 'unlocked') {
+    if (access === 'unlocked') {
       bridge.lock();
-      toast('Recordings locked', 'ok');
+      toast('Bridge locked', 'ok');
       setPanelOpen(false);
-    } else {
+    } else if (access === 'locked') {
       setPanelOpen((open) => !open);
     }
   }
@@ -72,24 +82,10 @@ export function BridgeApp() {
         </div>
         <div class="masthead-actions">
           <ThemeSwitch />
-          {(recordingState === 'locked' || recordingState === 'unlocked') && (
-            <LockChip
-              state={recordingState}
-              text={recordingState === 'unlocked' ? 'Unlocked' : 'Locked'}
-              sub={recordingState === 'unlocked' ? '· click to lock' : '· click to unlock'}
-              onClick={onLockClick}
-            />
-          )}
-          {bridge.transportState.value === 'unlocked' && (
-            <Button className="bridge-lock" onClick={() => bridge.lockTransport()}>
-              Lock transport keys
-            </Button>
-          )}
+          <LockChip state={chip.state} text={chip.text} sub={chip.sub} onClick={onLockClick} />
         </div>
       </header>
-      {recordingState === 'locked' && panelOpen && (
-        <RecordingUnlock onDone={() => setPanelOpen(false)} />
-      )}
+      {access === 'locked' && panelOpen && <BridgeUnlock onDone={() => setPanelOpen(false)} />}
       {bridge.error.value && <Notice tone="error">{bridge.error.value}</Notice>}
       <section class="bridge-group">
         <SectionHead title="Sources" note="Live · updates every second" />
@@ -107,142 +103,200 @@ export function BridgeApp() {
           )}
         </div>
       </section>
-      <TransportKeys />
+      <Transport />
       <Recordings />
       <Toasts />
     </main>
   );
 }
 
-function TransportKeys() {
+function BridgeUnlock({ onDone }: { onDone: () => void }) {
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function unlock() {
+    setBusy(true);
+    try {
+      await bridge.unlock(token);
+      toast('Bridge unlocked', 'ok');
+      onDone();
+    } catch {
+      // The controller surfaces the reason in the page banner.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <UnlockPanel
+      secret={token}
+      onSecret={setToken}
+      onUnlock={unlock}
+      busy={busy}
+      placeholder="bridge API token"
+      autoComplete="current-password"
+    />
+  );
+}
+
+function Transport() {
   const status = bridge.status.value?.transport;
-  const state = bridge.transportState.value;
-  if (!status || state === 'checking') return null;
+  const access = bridge.access.value;
+  if (!status) return null;
+  const secure = status.mode === 'tls-psk';
   return (
     <section class="bridge-group">
       <div class="section-head">
-        <h2>PCM transport</h2>
+        <h2>Encryption</h2>
         <span class="eyebrow">
-          {status.mode === 'tls-psk' ? 'TLS 1.3' : 'Cleartext'} · port {status.port}
+          {secure ? 'Encrypted · TLS 1.3' : 'Cleartext'} · PCM port {status.port}
         </span>
       </div>
       <p class="grouplead">
-        {status.mode === 'tls-psk'
-          ? 'This listener accepts authenticated TLS only. Cleartext connections are rejected.'
-          : 'This listener accepts cleartext PCM only. Enable TLS in bridge configuration to switch modes.'}
+        {secure
+          ? 'Only devices with an enrolled credential can stream. Cleartext connections are rejected.'
+          : 'Any device on the network can stream to this port unencrypted.'}
       </p>
-      {state === 'disabled' ? (
-        <Card lead="Set a transport API token, enable TLS, and restart the bridge before activating encryption on the device.">
-          {null}
-        </Card>
-      ) : state === 'locked' ? (
-        <TransportUnlock />
+      {!status.configurable ? (
+        <EmptyState>
+          Encryption control is off. Run the bridge with a transport state file
+          (--transport-state-file), then restart it.
+        </EmptyState>
+      ) : access === 'no-token' ? (
+        <EmptyState>
+          Set api_token in the bridge configuration (or STREAMLINE_API_TOKEN), then restart the
+          bridge to manage encryption here.
+        </EmptyState>
       ) : (
-        <TransportKeyWorkspace keyIds={status.key_ids} />
+        <TransportWorkspace status={status} unlocked={access === 'unlocked'} />
       )}
     </section>
   );
 }
 
-function TransportUnlock() {
-  const [token, setToken] = useState('');
+function TransportWorkspace({
+  status,
+  unlocked,
+}: {
+  status: TransportSnapshot;
+  unlocked: boolean;
+}) {
+  const secure = status.mode === 'tls-psk';
+  const [busy, setBusy] = useState(false);
   return (
-    <Card lead="Enter the transport API token configured on this bridge. It stays in this browser tab.">
-      <form
-        class="unlockform"
-        onSubmit={(event) => {
-          event.preventDefault();
-          bridge.unlockTransport(token);
-          setToken('');
-        }}
+    <div class="cardstack">
+      <Card
+        title="Device credentials"
+        lead={
+          unlocked
+            ? 'Add the one-time credential from the device console. Enroll it before switching to encrypted, so audio only pauses while the device follows.'
+            : 'Select Locked in the header to unlock this bridge, then enroll device credentials and switch encryption.'
+        }
       >
-        <input
-          type="password"
-          autocomplete="current-password"
-          placeholder="transport API token"
-          value={token}
-          onInput={(event) => setToken(event.currentTarget.value)}
-          minlength={16}
-          required
-        />
-        <Button kind="primary" type="submit">
-          Unlock
-        </Button>
-      </form>
-    </Card>
+        {unlocked && <CredentialForm />}
+        <div class="bridge-list transport-key-list">
+          {status.key_ids.length ? (
+            status.key_ids.map((id) => (
+              <div class="transport-key" key={id}>
+                <code>{id}</code>
+                {unlocked && (
+                  <ConfirmButton
+                    label="Remove"
+                    confirmLabel="Remove"
+                    onConfirm={() => void bridge.removeTransportKey(id)}
+                  />
+                )}
+              </div>
+            ))
+          ) : (
+            <div class="empty">No device credential is enrolled.</div>
+          )}
+        </div>
+        <div class="transport-mode">
+          <Toggle
+            checked={secure}
+            disabled={!unlocked || busy}
+            onChange={async (enabled) => {
+              setBusy(true);
+              try {
+                if (await bridge.setEncryption(enabled)) {
+                  toast(
+                    enabled
+                      ? 'Encrypted mode on — devices must verify and activate'
+                      : 'Cleartext mode on',
+                    'ok',
+                  );
+                }
+              } finally {
+                setBusy(false);
+              }
+            }}
+            label="Encrypt incoming audio"
+            description={
+              secure
+                ? 'Turning this off drops encrypted devices and accepts unencrypted audio again.'
+                : 'Turning this on pauses audio from every device until it verifies and activates its credential.'
+            }
+          />
+        </div>
+      </Card>
+    </div>
   );
 }
 
-function TransportKeyWorkspace({ keyIds }: { keyIds: string[] }) {
+function CredentialForm() {
   const [keyId, setKeyId] = useState('');
   const [psk, setPsk] = useState('');
   const [busy, setBusy] = useState(false);
   return (
-    <Card
-      title="Device credentials"
-      lead="Paste the one-time credential shown by the device console."
-    >
-      <form
-        class="formgrid"
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setBusy(true);
-          try {
-            if (await bridge.provisionTransportKey(keyId.trim(), psk.trim())) {
-              setKeyId('');
-              setPsk('');
-            }
-          } finally {
-            setBusy(false);
+    <form
+      class="formgrid"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setBusy(true);
+        try {
+          if (await bridge.provisionTransportKey(keyId.trim(), psk.trim())) {
+            setKeyId('');
+            setPsk('');
+            toast('Credential enrolled', 'ok');
           }
-        }}
-      >
-        <div class="field">
-          <label for="transport-key-id">Credential ID</label>
-          <input
-            id="transport-key-id"
-            class="credential-input"
-            value={keyId}
-            pattern="eli1-[0-9a-f]{32}"
-            autocomplete="off"
-            onInput={(event) => setKeyId(event.currentTarget.value)}
-            required
-          />
-        </div>
-        <div class="field">
-          <label for="transport-psk">PSK</label>
-          <input
-            id="transport-psk"
-            class="credential-input"
-            type="password"
-            value={psk}
-            pattern="[0-9a-f]{64}"
-            autocomplete="new-password"
-            onInput={(event) => setPsk(event.currentTarget.value)}
-            required
-          />
-        </div>
-        <Button kind="primary" type="submit" busy={busy}>
-          Provision credential
-        </Button>
-      </form>
-      <div class="bridge-list transport-key-list">
-        {keyIds.length ? (
-          keyIds.map((id) => (
-            <div class="transport-key" key={id}>
-              <code>{id}</code>
-              <ConfirmButton
-                label="Remove"
-                confirmLabel="Remove"
-                onConfirm={() => void bridge.removeTransportKey(id)}
-              />
-            </div>
-          ))
-        ) : (
-          <div class="empty">No encrypted device credential is provisioned.</div>
-        )}
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <div class="field">
+        <label for="transport-key-id">Credential ID</label>
+        <input
+          id="transport-key-id"
+          type="text"
+          class="credential-input"
+          value={keyId}
+          pattern="eli1-[0-9a-f]{32}"
+          autocomplete="off"
+          onInput={(event) => setKeyId(event.currentTarget.value)}
+          required
+        />
       </div>
-    </Card>
+      <div class="field">
+        <label for="transport-psk">PSK</label>
+        <input
+          id="transport-psk"
+          class="credential-input"
+          type="password"
+          value={psk}
+          pattern="[0-9a-f]{64}"
+          autocomplete="new-password"
+          onInput={(event) => setPsk(event.currentTarget.value)}
+          required
+        />
+      </div>
+      <CardFooter compact flush>
+        <Button kind="primary" type="submit" busy={busy}>
+          Enroll credential
+        </Button>
+      </CardFooter>
+    </form>
   );
 }
 
@@ -281,51 +335,27 @@ export function SourceCard({ ip, source }: { ip: string; source: SourceSnapshot 
   );
 }
 
-function RecordingUnlock({ onDone }: { onDone: () => void }) {
-  const [token, setToken] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function unlock() {
-    setBusy(true);
-    try {
-      await bridge.unlock(token.trim());
-      toast('Recordings unlocked', 'ok');
-      onDone();
-    } catch {
-      // The controller surfaces the reason in the page banner.
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <UnlockPanel
-      secret={token}
-      onSecret={setToken}
-      onUnlock={unlock}
-      busy={busy}
-      placeholder="recording token"
-      autoComplete="current-password"
-    />
-  );
-}
-
 function Recordings() {
-  const state = bridge.recordingState.value;
-  if (state === 'checking') return null;
+  const access = bridge.access.value;
+  const capabilities = bridge.capabilities.value;
+  if (!capabilities) return null;
   return (
     <section class="bridge-group">
-      <SectionHead title="Recordings" note={state} />
-      {state === 'disabled' && (
+      <SectionHead
+        title="Recordings"
+        note={!capabilities.enabled ? 'off' : access === 'unlocked' ? 'unlocked' : 'locked'}
+      />
+      {!capabilities.enabled ? (
         <EmptyState>
-          Recording is off. Configure writable storage and a recording token, then restart the
-          bridge.
+          Recording is off. Turn on recordings in the bridge configuration, then restart the bridge.
         </EmptyState>
+      ) : access !== 'unlocked' ? (
+        <EmptyState>
+          Recordings are locked. Select Locked in the header to unlock, then manage them.
+        </EmptyState>
+      ) : (
+        <RecordingWorkspace />
       )}
-      {state === 'locked' && (
-        <EmptyState>Recordings are locked. Choose Unlock in the header to manage them.</EmptyState>
-      )}
-      {state === 'unlocked' && <RecordingWorkspace />}
     </section>
   );
 }

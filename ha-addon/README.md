@@ -17,18 +17,20 @@ comma-separated list of ESP32 IPv4 addresses to admit. The
 [bridge reference](../docs/bridge.md) owns the option defaults, constraints,
 and source lifecycle contract.
 
-Set `recordings_enabled` and a private `recording_token` of at least 16
-characters to enable lossless WAV recording. The add-on stores files in its
-private working directory and exposes the recording flow as its Web UI.
-Recordings survive restarts and updates, but backups exclude them and a restore
-or uninstall removes them. Download every completed WAV you want to keep.
+Set a private `api_token` of at least 16 characters once; it unlocks every
+bridge control in the Web UI — encryption and recordings.
 
-To encrypt PCM, generate the device's one-time bridge credential, turn on
-`tls_enabled`, and set a private `transport_api_token` of at least 16
-characters. Restart the add-on, provision the credential in the Web UI, then
-verify and activate it on the device. The coordinated switch briefly interrupts
-audio. The [PCM transport workflow](../docs/tcp-transport.md#enable-encryption)
-owns cutover, credential replacement, and recovery.
+Set `recordings_enabled` to enable lossless WAV recording. The add-on stores
+files in its private working directory and exposes the recording flow in its
+Web UI. Recordings survive restarts and updates, but backups exclude them and
+a restore or uninstall removes them. Download every completed WAV you want to
+keep.
+
+To encrypt PCM, generate the device's one-time bridge credential, add it in
+the Web UI, switch the bridge to encrypted mode there, then verify and
+activate on the device. The coordinated switch briefly interrupts audio. The
+[PCM transport workflow](../docs/tcp-transport.md#enable-encryption) owns
+cutover, credential replacement, and recovery.
 
 ## Use
 

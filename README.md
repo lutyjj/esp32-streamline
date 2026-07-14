@@ -98,13 +98,10 @@ services:
     environment:
       STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
       STREAMLINE_RECORDINGS_DIR: ${STREAMLINE_RECORDINGS_DIR:-}
-      STREAMLINE_RECORDING_TOKEN: ${STREAMLINE_RECORDING_TOKEN:-}
-      STREAMLINE_TRANSPORT_API_TOKEN: ${STREAMLINE_TRANSPORT_API_TOKEN:-}
+      STREAMLINE_API_TOKEN: ${STREAMLINE_API_TOKEN:-}
     command:
-      - --tls-enabled
-      - ${STREAMLINE_TLS_ENABLED:-false}
-      - --tls-keys-file
-      - /data/transport-keys.json
+      - --transport-state-file
+      - /data/transport.json
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -129,12 +126,12 @@ probe. With several ESP32 sources, select one with
 per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning
 flags.
 
-To record, enable the bridge's writable volume and set a token of at least 16
-characters before `docker compose up -d`:
+To record, enable the bridge's writable volume and set the bridge API token (at
+least 16 characters) before `docker compose up -d`:
 
 ```sh
 export STREAMLINE_RECORDINGS_DIR=/recordings
-export STREAMLINE_RECORDING_TOKEN=replace-with-a-private-token
+export STREAMLINE_API_TOKEN=replace-with-a-private-token
 ```
 
 Open `http://<bridge-host>:8088/recordings`. The named Docker volume owns the

@@ -79,10 +79,12 @@ describe('bridge lock flow', () => {
     sessionStorage.clear();
     bridge.status.value = {
       bridge_version: 'test',
+      api_token_configured: true,
       sources: {},
       transport: {
         contract_version: 1,
         mode: 'tls-psk',
+        configurable: true,
         port: 39000,
         key_ids: [],
         auth_successes: 0,
@@ -94,7 +96,7 @@ describe('bridge lock flow', () => {
   });
 
   it('reveals the unlock panel from the masthead lock chip while locked', () => {
-    bridge.recordingState.value = 'locked';
+    bridge.access.value = 'locked';
     const host = document.createElement('div');
     render(<BridgeApp />, host);
 
@@ -107,27 +109,55 @@ describe('bridge lock flow', () => {
   });
 
   it('locks straight from the masthead chip when unlocked', () => {
-    bridge.recordingState.value = 'unlocked';
+    bridge.access.value = 'unlocked';
     const host = document.createElement('div');
     render(<BridgeApp />, host);
 
     expect(host.querySelector('button.lockchip')?.textContent).toContain('Unlocked');
 
     act(() => host.querySelector<HTMLButtonElement>('button.lockchip')?.click());
-    expect(bridge.recordingState.value).toBe('locked');
+    expect(bridge.access.value).toBe('locked');
     expect(host.querySelector('button.lockchip')?.textContent).toContain('Locked');
   });
 
+  it('names the missing token instead of offering an unlock', () => {
+    bridge.access.value = 'no-token';
+    const host = document.createElement('div');
+    render(<BridgeApp />, host);
+
+    const chip = host.querySelector<HTMLButtonElement>('button.lockchip');
+    expect(chip?.textContent).toContain('No API token');
+    act(() => chip?.click());
+    expect(host.querySelector('.unlockpanel')).toBeNull();
+    expect(host.textContent).toContain('Set api_token');
+  });
+
   it('renders transport credentials with the shared labeled field structure', () => {
-    bridge.recordingState.value = 'disabled';
-    bridge.transportState.value = 'unlocked';
+    bridge.access.value = 'unlocked';
     const host = document.createElement('div');
     render(<BridgeApp />, host);
 
     const credential = host.querySelector<HTMLInputElement>('#transport-key-id');
     const psk = host.querySelector<HTMLInputElement>('#transport-psk');
+    expect(credential?.getAttribute('type')).toBe('text');
     expect(credential?.classList.contains('credential-input')).toBe(true);
     expect(psk?.classList.contains('credential-input')).toBe(true);
     expect(host.querySelector('label[for="transport-key-id"]')?.textContent).toBe('Credential ID');
+  });
+
+  it('gates the encryption switch behind the one console lock', () => {
+    bridge.access.value = 'locked';
+    const host = document.createElement('div');
+    render(<BridgeApp />, host);
+
+    const toggle = host.querySelector<HTMLInputElement>('.transport-mode input[role="switch"]');
+    expect(toggle?.checked).toBe(true);
+    expect(toggle?.disabled).toBe(true);
+    expect(host.querySelector('#transport-key-id')).toBeNull();
+
+    bridge.access.value = 'unlocked';
+    render(<BridgeApp />, host);
+    const unlocked = host.querySelector<HTMLInputElement>('.transport-mode input[role="switch"]');
+    expect(unlocked?.disabled).toBe(false);
   });
 });

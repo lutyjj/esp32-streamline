@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { BridgeWizard } from '../src/components/BridgeWizard';
 import type { DeviceConfig, TransportStatus } from '../src/lib/api';
 import { config, packetsMoving, status } from '../src/state/device';
-import { optInRequested } from '../src/state/transport';
+import { setupWizardRequested } from '../src/state/transport';
 import { deviceStatus } from './fixtures';
 
 function transportStatus(overrides: Partial<TransportStatus> = {}): TransportStatus {
@@ -50,7 +50,7 @@ describe('BridgeWizard', () => {
     status.value = deviceStatus({ auth_required: false, target: { target_host: '' } });
     config.value = deviceConfig();
     packetsMoving.value = false;
-    optInRequested.value = false;
+    setupWizardRequested.value = false;
     window.location.hash = '';
   });
 
@@ -92,7 +92,7 @@ describe('BridgeWizard', () => {
     expect(host.textContent).toContain('Bridge tile reads Sending');
   });
 
-  it('hands the encryption opt-in to the Stream target card and leaves', () => {
+  it('continues straight into the guided encryption setup', () => {
     config.value = deviceConfig({ target_host: '192.0.2.20' });
     let closed = false;
     const host = document.createElement('div');
@@ -111,8 +111,7 @@ describe('BridgeWizard', () => {
 
     click(host, 'Set up encryption');
 
-    expect(optInRequested.value).toBe(true);
-    expect(window.location.hash).toBe('#/network');
+    expect(setupWizardRequested.value).toBe(true);
     expect(closed).toBe(true);
   });
 

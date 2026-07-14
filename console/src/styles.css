@@ -1272,6 +1272,11 @@ select:disabled {
 }
 
 /* ---------- Confirm box (destructive actions) ---------- */
+.confirm-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .confirmbox {
   border: 1px solid #6b3434;
   border-radius: 8px;

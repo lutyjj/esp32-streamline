@@ -61,4 +61,15 @@ describe('ConfirmButton', () => {
     expect(box?.textContent).toContain('This erases everything.');
     expect(box?.textContent).toContain('Erase everything');
   });
+
+  it('keeps the armed pair in one container so flex parents cannot scatter it', () => {
+    const host = document.createElement('div');
+    render(<ConfirmButton label="Remove" confirmLabel="Remove" onConfirm={() => {}} />, host);
+
+    act(() => host.querySelector('button')?.click());
+
+    const group = host.querySelector('.confirm-inline');
+    expect(group).not.toBeNull();
+    expect(group?.querySelectorAll('button')).toHaveLength(2);
+  });
 });

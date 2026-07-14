@@ -5,27 +5,21 @@ import { loadDeviceSettings } from '../state/device';
 import { Toggle } from './Toggle';
 import { ActionState } from './Transact';
 
-interface AnalogPassthroughProps {
-  capability?: AnalogPassthroughCapabilityStatus | null;
-  status: AnalogPassthroughStatus;
-  writable: boolean;
-  provisioned: boolean;
-}
-
 /**
- * Capability-driven analog passthrough subsection of Input settings. The
- * switch is the state; a fault names itself and its exit in the callout.
+ * The analog passthrough switch with its own transaction and fault callout —
+ * the one control for the route, shared by the Input settings subsection and
+ * the input setup guide. The switch is the state; a fault names its exit.
  */
-export function AnalogPassthrough({
+export function AnalogPassthroughToggle({
   capability,
   status,
-  writable,
-  provisioned,
-}: AnalogPassthroughProps) {
+  disabled,
+}: {
+  capability: AnalogPassthroughCapabilityStatus;
+  status: AnalogPassthroughStatus;
+  disabled: boolean;
+}) {
   const transact = useTransact();
-  if (!capability) return null;
-
-  const editable = writable && provisioned;
 
   function setEnabled(enabled: boolean) {
     transact.run(
@@ -42,17 +36,14 @@ export function AnalogPassthrough({
   }
 
   return (
-    <fieldset class="card-subsection" disabled={!editable || transact.busy}>
+    <>
       <Toggle
         checked={status.enabled}
-        disabled={!editable || transact.busy}
+        disabled={disabled || transact.busy}
         onChange={setEnabled}
         label="Analog passthrough"
         description={`Also send the selected input to ${capability.label} through a direct analog path, at fixed line level. Streaming continues either way; changes apply immediately.`}
       />
-      {!provisioned && (
-        <p class="callout">Analog passthrough is available after setup completes.</p>
-      )}
       {status.fault && (
         <p class="callout bad card-subsection-callout">
           {status.fault}{' '}
@@ -62,6 +53,33 @@ export function AnalogPassthrough({
         </p>
       )}
       {transact.state.text && <ActionState state={transact.state} />}
+    </>
+  );
+}
+
+/** Capability-driven analog passthrough subsection of Input settings. */
+export function AnalogPassthrough({
+  capability,
+  status,
+  writable,
+  provisioned,
+}: {
+  capability?: AnalogPassthroughCapabilityStatus | null;
+  status: AnalogPassthroughStatus;
+  writable: boolean;
+  provisioned: boolean;
+}) {
+  if (!capability) return null;
+  return (
+    <fieldset class="card-subsection" disabled={!writable || !provisioned}>
+      <AnalogPassthroughToggle
+        capability={capability}
+        status={status}
+        disabled={!writable || !provisioned}
+      />
+      {!provisioned && (
+        <p class="callout">Analog passthrough is available after setup completes.</p>
+      )}
     </fieldset>
   );
 }

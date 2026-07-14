@@ -108,20 +108,23 @@ security**. Routine PSK rotation is not part of the customer journey.
 
 Exit: the Bridge tile reads Sending while music plays.
 
-## Stage 4: calibration
+## Stage 4: input setup
 
-Entry: the Audio tab, or the clipping callout the Overview raises when
-samples hit full scale.
+Entry: the Audio tab's guide, or the clipping callout the Overview raises
+when samples hit full scale.
 
-Promise: the wizard asks only for actions the user can perform (pause the
+Promise: the guide asks only for actions the user can perform (pause the
 source, then play something loud), narrates what it hears, and cannot leave
-the device worse than it found it: cancel restores the entry settings,
-finish applies the measured ones. Streaming continues while it runs. It
-refuses to start where it cannot work, and says why. When several sources need
-different levels, the Audio tab saves the applied settings as named profiles
-and switches them live. Importing definitions never changes the active levels.
-A profile from another board is rejected with the reason, not partially
-applied.
+the device worse than it found it: cancel restores the entry levels, finish
+applies the measured ones. On a board that advertises analog passthrough,
+the guide's last choice describes the route and offers it; that switch
+applies immediately and is the same control Input settings carries, so
+neither cancel nor finish rewrites it. Streaming continues while the guide
+runs. It refuses to start where it cannot work, and says why. When several
+sources need different levels, the Audio tab saves the applied settings as
+named profiles and switches them live. Importing definitions never changes
+the active levels. A profile from another board is rejected with the reason,
+not partially applied.
 
 Exit: the loudest material plays without clipping, and the result is stated
 in dB and already applied.

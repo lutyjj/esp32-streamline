@@ -8,10 +8,11 @@ import {
 } from '../lib/calibration';
 import { errorMessage } from '../lib/errors';
 import { dbfs } from '../lib/format';
+import { useWritable } from '../lib/hooks';
 import { loadDeviceSettings, status } from '../state/device';
 import { toast } from '../state/toasts';
-import { Button } from './Button';
-import { DialogSheet } from './DialogSheet';
+import { AnalogPassthroughToggle } from './AnalogPassthrough';
+import { FlowDialog, type FlowStep } from './FlowDialog';
 import { Kv } from './Kv';
 import { MeterRow } from './Meter';
 
@@ -26,11 +27,16 @@ interface AudioBaseline {
   atten: number;
 }
 
-const WIZARD_STEPS = ['prepare', 'silence', 'loud', 'done'] as const;
-type WizardStep = (typeof WIZARD_STEPS)[number];
+type WizardStep = 'prepare' | 'silence' | 'loud' | 'passthrough' | 'done';
 
-/** Calibration wizard: prepare · silence · loud · done. */
-export function WizardOverlay({ onClose }: { onClose: () => void }) {
+/**
+ * Input setup guide: measure the source and pick the ADC attenuation, then —
+ * on boards that advertise it — choose the analog passthrough route. Cancel
+ * restores the entry levels; the passthrough choice applies immediately and
+ * is its own control, not part of the restore.
+ */
+export function InputWizard({ onClose }: { onClose: () => void }) {
+  const writable = useWritable();
   const [step, setStep] = useState<WizardStep>('prepare');
   const [floor, setFloor] = useState<number | null>(null);
   const [floorText, setFloorText] = useState('—');
@@ -49,6 +55,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
   });
   /** Board-reported ceiling; the wizard never walks past what the ADC has. */
   const attenMax = status.value?.capabilities.adc_atten_max_db ?? CAL_ATTEN_MAX;
+  const passthrough = status.value?.capabilities.analog_passthrough;
 
   function newEngine(): CalibrationEngine {
     engine.current?.cancel();
@@ -131,7 +138,7 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
     setResult({ atten: outcome.atten, peakDb: outcome.peakDb });
     // The calibrated value is already live on the device; refresh the audio form.
     loadDeviceSettings().catch(() => {});
-    show('done');
+    show(passthrough ? 'passthrough' : 'done');
   }
 
   function show(next: WizardStep) {
@@ -169,56 +176,28 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
         ],
         ['Loudest peak', `${result.peakDb} dBFS, no clipping`],
         ['Input gain', `${original.current.gain} — unchanged`],
+        ...(passthrough
+          ? [
+              [
+                'Analog passthrough',
+                status.value?.analog_passthrough.enabled ? `On — ${passthrough.label}` : 'Off',
+              ] as [string, string],
+            ]
+          : []),
       ]
     : [];
 
-  const stepIndex = WIZARD_STEPS.indexOf(step);
-
-  return (
-    <DialogSheet
-      label="Level calibration"
-      steps={WIZARD_STEPS}
-      currentStep={step}
-      onDismiss={() => close(true)}
-      footer={
-        <>
-          <Button onClick={() => close(true)}>
-            {step === 'done' ? 'Undo and close' : 'Cancel'}
-          </Button>
-          <div class="sheetfoot-row">
-            {stepIndex > 0 && step !== 'done' && (
-              <Button onClick={() => show(WIZARD_STEPS[stepIndex - 1])}>Back</Button>
-            )}
-            {step !== 'loud' && (
-              <Button
-                kind="primary"
-                disabled={step === 'silence' && !floorOk && !silenceNote}
-                onClick={() => {
-                  if (step === 'prepare') show('silence');
-                  else if (step === 'silence') show(floorOk ? 'loud' : 'silence');
-                  else if (step === 'done') close(false);
-                }}
-              >
-                {step === 'prepare'
-                  ? 'Start'
-                  : step === 'silence'
-                    ? silenceNote
-                      ? 'Measure again'
-                      : 'Continue'
-                    : 'Done'}
-              </Button>
-            )}
-          </div>
-        </>
-      }
-    >
-      {step === 'prepare' && (
+  const steps: FlowStep[] = [
+    {
+      id: 'prepare',
+      body: (
         <div>
-          <h3>Calibrate input levels</h3>
+          <h3>Set up your input</h3>
           <div class="body">
             <p>
-              StreamLine measures your source and picks the ADC attenuation for you. Takes about a
-              minute. You’ll need:
+              StreamLine measures your source and picks the ADC attenuation for you
+              {passthrough ? ', then offers the local analog output' : ''}. Takes about a minute.
+              You’ll need:
             </p>
             <ol class="checklist">
               <li>
@@ -234,9 +213,12 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
             </p>
           </div>
         </div>
-      )}
-
-      {step === 'silence' && (
+      ),
+      primary: { label: 'Start', onClick: () => show('silence') },
+    },
+    {
+      id: 'silence',
+      body: (
         <div>
           <h3>First, measure the quiet</h3>
           <div class="body">
@@ -254,9 +236,17 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
           </div>
           {silenceNote && <p class="body wznote">{silenceNote}</p>}
         </div>
-      )}
-
-      {step === 'loud' && (
+      ),
+      secondary: [{ label: 'Back', onClick: () => show('prepare') }],
+      primary: {
+        label: silenceNote ? 'Measure again' : 'Continue',
+        disabled: !floorOk && !silenceNote,
+        onClick: () => show(floorOk ? 'loud' : 'silence'),
+      },
+    },
+    {
+      id: 'loud',
+      body: (
         <div>
           <h3>Now play the loudest track you have</h3>
           <div class="body">
@@ -276,21 +266,62 @@ export function WizardOverlay({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         </div>
-      )}
-
-      {step === 'done' && result && (
+      ),
+      secondary: [{ label: 'Back', onClick: () => show('silence') }],
+    },
+    ...(passthrough
+      ? [
+          {
+            id: 'passthrough',
+            body: (
+              <div>
+                <h3>Play it locally too?</h3>
+                <div class="body">
+                  <p>
+                    Your board can also play the selected input straight out of {passthrough.label}{' '}
+                    while it streams — for speakers or an amp next to the device. Off is the usual
+                    choice when everything plays through the network.
+                  </p>
+                </div>
+                {status.value && (
+                  <AnalogPassthroughToggle
+                    capability={passthrough}
+                    status={status.value.analog_passthrough}
+                    disabled={!writable}
+                  />
+                )}
+              </div>
+            ),
+            primary: { label: 'Continue', onClick: () => show('done') },
+          } satisfies FlowStep,
+        ]
+      : []),
+    {
+      id: 'done',
+      body: (
         <div>
-          <h3>Calibrated</h3>
+          <h3>Input set up</h3>
           <div class="body">
             <p>
-              {result.atten === original.current.atten
-                ? 'Your current setting was already right — nothing changed.'
+              {result?.atten === original.current.atten
+                ? 'Your current level was already right — nothing changed.'
                 : 'Applied and saved — the device is already running with the new setting.'}
             </p>
           </div>
           <Kv rows={doneRows} />
         </div>
-      )}
-    </DialogSheet>
+      ),
+      primary: { label: 'Done', onClick: () => close(false) },
+    },
+  ];
+
+  return (
+    <FlowDialog
+      label="Input setup"
+      steps={steps}
+      current={step}
+      onDismiss={() => close(true)}
+      dismissLabel={step === 'done' ? 'Undo levels and close' : 'Cancel'}
+    />
   );
 }

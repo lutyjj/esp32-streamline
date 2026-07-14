@@ -33,5 +33,16 @@ export function TransactButton({
 }
 
 export function ActionState({ state }: { state: ActionStateValue }) {
-  return <span class={`actionstate ${state.cls}`}>{state.text}</span>;
+  // Nothing to show while idle; a bare success still renders its checkmark.
+  if (!state.text && state.cls !== 'ok') return null;
+  return (
+    <span class={`actionstate ${state.cls}`}>
+      {state.cls === 'ok' && (
+        <span class="actionstate-check" aria-hidden="true">
+          ✓
+        </span>
+      )}
+      {state.text}
+    </span>
+  );
 }

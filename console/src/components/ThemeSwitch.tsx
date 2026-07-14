@@ -1,5 +1,6 @@
 import { THEME_PREFERENCES, type ThemePreference } from '../lib/preferences';
 import { useThemePreference } from '../state/theme';
+import { Segmented } from './Segmented';
 
 const LABELS: Record<ThemePreference, string> = {
   system: 'System',
@@ -11,20 +12,12 @@ export function ThemeSwitch() {
   const { preference, selectThemePreference } = useThemePreference();
 
   return (
-    <fieldset class="theme-switch" aria-label="Theme">
-      <legend class="sr-only">Theme</legend>
-      {THEME_PREFERENCES.map((option) => (
-        <label key={option}>
-          <input
-            type="radio"
-            name="theme"
-            value={option}
-            checked={preference === option}
-            onChange={(event) => selectThemePreference(event.currentTarget.value)}
-          />
-          <span>{LABELS[option]}</span>
-        </label>
-      ))}
-    </fieldset>
+    <Segmented
+      name="theme"
+      ariaLabel="Theme"
+      value={preference}
+      options={THEME_PREFERENCES.map((option) => ({ value: option, label: LABELS[option] }))}
+      onChange={selectThemePreference}
+    />
   );
 }

@@ -22,6 +22,7 @@
       "id": "status",
       "label": "Status light (D4)",
       "gpio": 22,
+      "active_low": true,
       "default_role": "status"
     }
   ],

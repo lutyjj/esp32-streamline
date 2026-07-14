@@ -1213,7 +1213,7 @@ mod tests {
             r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
         ));
         assert!(json.contains(
-            r#""leds":[{"id":"status","label":"Status light (D4)","gpio":22,"active_low":false,"default_role":"status"}]"#
+            r#""leds":[{"id":"status","label":"Status light (D4)","gpio":22,"active_low":true,"default_role":"status"}]"#
         ));
         assert!(json.contains(r#""analog_passthrough":{"output_line":2,"label":"3.5 mm output"}"#));
     }

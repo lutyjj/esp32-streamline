@@ -432,10 +432,9 @@ impl fmt::Display for VerifyPendingError {
                 formatter.write_str("configure a bridge target before verifying a key")
             }
             Self::NoPendingKey => formatter.write_str("no pending PCM transport key exists"),
-            Self::Rejected(reason) => write!(
-                formatter,
-                "bridge rejected the pending PCM transport key: {reason}"
-            ),
+            Self::Rejected(reason) => {
+                write!(formatter, "verification failed: {reason}")
+            }
         }
     }
 }

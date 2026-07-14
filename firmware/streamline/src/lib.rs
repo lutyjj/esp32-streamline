@@ -30,6 +30,7 @@ pub mod state;
 pub mod stream;
 pub mod telemetry;
 pub mod transport;
+pub mod transport_diagnostics;
 pub mod update;
 
 #[cfg(target_os = "espidf")]

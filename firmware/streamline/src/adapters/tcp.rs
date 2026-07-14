@@ -251,7 +251,9 @@ fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
     {
         record = unsafe { *error_handle };
     }
-    let detail = record.esp_tls_error_code;
+    // esp-tls captures the mbedTLS return value negated; flip it back so it
+    // compares against the MBEDTLS_ERR_* constants.
+    let detail = -record.esp_tls_error_code;
     match record.last_error {
         sys::ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME
         | sys::ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET
@@ -259,6 +261,7 @@ fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
         sys::ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT | sys::ESP_ERR_ESP_TLS_SERVER_HANDSHAKE_TIMEOUT => {
             TlsFailure::Timeout
         }
+        sys::ESP_ERR_ESP_TLS_TCP_CLOSED_FIN => TlsFailure::ClosedBeforeHandshake,
         code => match detail {
             sys::MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE | sys::MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE => {
                 TlsFailure::CredentialRejected
@@ -269,7 +272,10 @@ fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
             | MBEDTLS_ERR_NET_RECV_FAILED
             | MBEDTLS_ERR_NET_CONN_RESET => TlsFailure::ClosedBeforeHandshake,
             sys::MBEDTLS_ERR_SSL_TIMEOUT => TlsFailure::Timeout,
-            detail => TlsFailure::Other { code, detail },
+            _ => TlsFailure::Other {
+                code,
+                detail: record.esp_tls_error_code,
+            },
         },
     }
 }

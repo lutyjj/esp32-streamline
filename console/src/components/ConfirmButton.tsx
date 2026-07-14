@@ -53,7 +53,9 @@ export function ConfirmButton({
     </>
   );
 
-  if (!message) return controls;
+  // One container, so the armed pair stays where the trigger stood instead of
+  // scattering as separate items of the parent's flex layout.
+  if (!message) return <span class="confirm-inline">{controls}</span>;
 
   return (
     <div class="confirmbox">

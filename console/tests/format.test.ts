@@ -42,6 +42,10 @@ describe('bytes', () => {
   it('shows one decimal megabyte past a mebibyte', () => {
     expect(bytes(1_992_294)).toBe('1.9 MB');
   });
+
+  it('rolls the kilobyte boundary into megabytes rather than 1024 KB', () => {
+    expect(bytes(1_048_575)).toBe('1.0 MB');
+  });
 });
 
 describe('duration', () => {

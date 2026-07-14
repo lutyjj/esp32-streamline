@@ -45,12 +45,10 @@ function DeviceHealthCard() {
 
   const { heap, nvs } = sys;
   const heapUsed = heap.total_bytes - heap.free_bytes;
-  const nvsFree = nvs.total_entries - nvs.used_entries;
   const bootReason = s?.diagnostics?.reset_reason || '—';
 
   const details: [string, string][] = [
     ['Largest free block', bytes(heap.largest_free_block_bytes)],
-    ['Writable NVS entries', String(nvs.available_entries)],
     ['Tasks running', String(sys.task_count)],
   ];
 
@@ -74,7 +72,7 @@ function DeviceHealthCard() {
           label="Storage (NVS)"
           value={nvs.used_entries}
           max={nvs.total_entries}
-          valueLabel={`${nvsFree} free`}
+          valueLabel={`${nvs.available_entries} free`}
           caption={`${nvs.used_entries} of ${nvs.total_entries} config entries used`}
         />
       </div>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import queue
 import re
 import secrets
@@ -28,7 +29,9 @@ from streamline_bridge.api_models import (
     TransportKeyDeleteResult,
     TransportKeyRequest,
     TransportKeyResult,
+    TransportModeRequest,
     TransportSnapshot,
+    UnlockResult,
 )
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
 from streamline_bridge.recording import RecordingError
@@ -176,7 +179,7 @@ def make_app(
     sources: SourceRegistry[AudioPipeline],
     bridge_version: str,
     recordings: RecordingService | None = None,
-    recording_token: str | None = None,
+    api_token: str | None = None,
     transport: TransportControl | None = None,
 ) -> FastAPI:
     """Build the runtime app whose routes and models own the OpenAPI contract."""
@@ -188,9 +191,9 @@ def make_app(
         openapi_url="/api/openapi.json",
     )
     app.add_middleware(BodyLimitMiddleware)
-    recording_api = RecordingHttpService(recordings, recording_token)
+    recording_api = RecordingHttpService(recordings)
     if transport is None:
-        transport = TransportControl(None, None, None, tls_enabled=False, port=DEFAULT_PORT)
+        transport = TransportControl(None, None, port=DEFAULT_PORT)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -200,25 +203,24 @@ def make_app(
     def authorize(
         credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)],
     ) -> None:
+        if api_token is None:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "control-disabled",
+                    "message": "No bridge API token is set. Add api_token to the add-on configuration "
+                    "(or set STREAMLINE_API_TOKEN), then restart the bridge.",
+                },
+            )
         if (
             credentials is None
             or credentials.scheme != "Bearer"
-            or not recording_api.authorize(credentials.credentials)
+            or not hmac.compare_digest(credentials.credentials.encode(), api_token.encode())
         ):
             raise HTTPException(
                 status_code=401,
-                detail={"code": "unauthorized", "message": "Enter the recording token configured on this bridge."},
-                headers={"WWW-Authenticate": 'Bearer realm="StreamLine recordings"'},
-            )
-
-    def authorize_transport(
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)],
-    ) -> None:
-        if credentials is None or credentials.scheme != "Bearer" or not transport.authorize(credentials.credentials):
-            raise HTTPException(
-                status_code=401,
-                detail={"code": "unauthorized", "message": "Enter the transport API token configured on this bridge."},
-                headers={"WWW-Authenticate": 'Bearer realm="StreamLine transport"'},
+                detail={"code": "unauthorized", "message": "Enter the bridge API token configured on this bridge."},
+                headers={"WWW-Authenticate": 'Bearer realm="StreamLine bridge"'},
             )
 
     @app.exception_handler(HTTPException)
@@ -235,7 +237,12 @@ def make_app(
     )
     def get_status() -> BridgeStatus:
         return BridgeStatus.model_validate(
-            {"bridge_version": bridge_version, "sources": sources.snapshot(), "transport": transport.snapshot()}
+            {
+                "bridge_version": bridge_version,
+                "api_token_configured": api_token is not None,
+                "sources": sources.snapshot(),
+                "transport": transport.snapshot(),
+            }
         )
 
     @app.get("/health", response_class=PlainTextResponse, operation_id="getBridgeHealth", summary="Check bridge health")
@@ -251,22 +258,50 @@ def make_app(
     def get_transport() -> TransportSnapshot:
         return TransportSnapshot.model_validate(transport.snapshot())
 
-    transport_authenticated = [Depends(authorize_transport)]
+    authenticated = [Depends(authorize)]
+    transport_disabled_message = (
+        "Transport control is disabled. Configure --transport-state-file, then restart the bridge."
+    )
+
+    @app.post(
+        "/api/unlock",
+        response_model=UnlockResult,
+        responses=error_responses(401, 503),
+        dependencies=authenticated,
+        operation_id="unlockBridge",
+        summary="Check the bridge API token",
+    )
+    def unlock() -> UnlockResult:
+        return UnlockResult(ok=True)
+
+    @app.put(
+        "/api/transport/mode",
+        response_model=TransportSnapshot,
+        responses=error_responses(400, 401, 503),
+        dependencies=authenticated,
+        operation_id="setTransportMode",
+        summary="Select the PCM listener mode, dropping live producers on a change",
+    )
+    def set_transport_mode(body: TransportModeRequest) -> Response | TransportSnapshot:
+        if not transport.configurable:
+            return error_response(503, "transport-unavailable", transport_disabled_message)
+        transport.set_tls_enabled(body.mode == "tls-psk")
+        return TransportSnapshot.model_validate(transport.snapshot())
 
     @app.put(
         "/api/transport/keys/{key_id}",
         response_model=TransportKeyResult,
         responses=error_responses(400, 401, 409, 503),
         status_code=201,
-        dependencies=transport_authenticated,
+        dependencies=authenticated,
         operation_id="putTransportKey",
         summary="Provision or replace one device PCM transport key",
     )
     def put_transport_key(key_id: TransportKeyId, body: TransportKeyRequest) -> Response | TransportKeyResult:
-        if transport.keys is None:
-            return error_response(503, "transport-unavailable", "TLS transport is disabled.")
+        if transport.store is None:
+            return error_response(503, "transport-unavailable", transport_disabled_message)
         try:
-            transport.keys.put(key_id, body.psk)
+            transport.store.put(key_id, body.psk)
         except ValueError as exc:
             return error_response(409, "transport-key-rejected", str(exc))
         return TransportKeyResult(key_id=key_id)
@@ -275,15 +310,15 @@ def make_app(
         "/api/transport/keys/{key_id}",
         response_model=TransportKeyDeleteResult,
         responses=error_responses(400, 401, 404, 503),
-        dependencies=transport_authenticated,
+        dependencies=authenticated,
         operation_id="deleteTransportKey",
         summary="Remove one device PCM transport key",
     )
     def delete_transport_key(key_id: TransportKeyId) -> Response | TransportKeyDeleteResult:
-        if transport.keys is None:
-            return error_response(503, "transport-unavailable", "TLS transport is disabled.")
+        if transport.store is None:
+            return error_response(503, "transport-unavailable", transport_disabled_message)
         try:
-            transport.keys.delete(key_id)
+            transport.store.delete(key_id)
         except ValueError as exc:
             return error_response(404, "transport-key-not-found", str(exc))
         return TransportKeyDeleteResult(deleted=key_id)
@@ -315,8 +350,6 @@ def make_app(
     )
     def get_recording_capabilities() -> RecordingCapabilities:
         return RecordingCapabilities.model_validate(recording_api.capabilities())
-
-    authenticated = [Depends(authorize)]
 
     @app.get(
         "/api/recordings",

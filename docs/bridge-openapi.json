@@ -4,6 +4,10 @@
       "BridgeStatus": {
         "additionalProperties": false,
         "properties": {
+          "api_token_configured": {
+            "title": "Api Token Configured",
+            "type": "boolean"
+          },
           "bridge_version": {
             "title": "Bridge Version",
             "type": "string"
@@ -21,6 +25,7 @@
         },
         "required": [
           "bridge_version",
+          "api_token_configured",
           "sources",
           "transport"
         ],
@@ -878,6 +883,24 @@
         "title": "TransportKeyResult",
         "type": "object"
       },
+      "TransportModeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "cleartext",
+              "tls-psk"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "TransportModeRequest",
+        "type": "object"
+      },
       "TransportSnapshot": {
         "additionalProperties": false,
         "properties": {
@@ -890,6 +913,10 @@
             "minimum": 0.0,
             "title": "Auth Successes",
             "type": "integer"
+          },
+          "configurable": {
+            "title": "Configurable",
+            "type": "boolean"
           },
           "contract_version": {
             "const": 1,
@@ -921,12 +948,28 @@
         "required": [
           "contract_version",
           "mode",
+          "configurable",
           "port",
           "key_ids",
           "auth_successes",
           "auth_failures"
         ],
         "title": "TransportSnapshot",
+        "type": "object"
+      },
+      "UnlockResult": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "UnlockResult",
         "type": "object"
       },
       "ValidationError": {
@@ -1610,6 +1653,112 @@
           }
         ],
         "summary": "Provision or replace one device PCM transport key"
+      }
+    },
+    "/api/transport/mode": {
+      "put": {
+        "operationId": "setTransportMode",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransportModeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Select the PCM listener mode, dropping live producers on a change"
+      }
+    },
+    "/api/unlock": {
+      "post": {
+        "operationId": "unlockBridge",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnlockResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Check the bridge API token"
       }
     },
     "/health": {

@@ -31,16 +31,20 @@ test: image
 	$(CONTAINER) run --rm --platform $(PLATFORM) --user 0:0 --entrypoint sh \
 		-v "$$volume:/data" \
 		"$(IMAGE):$(VERSION)" \
-		-c 'printf "%s\n" "{\"max_sources\": 3, \"recordings_enabled\": true, \"recording_token\": \"test-recording-token\"}" > /data/options.json && chown 0:0 /data/options.json && chmod 600 /data/options.json'; \
+		-c 'printf "%s\n" "{\"max_sources\": 3, \"recordings_enabled\": true, \"api_token\": \"test-bridge-api-token\"}" > /data/options.json && chown 0:0 /data/options.json && chmod 600 /data/options.json'; \
 	printf '%s\n' \
 		'#!/bin/sh' \
-		'test "$$#" -eq 4' \
-		'test "$$1" = "--recordings-dir"' \
-		'test "$$2" = "/data/recordings"' \
-		'test "$$3" = "--max-sources"' \
-		'test "$$4" = "3"' \
-		'test "$$STREAMLINE_RECORDING_TOKEN" = "test-recording-token"' \
-		'mkdir "$$2"' \
+		'test "$$#" -eq 6' \
+		'test "$$1" = "--transport-state-file"' \
+		'test "$$2" = "/data/transport-keys.json"' \
+		'test "$$3" = "--recordings-dir"' \
+		'test "$$4" = "/data/recordings"' \
+		'test "$$5" = "--max-sources"' \
+		'test "$$6" = "3"' \
+		'test "$$STREAMLINE_API_TOKEN" = "test-bridge-api-token"' \
+		'mkdir "$$4"' \
+		'test -w "$$4"' \
+		'touch "$$2"' \
 		'test -w "$$2"' \
 		> "$$stub_dir/streamline-bridge"; \
 	chmod +x "$$stub_dir/streamline-bridge"; \

@@ -1,9 +1,8 @@
-"""TLS 1.3 PSK authentication and bounded persistent device-key storage."""
+"""TLS 1.3 PSK authentication and persistent transport state (mode + keys)."""
 
 from __future__ import annotations
 
 import contextlib
-import hmac
 import json
 import os
 import re
@@ -13,11 +12,14 @@ import tempfile
 import threading
 from typing import TYPE_CHECKING, Final
 
-from streamline_bridge.tcp import AuthenticatedConnection
+from streamline_bridge.tcp import AuthenticatedConnection, CleartextAuthenticator
 
 if TYPE_CHECKING:
     import socket
+    from collections.abc import Callable
     from pathlib import Path
+
+    from streamline_bridge.tcp import ConnectionAuthenticator
 
 CONTRACT_VERSION: Final = 1
 DEFAULT_PORT: Final = 39000
@@ -26,19 +28,23 @@ KEY_ID_PATTERN = re.compile(KEY_ID_PATTERN_TEXT)
 PSK_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 PSK_BYTES: Final = 32
 MAX_KEYS: Final = 64
-MAX_KEY_FILE_BYTES: Final = 16 * 1024
+MAX_STATE_FILE_BYTES: Final = 16 * 1024
 TLS_CIPHER: Final = "TLS_AES_128_GCM_SHA256"
 TLS_IDENTITY_PREFIX: Final = f"eli1:{CONTRACT_VERSION}:"
 TLS_VERSION: Final = "TLSv1.3"
 TLS_KEY_EXCHANGE: Final = "psk_dhe_ke"
 
 
-class TransportKeyError(ValueError):
-    """Invalid key input or key-store state."""
+class TransportStateError(ValueError):
+    """Invalid transport state input or stored state."""
 
 
-class TransportKeyStore:
-    """Thread-safe versioned key map with atomic replace-on-write persistence."""
+class TransportStateStore:
+    """Thread-safe versioned transport state with atomic replace-on-write persistence.
+
+    One private file owns the listener mode and the bounded device-key map, so
+    a mode change and its key set survive a bridge restart together.
+    """
 
     def __init__(self, path: Path, maximum: int = MAX_KEYS) -> None:
         if maximum < 1 or maximum > MAX_KEYS:
@@ -46,7 +52,19 @@ class TransportKeyStore:
         self._path = path
         self._maximum = maximum
         self._lock = threading.RLock()
-        self._keys = self._load()
+        self._keys, self._tls_enabled = self._load()
+
+    @property
+    def tls_enabled(self) -> bool:
+        with self._lock:
+            return self._tls_enabled
+
+    def set_tls_enabled(self, enabled: bool) -> None:
+        with self._lock:
+            if self._tls_enabled == enabled:
+                return
+            self._write(self._keys, enabled)
+            self._tls_enabled = enabled
 
     def get(self, key_id: str) -> bytes | None:
         with self._lock:
@@ -60,63 +78,72 @@ class TransportKeyStore:
     def put(self, key_id: str, psk: str) -> None:
         validate_key_id(key_id)
         if not PSK_PATTERN.fullmatch(psk):
-            raise TransportKeyError("PSK must be exactly 64 lowercase hexadecimal characters")
+            raise TransportStateError("PSK must be exactly 64 lowercase hexadecimal characters")
         with self._lock:
             if key_id not in self._keys and len(self._keys) >= self._maximum:
-                raise TransportKeyError(f"transport key limit reached ({self._maximum})")
+                raise TransportStateError(f"transport key limit reached ({self._maximum})")
             next_keys = {**self._keys, key_id: psk}
-            self._write(next_keys)
+            self._write(next_keys, self._tls_enabled)
             self._keys = next_keys
 
     def delete(self, key_id: str) -> None:
         validate_key_id(key_id)
         with self._lock:
             if key_id not in self._keys:
-                raise TransportKeyError("unknown transport key id")
+                raise TransportStateError("unknown transport key id")
             next_keys = dict(self._keys)
             del next_keys[key_id]
-            self._write(next_keys)
+            self._write(next_keys, self._tls_enabled)
             self._keys = next_keys
 
-    def _load(self) -> dict[str, str]:
+    def _load(self) -> tuple[dict[str, str], bool]:
         try:
             descriptor = os.open(self._path, os.O_RDONLY | os.O_NOFOLLOW)
         except FileNotFoundError:
-            return {}
+            return {}, False
         try:
             details = os.fstat(descriptor)
             if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
-                raise TransportKeyError("transport key file must be one regular file")
-            if details.st_size > MAX_KEY_FILE_BYTES:
-                raise TransportKeyError("transport key file exceeds its size limit")
+                raise TransportStateError("transport state file must be one regular file")
+            if details.st_size > MAX_STATE_FILE_BYTES:
+                raise TransportStateError("transport state file exceeds its size limit")
             with os.fdopen(descriptor, "rb", closefd=False) as source:
-                raw = source.read(MAX_KEY_FILE_BYTES + 1)
+                raw = source.read(MAX_STATE_FILE_BYTES + 1)
         finally:
             os.close(descriptor)
         try:
             document = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise TransportKeyError("transport key file is not valid JSON") from exc
-        if not isinstance(document, dict) or set(document) != {"version", "keys"} or document["version"] != 1:
-            raise TransportKeyError("unsupported transport key file contract")
+            raise TransportStateError("transport state file is not valid JSON") from exc
+        if (
+            not isinstance(document, dict)
+            or not {"version", "keys"} <= set(document) <= {"version", "keys", "tls_enabled"}
+            or document["version"] != 1
+        ):
+            raise TransportStateError("unsupported transport state file contract")
+        tls_enabled = document.get("tls_enabled", False)
+        if not isinstance(tls_enabled, bool):
+            raise TransportStateError("transport state tls_enabled must be a boolean")
         keys = document["keys"]
         if not isinstance(keys, dict) or len(keys) > self._maximum:
-            raise TransportKeyError("transport key file exceeds its key limit")
+            raise TransportStateError("transport state file exceeds its key limit")
         validated: dict[str, str] = {}
         for key_id, psk in keys.items():
             if not isinstance(key_id, str) or not isinstance(psk, str):
-                raise TransportKeyError("transport key entries must be strings")
+                raise TransportStateError("transport key entries must be strings")
             validate_key_id(key_id)
             if not PSK_PATTERN.fullmatch(psk):
-                raise TransportKeyError("transport key file contains an invalid PSK")
+                raise TransportStateError("transport state file contains an invalid PSK")
             validated[key_id] = psk
-        return validated
+        return validated, tls_enabled
 
-    def _write(self, keys: dict[str, str]) -> None:
+    def _write(self, keys: dict[str, str], tls_enabled: bool) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        body = json.dumps({"version": 1, "keys": keys}, separators=(",", ":"), sort_keys=True).encode()
-        if len(body) > MAX_KEY_FILE_BYTES:
-            raise TransportKeyError("transport key file exceeds its size limit")
+        body = json.dumps(
+            {"version": 1, "tls_enabled": tls_enabled, "keys": keys}, separators=(",", ":"), sort_keys=True
+        ).encode()
+        if len(body) > MAX_STATE_FILE_BYTES:
+            raise TransportStateError("transport state file exceeds its size limit")
         descriptor, temporary = tempfile.mkstemp(prefix=f".{self._path.name}.", dir=self._path.parent)
         try:
             os.fchmod(descriptor, 0o600)
@@ -141,7 +168,7 @@ class TransportKeyStore:
 class TlsPskAuthenticator:
     """Authenticate one producer before the source registry can observe it."""
 
-    def __init__(self, keys: TransportKeyStore) -> None:
+    def __init__(self, keys: TransportStateStore) -> None:
         self._keys = keys
         self._local = threading.local()
         self._lock = threading.Lock()
@@ -192,33 +219,60 @@ class TlsPskAuthenticator:
 
 
 class TransportControl:
-    """Bridge HTTP-facing transport configuration and key mutation boundary."""
+    """Transport policy boundary between the PCM listener and the HTTP adapter.
+
+    The PCM listener asks it for the authenticator matching the current mode;
+    the HTTP adapter drives mode and key mutations through it. A mode change
+    persists first, then disconnects live producers so exactly one protocol is
+    ever admitted.
+    """
 
     def __init__(
         self,
-        keys: TransportKeyStore | None,
+        store: TransportStateStore | None,
         authenticator: TlsPskAuthenticator | None,
-        token: str | None,
         *,
-        tls_enabled: bool,
         port: int,
     ) -> None:
-        self.keys = keys
+        self.store = store
         self.authenticator = authenticator
-        self._token = token
-        self._tls_enabled = tls_enabled
+        self._cleartext = CleartextAuthenticator()
         self._port = port
+        self._disconnect_producers: Callable[[], None] = lambda: None
 
-    def authorize(self, candidate: str) -> bool:
-        return self._token is not None and hmac.compare_digest(candidate, self._token)
+    @property
+    def configurable(self) -> bool:
+        return self.store is not None and self.authenticator is not None
+
+    @property
+    def tls_enabled(self) -> bool:
+        return self.store is not None and self.store.tls_enabled
+
+    def producer_authenticator(self) -> ConnectionAuthenticator:
+        authenticator = self.authenticator
+        if authenticator is not None and self.tls_enabled:
+            return authenticator
+        return self._cleartext
+
+    def bind_producer_disconnect(self, disconnect: Callable[[], None]) -> None:
+        self._disconnect_producers = disconnect
+
+    def set_tls_enabled(self, enabled: bool) -> None:
+        if self.store is None:
+            raise TransportStateError("transport state storage is not configured")
+        if self.store.tls_enabled == enabled:
+            return
+        self.store.set_tls_enabled(enabled)
+        self._disconnect_producers()
 
     def snapshot(self) -> dict[str, object]:
         successes, failures = self.authenticator.snapshot() if self.authenticator is not None else (0, 0)
         return {
             "contract_version": CONTRACT_VERSION,
-            "mode": "tls-psk" if self._tls_enabled else "cleartext",
+            "mode": "tls-psk" if self.tls_enabled else "cleartext",
+            "configurable": self.configurable,
             "port": self._port,
-            "key_ids": list(self.keys.ids()) if self.keys is not None else [],
+            "key_ids": list(self.store.ids()) if self.store is not None else [],
             "auth_successes": successes,
             "auth_failures": failures,
         }
@@ -233,4 +287,4 @@ def parse_identity(identity: str | None) -> str | None:
 
 def validate_key_id(key_id: str) -> None:
     if not KEY_ID_PATTERN.fullmatch(key_id):
-        raise TransportKeyError("invalid transport key id")
+        raise TransportStateError("invalid transport key id")

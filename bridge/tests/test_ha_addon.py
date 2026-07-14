@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from streamline_bridge.ha_addon import bridge_argv, load_options, normalize_source_allow, recording_environment
+from streamline_bridge.ha_addon import bridge_argv, bridge_environment, load_options, normalize_source_allow
 from streamline_bridge.options import ADDON_CONTROL_OPTIONS, AddonControlOption, BridgeOption, addon_options
 
 
@@ -28,6 +28,8 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
             argv,
             [
                 "streamline-bridge",
+                "--transport-state-file",
+                "/data/transport-keys.json",
                 "--source-allow",
                 "192.0.2.10,198.51.100.20",
                 "--client-buffer-chunks",
@@ -50,40 +52,36 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
     def test_blank_source_allow_is_omitted(self) -> None:
         self.assertEqual(
             bridge_argv({"source_allow": "", "max_sources": 8}),
-            ["streamline-bridge", "--max-sources", "8"],
+            ["streamline-bridge", "--transport-state-file", "/data/transport-keys.json", "--max-sources", "8"],
         )
 
-    def test_recording_options_enable_private_storage_without_putting_the_token_in_argv(self) -> None:
-        options = {"recordings_enabled": True, "recording_token": "long-recording-token"}
-
-        self.assertEqual(
-            bridge_argv(options),
-            ["streamline-bridge", "--recordings-dir", "/data/recordings"],
-        )
-        self.assertEqual(recording_environment(options), {"STREAMLINE_RECORDING_TOKEN": "long-recording-token"})
-
-    def test_enabled_recordings_require_a_long_token(self) -> None:
-        with self.assertRaisesRegex(SystemExit, "at least 16 characters"):
-            bridge_argv({"recordings_enabled": True, "recording_token": "short"})
-
-    def test_tls_uses_private_data_storage_and_keeps_the_token_out_of_argv(self) -> None:
-        options = {"tls_enabled": True, "transport_api_token": "long-transport-token"}
+    def test_recordings_use_private_storage_and_keep_the_token_out_of_argv(self) -> None:
+        options = {"recordings_enabled": True, "api_token": "long-bridge-api-token"}
 
         self.assertEqual(
             bridge_argv(options),
             [
                 "streamline-bridge",
-                "--tls-keys-file",
+                "--transport-state-file",
                 "/data/transport-keys.json",
-                "--tls-enabled",
-                "true",
+                "--recordings-dir",
+                "/data/recordings",
             ],
         )
-        self.assertEqual(recording_environment(options), {"STREAMLINE_TRANSPORT_API_TOKEN": "long-transport-token"})
+        self.assertEqual(bridge_environment(options), {"STREAMLINE_API_TOKEN": "long-bridge-api-token"})
 
-    def test_enabled_tls_requires_a_long_transport_token(self) -> None:
+    def test_enabled_recordings_require_a_token(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "api_token is required"):
+            bridge_argv({"recordings_enabled": True})
+
+    def test_a_set_token_must_be_long_enough(self) -> None:
         with self.assertRaisesRegex(SystemExit, "at least 16 characters"):
-            bridge_argv({"tls_enabled": True, "transport_api_token": "short"})
+            bridge_argv({"recordings_enabled": True, "api_token": "short"})
+        with self.assertRaisesRegex(SystemExit, "at least 16 characters"):
+            bridge_environment({"api_token": "short"})
+
+    def test_an_unset_token_exports_no_environment(self) -> None:
+        self.assertEqual(bridge_environment({}), {})
 
     def test_source_allow_accepts_a_list(self) -> None:
         self.assertEqual(

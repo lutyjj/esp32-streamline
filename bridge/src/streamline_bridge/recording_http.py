@@ -1,8 +1,7 @@
-"""Recording authentication and download-ticket policy."""
+"""Recording operations and download-ticket policy."""
 
 from __future__ import annotations
 
-import hmac
 import secrets
 import threading
 import time
@@ -20,26 +19,20 @@ MAX_DOWNLOAD_TICKETS = 128
 
 
 class RecordingHttpService:
-    """Expose recording operations while owning HTTP authentication tokens."""
+    """Expose recording operations behind the app's one authenticated boundary."""
 
     def __init__(
         self,
         service: RecordingService | None,
-        token: str | None,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._service = service
-        self._token = token
         self._monotonic = monotonic
         self._ticket_lock = threading.Lock()
         self._tickets: dict[str, tuple[str, float]] = {}
 
     def capabilities(self) -> dict[str, object]:
         return self._service.capabilities() if self._service is not None else recording_capabilities(False)
-
-    def authorize(self, supplied: str) -> bool:
-        expected = self._token
-        return expected is not None and bool(expected) and hmac.compare_digest(supplied.encode(), expected.encode())
 
     def list(self) -> dict[str, object]:
         return self._enabled().list()

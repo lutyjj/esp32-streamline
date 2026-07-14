@@ -61,7 +61,9 @@ creates it. The admin key and PCM PSK are independent.
 Each lifecycle write saves a complete inactive state generation, then switches
 one marker. Power loss before that marker leaves the prior generation active.
 The failure-atomic transitions are stage, verify, activate, discard, rotation,
-rollback, retirement, and recovery.
+rollback, retirement, and recovery. Verification proves the pending key
+against the configured stream target, so changing the target host or port
+voids it; activation then demands a fresh verify against the new bridge.
 
 The bridge persists its listener mode and a bounded versioned key map together
 in a private `0600` state file. Updates use a durable atomic replacement. The

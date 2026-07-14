@@ -188,6 +188,13 @@ impl TransportKeys {
         Ok(())
     }
 
+    /// Verification proves the pending key against one concrete stream target.
+    /// Pointing the stream at a different host or port voids that proof, so
+    /// activation cannot promote a key the new bridge never accepted.
+    pub fn reset_pending_verification(&mut self) {
+        self.pending_verified = false;
+    }
+
     /// Abandon the staged key so the owner can back out before activation.
     pub fn discard_pending(&mut self) -> Result<(), TransportError> {
         let pending = self.pending.ok_or(TransportError::NoPendingKey)?;
@@ -779,6 +786,19 @@ mod tests {
         let debug = format!("{keys:?}");
         assert!(!debug.contains(&key.psk().hex()));
         assert!(debug.contains("redacted"));
+    }
+
+    #[test]
+    fn a_target_change_voids_a_pending_verification() {
+        let mut keys = TransportKeys::default();
+        keys.stage(&mut Sequence(0)).expect("key");
+        keys.mark_pending_verified().expect("verified");
+
+        keys.reset_pending_verification();
+
+        assert!(!keys.pending_verified());
+        assert_eq!(keys.activate(), Err(TransportError::PendingKeyUnverified));
+        assert_eq!(keys.validate(), Ok(()));
     }
 
     #[test]

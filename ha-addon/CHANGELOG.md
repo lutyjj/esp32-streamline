@@ -1,6 +1,29 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.6.1]
+
+### 🚀 Features
+- Flows as data, and an input guide that owns passthrough
+- Guide encryption setup in the shared wizard sheet
+- One bridge lock, guided encryption, and a Toggle primitive
+- One API token and console-switched encryption
+- Add local analog output
+
+### 🐛 Bug Fixes
+- Keep an armed inline confirm where its trigger stood
+- Bridge polling died after one tick; one input meter
+- One name for the input meter
+- Keep action rows with their section
+- Consistent Encryption section, unblocked reboot wait, lock gating
+- Close the guided-setup seams from the second test round
+- Void a pending verification when the stream target changes
+- Match esp-tls error records as they are captured
+- Name the real cause of a failed TLS connection
+
+### 🚜 Refactor
+- Require the complete transport state shape
+
 ## [0.6.0]
 
 ### 🚀 Features

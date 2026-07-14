@@ -6,8 +6,11 @@ mod persistence;
 mod requests;
 mod responses;
 
-use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::{
+    fmt::Debug,
+    net::Ipv4Addr,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{bail, Result};
 use embedded_svc::http::Method;
@@ -145,15 +148,20 @@ impl<'a> ContractServer<'a> {
     }
 }
 
-pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
+pub fn start(
+    state: Arc<ApiState>,
+    captive_portal_address: Option<Ipv4Addr>,
+) -> Result<EspHttpServer<'static>> {
+    let captive_portal_enabled = captive_portal_address.is_some();
     let mut server = EspHttpServer::new(&Configuration {
         // Authenticated transport-key writes serialize a complete atomic state
         // generation before returning the one-time credential. Keep that work
         // on the HTTP task without approaching FreeRTOS's stack guard.
         stack_size: 16_384,
-        // One slot per API endpoint plus the `/` console handler, so a new
-        // endpoint never silently overflows the httpd handler table.
-        max_uri_handlers: api::ENDPOINTS.len() + 1,
+        // One slot per API endpoint, the `/` console handler, and the optional
+        // setup fallback, so a new route never silently overflows the table.
+        max_uri_handlers: api::ENDPOINTS.len() + 1 + usize::from(captive_portal_enabled),
+        uri_match_wildcard: captive_portal_enabled,
         ..Default::default()
     })?;
     server.fn_handler("/", Method::Get, move |request| {
@@ -162,5 +170,13 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
 
     let mut server = ContractServer::new(server);
     handlers::register(&mut server, &state)?;
-    server.finish()
+    let mut server = server.finish()?;
+    if let Some(address) = captive_portal_address {
+        let console_url = crate::captive_portal::console_url(address);
+        server.fn_handler("/*", Method::Get, move |request| {
+            log::info!("redirecting setup HTTP probe to {console_url}");
+            responses::redirect_to_console(request, &console_url)
+        })?;
+    }
+    Ok(server)
 }

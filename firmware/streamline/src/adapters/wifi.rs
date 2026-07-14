@@ -1,8 +1,9 @@
 //! ESP-IDF Wi-Fi ownership and mode transitions.
 
 use core::{convert::TryInto, ffi::CStr};
+use std::net::Ipv4Addr;
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use embedded_svc::wifi::{
     AccessPointConfiguration, AuthMethod, ClientConfiguration, Configuration,
 };
@@ -11,8 +12,14 @@ use esp_idf_svc::{
     hal::{delay::FreeRtos, modem::Modem},
     nvs::EspDefaultNvsPartition,
     sys::{
-        esp_netif_get_handle_from_ifkey, esp_netif_get_ip_info, esp_netif_ip_info_t,
-        esp_wifi_sta_get_ap_info, wifi_ap_record_t, ESP_OK,
+        esp_netif_dhcp_option_id_t_ESP_NETIF_DOMAIN_NAME_SERVER,
+        esp_netif_dhcp_option_mode_t_ESP_NETIF_OP_SET, esp_netif_dhcps_option,
+        esp_netif_dhcps_start, esp_netif_dhcps_stop, esp_netif_dns_info_t,
+        esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN, esp_netif_get_handle_from_ifkey,
+        esp_netif_get_ip_info, esp_netif_ip_info_t, esp_netif_set_dns_info,
+        esp_wifi_sta_get_ap_info, wifi_ap_record_t, EspError,
+        ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED,
+        ESP_IPADDR_TYPE_V4, ESP_OK,
     },
     wifi::{BlockingWifi, EspWifi},
 };
@@ -88,7 +95,71 @@ pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<Str
     wifi.set_configuration(&access_point)?;
     wifi.start()?;
     wifi.wait_netif_up()?;
+    if let Err(error) = advertise_setup_dns() {
+        log::warn!("setup DHCP DNS advertisement unavailable: {error:#}");
+    }
     Ok(ssid)
+}
+
+/// Make the setup AP's DNS responder authoritative in every DHCP lease.
+///
+/// ESP-IDF can add the AP address implicitly when no DNS server is configured,
+/// but an explicit option survives client and SDK differences. DHCP must be
+/// stopped while its advertised DNS address is changed.
+fn advertise_setup_dns() -> Result<()> {
+    let netif = unsafe { esp_netif_get_handle_from_ifkey(c"WIFI_AP_DEF".as_ptr()) };
+    if netif.is_null() {
+        return Err(anyhow!("setup AP network interface is unavailable"));
+    }
+
+    match unsafe { esp_netif_dhcps_stop(netif) } {
+        ESP_OK | ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED => {}
+        code => return esp_error(code).context("stop setup DHCP server"),
+    }
+
+    let configured = (|| {
+        let mut offer_dns = 1_u8;
+        esp_error(unsafe {
+            esp_netif_dhcps_option(
+                netif,
+                esp_netif_dhcp_option_mode_t_ESP_NETIF_OP_SET,
+                esp_netif_dhcp_option_id_t_ESP_NETIF_DOMAIN_NAME_SERVER,
+                (&mut offer_dns as *mut u8).cast(),
+                core::mem::size_of_val(&offer_dns) as u32,
+            )
+        })
+        .context("enable setup DHCP DNS option")?;
+
+        let mut ip_info: esp_netif_ip_info_t = unsafe { core::mem::zeroed() };
+        esp_error(unsafe { esp_netif_get_ip_info(netif, &mut ip_info) })
+            .context("read setup AP address")?;
+        let mut dns: esp_netif_dns_info_t = unsafe { core::mem::zeroed() };
+        dns.ip.u_addr.ip4 = ip_info.ip;
+        dns.ip.type_ = ESP_IPADDR_TYPE_V4 as u8;
+        esp_error(unsafe {
+            esp_netif_set_dns_info(netif, esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN, &mut dns)
+        })
+        .context("set setup DHCP DNS server")
+    })();
+
+    let restarted = match unsafe { esp_netif_dhcps_start(netif) } {
+        ESP_OK | ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED => Ok(()),
+        code => esp_error(code).context("restart setup DHCP server"),
+    };
+    configured?;
+    restarted?;
+    log::info!("setup DHCP advertises the AP as DNS");
+    Ok(())
+}
+
+fn esp_error(code: i32) -> Result<()> {
+    if code == ESP_OK {
+        Ok(())
+    } else {
+        Err(EspError::from(code)
+            .expect("ESP-IDF error code is nonzero")
+            .into())
+    }
 }
 
 /// Current station RSSI in dBm, or `None` when not associated.
@@ -100,15 +171,20 @@ pub fn rssi() -> Option<i32> {
 
 /// Dotted IPv4 of the station interface, or `None` when it has no address.
 pub fn station_ip() -> Option<String> {
-    interface_ipv4(c"WIFI_STA_DEF")
+    interface_ipv4(c"WIFI_STA_DEF").map(|address| address.to_string())
 }
 
 /// Dotted IPv4 of the soft-AP interface, or `None` when the AP is not up.
 pub fn access_point_ip() -> Option<String> {
+    access_point_address().map(|address| address.to_string())
+}
+
+/// IPv4 of the soft-AP interface, or `None` when the AP is not up.
+pub fn access_point_address() -> Option<Ipv4Addr> {
     interface_ipv4(c"WIFI_AP_DEF")
 }
 
-fn interface_ipv4(key: &CStr) -> Option<String> {
+fn interface_ipv4(key: &CStr) -> Option<Ipv4Addr> {
     let netif = unsafe { esp_netif_get_handle_from_ifkey(key.as_ptr()) };
     if netif.is_null() {
         return None;
@@ -119,8 +195,7 @@ fn interface_ipv4(key: &CStr) -> Option<String> {
     }
     // esp_ip4_addr stores the address in network order: the first octet is the
     // least-significant byte on this little-endian target.
-    let [a, b, c, d] = info.ip.addr.to_le_bytes();
-    Some(format!("{a}.{b}.{c}.{d}"))
+    Some(Ipv4Addr::from(info.ip.addr.to_le_bytes()))
 }
 
 pub fn device_suffix() -> Result<String> {

@@ -10,6 +10,7 @@ pub mod analog_passthrough;
 pub mod api;
 pub mod auth;
 pub mod board;
+pub mod captive_portal;
 pub mod codec;
 pub mod config;
 #[cfg(any(test, feature = "pcm-frame-vectors"))]

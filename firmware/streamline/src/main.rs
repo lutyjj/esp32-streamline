@@ -15,6 +15,7 @@ use esp_idf_svc::{
 use streamline_firmware::adapters::openeth;
 #[cfg(not(feature = "qemu"))]
 use streamline_firmware::adapters::{
+    captive_portal::DnsResponder,
     i2s::Capture,
     pins::{AudioPins, I2cBusPins},
     tcp::{TargetAddress, TlsKeyVerifier},
@@ -149,6 +150,19 @@ fn main() -> Result<()> {
         health,
         rollback,
     });
+    #[cfg(not(feature = "qemu"))]
+    let captive_portal_address = match mode {
+        Mode::Setup | Mode::Recovery => match wifi::access_point_address() {
+            Some(address) => Some(address),
+            None => {
+                log::warn!("setup AP address unavailable; captive portal disabled");
+                None
+            }
+        },
+        Mode::Provisioned => None,
+    };
+    #[cfg(feature = "qemu")]
+    let captive_portal_address = None;
     if let Err(error) = status_light::start(
         Arc::clone(&state.board),
         Arc::clone(&state.config),
@@ -158,7 +172,21 @@ fn main() -> Result<()> {
     ) {
         log::warn!("status light unavailable: {error:#}");
     }
-    let _server = http::start(Arc::clone(&state))?;
+    let _server = http::start(Arc::clone(&state), captive_portal_address)?;
+    #[cfg(not(feature = "qemu"))]
+    let _dns_responder = match captive_portal_address {
+        Some(address) => match DnsResponder::start(address) {
+            Ok(responder) => {
+                log::info!("setup captive portal ready at http://{address}/");
+                Some(responder)
+            }
+            Err(error) => {
+                log::warn!("setup DNS responder unavailable: {error:#}");
+                None
+            }
+        },
+        None => None,
+    };
     let booted_at = Instant::now();
     let mut auto_update_timer = update::AutoUpdateTimer::default();
     loop {

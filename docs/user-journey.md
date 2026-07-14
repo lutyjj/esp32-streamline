@@ -39,9 +39,11 @@ Exit: the board broadcasts its own `esp32-streamline-XXXX` network.
 
 ## Stage 2: first contact
 
-Entry: the user joins the setup network, usually on a phone, and opens
-`http://192.168.71.1/`. The console recognizes an unconfigured device and
-opens first-run onboarding by itself.
+Entry: the user joins the setup network, usually on a phone. The operating
+system offers the setup console or opens it after detecting the captive
+network. If the prompt does not appear, `http://192.168.71.1/` opens the same
+console. The console recognizes an unconfigured device and opens first-run
+onboarding by itself.
 
 Promise: three steps with one decision each: pick the home Wi-Fi, save the
 generated admin key, join. The key step makes losing the key hard: shown

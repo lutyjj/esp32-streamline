@@ -5,7 +5,7 @@ use core::fmt::{self, Write};
 use crate::telemetry::TelemetrySnapshot;
 
 pub fn render_prometheus(snapshot: &TelemetrySnapshot) -> String {
-    let mut output = String::with_capacity(2_048);
+    let mut output = String::with_capacity(4_096);
     let mut writer = PrometheusWriter::new(&mut output);
     writer
         .snapshot(snapshot)

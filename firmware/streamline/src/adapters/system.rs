@@ -44,7 +44,9 @@ fn heap() -> HeapTelemetry {
 }
 
 /// The default NVS partition, where this firmware stores its configuration. A
-/// read failure reports zeroed usage rather than blocking the status response.
+/// read failure reports all-zero usage (including `total_entries`) rather than
+/// blocking the status response, so a consumer computing a used/total ratio
+/// must guard against a zero total.
 fn nvs() -> NvsTelemetry {
     let mut stats = nvs_stats_t::default();
     // A null partition name selects the default `nvs` partition.

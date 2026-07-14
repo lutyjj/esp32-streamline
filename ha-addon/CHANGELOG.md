@@ -1,6 +1,22 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.6.2]
+
+### 🚀 Features
+- Assign board LED roles from the System tab
+- Steer setup clients to console
+- Assign roles to board LEDs
+- Show device resource health
+- Expose device resource telemetry
+
+### 🐛 Bug Fixes
+- The A1S status light is active-low
+- Report NVS free as writable entries, harden bytes()
+
+### ⚡ Performance
+- Right-size the metrics render buffer
+
 ## [0.6.1]
 
 ### 🚀 Features

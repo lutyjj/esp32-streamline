@@ -98,7 +98,8 @@ export function BridgeApp() {
               .map(([ip, source]) => <SourceCard key={ip} ip={ip} source={source} />)
           ) : (
             <EmptyState>
-              No source is connected. Point a StreamLine device at TCP port 39000.
+              No source is connected. Point a StreamLine device at TCP port{' '}
+              {status?.transport.port ?? 39000}.
             </EmptyState>
           )}
         </div>
@@ -291,7 +292,7 @@ function CredentialForm() {
           required
         />
       </div>
-      <CardFooter compact flush>
+      <CardFooter compact>
         <Button kind="primary" type="submit" busy={busy}>
           Enroll credential
         </Button>

@@ -1136,13 +1136,6 @@ select:disabled {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line-soft);
-}
-.cardfoot-flush {
-  margin-top: 12px;
-  padding-top: 0;
-  border-top: 0;
 }
 .cardfoot-compact {
   margin-top: 10px;

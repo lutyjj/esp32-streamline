@@ -64,7 +64,7 @@ describe('rebooting transactions', () => {
 
     mount().click();
 
-    await vi.waitFor(() => expect(host.querySelector('output')?.textContent).toBe('Done'));
+    await vi.waitFor(() => expect(host.querySelector('output')?.textContent).toBe('Saved'));
     expect(rebootWait.value).toBeNull();
   });
 

@@ -21,6 +21,7 @@ import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
+import { LedControls } from './LedControls';
 import { ActionState, TransactButton } from './Transact';
 import { UsageBar } from './UsageBar';
 
@@ -30,10 +31,26 @@ export function SystemTab() {
       <DeviceHealthCard />
       <FirmwareCard />
       <NameCard />
+      <LedCard />
       <AccessCard />
       <ResetCard />
       <RawStatusCard />
     </>
+  );
+}
+
+function LedCard() {
+  const writable = useWritable();
+  const s = status.value;
+  const c = config.value;
+  if (!s || !c) return null;
+  return (
+    <LedControls
+      leds={s.capabilities.leds}
+      roles={c.led_roles}
+      writable={writable}
+      provisioned={s.mode !== 'setup'}
+    />
   );
 }
 

@@ -33,30 +33,38 @@ export interface TransactOpts {
   reboots?: string;
 }
 
+/** How long a success confirmation holds before it clears itself. */
+const SUCCESS_HOLD_MS = 2600;
+
 /**
- * One visible lifecycle for every mutation: busy button → per-card result →
- * for rebooting actions the expected-offline narration.
+ * One visible lifecycle for every mutation: busy button → a brief confirmation
+ * that clears itself → for rebooting actions the expected-offline narration.
  */
 export function useTransact(): Transact {
   const [busy, setBusy] = useState(false);
   // State updates do not synchronously re-render the button. Keep the guard in
   // a ref as well so two clicks in the same render cannot start two writes.
   const running = useRef(false);
+  const clearTimer = useRef<ReturnType<typeof setTimeout>>();
   const [state, setState] = useState<ActionState>({ text: '', cls: '' });
 
   async function run(work: () => Promise<Ack | undefined>, opts: TransactOpts = {}): Promise<void> {
     if (running.current) return;
     running.current = true;
+    clearTimeout(clearTimer.current);
     setBusy(true);
-    setState({ text: opts.busyText || 'Working…', cls: '' });
+    setState({ text: opts.busyText ?? 'Working…', cls: '' });
     try {
       const data = await work();
       if (opts.reboots && data && (data as Ack).rebooting) {
         setState({ text: 'Saved — device is restarting', cls: 'ok' });
         beginRebootWait(opts.reboots);
       } else {
-        setState({ text: opts.okText ?? 'Done', cls: 'ok' });
+        setState({ text: opts.okText ?? 'Saved', cls: 'ok' });
       }
+      // A write that lands confirms for a beat, then clears itself, so the
+      // result reads as a moment the device answered, not a label that stays.
+      clearTimer.current = setTimeout(() => setState({ text: '', cls: '' }), SUCCESS_HOLD_MS);
     } catch (error) {
       setState({ text: errorMessage(error), cls: 'err' });
     } finally {

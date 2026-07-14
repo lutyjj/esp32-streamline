@@ -256,7 +256,8 @@ contract.
 
 The firmware exports read-only runtime state as JSON at `/api/status` and as
 Prometheus text at `/api/metrics`. Both endpoints read the same in-memory
-identity, network, and streaming counters.
+identity, network, and streaming counters, plus device-resource headroom —
+RAM, NVS storage, uptime, and task count — sampled on demand.
 
 ## HTTP API Shape
 

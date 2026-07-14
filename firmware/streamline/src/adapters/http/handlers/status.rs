@@ -160,6 +160,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             last_fallback,
             last_ota,
         },
+        system: crate::adapters::system::snapshot(),
         ota: OtaTelemetry {
             phase: ota.phase,
             bytes_written: ota.bytes_written,
@@ -262,6 +263,21 @@ impl<'a> api::StatusResponse<'a> {
                 reset_reason: snapshot.diagnostics.reset_reason,
                 last_fallback: &snapshot.diagnostics.last_fallback,
                 last_ota: &snapshot.diagnostics.last_ota,
+            },
+            system: api::SystemStatus {
+                uptime_seconds: snapshot.system.uptime_seconds,
+                task_count: snapshot.system.task_count,
+                heap: api::HeapStatus {
+                    free_bytes: snapshot.system.heap.free_bytes,
+                    total_bytes: snapshot.system.heap.total_bytes,
+                    minimum_free_bytes: snapshot.system.heap.minimum_free_bytes,
+                    largest_free_block_bytes: snapshot.system.heap.largest_free_block_bytes,
+                },
+                nvs: api::NvsStatus {
+                    used_entries: snapshot.system.nvs.used_entries,
+                    available_entries: snapshot.system.nvs.available_entries,
+                    total_entries: snapshot.system.nvs.total_entries,
+                },
             },
             ota: api::OtaStatus {
                 phase: snapshot.ota.phase,

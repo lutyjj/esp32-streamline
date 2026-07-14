@@ -16,6 +16,7 @@ pub struct TelemetrySnapshot {
     pub analog_passthrough: AnalogPassthroughTelemetry,
     pub stream: StreamTelemetry,
     pub diagnostics: DiagnosticsTelemetry,
+    pub system: SystemTelemetry,
     pub ota: OtaTelemetry,
 }
 
@@ -80,6 +81,41 @@ pub struct DiagnosticsTelemetry {
     pub reset_reason: &'static str,
     pub last_fallback: String,
     pub last_ota: String,
+}
+
+/// Device resource headroom sampled at read time: how much RAM and NVS storage
+/// remain, how long the device has been up, and how many tasks are scheduled.
+/// The reads are cheap and pull-only, so nothing is collected until a client
+/// asks for status or metrics.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SystemTelemetry {
+    pub uptime_seconds: u64,
+    /// FreeRTOS tasks currently scheduled across both cores.
+    pub task_count: u32,
+    pub heap: HeapTelemetry,
+    pub nvs: NvsTelemetry,
+}
+
+/// Internal RAM heap, in bytes.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct HeapTelemetry {
+    pub free_bytes: u32,
+    pub total_bytes: u32,
+    /// Lowest free heap observed since boot; the all-time worst case that a
+    /// leak or a demanding moment drove the device to.
+    pub minimum_free_bytes: u32,
+    /// Largest single allocation the heap can still satisfy; a fragmentation
+    /// signal that free bytes alone hides.
+    pub largest_free_block_bytes: u32,
+}
+
+/// NVS configuration partition usage, in 32-byte entries.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct NvsTelemetry {
+    pub used_entries: u32,
+    /// Entries still writable for data, excluding reserved bookkeeping.
+    pub available_entries: u32,
+    pub total_entries: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

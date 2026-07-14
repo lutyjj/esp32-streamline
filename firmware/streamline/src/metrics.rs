@@ -31,6 +31,52 @@ impl<W: Write> PrometheusWriter<W> {
                 ("mode", snapshot.mode),
             ],
         )?;
+        self.gauge(
+            "streamline_uptime_seconds",
+            "Seconds since the device booted.",
+            snapshot.system.uptime_seconds,
+        )?;
+        self.gauge(
+            "streamline_tasks",
+            "FreeRTOS tasks currently scheduled.",
+            snapshot.system.task_count,
+        )?;
+        self.gauge(
+            "streamline_heap_free_bytes",
+            "Free internal-RAM heap in bytes.",
+            snapshot.system.heap.free_bytes,
+        )?;
+        self.gauge(
+            "streamline_heap_total_bytes",
+            "Total internal-RAM heap in bytes.",
+            snapshot.system.heap.total_bytes,
+        )?;
+        self.gauge(
+            "streamline_heap_minimum_free_bytes",
+            "Lowest free internal-RAM heap observed since boot, in bytes.",
+            snapshot.system.heap.minimum_free_bytes,
+        )?;
+        self.gauge(
+            "streamline_heap_largest_free_block_bytes",
+            "Largest allocatable internal-RAM block in bytes.",
+            snapshot.system.heap.largest_free_block_bytes,
+        )?;
+        self.gauge(
+            "streamline_nvs_used_entries",
+            "Used entries in the NVS configuration partition.",
+            snapshot.system.nvs.used_entries,
+        )?;
+        self.gauge(
+            "streamline_nvs_available_entries",
+            "Entries still writable in the NVS configuration partition.",
+            snapshot.system.nvs.available_entries,
+        )?;
+        self.gauge(
+            "streamline_nvs_total_entries",
+            "Total entries in the NVS configuration partition.",
+            snapshot.system.nvs.total_entries,
+        )?;
+
         self.info(
             "streamline_wifi_info",
             "Wi-Fi identity and address labels.",
@@ -282,8 +328,9 @@ impl MetricKind {
 mod tests {
     use super::render_prometheus;
     use crate::telemetry::{
-        AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
-        StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
+        AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, HeapTelemetry,
+        NvsTelemetry, OtaTelemetry, StreamTelemetry, SystemTelemetry, TargetTelemetry,
+        TelemetrySnapshot, WifiTelemetry,
     };
 
     #[test]
@@ -295,6 +342,33 @@ mod tests {
             "# HELP streamline_firmware_info Firmware build and runtime mode.\n\
 # TYPE streamline_firmware_info gauge\n\
 streamline_firmware_info{version=\"0.3.3\",mode=\"provisioned\"} 1\n\
+# HELP streamline_uptime_seconds Seconds since the device booted.\n\
+# TYPE streamline_uptime_seconds gauge\n\
+streamline_uptime_seconds 3600\n\
+# HELP streamline_tasks FreeRTOS tasks currently scheduled.\n\
+# TYPE streamline_tasks gauge\n\
+streamline_tasks 12\n\
+# HELP streamline_heap_free_bytes Free internal-RAM heap in bytes.\n\
+# TYPE streamline_heap_free_bytes gauge\n\
+streamline_heap_free_bytes 142000\n\
+# HELP streamline_heap_total_bytes Total internal-RAM heap in bytes.\n\
+# TYPE streamline_heap_total_bytes gauge\n\
+streamline_heap_total_bytes 300000\n\
+# HELP streamline_heap_minimum_free_bytes Lowest free internal-RAM heap observed since boot, in bytes.\n\
+# TYPE streamline_heap_minimum_free_bytes gauge\n\
+streamline_heap_minimum_free_bytes 120500\n\
+# HELP streamline_heap_largest_free_block_bytes Largest allocatable internal-RAM block in bytes.\n\
+# TYPE streamline_heap_largest_free_block_bytes gauge\n\
+streamline_heap_largest_free_block_bytes 90000\n\
+# HELP streamline_nvs_used_entries Used entries in the NVS configuration partition.\n\
+# TYPE streamline_nvs_used_entries gauge\n\
+streamline_nvs_used_entries 42\n\
+# HELP streamline_nvs_available_entries Entries still writable in the NVS configuration partition.\n\
+# TYPE streamline_nvs_available_entries gauge\n\
+streamline_nvs_available_entries 630\n\
+# HELP streamline_nvs_total_entries Total entries in the NVS configuration partition.\n\
+# TYPE streamline_nvs_total_entries gauge\n\
+streamline_nvs_total_entries 756\n\
 # HELP streamline_wifi_info Wi-Fi identity and address labels.\n\
 # TYPE streamline_wifi_info gauge\n\
 streamline_wifi_info{hostname=\"streamline-a8b2.local\",ssid=\"studio\",status=\"connected\",sta_ip=\"192.0.2.50\",ap_ip=\"\"} 1\n\
@@ -454,6 +528,21 @@ streamline_ota_busy 0\n"
                 reset_reason: "software",
                 last_fallback: String::new(),
                 last_ota: String::new(),
+            },
+            system: SystemTelemetry {
+                uptime_seconds: 3_600,
+                task_count: 12,
+                heap: HeapTelemetry {
+                    free_bytes: 142_000,
+                    total_bytes: 300_000,
+                    minimum_free_bytes: 120_500,
+                    largest_free_block_bytes: 90_000,
+                },
+                nvs: NvsTelemetry {
+                    used_entries: 42,
+                    available_entries: 630,
+                    total_entries: 756,
+                },
             },
             ota: OtaTelemetry {
                 phase: "idle",

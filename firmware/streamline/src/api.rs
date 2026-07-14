@@ -791,6 +791,7 @@ pub struct StatusResponse<'a> {
     pub analog_passthrough: AnalogPassthroughStatus<'a>,
     pub metrics: MetricsStatus,
     pub diagnostics: DiagnosticsStatus<'a>,
+    pub system: SystemStatus,
     pub ota: OtaStatus<'a>,
     pub indicator: IndicatorStatus,
     pub health: &'a HealthReport,
@@ -912,6 +913,35 @@ pub struct DiagnosticsStatus<'a> {
     pub reset_reason: &'a str,
     pub last_fallback: &'a str,
     pub last_ota: &'a str,
+}
+
+/// Device resource headroom: RAM, NVS storage, uptime, and task count.
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct SystemStatus {
+    pub uptime_seconds: u64,
+    pub task_count: u32,
+    pub heap: HeapStatus,
+    pub nvs: NvsStatus,
+}
+
+/// Internal RAM heap, in bytes.
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct HeapStatus {
+    pub free_bytes: u32,
+    pub total_bytes: u32,
+    pub minimum_free_bytes: u32,
+    pub largest_free_block_bytes: u32,
+}
+
+/// NVS configuration partition usage, in 32-byte entries.
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct NvsStatus {
+    pub used_entries: u32,
+    pub available_entries: u32,
+    pub total_entries: u32,
 }
 
 #[derive(Serialize)]

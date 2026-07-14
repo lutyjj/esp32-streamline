@@ -101,7 +101,7 @@ services:
       STREAMLINE_API_TOKEN: ${STREAMLINE_API_TOKEN:-}
     command:
       - --transport-state-file
-      - /data/transport-keys.json
+      - /data/transport.json
     read_only: true
     security_opt:
       - no-new-privileges:true

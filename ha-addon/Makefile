@@ -36,7 +36,7 @@ test: image
 		'#!/bin/sh' \
 		'test "$$#" -eq 6' \
 		'test "$$1" = "--transport-state-file"' \
-		'test "$$2" = "/data/transport-keys.json"' \
+		'test "$$2" = "/data/transport.json"' \
 		'test "$$3" = "--recordings-dir"' \
 		'test "$$4" = "/data/recordings"' \
 		'test "$$5" = "--max-sources"' \

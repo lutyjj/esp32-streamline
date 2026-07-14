@@ -13,7 +13,7 @@ BRIDGE_EXECUTABLE = "streamline-bridge"
 OPTIONS_PATH = Path("/data/options.json")
 RECORDINGS_DIR = "/data/recordings"
 API_TOKEN_ENV = "STREAMLINE_API_TOKEN"
-TRANSPORT_STATE_FILE = "/data/transport-keys.json"
+TRANSPORT_STATE_FILE = "/data/transport.json"
 
 
 def load_options(path: Path = OPTIONS_PATH) -> dict[str, object]:

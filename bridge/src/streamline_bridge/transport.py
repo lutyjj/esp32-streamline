@@ -117,11 +117,11 @@ class TransportStateStore:
             raise TransportStateError("transport state file is not valid JSON") from exc
         if (
             not isinstance(document, dict)
-            or not {"version", "keys"} <= set(document) <= {"version", "keys", "tls_enabled"}
+            or set(document) != {"version", "tls_enabled", "keys"}
             or document["version"] != 1
         ):
             raise TransportStateError("unsupported transport state file contract")
-        tls_enabled = document.get("tls_enabled", False)
+        tls_enabled = document["tls_enabled"]
         if not isinstance(tls_enabled, bool):
             raise TransportStateError("transport state tls_enabled must be a boolean")
         keys = document["keys"]

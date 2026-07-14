@@ -83,7 +83,7 @@ Encryption is switched from the bridge console (or `PUT /api/transport/mode`),
 not by a deployment option, so the coordinated cutover with the device happens
 in one place. The mode and the enrolled device keys persist together in the
 transport state file: Compose uses the private `transport-data` volume at
-`/data/transport-keys.json`; the Home Assistant add-on uses its
+`/data/transport.json`; the Home Assistant add-on uses its
 Supervisor-owned `/data` directory. The file is mode `0600`, bounded,
 validated on load, and replaced atomically after each mutation.
 

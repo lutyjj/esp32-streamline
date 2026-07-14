@@ -87,7 +87,7 @@ class TransportStateStoreTests(unittest.TestCase):
 
     def test_key_file_round_trips_atomically_with_private_permissions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "transport-keys.json"
+            path = Path(temporary) / "transport.json"
             store = TransportStateStore(path, maximum=2)
 
             store.put(self.key_id, self.psk)
@@ -98,7 +98,7 @@ class TransportStateStoreTests(unittest.TestCase):
 
     def test_invalid_unknown_and_over_limit_mutations_leave_the_file_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "transport-keys.json"
+            path = Path(temporary) / "transport.json"
             store = TransportStateStore(path, maximum=1)
             store.put(self.key_id, self.psk)
             before = path.read_bytes()
@@ -130,9 +130,9 @@ class TransportStateStoreTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 TransportStateStore(link)
 
-    def test_listener_mode_persists_and_legacy_key_files_read_as_cleartext(self) -> None:
+    def test_listener_mode_persists_with_the_keys_and_partial_shapes_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary) / "transport-keys.json"
+            path = Path(temporary) / "transport.json"
             store = TransportStateStore(path)
             store.put(self.key_id, self.psk)
 
@@ -142,11 +142,10 @@ class TransportStateStoreTests(unittest.TestCase):
             self.assertTrue(reopened.tls_enabled)
             self.assertEqual(reopened.get(self.key_id), bytes.fromhex(self.psk))
 
-            legacy = Path(temporary) / "legacy.json"
-            legacy.write_text(json.dumps({"version": 1, "keys": {self.key_id: self.psk}}), encoding="utf-8")
-            migrated = TransportStateStore(legacy)
-            self.assertFalse(migrated.tls_enabled)
-            self.assertEqual(migrated.get(self.key_id), bytes.fromhex(self.psk))
+            keys_only = Path(temporary) / "keys-only.json"
+            keys_only.write_text(json.dumps({"version": 1, "keys": {self.key_id: self.psk}}), encoding="utf-8")
+            with self.assertRaises(TransportStateError):
+                TransportStateStore(keys_only)
 
 
 class TransportControlTests(unittest.TestCase):

@@ -29,7 +29,7 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
             [
                 "streamline-bridge",
                 "--transport-state-file",
-                "/data/transport-keys.json",
+                "/data/transport.json",
                 "--source-allow",
                 "192.0.2.10,198.51.100.20",
                 "--client-buffer-chunks",
@@ -52,7 +52,7 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
     def test_blank_source_allow_is_omitted(self) -> None:
         self.assertEqual(
             bridge_argv({"source_allow": "", "max_sources": 8}),
-            ["streamline-bridge", "--transport-state-file", "/data/transport-keys.json", "--max-sources", "8"],
+            ["streamline-bridge", "--transport-state-file", "/data/transport.json", "--max-sources", "8"],
         )
 
     def test_recordings_use_private_storage_and_keep_the_token_out_of_argv(self) -> None:
@@ -63,7 +63,7 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
             [
                 "streamline-bridge",
                 "--transport-state-file",
-                "/data/transport-keys.json",
+                "/data/transport.json",
                 "--recordings-dir",
                 "/data/recordings",
             ],

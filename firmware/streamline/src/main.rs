@@ -150,7 +150,8 @@ fn main() -> Result<()> {
         rollback,
     });
     if let Err(error) = status_light::start(
-        state.board.status_led,
+        Arc::clone(&state.board),
+        Arc::clone(&state.config),
         mode == Mode::Setup,
         state.health.status,
         state.stream.clone(),

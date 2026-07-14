@@ -18,6 +18,9 @@ pub struct TelemetrySnapshot {
     pub diagnostics: DiagnosticsTelemetry,
     pub system: SystemTelemetry,
     pub ota: OtaTelemetry,
+    /// A board LED currently renders the device status, so the indicator is
+    /// visible somewhere.
+    pub status_indicator_visible: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

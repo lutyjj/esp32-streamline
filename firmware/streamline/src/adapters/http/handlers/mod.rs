@@ -3,6 +3,7 @@
 mod analog_passthrough;
 mod audio;
 mod board;
+mod leds;
 mod ota;
 mod settings;
 mod status;
@@ -26,6 +27,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     board::register_write(server, state)?;
     audio::register_writes(server, state)?;
     analog_passthrough::register(server, state)?;
+    leds::register(server, state)?;
     settings::register_identity_writes(server, state)?;
     settings::register_firmware_write(server, state)?;
     ota::register(server, state)?;

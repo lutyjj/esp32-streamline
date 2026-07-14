@@ -16,6 +16,7 @@ import pytest
 from streamline_tools.device.api import DeviceApi, api_checks
 
 _MODES = ("setup", "recovery", "provisioned")
+_LED_ROLES = ("off", "on", "status")
 
 
 def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:
@@ -63,6 +64,37 @@ def test_local_output_status_matches_the_advertised_capability(device_api: Devic
     assert capability["output_line"] > 0
     assert isinstance(capability["label"], str)
     assert capability["label"]
+
+
+def test_led_capabilities_and_roles_are_coherent(device_api: DeviceApi) -> None:
+    # The board advertises its LEDs; settings reports an effective role for each,
+    # and the indicator is available exactly when one LED renders the status role.
+    code, body = device_api.fetch("/api/status")
+    assert code == 200
+    status = json.loads(body)
+    leds = status["capabilities"]["leds"]
+    assert isinstance(leds, list)
+
+    ids = []
+    for led in leds:
+        assert isinstance(led["id"], str) and led["id"]
+        assert isinstance(led["label"], str) and led["label"]
+        assert isinstance(led["gpio"], int)
+        assert isinstance(led["active_low"], bool)
+        assert led["default_role"] in _LED_ROLES
+        ids.append(led["id"])
+    assert len(ids) == len(set(ids)), f"duplicate LED ids: {ids}"
+
+    code, body = device_api.fetch("/api/settings")
+    assert code == 200
+    roles = json.loads(body)["led_roles"]
+    assert [entry["id"] for entry in roles] == ids, "led_roles must cover every capability LED in order"
+    effective = {entry["id"]: entry["role"] for entry in roles}
+    assert all(role in _LED_ROLES for role in effective.values()), effective
+
+    indicator = status["indicator"]
+    assert isinstance(indicator["available"], bool)
+    assert indicator["available"] == any(role == "status" for role in effective.values())
 
 
 def test_metrics_are_scriptable(device_api: DeviceApi) -> None:

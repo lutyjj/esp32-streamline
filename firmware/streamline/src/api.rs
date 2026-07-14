@@ -335,6 +335,24 @@ endpoint!(
     )
 );
 endpoint!(
+    SET_LED,
+    set_led,
+    Post,
+    post,
+    "/api/settings/led",
+    authenticated,
+    summary = "Assign a role to a board LED",
+    request_body(
+        content = LedSettingsRequest,
+        content_type = "application/x-www-form-urlencoded"
+    ),
+    responses(
+        (status = 200, body = Ack),
+        (status = 400, body = ErrorResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
     SET_AUDIO_PROFILES,
     set_audio_profiles,
     Post,
@@ -532,6 +550,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     SET_BOARD,
     SET_AUDIO,
     SET_ANALOG_PASSTHROUGH,
+    SET_LED,
     SET_AUDIO_PROFILES,
     SET_AUDIO_PROFILE,
     SET_NAME,
@@ -612,6 +631,15 @@ pub struct AudioSettingsRequest {
 #[serde(deny_unknown_fields)]
 pub struct AnalogPassthroughSettingsRequest {
     pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+/// Assign one board LED, named by its capabilities id, a new role.
+pub struct LedSettingsRequest {
+    pub id: String,
+    pub role: crate::led::LedRole,
 }
 
 #[derive(Debug, Deserialize)]
@@ -740,8 +768,17 @@ pub struct ConfigResponse<'a> {
     pub input_gain: u8,
     pub adc_attenuation_db: u8,
     pub analog_passthrough_enabled: bool,
+    /// The effective role of every board LED, in descriptor order.
+    pub led_roles: Vec<LedRoleStatus<'a>>,
     pub auto_update_schedule: AutoUpdateScheduleRequest,
     pub config_source: &'a str,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct LedRoleStatus<'a> {
+    pub id: &'a str,
+    pub role: crate::led::LedRole,
 }
 
 #[derive(Serialize)]
@@ -804,7 +841,7 @@ pub struct CapabilitiesStatus<'a> {
     pub board: &'a str,
     pub codec: CodecStatus<'a>,
     pub pins: PinMapStatus,
-    pub status_led: Option<StatusLedStatus>,
+    pub leds: Vec<LedCapabilityStatus<'a>>,
     pub analog_passthrough: Option<AnalogPassthroughCapabilityStatus<'a>>,
     pub input_lines: Vec<InputLineStatus<'a>>,
     pub input_gain_max: u8,
@@ -843,9 +880,12 @@ pub struct I2sPinsStatus {
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-pub struct StatusLedStatus {
+pub struct LedCapabilityStatus<'a> {
+    pub id: &'a str,
+    pub label: &'a str,
     pub gpio: u8,
     pub active_low: bool,
+    pub default_role: crate::led::LedRole,
 }
 
 #[derive(Serialize)]
@@ -883,10 +923,17 @@ impl<'a> CapabilitiesStatus<'a> {
                     din: board.pins.i2s.din,
                 },
             },
-            status_led: board.status_led.map(|led| StatusLedStatus {
-                gpio: led.gpio,
-                active_low: led.active_low,
-            }),
+            leds: board
+                .leds
+                .iter()
+                .map(|led| LedCapabilityStatus {
+                    id: led.id.as_str(),
+                    label: led.label.as_str(),
+                    gpio: led.gpio,
+                    active_low: led.active_low,
+                    default_role: led.default_role,
+                })
+                .collect(),
             analog_passthrough: board.analog_passthrough.as_ref().map(|capability| {
                 AnalogPassthroughCapabilityStatus {
                     output_line: capability.output_line,
@@ -1033,7 +1080,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]
@@ -1164,6 +1211,9 @@ mod tests {
         assert!(json.contains(r#""codec":{"driver":"es8388","i2c_address":16}"#));
         assert!(json.contains(
             r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
+        ));
+        assert!(json.contains(
+            r#""leds":[{"id":"status","label":"Status light (D4)","gpio":22,"active_low":false,"default_role":"status"}]"#
         ));
         assert!(json.contains(r#""analog_passthrough":{"output_line":2,"label":"3.5 mm output"}"#));
     }

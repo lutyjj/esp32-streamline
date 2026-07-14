@@ -44,6 +44,14 @@ def _mode(device: EmulatedDevice) -> str:
     return mode
 
 
+def _led_role(device: EmulatedDevice, led_id: str) -> str:
+    code, body = device.api.fetch("/api/settings")
+    assert code == 200, f"GET /api/settings returned HTTP {code}"
+    roles = {entry["id"]: entry["role"] for entry in json.loads(body)["led_roles"]}
+    assert led_id in roles, f"settings did not report LED {led_id!r}: {roles}"
+    return str(roles[led_id])
+
+
 def _wait_for_ota_phase(device: EmulatedDevice, phase: str, timeout: float) -> dict[str, Any]:
     """Poll `/api/status` until the OTA worker reports `phase`.
 
@@ -130,6 +138,45 @@ def test_local_output_intent_and_fault_are_reversible_without_a_codec(
         "active": False,
         "fault": None,
     }
+
+
+def test_led_role_assignment_persists_and_is_reversible(
+    provisioned_device: EmulatedDevice, boot_device: Callable[..., EmulatedDevice]
+) -> None:
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    leds = json.loads(body)["capabilities"]["leds"]
+    status_led = next((led for led in leds if led["default_role"] == "status"), None)
+    if status_led is None:
+        pytest.skip("the emulated board advertises no status LED")
+    led_id = status_led["id"]
+
+    # An unknown LED id is a bad request, not a silent no-op.
+    code, body = provisioned_device.api.post_form("/api/settings/led", {"id": "no-such-led", "role": "on"})
+    assert code == 400, f"unknown LED id was answered with HTTP {code}: {body[:200]!r}"
+
+    # Turn the status light off; the indicator then has no visible LED.
+    code, body = provisioned_device.api.post_form("/api/settings/led", {"id": led_id, "role": "off"})
+    assert code == 200, f"LED off was answered with HTTP {code}: {body[:200]!r}"
+    assert _led_role(provisioned_device, led_id) == "off"
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert json.loads(body)["indicator"]["available"] is False
+
+    # The assignment lives in NVS, not just memory: it survives a reboot.
+    code, _ = provisioned_device.api.post_form("/api/restart", {})
+    assert code == 200
+    provisioned_device.dut.qemu.wait(timeout=60)
+    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
+    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    _expect_api_up(rebooted)
+    assert _led_role(rebooted, led_id) == "off"
+
+    # Restore the status role and prove the indicator returns.
+    code, body = rebooted.api.post_form("/api/settings/led", {"id": led_id, "role": "status"})
+    assert code == 200, f"LED status restore was answered with HTTP {code}: {body[:200]!r}"
+    assert _led_role(rebooted, led_id) == "status"
+    code, body = rebooted.api.fetch("/api/status")
+    assert json.loads(body)["indicator"]["available"] is True
 
 
 def test_factory_reset_returns_to_setup(

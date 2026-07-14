@@ -554,6 +554,7 @@ streamline_ota_busy 0\n"
                 rollback_available: false,
                 rollback_version: String::new(),
             },
+            status_indicator_visible: true,
         }
     }
 }

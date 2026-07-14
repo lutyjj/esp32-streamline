@@ -14,7 +14,10 @@ export function meterPct(abs: number): number {
 /** Byte count as a compact 1024-based string: `512 B`, `124 KB`, `1.9 MB`. */
 export function bytes(n: number): string {
   if (n < 1024) return `${Math.round(n)} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  // Round to whole kilobytes first, so a value that rounds up to 1024 KB rolls
+  // into megabytes instead of printing "1024 KB".
+  const kb = Math.round(n / 1024);
+  if (kb < 1024) return `${kb} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 

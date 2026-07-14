@@ -212,8 +212,6 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
           </div>
         )}
 
-        <TransportCard targetDirty={targetDirty} />
-
         <CardFooter>
           <TransactButton transact={targetTransact} disabled={!writable} onClick={saveTarget}>
             Save &amp; restart
@@ -230,6 +228,8 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
           )}
         </CardFooter>
       </Card>
+
+      {!setup && !noBridge.value && <TransportCard targetDirty={targetDirty} />}
     </CardStack>
   );
 }

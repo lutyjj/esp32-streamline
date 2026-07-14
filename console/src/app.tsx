@@ -59,6 +59,10 @@ export function App() {
       toast('Bridge setup needs the device on your home network', 'err');
       return;
     }
+    if (!writable) {
+      toast('Unlock settings to set up the bridge', 'err');
+      return;
+    }
     setBridgeWizardOpen(true);
   }
 

@@ -182,13 +182,15 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
           </div>
           {credential && <CredentialReveal credential={credential} writable={writable} />}
           <ActionState state={lifecycle.state} />
-          <ConfirmButton
-            label="Changed my mind — discard this credential"
-            confirmLabel="Discard it"
-            disabled={!writable}
-            message="The staged credential is deleted and the device stays on cleartext. Remove the bridge copy in its console if you already added it."
-            onConfirm={discardAndClose}
-          />
+          <div class="wizard-abandon">
+            <ConfirmButton
+              label="Changed my mind — discard this credential"
+              confirmLabel="Discard it"
+              disabled={!writable}
+              message="The staged credential is deleted and the device stays on cleartext. Remove the bridge copy in its console if you already added it."
+              onConfirm={discardAndClose}
+            />
+          </div>
         </div>
       )}
 
@@ -211,13 +213,17 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
           <h3>{settled ? 'Encrypted and streaming' : 'Restarting…'}</h3>
           <div class="body">
             {!settled ? (
-              <p>The device is restarting into encrypted mode — about ten seconds.</p>
+              <p class="wizard-waiting">
+                <span class="spin" aria-hidden="true" />
+                The device is restarting into encrypted mode — about ten seconds. This screen
+                updates when it reconnects, and a notification confirms it.
+              </p>
             ) : (
               <>
                 <p>
                   Every packet to the bridge is now authenticated TLS 1.3. No routine action is
-                  needed — credential replacement and recovery live under Advanced security on the
-                  Stream target card.
+                  needed — credential replacement and recovery live under Advanced security in the
+                  Network tab.
                 </p>
                 <p>Play a track: the Bridge tile reads Sending and the bridge shows this device.</p>
               </>

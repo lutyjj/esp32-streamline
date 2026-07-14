@@ -147,9 +147,9 @@ function Transport() {
   return (
     <section class="bridge-group">
       <div class="section-head">
-        <h2>PCM transport</h2>
+        <h2>Encryption</h2>
         <span class="eyebrow">
-          {secure ? 'Encrypted · TLS 1.3' : 'Cleartext'} · port {status.port}
+          {secure ? 'Encrypted · TLS 1.3' : 'Cleartext'} · PCM port {status.port}
         </span>
       </div>
       <p class="grouplead">
@@ -190,7 +190,7 @@ function TransportWorkspace({
         lead={
           unlocked
             ? 'Add the one-time credential from the device console. Enroll it before switching to encrypted, so audio only pauses while the device follows.'
-            : 'Unlock in the header to enroll device credentials and switch encryption.'
+            : 'Select Locked in the header to unlock this bridge, then enroll device credentials and switch encryption.'
         }
       >
         {unlocked && <CredentialForm />}
@@ -350,7 +350,9 @@ function Recordings() {
           Recording is off. Turn on recordings in the bridge configuration, then restart the bridge.
         </EmptyState>
       ) : access !== 'unlocked' ? (
-        <EmptyState>Recordings are locked. Choose Unlock in the header to manage them.</EmptyState>
+        <EmptyState>
+          Recordings are locked. Select Locked in the header to unlock, then manage them.
+        </EmptyState>
       ) : (
         <RecordingWorkspace />
       )}

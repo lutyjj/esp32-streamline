@@ -9,20 +9,21 @@ import {
   transportJourney,
 } from '../state/transport';
 import { Button } from './Button';
-import { CardFooter } from './Card';
+import { Card, CardFooter } from './Card';
 import { Chip } from './Chip';
 import { ConfirmButton } from './ConfirmButton';
 import { CredentialReveal } from './CredentialReveal';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
+import { Notice } from './Notice';
 import { Toggle } from './Toggle';
 import { ActionState, TransactButton } from './Transact';
 
 /**
- * The Encrypt transport section of the Stream target card. Setup — create,
- * enroll, verify, activate — runs in the guided TransportWizard; this card
- * owns the steady state and every exit: credential facts through `Kv`,
- * rollback and retirement, and Recovery nested under Advanced security.
+ * The Encryption card on the Network tab. Setup — create, enroll, verify,
+ * activate — runs in the guided TransportWizard; this card owns the steady
+ * state and every exit: credential facts through `Kv`, rollback and
+ * retirement, and Recovery nested under Advanced security.
  */
 export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }) {
   const writable = useWritable();
@@ -110,7 +111,19 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
   );
 
   return (
-    <section class="transport-section">
+    <Card
+      gated
+      title="Encryption"
+      lead="Authenticated TLS 1.3, so only this device can send audio to your bridge."
+      className="transport-card"
+    >
+      {journey === 'opt-in' && (
+        <Notice tone="info">
+          Your audio streams unencrypted. Encryption is recommended: it lets only this device send
+          to the bridge and hides the audio from anyone else on your network. A guide walks you
+          through it in about a minute.
+        </Notice>
+      )}
       <Toggle
         checked={secure || setupUnderway}
         disabled={!writable || targetDirty}
@@ -130,7 +143,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
         }}
         label={
           <span class="transport-title">
-            Encrypt transport
+            Encrypt audio to the bridge
             {secure && (
               <Chip tone="good" dot>
                 encrypted
@@ -148,7 +161,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
             ? `TLS 1.3 to ${current.target_host}:${current.target_port}. No routine action is needed.`
             : setupUnderway
               ? 'Setup is underway — a credential is staged but not active. Cleartext keeps streaming.'
-              : 'Use authenticated TLS 1.3 on this same host and port. A guide walks you through it.'
+              : 'Turning this on starts the guided setup. Cleartext keeps streaming until you finish.'
         }
       />
       {targetDirty && <span class="help">Save the stream target before changing encryption.</span>}
@@ -239,6 +252,6 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           {recoverySection}
         </Disclosure>
       )}
-    </section>
+    </Card>
   );
 }

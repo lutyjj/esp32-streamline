@@ -63,6 +63,16 @@ describe('PCM encryption journey', () => {
     setupWizardRequested.value = false;
   });
 
+  it('is its own Encryption card that encourages setup while cleartext', () => {
+    const host = document.createElement('div');
+    render(<TransportCard />, host);
+
+    expect(host.querySelector('.card h2')?.textContent).toBe('Encryption');
+    const notice = host.querySelector('.notice');
+    expect(notice?.textContent).toContain('streams unencrypted');
+    expect(notice?.textContent).toContain('recommended');
+  });
+
   it('routes the opt-in straight into the guided setup', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
@@ -136,6 +146,8 @@ describe('PCM encryption journey', () => {
 
     expect(host.textContent).toContain('encrypted');
     expect(host.textContent).toContain('No routine action is needed.');
+    // The encouragement is only for the cleartext state.
+    expect(host.querySelector('.notice')).toBeNull();
     expect(buttonLabels(host)).toEqual([]);
     expect(summaries(host).map((s) => s.textContent)).toEqual(['Advanced security']);
 

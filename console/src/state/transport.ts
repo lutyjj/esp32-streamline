@@ -139,7 +139,7 @@ export const transport = new TransportController();
 
 /**
  * Every entry point into encryption setup — the bridge wizard's last step,
- * the Stream target card's opt-in, a mid-journey resume, a credential
+ * the Encryption card's opt-in, a mid-journey resume, a credential
  * replacement — opens the one guided TransportWizard. The app root renders
  * it while this is set.
  */

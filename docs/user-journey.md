@@ -86,8 +86,10 @@ verification failure names its cause and the next step — an unreachable port,
 a bridge still in cleartext, or a credential the bridge does not accept —
 keeps the retry visible, and never changes the device mode.
 
-The **Stream target** card owns one host, one port, and an **Encrypt
-transport** switch that opens the same guide; a setup left mid-way shows a
+The Network tab's **Stream target** card owns one host and one port. A
+separate **Encryption** card sits beside it — the same heading both consoles
+use — and encourages the owner to turn on encryption while streaming is
+cleartext. Its switch opens the same guide; a setup left mid-way shows a
 "setting up" state with a resume action, and **Recovery** can discard the
 pending credential, so opting in never traps the owner. Closing the sheet
 keeps the staged state and says how to resume. The PSK is masked by default,

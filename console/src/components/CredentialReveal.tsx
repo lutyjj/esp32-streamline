@@ -5,8 +5,8 @@ import type { RevealedTransportKey } from '../state/transport';
 import { Button } from './Button';
 
 /**
- * The one-time bridge credential panel shared by the Stream target card and
- * the encryption setup wizard: ID and PSK blocks, copy actions, and a masked
+ * The one-time bridge credential panel shared by the Encryption card and the
+ * guided setup wizard: ID and PSK blocks, copy actions, and a masked
  * PSK that reveals only on request. The PSK is gone once dismissed.
  */
 export function CredentialReveal({

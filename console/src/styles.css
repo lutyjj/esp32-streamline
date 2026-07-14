@@ -1301,12 +1301,10 @@ select:disabled {
 }
 
 /* ---------- Encrypted transport journey ---------- */
-.transport-section {
-  margin-top: 18px;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 16px;
+.transport-card > .notice {
+  margin: 0 0 14px;
 }
-.transport-section > .help {
+.transport-card > .help {
   display: block;
   margin: 6px 0 0 39px;
 }
@@ -1725,6 +1723,30 @@ select:disabled {
 .wizlog {
   margin-top: 12px;
   min-height: 64px;
+}
+.wizard-waiting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wizard-waiting .spin {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid var(--muted);
+  border-right-color: transparent;
+  border-radius: 50%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .wizard-waiting .spin {
+    animation: rot 0.7s linear infinite;
+  }
+}
+/* An abandon action set apart from the guidance it can undo. */
+.wizard-abandon {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
 }
 .sheetfoot {
   display: flex;

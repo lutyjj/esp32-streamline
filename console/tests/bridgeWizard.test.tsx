@@ -31,6 +31,7 @@ function deviceConfig(overrides: Partial<DeviceConfig> = {}): DeviceConfig {
     input_gain: 0,
     adc_attenuation_db: 9,
     analog_passthrough_enabled: false,
+    led_roles: [],
     config_source: 'nvs',
     ...overrides,
   };

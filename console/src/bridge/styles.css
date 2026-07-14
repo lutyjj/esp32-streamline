@@ -92,11 +92,13 @@
   gap: 8px;
   flex-wrap: wrap;
 }
-.bridge-lock {
-  align-self: start;
-}
 .transport-key-list {
   margin-top: 16px;
+}
+.transport-mode {
+  margin-top: 16px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 14px;
 }
 .transport-key {
   display: flex;

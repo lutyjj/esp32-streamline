@@ -12,7 +12,7 @@ describe('LocalOutput', () => {
     expect(host.textContent).toBe('');
   });
 
-  it('offers streaming-only and simultaneous local-output routes', () => {
+  it('offers the local output as one switch that names the jack and its limits', () => {
     const host = document.createElement('div');
     render(
       <LocalOutput
@@ -24,23 +24,21 @@ describe('LocalOutput', () => {
       host,
     );
 
-    const radios = host.querySelectorAll<HTMLInputElement>('input[type="radio"]');
-    expect(radios).toHaveLength(2);
-    expect(radios[0].checked).toBe(false);
-    expect(radios[1].checked).toBe(true);
+    const toggle = host.querySelector<HTMLInputElement>('input[role="switch"]');
+    expect(toggle?.checked).toBe(true);
+    expect(toggle?.disabled).toBe(false);
     expect(host.textContent).toContain('Output route');
-    expect(host.textContent).toContain('Streaming only');
-    expect(host.textContent).toContain('Streaming + local output');
+    expect(host.textContent).toContain('Local analog output');
     expect(host.textContent).toContain('3.5 mm output');
     expect(host.textContent).toContain('direct analog path');
-    expect(host.textContent).toContain('Route changes apply immediately');
-    expect(host.textContent).toContain('selected source feeds both paths');
-    expect(host.textContent).toContain('fixed at line level');
+    expect(host.textContent).toContain('fixed line level');
+    expect(host.textContent).toContain('Changes apply immediately');
+    expect(host.textContent).toContain('streaming only');
     expect(host.textContent).toContain('Active');
     expect(host.textContent).not.toContain('volume control');
   });
 
-  it('names a live codec fault and offers the off route', () => {
+  it('names a live codec fault and how to leave it', () => {
     const host = document.createElement('div');
     render(
       <LocalOutput
@@ -54,13 +52,11 @@ describe('LocalOutput', () => {
 
     expect(host.textContent).toContain('Fault');
     expect(host.textContent).toContain('codec write failed');
-    expect(host.textContent).toContain('Choose Streaming only to turn the route off');
-    const radios = host.querySelectorAll<HTMLInputElement>('input[type="radio"]');
-    expect(radios[0].checked).toBe(false);
-    expect(radios[1].checked).toBe(true);
+    expect(host.textContent).toContain('Turn local output off, then on again to retry.');
+    expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.checked).toBe(true);
   });
 
-  it('leaves both routes unselected so a failed off command can be retried', () => {
+  it('offers a retry after a failed off command', () => {
     const host = document.createElement('div');
     render(
       <LocalOutput
@@ -72,9 +68,7 @@ describe('LocalOutput', () => {
       host,
     );
 
-    const radios = host.querySelectorAll<HTMLInputElement>('input[type="radio"]');
-    expect(radios[0].checked).toBe(false);
-    expect(radios[1].checked).toBe(false);
-    expect(host.textContent).toContain('Choose Streaming only to retry');
+    expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.checked).toBe(false);
+    expect(host.textContent).toContain('Turn local output on to retry.');
   });
 });

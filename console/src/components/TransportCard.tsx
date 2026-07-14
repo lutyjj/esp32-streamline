@@ -11,6 +11,7 @@ import { Chip } from './Chip';
 import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
+import { Toggle } from './Toggle';
 import { ActionState, TransactButton } from './Transact';
 
 /**
@@ -191,40 +192,37 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
 
   return (
     <section class="transport-section">
-      <label class="transport-choice">
-        <input
-          type="checkbox"
-          checked={expanded}
-          disabled={!writable || targetDirty}
-          onInput={(event) => {
-            if (event.currentTarget.checked) {
-              setSetupOpen(true);
-            } else if (journey === 'opt-in') {
-              setSetupOpen(false);
-            } else {
-              // Leaving encryption is an explicit choice that lives under
-              // Recovery; unchecking opens the path instead of acting.
-              setAdvancedOpen(true);
-              setRecoveryOpen(true);
-            }
-          }}
-        />
-        <span>
+      <Toggle
+        checked={expanded}
+        disabled={!writable || targetDirty}
+        onChange={(checked) => {
+          if (checked) {
+            setSetupOpen(true);
+          } else if (journey === 'opt-in') {
+            setSetupOpen(false);
+          } else {
+            // Leaving encryption is an explicit choice that lives under
+            // Recovery; unchecking opens the path instead of acting.
+            setAdvancedOpen(true);
+            setRecoveryOpen(true);
+          }
+        }}
+        label={
           <span class="transport-title">
-            <strong>Encrypt transport</strong>
+            Encrypt transport
             {secure && (
               <Chip tone="good" dot>
                 encrypted
               </Chip>
             )}
           </span>
-          <small>
-            {secure
-              ? `TLS 1.3 to ${current.target_host}:${current.target_port}. No routine action is needed.`
-              : 'Use authenticated TLS 1.3 on this same host and port.'}
-          </small>
-        </span>
-      </label>
+        }
+        description={
+          secure
+            ? `TLS 1.3 to ${current.target_host}:${current.target_port}. No routine action is needed.`
+            : 'Use authenticated TLS 1.3 on this same host and port.'
+        }
+      />
       {targetDirty && <span class="help">Save the stream target before changing encryption.</span>}
 
       {expanded && (
@@ -234,9 +232,9 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           {credential && (
             <div class="keypanel transport-credential">
               <p>
-                <strong class="strong">Copy this bridge credential now.</strong> Switch the bridge
-                to TLS on this port, then add the credential in its console. The PSK is shown only
-                once.
+                <strong class="strong">Copy this bridge credential now.</strong> Add it in the
+                bridge console, then switch the bridge to encrypted mode there. The PSK is shown
+                only once.
               </p>
               <span class="streamlabel">Credential ID</span>
               <div class="keyblock">{credential.key_id}</div>
@@ -312,8 +310,8 @@ function JourneyStep({ journey }: { journey: 'opt-in' | 'provision' | 'activate'
       'The device shows the bridge credential once. Cleartext keeps streaming.',
     ],
     provision: [
-      'Step 2 of 3 · Switch the bridge and verify',
-      'Switch this bridge port to TLS-only, provision the credential, then verify it here.',
+      'Step 2 of 3 · Enroll on the bridge and verify',
+      'In the bridge console: unlock, add this credential, switch on encrypted mode. Then verify here.',
     ],
     activate: [
       'Step 3 of 3 · Activate',

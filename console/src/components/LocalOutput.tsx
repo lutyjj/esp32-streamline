@@ -3,6 +3,7 @@ import { setAnalogPassthrough } from '../lib/api';
 import { useTransact } from '../lib/hooks';
 import { loadDeviceSettings } from '../state/device';
 import { Chip } from './Chip';
+import { Toggle } from './Toggle';
 import { ActionState } from './Transact';
 
 interface LocalOutputProps {
@@ -49,48 +50,24 @@ export function LocalOutput({ capability, status, writable, provisioned }: Local
           {state}
         </Chip>
       </legend>
-      <div class="local-output-choices">
-        <label class="choice local-output-choice">
-          <input
-            type="radio"
-            name="local-output-mode"
-            value="streaming"
-            checked={!status.enabled && !status.fault}
-            onInput={() => setEnabled(false)}
-          />
-          <span class="local-output-copy">
-            <strong>Streaming only</strong>
-            <small>Keep the local output off.</small>
-          </span>
-        </label>
-        <label class="choice local-output-choice">
-          <input
-            type="radio"
-            name="local-output-mode"
-            value="streaming-and-local"
-            checked={status.enabled}
-            onInput={() => setEnabled(true)}
-          />
-          <span class="local-output-copy">
-            <strong>Streaming + local output</strong>
-            <small>
-              Also send the selected input to {capability.label} through a direct analog path.
-            </small>
-          </span>
-        </label>
-      </div>
+      <Toggle
+        checked={status.enabled}
+        disabled={!editable || transact.busy}
+        onChange={setEnabled}
+        label="Local analog output"
+        description={`Also send the selected input to ${capability.label} through a direct analog path, at fixed line level. Streaming continues either way.`}
+      />
       <p class="local-output-note">
-        Route changes apply immediately. The selected source feeds both paths. Local output is fixed
-        at line level; gain, ADC attenuation, calibration, and silence detection affect streaming
-        only.
+        Changes apply immediately. Gain, ADC attenuation, calibration, and silence detection affect
+        streaming only.
       </p>
       {!provisioned && <p class="callout">Local output is available after setup completes.</p>}
       {status.fault && (
         <p class="callout bad local-output-callout">
           {status.fault}{' '}
           {status.enabled
-            ? 'Choose Streaming only to turn the route off.'
-            : 'Choose Streaming only to retry.'}
+            ? 'Turn local output off, then on again to retry.'
+            : 'Turn local output on to retry.'}
         </p>
       )}
       {transact.state.text && <ActionState state={transact.state} />}

@@ -891,43 +891,6 @@ body.locked .gated :is(form, .cardfoot) {
   font-size: 12.5px;
   font-weight: 600;
 }
-.local-output-choices {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.choice.local-output-choice {
-  align-items: start;
-  min-width: 0;
-}
-.local-output-choice:has(input:focus-visible) {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-.local-output-choice:has(input:disabled) {
-  cursor: default;
-}
-.local-output:disabled .local-output-choices {
-  opacity: 0.55;
-}
-.local-output-choice input {
-  width: 16px;
-  height: 16px;
-  margin: 2px 0 0;
-  accent-color: var(--accent);
-}
-.local-output-choice input:focus-visible {
-  outline: 0;
-}
-.local-output-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.local-output-copy strong {
-  font-size: 13.5px;
-}
-.local-output-copy small,
 .local-output-note {
   color: var(--faint);
   font-size: 11.5px;
@@ -941,6 +904,7 @@ body.locked .gated :is(form, .cardfoot) {
   padding: 8px 10px;
   background: var(--inset);
 }
+input:not([type]),
 input[type="text"],
 input[type="password"],
 input[type="number"],
@@ -1275,6 +1239,29 @@ select:disabled {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
+.switch:has(input:disabled) {
+  cursor: default;
+  opacity: 0.55;
+}
+.switch-stacked {
+  align-items: flex-start;
+}
+.switch-stacked .knob {
+  margin-top: 2px;
+}
+.switch-copy {
+  display: grid;
+  gap: 2px;
+}
+.switch-copy strong {
+  color: var(--text);
+  font-size: 13.5px;
+}
+.switch-copy small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
 
 /* ---------- Key display ---------- */
 .keyblock {
@@ -1332,29 +1319,9 @@ select:disabled {
   border-top: 1px solid var(--line-soft);
   padding-top: 16px;
 }
-.transport-choice {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  cursor: pointer;
-}
-.transport-choice input {
-  width: 17px;
-  height: 17px;
-  margin: 2px 0 0;
-  accent-color: var(--accent);
-}
-.transport-choice > span {
-  display: grid;
-  gap: 2px;
-}
-.transport-choice small {
-  color: var(--muted);
-  font-size: 13px;
-}
 .transport-section > .help {
   display: block;
-  margin: 6px 0 0 27px;
+  margin: 6px 0 0 39px;
 }
 .transport-step {
   display: grid;

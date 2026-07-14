@@ -65,11 +65,11 @@ describe('PCM encryption journey', () => {
     expect(buttonLabels(host)).toEqual([]);
     expect(summaries(host)).toEqual([]);
 
-    const toggle = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    const toggle = host.querySelector<HTMLInputElement>('input[role="switch"]');
     act(() => {
       if (!toggle) return;
       toggle.checked = true;
-      toggle.dispatchEvent(new Event('input', { bubbles: true }));
+      toggle.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
     expect(host.textContent).toContain('Step 1 of 3 · Create a bridge credential');
@@ -83,7 +83,7 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    expect(host.textContent).toContain('Step 2 of 3 · Switch the bridge and verify');
+    expect(host.textContent).toContain('Step 2 of 3 · Enroll on the bridge and verify');
     expect(buttonLabels(host)).toEqual(['Verify with bridge']);
     expect(summaries(host).map((s) => s.textContent)).toEqual(['Recovery']);
     expect(host.textContent).toContain('Pending credential');
@@ -189,12 +189,12 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    const toggle = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    const toggle = host.querySelector<HTMLInputElement>('input[role="switch"]');
     expect(toggle?.checked).toBe(true);
     act(() => {
       if (!toggle) return;
       toggle.checked = false;
-      toggle.dispatchEvent(new Event('input', { bubbles: true }));
+      toggle.dispatchEvent(new Event('change', { bubbles: true }));
     });
 
     expect(toggle?.checked).toBe(true);
@@ -205,7 +205,7 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard targetDirty />, host);
 
-    expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled).toBe(true);
+    expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.disabled).toBe(true);
     expect(host.textContent).toContain('Save the stream target before changing encryption.');
   });
 });

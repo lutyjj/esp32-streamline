@@ -77,15 +77,23 @@ decision during first setup.
 
 The wizard's final step offers encryption and hands to the **Stream target**
 card rather than duplicating it. The card owns one host, one port, and an
-**Encrypt transport** control. After the owner opts in, the card shows one valid
-next action at a time: create a bridge credential, switch the bridge to TLS,
-provision and verify the credential, then activate and restart. The coordinated
-switch causes
-a short audio interruption because each side accepts exactly one protocol.
-Verification failure keeps the retry visible and never changes the device mode.
+**Encrypt transport** switch. After the owner opts in, the card shows one valid
+next action at a time: create a bridge credential, enroll it in the bridge
+console and switch the bridge to encrypted there, verify, then activate and
+restart. Audio keeps streaming through enrollment and pauses only between the
+bridge's switch and the device's restart, because each side accepts exactly
+one protocol. A verification failure names its cause and the next step — an
+unreachable port, a bridge still in cleartext, or a credential the bridge does
+not accept — keeps the retry visible, and never changes the device mode.
 Until activation, **Recovery** can discard the pending credential, so
 opting in never traps the owner mid-setup. The PSK is masked by default, shown
 only on request, and never available again after the owner dismisses it.
+
+The bridge console mirrors the device console's lock: one masthead lock chip,
+unlocked by the owner-set bridge API token, gates every bridge change —
+encryption mode, device credentials, and recordings. Reads stay open. A
+deployment without a token says which option to set instead of offering an
+unlock that cannot succeed.
 
 Once encryption is active, the card says no routine action is required.
 Credential replacement, rollback, and recovery stay under **Advanced
@@ -129,11 +137,11 @@ profile through the API when it knows the physical selector state. StreamLine
 never guesses the source from overlapping waveform characteristics.
 
 When the selected board advertises a local analog output, Input settings names
-the physical jack and offers Streaming only or Streaming + local output as
-radio options. It reports Active, Off, or Fault from device state and explains
-that the fixed line-level route stays analog. Input gain, ADC attenuation,
-calibration, silence detection, and streaming do not act as output-volume
-controls. Boards without the capability show no local output control.
+the physical jack and offers one **Local analog output** switch. It reports
+Active, Off, or Fault from device state and explains that the fixed
+line-level route stays analog. Input gain, ADC attenuation, calibration,
+silence detection, and streaming do not act as output-volume controls. Boards
+without the capability show no local output control.
 
 Optional lossless recording is a bridge-hosted task. The bridge page lets the
 owner choose a source, start before playing it, observe whether audio has

@@ -91,13 +91,13 @@ fn method(endpoint: Endpoint) -> Method {
 /// operation has exactly one registered handler.
 struct ContractServer<'a> {
     inner: EspHttpServer<'a>,
-    registered: u32,
+    registered: u64,
 }
 
 impl<'a> ContractServer<'a> {
     fn new(inner: EspHttpServer<'a>) -> Self {
         assert!(
-            api::ENDPOINTS.len() <= u32::BITS as usize,
+            api::ENDPOINTS.len() <= u64::BITS as usize,
             "API endpoint tracker capacity exceeded"
         );
         Self {
@@ -119,7 +119,7 @@ impl<'a> ContractServer<'a> {
             .iter()
             .position(|declared| *declared == endpoint)
             .expect("registered endpoint is declared");
-        let bit = 1_u32 << index;
+        let bit = 1_u64 << index;
         if self.registered & bit != 0 {
             bail!("duplicate API handler for {}", endpoint.path);
         }
@@ -130,12 +130,12 @@ impl<'a> ContractServer<'a> {
     }
 
     fn finish(self) -> Result<EspHttpServer<'a>> {
-        let expected = (1_u32 << api::ENDPOINTS.len()) - 1;
+        let expected = (1_u64 << api::ENDPOINTS.len()) - 1;
         if self.registered != expected {
             let missing = api::ENDPOINTS
                 .iter()
                 .enumerate()
-                .filter(|(index, _)| self.registered & (1_u32 << index) == 0)
+                .filter(|(index, _)| self.registered & (1_u64 << index) == 0)
                 .map(|(_, endpoint)| endpoint.path)
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -151,6 +151,9 @@ pub fn start(state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
         // generation before returning the one-time credential. Keep that work
         // on the HTTP task without approaching FreeRTOS's stack guard.
         stack_size: 16_384,
+        // One slot per API endpoint plus the `/` console handler, so a new
+        // endpoint never silently overflows the httpd handler table.
+        max_uri_handlers: api::ENDPOINTS.len() + 1,
         ..Default::default()
     })?;
     server.fn_handler("/", Method::Get, move |request| {

@@ -171,6 +171,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             rollback_available: rollback.is_some(),
             rollback_version: rollback.clone().unwrap_or_default(),
         },
+        status_indicator_visible: config.shows_status_indicator(state.board.as_ref()),
     }
 }
 
@@ -290,7 +291,7 @@ impl<'a> api::StatusResponse<'a> {
                 rollback_version: &snapshot.ota.rollback_version,
             },
             indicator: api::IndicatorStatus {
-                available: board.status_led.is_some(),
+                available: snapshot.status_indicator_visible,
                 state: indicator_state.as_str(),
             },
             health,

@@ -312,6 +312,9 @@ impl ConfigStore {
                 adc_attenuation_db: self.required_u8(KEY_ADC_ATTENUATION)?,
             },
             analog_passthrough_enabled: false,
+            // The pre-generation key layout predates LED control; its LEDs adopt
+            // their descriptor defaults.
+            led_roles: Default::default(),
         };
         // A stored audio setting the selected board does not advertise opens
         // setup mode, so a device moved to different hardware can recover.

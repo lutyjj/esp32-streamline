@@ -46,17 +46,23 @@ The device speaks plain HTTP on a trusted LAN. Read the
 - **Flash**: 4 MB or larger
 
 Board support is descriptor-driven: presets define the codec, I2C/I2S pin map,
-input labels, audio limits, and optional local analog output. Official presets
-and BYOD descriptors use the same JSON contract when the codec driver is
-compiled into the firmware. The release firmware is a generic ESP32 app image
-with an embedded official descriptor catalog. See
+input labels, audio limits, assignable LEDs, and optional local analog output.
+Official presets and BYOD descriptors use the same JSON contract when the codec
+driver is compiled into the firmware. The release firmware is a generic ESP32
+app image with an embedded official descriptor catalog. See
 [design notes](docs/design.md#board-support).
 
-### Status light
+### LEDs
 
-A board with a status light flashes once in setup, twice when ready but idle,
-stays lit while streaming, and flashes three times on a startup fault.
-`GET /api/status` reports the selected state under `indicator`.
+A board advertises the LEDs it wires, and you assign each one a role. **Status**
+renders the device state: one flash in setup, two when ready but idle, steady
+while streaming, three on a startup fault. **On** and **Off** hold the LED lit
+or dark. Assignments apply without a reboot.
+
+`GET /api/status` reports the status state under `indicator` and the board's
+LEDs under `capabilities.leds`; `POST /api/settings/led` assigns a role by LED
+id. The official preset wires one status light; a
+[custom descriptor](docs/design.md#leds) can declare more.
 
 ## Quick start
 

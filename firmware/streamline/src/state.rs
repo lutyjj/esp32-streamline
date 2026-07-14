@@ -369,6 +369,10 @@ mod tests {
                     adc_attenuation_db: 3,
                 },
                 analog_passthrough_enabled: true,
+                led_roles: std::collections::BTreeMap::from([(
+                    "status".to_owned(),
+                    crate::led::LedRole::On,
+                )]),
             }),
             board_id: Some(board.id.clone()),
             board_descriptor: None,

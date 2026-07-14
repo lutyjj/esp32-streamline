@@ -194,6 +194,15 @@ fn config_json(state: &ApiState) -> String {
         input_gain: config.audio.input_gain,
         adc_attenuation_db: config.audio.adc_attenuation_db,
         analog_passthrough_enabled: config.analog_passthrough_enabled,
+        led_roles: state
+            .board
+            .leds
+            .iter()
+            .map(|led| api::LedRoleStatus {
+                id: &led.id,
+                role: config.led_role(led),
+            })
+            .collect(),
         auto_update_schedule: config.auto_update_schedule.into(),
         config_source: "nvs",
     })

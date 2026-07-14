@@ -254,6 +254,30 @@ source. An external selector that knows the source state can call the same
 activation API as the console. [Audio profiles](audio-profiles.md) owns the
 contract.
 
+## LEDs
+
+A board descriptor advertises the LEDs it wires as `leds`, each with a stable
+`id`, a console `label`, a `gpio`, an `active_low` polarity, and a
+`default_role`. The user assigns each LED one role, stored per board LED id in
+`led_roles` on the runtime configuration:
+
+- **status** renders the device state through one shared pattern: one flash in
+  setup, two when ready but idle, steady while streaming, three on a startup
+  fault. `crate::indicator` owns the pattern.
+- **on** and **off** hold the LED steadily lit or dark.
+
+A LED with no assignment uses its descriptor `default_role`, so a board author
+can wire a status light and leave decorative LEDs dark without any user action.
+`POST /api/settings/led` takes an `id` and a `role`; the render task reads the
+live configuration, so a change applies without a reboot. `/api/status` reports
+each LED under `capabilities.leds`, the effective role under `led_roles`, and
+whether any LED currently renders status under `indicator.available`.
+
+The role set is forward-looking: a new signal such as an available update adds
+one role variant and one render rule, not a matrix of every signal against every
+LED. The official ES8388 preset wires one status light on GPIO22; a custom
+descriptor can declare up to eight LEDs.
+
 The firmware exports read-only runtime state as JSON at `/api/status` and as
 Prometheus text at `/api/metrics`. Both endpoints read the same in-memory
 identity, network, and streaming counters, plus device-resource headroom —

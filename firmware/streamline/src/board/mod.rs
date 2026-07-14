@@ -8,6 +8,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::led::LedRole;
+
 pub mod catalog;
 pub mod selection;
 pub mod update;
@@ -18,6 +20,10 @@ pub use update::{resolve_update, BoardUpdate, BoardUpdateError};
 
 /// Largest custom descriptor accepted by the API and persistent store.
 pub const MAX_DESCRIPTOR_BYTES: usize = 3_072;
+
+/// Most LEDs a single board descriptor may advertise. Bounds the descriptor and
+/// the per-LED role map that rides in the persisted configuration record.
+pub const MAX_LEDS: usize = 8;
 
 /// Codec hardware mounted on the board.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -56,15 +62,24 @@ pub struct I2sPins {
     pub din: u8,
 }
 
-/// Optional single-color status light wired to an ESP32 output GPIO.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+/// One board LED wired to an ESP32 output GPIO, with the role it takes until
+/// the user assigns another.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
-pub struct StatusLed {
+pub struct Led {
+    /// Stable id, unique within the board, used to address the LED in settings.
+    pub id: String,
+    /// Human-readable name the console shows for this LED.
+    pub label: String,
     pub gpio: u8,
     /// `true` when driving the GPIO low lights the LED.
     #[serde(default)]
     pub active_low: bool,
+    /// Role applied until the user assigns another, so a board author can wire a
+    /// status light while leaving decorative LEDs dark.
+    #[serde(default)]
+    pub default_role: LedRole,
 }
 
 /// One selectable input, with the label the console shows for it.
@@ -101,9 +116,10 @@ pub struct Board {
     pub codec: CodecSpec,
     /// ESP32 GPIO wiring for codec control and I2S capture.
     pub pins: PinMap,
-    /// A board-owned light that renders the device's status, when present.
+    /// Board LEDs the user can assign roles to, in console order. Empty when the
+    /// board wires none.
     #[serde(default)]
-    pub status_led: Option<StatusLed>,
+    pub leds: Vec<Led>,
     /// Local analog monitoring output, absent when the board has no supported
     /// route.
     #[serde(default)]
@@ -131,6 +147,10 @@ pub enum BoardError {
     MissingAnalogPassthroughLabel,
     DuplicateInputLine,
     InvalidInputGainMax,
+    TooManyLeds,
+    MissingLedId,
+    MissingLedLabel,
+    DuplicateLedId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -187,17 +207,25 @@ impl Board {
         validate_output_gpio(self.pins.i2s.bclk)?;
         validate_output_gpio(self.pins.i2s.ws)?;
         validate_input_gpio(self.pins.i2s.din)?;
-        if let Some(led) = self.status_led {
+        if self.leds.len() > MAX_LEDS {
+            return Err(BoardError::TooManyLeds);
+        }
+        for (i, led) in self.leds.iter().enumerate() {
+            if led.id.is_empty() {
+                return Err(BoardError::MissingLedId);
+            }
+            if led.label.is_empty() {
+                return Err(BoardError::MissingLedLabel);
+            }
             validate_output_gpio(led.gpio)?;
-            if self.gpios().contains(&led.gpio) {
-                return Err(BoardError::DuplicateGpio);
+            if self.leds[i + 1..].iter().any(|other| other.id == led.id) {
+                return Err(BoardError::DuplicateLedId);
             }
         }
-        for (i, a) in self.gpios().iter().enumerate() {
-            for b in &self.gpios()[i + 1..] {
-                if a == b {
-                    return Err(BoardError::DuplicateGpio);
-                }
+        let gpios = self.gpios();
+        for (i, a) in gpios.iter().enumerate() {
+            if gpios[i + 1..].contains(a) {
+                return Err(BoardError::DuplicateGpio);
             }
         }
         if self.input_lines.is_empty() {
@@ -236,15 +264,28 @@ impl Board {
         self.input_lines[0].line
     }
 
-    fn gpios(&self) -> [u8; 6] {
-        [
+    /// The board LED with this id, if the descriptor advertises one.
+    pub fn led(&self, id: &str) -> Option<&Led> {
+        self.leds.iter().find(|led| led.id == id)
+    }
+
+    /// Whether `id` names one of this board's LEDs.
+    pub fn has_led(&self, id: &str) -> bool {
+        self.led(id).is_some()
+    }
+
+    /// Every GPIO the descriptor claims: the six audio pins plus each LED.
+    fn gpios(&self) -> Vec<u8> {
+        let mut gpios = vec![
             self.pins.i2c.sda,
             self.pins.i2c.scl,
             self.pins.i2s.mclk,
             self.pins.i2s.bclk,
             self.pins.i2s.ws,
             self.pins.i2s.din,
-        ]
+        ];
+        gpios.extend(self.leds.iter().map(|led| led.gpio));
+        gpios
     }
 }
 
@@ -323,7 +364,10 @@ mod tests {
                     "i2c":{"sda":4,"scl":5},
                     "i2s":{"mclk":12,"bclk":13,"ws":14,"din":35}
                 },
-                "status_led":{"gpio":22},
+                "leds":[
+                    {"id":"status","label":"Status light","gpio":22,"default_role":"status"},
+                    {"id":"aux","label":"Aux","gpio":21}
+                ],
                 "input_lines":[{"line":2,"label":"only input"}],
                 "input_gain_max":10,
                 "adc_atten_max_db":6
@@ -335,6 +379,17 @@ mod tests {
         assert!(!board.accepts_line(1));
         assert_eq!(board.default_line(), 2);
         assert_eq!(board.analog_passthrough, None);
+        assert!(board.has_led("status"));
+        assert_eq!(
+            board.led("status").map(|led| led.default_role),
+            Some(LedRole::Status)
+        );
+        // An omitted role defaults to Off, so a decorative LED stays dark.
+        assert_eq!(
+            board.led("aux").map(|led| led.default_role),
+            Some(LedRole::Off)
+        );
+        assert!(!board.has_led("missing"));
     }
 
     #[test]
@@ -403,7 +458,7 @@ mod tests {
                     din: 35,
                 },
             },
-            status_led: None,
+            leds: Vec::new(),
             analog_passthrough: None,
             input_lines: vec![
                 InputOption {
@@ -450,15 +505,66 @@ mod tests {
         assert_eq!(duplicate_gpios.validate(), Err(BoardError::DuplicateGpio));
 
         let duplicate_led_gpio = Board {
-            status_led: Some(StatusLed {
+            leds: vec![Led {
+                id: "status".to_owned(),
+                label: "Status light".to_owned(),
                 gpio: 14,
                 active_low: false,
-            }),
+                default_role: LedRole::Status,
+            }],
             ..duplicate_lines.clone()
         };
         assert_eq!(
             duplicate_led_gpio.validate(),
             Err(BoardError::DuplicateGpio)
+        );
+
+        let duplicate_led_id = Board {
+            leds: vec![
+                Led {
+                    id: "a".to_owned(),
+                    label: "First".to_owned(),
+                    gpio: 21,
+                    active_low: false,
+                    default_role: LedRole::Off,
+                },
+                Led {
+                    id: "a".to_owned(),
+                    label: "Second".to_owned(),
+                    gpio: 22,
+                    active_low: false,
+                    default_role: LedRole::Off,
+                },
+            ],
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(duplicate_led_id.validate(), Err(BoardError::DuplicateLedId));
+
+        let blank_led_label = Board {
+            leds: vec![Led {
+                id: "status".to_owned(),
+                label: String::new(),
+                gpio: 21,
+                active_low: false,
+                default_role: LedRole::Status,
+            }],
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(blank_led_label.validate(), Err(BoardError::MissingLedLabel));
+
+        let led_on_input_only_gpio = Board {
+            leds: vec![Led {
+                id: "status".to_owned(),
+                label: "Status light".to_owned(),
+                gpio: 34,
+                active_low: false,
+                default_role: LedRole::Status,
+            }],
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(
+            led_on_input_only_gpio.validate(),
+            Err(BoardError::InvalidOutputGpio)
         );
 
         let invalid_output = Board {

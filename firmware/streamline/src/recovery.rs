@@ -24,6 +24,7 @@ pub fn setup_baseline(board: &Board, persisted: Option<RuntimeConfig>) -> Runtim
             adc_attenuation_db: 0,
         },
         analog_passthrough_enabled: false,
+        led_roles: Default::default(),
     })
 }
 
@@ -56,6 +57,7 @@ pub fn replace_wifi(
         auto_update_schedule: current.auto_update_schedule,
         audio: current.audio,
         analog_passthrough_enabled: current.analog_passthrough_enabled,
+        led_roles: current.led_roles,
     }
 }
 
@@ -97,6 +99,10 @@ mod tests {
                 adc_attenuation_db: 9,
             },
             analog_passthrough_enabled: true,
+            led_roles: std::collections::BTreeMap::from([(
+                "status".to_owned(),
+                crate::led::LedRole::Off,
+            )]),
         }
     }
 
@@ -137,6 +143,7 @@ mod tests {
             after.analog_passthrough_enabled,
             before.analog_passthrough_enabled
         );
+        assert_eq!(after.led_roles, before.led_roles);
     }
 
     #[test]

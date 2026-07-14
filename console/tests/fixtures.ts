@@ -1,4 +1,39 @@
-import type { DeviceStatus } from '../src/lib/api';
+import type { DeviceConfig, DeviceStatus, TransportStatus } from '../src/lib/api';
+
+/** A cleartext transport status; override the fields a test cares about. */
+export function transportStatus(overrides: Partial<TransportStatus> = {}): TransportStatus {
+  return {
+    contract_version: 1,
+    mode: 'cleartext',
+    active_key_id: null,
+    pending_key_id: null,
+    pending_verified: false,
+    rollback_key_id: null,
+    ...overrides,
+  };
+}
+
+/**
+ * A provisioned device's settings with a configured bridge target; override the
+ * fields the test cares about.
+ */
+export function deviceConfig(overrides: Partial<DeviceConfig> = {}): DeviceConfig {
+  return {
+    device_name: '',
+    ssid: 'home',
+    target_host: '192.0.2.20',
+    target_port: 39000,
+    transport: transportStatus(),
+    auto_update_schedule: 'daily',
+    input_line: 2,
+    input_gain: 0,
+    adc_attenuation_db: 9,
+    analog_passthrough_enabled: false,
+    led_roles: [],
+    config_source: 'nvs',
+    ...overrides,
+  };
+}
 
 /**
  * A healthy provisioned device; override the fields the test cares about.

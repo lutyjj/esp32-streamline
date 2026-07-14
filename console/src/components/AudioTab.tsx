@@ -4,8 +4,8 @@ import { useTransact, useWritable } from '../lib/hooks';
 import { config, loadDeviceSettings, status } from '../state/device';
 import { AnalogPassthrough } from './AnalogPassthrough';
 import { AudioProfiles } from './AudioProfiles';
-import { Button } from './Button';
 import { Card, CardFooter } from './Card';
+import { GuidePrompt } from './GuidePrompt';
 import { Meter } from './Meter';
 import { ActionState, TransactButton } from './Transact';
 
@@ -57,6 +57,12 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
         title="Input settings"
         lead="Changes apply instantly and return to Custom settings. Watch the live level below."
       >
+        <GuidePrompt
+          text="Not sure about levels? A guide measures your source and sets these."
+          action="Calibrate levels"
+          disabled={!writable}
+          onAction={onCalibrate}
+        />
         <form onSubmit={save}>
           <div class="formgrid">
             <div class="field">
@@ -111,10 +117,6 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
             <TransactButton transact={transact} type="submit" disabled={!writable}>
               Save
             </TransactButton>
-            <Button disabled={!writable} onClick={onCalibrate}>
-              Calibrate levels
-            </Button>
-            <span class="help">Not sure? Calibration measures your source and sets these.</span>
             <ActionState state={transact.state} />
           </CardFooter>
         </form>

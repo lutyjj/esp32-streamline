@@ -66,14 +66,24 @@ describe('TransportWizard', () => {
     expect(labels(host)).not.toContain('Continue');
   });
 
-  it('offers a replacement credential when one is already active', () => {
+  it('offers a replacement only during a real rotation, not for a parked key', () => {
     config.value = deviceConfig(
       transportStatus({ mode: 'tls-psk', active_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
     );
     const host = document.createElement('div');
     render(<TransportWizard onClose={() => {}} />, host);
-
     expect(labels(host)).toContain('Create replacement credential');
+
+    config.value = deviceConfig(
+      transportStatus({
+        mode: 'cleartext',
+        active_key_id: 'eli1-0123456789abcdef0123456789abcdef',
+      }),
+    );
+    const fresh = document.createElement('div');
+    render(<TransportWizard onClose={() => {}} />, fresh);
+    expect(labels(fresh)).toContain('Create credential');
+    expect(labels(fresh)).not.toContain('Create replacement credential');
   });
 
   it('shows the one-time credential after staging and advances to enrollment', () => {
@@ -89,7 +99,7 @@ describe('TransportWizard', () => {
     render(<TransportWizard onClose={() => {}} />, host);
 
     expect(host.textContent).toContain(keyId);
-    expect(host.textContent).toContain('Copy this bridge credential now.');
+    expect(host.textContent).toContain('Copy both values now');
     expect(labels(host)).toContain('Continue');
 
     const advance = [...host.querySelectorAll('button')].find(

@@ -62,7 +62,7 @@ function connectLine(): { text: string; cls: '' | 'ok' } {
 
 /**
  * Bridge hookup wizard: choose where the bridge runs, point the device at it,
- * then optionally hand the encryption opt-in to the Stream target card. It only
+ * then optionally continue into the guided encryption setup. It only
  * sequences existing endpoints; the plain form on the Network tab stays as the
  * escape hatch.
  */
@@ -235,7 +235,7 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
                 <p>
                   You can also wrap it in TLS 1.3 so each device authenticates with its own key. A
                   guide walks you through it — have the bridge API token from your bridge
-                  configuration ready. You can also come back any time from the Stream target card.
+                  configuration ready. You can come back to it any time from the Network tab.
                 </p>
               </>
             )}

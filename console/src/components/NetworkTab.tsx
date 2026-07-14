@@ -9,6 +9,7 @@ import { toast } from '../state/toasts';
 import { Button } from './Button';
 import { Card, CardFooter, CardStack } from './Card';
 import { Chip } from './Chip';
+import { GuidePrompt } from './GuidePrompt';
 import { KeyReveal } from './KeyReveal';
 import { ActionState, TransactButton } from './Transact';
 import { TransportCard } from './TransportCard';
@@ -162,20 +163,17 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
         lead="Where the audio goes: your bridge or Home Assistant add-on."
       >
         {!setup && (
-          <div class="wizentry">
-            <span>
-              {noBridge.value
+          <GuidePrompt
+            text={
+              noBridge.value
                 ? 'Not sure what to enter? The guide picks it up from here.'
-                : 'Prefer step by step? Reconnect with the guide.'}
-            </span>
-            <Button
-              kind={noBridge.value ? 'primary' : 'secondary'}
-              disabled={!writable}
-              onClick={onSetupBridge}
-            >
-              {noBridge.value ? 'Set up bridge' : 'Guide me'}
-            </Button>
-          </div>
+                : 'Prefer step by step? Reconnect with the guide.'
+            }
+            action={noBridge.value ? 'Set up bridge' : 'Guide me'}
+            primary={noBridge.value}
+            disabled={!writable}
+            onAction={onSetupBridge}
+          />
         )}
 
         <div class="formgrid">

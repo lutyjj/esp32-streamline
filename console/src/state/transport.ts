@@ -92,8 +92,11 @@ export class TransportController {
     return response;
   }
 
-  activate(): Promise<Ack> {
-    return this.api.activate();
+  /** Activation hands the key over for good; the one-time reveal is spent. */
+  async activate(): Promise<Ack> {
+    const response = await this.api.activate();
+    this.revealed.value = undefined;
+    return response;
   }
 
   /** Abandon the staged key and its one-time reveal; nothing was cut over. */

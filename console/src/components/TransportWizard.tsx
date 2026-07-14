@@ -35,7 +35,9 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
   const credential = transport.revealed.value;
   const journey = transportJourney(c.transport);
   const waiting = rebootWait.value !== null;
-  const encrypted = c.transport.mode === 'tls-psk';
+  // The device saves tls-psk before it reboots, so config alone reads
+  // encrypted early; setup is settled only once the reboot wait resolved too.
+  const settled = c.transport.mode === 'tls-psk' && !waiting;
 
   function advance(next: SetupWizardStep) {
     lifecycle.setState({ text: '', cls: '' });
@@ -104,9 +106,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
                 </Button>
               ) : (
                 <TransactButton transact={lifecycle} disabled={!writable} onClick={stage}>
-                  {c.transport.active_key_id
-                    ? 'Create replacement credential'
-                    : 'Create credential'}
+                  {journey === 'secure' ? 'Create replacement credential' : 'Create credential'}
                 </TransactButton>
               ))}
             {step === 'enroll' && (
@@ -208,9 +208,9 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
 
       {step === 'done' && (
         <div>
-          <h3>{encrypted ? 'Encrypted and streaming' : 'Restarting…'}</h3>
+          <h3>{settled ? 'Encrypted and streaming' : 'Restarting…'}</h3>
           <div class="body">
-            {waiting || !encrypted ? (
+            {!settled ? (
               <p>The device is restarting into encrypted mode — about ten seconds.</p>
             ) : (
               <>

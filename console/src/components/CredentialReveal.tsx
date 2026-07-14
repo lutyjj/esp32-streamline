@@ -31,19 +31,24 @@ export function CredentialReveal({
   return (
     <div class="keypanel transport-credential">
       <p>
-        <strong class="strong">Copy this bridge credential now.</strong> The PSK is shown only once.
+        <strong class="strong">Copy both values now</strong> — the bridge asks for the credential ID
+        and the PSK together. The PSK is shown only once.
       </p>
       <span class="streamlabel">Credential ID</span>
       <div class="keyblock">{credential.key_id}</div>
       <span class="streamlabel">PSK</span>
       <div class="keyblock">{pskVisible ? credential.psk : '•••• •••• •••• ••••'}</div>
       <p class="help">Secret. Anyone with this PSK can impersonate the device to this bridge.</p>
-      <div class="inputrow inputrow-center">
+      <div class="keypanel-actions">
+        <Button
+          kind="primary"
+          disabled={!writable}
+          onClick={() => copy(credential.key_id, 'Credential ID')}
+        >
+          Copy credential ID
+        </Button>
         <Button kind="primary" disabled={!writable} onClick={() => copy(credential.psk, 'PSK')}>
           Copy PSK
-        </Button>
-        <Button disabled={!writable} onClick={() => copy(credential.key_id, 'Key ID')}>
-          Copy key ID
         </Button>
         <Button onClick={() => setPskVisible((visible) => !visible)}>
           {pskVisible ? 'Hide PSK' : 'Reveal PSK'}

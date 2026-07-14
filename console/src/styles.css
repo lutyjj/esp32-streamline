@@ -1271,6 +1271,12 @@ select:disabled {
   color: var(--muted);
   font-size: 13px;
 }
+.keypanel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 /* ---------- Confirm box (destructive actions) ---------- */
 .confirmbox {

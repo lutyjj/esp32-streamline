@@ -46,6 +46,28 @@ where
     Ok(())
 }
 
+pub(super) fn redirect_to_console<C>(
+    request: embedded_svc::http::server::Request<C>,
+    location: &str,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    request
+        .into_response(
+            303,
+            Some("See Other"),
+            &[
+                ("Content-Type", "text/plain; charset=utf-8"),
+                ("Cache-Control", "no-store"),
+                ("Location", location),
+            ],
+        )?
+        .write_all(b"Open the StreamLine setup console.")?;
+    Ok(())
+}
+
 /// Answer an OTA trigger: `202` once the background worker is running, or `409`
 /// with the reason if one is already in progress.
 pub(super) fn ota_accepted<C>(

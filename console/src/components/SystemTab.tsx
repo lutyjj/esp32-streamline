@@ -11,6 +11,7 @@ import {
   setName as setDeviceName,
   setFirmware,
 } from '../lib/api';
+import { bytes, duration } from '../lib/format';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, status } from '../state/device';
 import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
@@ -21,16 +22,66 @@ import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
 import { ActionState, TransactButton } from './Transact';
+import { UsageBar } from './UsageBar';
 
 export function SystemTab() {
   return (
     <>
+      <DeviceHealthCard />
       <FirmwareCard />
       <NameCard />
       <AccessCard />
       <ResetCard />
       <RawStatusCard />
     </>
+  );
+}
+
+function DeviceHealthCard() {
+  const s = status.value;
+  const sys = s?.system;
+  // Older firmware predates this block; the card simply stays hidden there.
+  if (!sys) return null;
+
+  const { heap, nvs } = sys;
+  const heapUsed = heap.total_bytes - heap.free_bytes;
+  const nvsFree = nvs.total_entries - nvs.used_entries;
+  const bootReason = s?.diagnostics?.reset_reason || '—';
+
+  const details: [string, string][] = [
+    ['Largest free block', bytes(heap.largest_free_block_bytes)],
+    ['Writable NVS entries', String(nvs.available_entries)],
+    ['Tasks running', String(sys.task_count)],
+  ];
+
+  return (
+    <Card
+      title="Device health"
+      lead="Live resource headroom, read straight from the device. A falling memory low-water or a filling NVS is the early warning before something breaks."
+    >
+      <div class="card-section">
+        <Kv rows={[['Uptime', `${duration(sys.uptime_seconds)} · last boot: ${bootReason}`]]} />
+      </div>
+      <div class="card-section usage-stack">
+        <UsageBar
+          label="Memory"
+          value={heapUsed}
+          max={heap.total_bytes}
+          valueLabel={`${bytes(heap.free_bytes)} free`}
+          caption={`${bytes(heapUsed)} used of ${bytes(heap.total_bytes)} · low-water ${bytes(heap.minimum_free_bytes)}`}
+        />
+        <UsageBar
+          label="Storage (NVS)"
+          value={nvs.used_entries}
+          max={nvs.total_entries}
+          valueLabel={`${nvsFree} free`}
+          caption={`${nvs.used_entries} of ${nvs.total_entries} config entries used`}
+        />
+      </div>
+      <Disclosure title="Details">
+        <Kv rows={details} />
+      </Disclosure>
+    </Card>
   );
 }
 

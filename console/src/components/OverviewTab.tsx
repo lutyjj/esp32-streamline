@@ -1,4 +1,4 @@
-import { dbfs } from '../lib/format';
+import { dbfs, duration } from '../lib/format';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import { bridgeConnection, noBridge, setupMode, status } from '../state/device';
 import { blockingHealth } from '../state/health';
@@ -37,6 +37,7 @@ export function OverviewTab({
 
   const diagRows: [string, string][] = [
     ['Last boot', s.diagnostics?.reset_reason || '—'],
+    ...(s.system ? [['Uptime', duration(s.system.uptime_seconds)] as [string, string]] : []),
     ['Config source', s.config_source],
     ['Packets sent', `${s.metrics.packets} · ${s.metrics.queue_drops_total} dropped`],
     [

@@ -779,6 +779,59 @@ body.locked .gated :is(form, .cardfoot) {
   box-shadow: 0 0 6px rgba(255, 107, 107, 0.7);
 }
 
+/* ---------- Usage bar ---------- */
+.usage {
+  display: grid;
+  gap: 6px;
+}
+.usage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.usage-label {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+}
+.usage-value {
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+.usage-track {
+  position: relative;
+  height: 10px;
+  background: var(--inset);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.usage-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--good);
+}
+.usage-fill.warn {
+  background: var(--warn);
+}
+.usage-fill.bad {
+  background: var(--bad);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .usage-fill {
+    transition: width var(--motion-panel) var(--motion-ease);
+  }
+}
+.usage-caption {
+  color: var(--faint);
+  font: 12px var(--mono);
+}
+.usage-stack {
+  display: grid;
+  gap: 16px;
+}
+
 /* ---------- Disclosure / key-value ---------- */
 .disclosure {
   display: grid;

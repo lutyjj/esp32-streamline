@@ -58,8 +58,8 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
         lead="Changes apply instantly and return to Custom settings. Watch the live level below."
       >
         <GuidePrompt
-          text="Not sure about levels? A guide measures your source and sets these."
-          action="Calibrate levels"
+          text="Not sure? The guide measures your source and sets everything for you."
+          action="Guide me"
           disabled={!writable}
           onAction={onCalibrate}
         />

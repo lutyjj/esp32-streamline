@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { ApiTab } from './components/ApiTab';
 import { AudioTab } from './components/AudioTab';
 import { BridgeWizard } from './components/BridgeWizard';
+import { InputWizard } from './components/InputWizard';
 import { Masthead } from './components/Masthead';
 import { NetworkTab } from './components/NetworkTab';
 import { Notice } from './components/Notice';
@@ -10,7 +11,6 @@ import { OverviewTab } from './components/OverviewTab';
 import { SystemTab } from './components/SystemTab';
 import { Toasts } from './components/Toasts';
 import { TransportWizard } from './components/TransportWizard';
-import { WizardOverlay } from './components/WizardOverlay';
 import { useWritable } from './lib/hooks';
 import { setupMode, status, unreachable } from './state/device';
 import { handoff, handoffMessage } from './state/join';
@@ -48,7 +48,7 @@ export function App() {
 
   function openWizard() {
     if (status.value?.mode !== 'provisioned') {
-      toast('Calibration needs the device on your home network', 'err');
+      toast('Input setup needs the device on your home network', 'err');
       return;
     }
     setWizardOpen(true);
@@ -114,7 +114,7 @@ export function App() {
         {activeView(view)}
       </section>
 
-      {wizardOpen && <WizardOverlay onClose={() => setWizardOpen(false)} />}
+      {wizardOpen && <InputWizard onClose={() => setWizardOpen(false)} />}
       {bridgeWizardOpen && <BridgeWizard onClose={() => setBridgeWizardOpen(false)} />}
       {setupWizardRequested.value && (
         <TransportWizard

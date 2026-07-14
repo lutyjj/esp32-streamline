@@ -5,9 +5,8 @@ import { normalizeTargetHost } from '../lib/target';
 import { bridgeConnection, config } from '../state/device';
 import { rebootWait } from '../state/rebootWait';
 import { setupWizardRequested } from '../state/transport';
-import { Button } from './Button';
-import { DialogSheet } from './DialogSheet';
-import { ActionState, TransactButton } from './Transact';
+import { FlowDialog, type FlowStep } from './FlowDialog';
+import { ActionState } from './Transact';
 
 /** Default PCM port the bridge and its Home Assistant add-on both publish. */
 const BRIDGE_PORT = 39000;
@@ -42,8 +41,7 @@ const BRIDGE_CHOICES: BridgeChoice[] = [
   },
 ];
 
-const WIZARD_STEPS = ['bridge', 'connect', 'encrypt'] as const;
-type WizardStep = (typeof WIZARD_STEPS)[number];
+type WizardStep = 'bridge' | 'connect' | 'encrypt';
 
 /** Live narration of the link, reusing the same signal as the Bridge tile. */
 function connectLine(): { text: string; cls: '' | 'ok' } {
@@ -63,8 +61,8 @@ function connectLine(): { text: string; cls: '' | 'ok' } {
 /**
  * Bridge hookup wizard: choose where the bridge runs, point the device at it,
  * then optionally continue into the guided encryption setup. It only
- * sequences existing endpoints; the plain form on the Network tab stays as the
- * escape hatch.
+ * sequences existing endpoints; the plain form on the Network tab stays as
+ * the escape hatch.
  */
 export function BridgeWizard({ onClose }: { onClose: () => void }) {
   const writable = useWritable();
@@ -80,7 +78,6 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
   const hasBridge = Boolean(c?.target_host);
   const dirty = c ? host.trim() !== c.target_host || Number(port) !== c.target_port : true;
   const needsSave = !saved && (dirty || !hasBridge);
-  const stepIndex = WIZARD_STEPS.indexOf(step);
 
   function save() {
     connect.run(
@@ -103,54 +100,12 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
   }
 
   const live = connectLine();
+  const back = (to: WizardStep) => [{ label: 'Back', onClick: () => setStep(to) }];
 
-  return (
-    <DialogSheet
-      label="Bridge setup"
-      steps={WIZARD_STEPS}
-      currentStep={step}
-      onDismiss={onClose}
-      footer={
-        <>
-          <Button onClick={onClose}>{step === 'encrypt' ? 'Skip' : 'Cancel'}</Button>
-          <div class="sheetfoot-row">
-            {stepIndex > 0 && (
-              <Button onClick={() => setStep(WIZARD_STEPS[stepIndex - 1])}>Back</Button>
-            )}
-            {step === 'bridge' && (
-              <Button kind="primary" onClick={() => setStep('connect')}>
-                Continue
-              </Button>
-            )}
-            {step === 'connect' &&
-              (needsSave ? (
-                <TransactButton
-                  transact={connect}
-                  disabled={!writable || !host.trim() || !port}
-                  onClick={save}
-                >
-                  Save &amp; connect
-                </TransactButton>
-              ) : (
-                <Button kind="primary" onClick={() => setStep('encrypt')}>
-                  Continue
-                </Button>
-              ))}
-            {step === 'encrypt' &&
-              (secure ? (
-                <Button kind="primary" onClick={onClose}>
-                  Done
-                </Button>
-              ) : (
-                <Button kind="primary" disabled={!writable} onClick={encrypt}>
-                  Set up encryption
-                </Button>
-              ))}
-          </div>
-        </>
-      }
-    >
-      {step === 'bridge' && (
+  const steps: FlowStep[] = [
+    {
+      id: 'bridge',
+      body: (
         <div>
           <h3>Where does your bridge run?</h3>
           <div class="body">
@@ -174,9 +129,12 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
           </div>
           <p class="wizhint">{choice.setup}</p>
         </div>
-      )}
-
-      {step === 'connect' && (
+      ),
+      primary: { label: 'Continue', onClick: () => setStep('connect') },
+    },
+    {
+      id: 'connect',
+      body: (
         <div>
           <h3>Point StreamLine at your bridge</h3>
           <div class="body">
@@ -219,9 +177,20 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
             <p class={`wizhint ${live.cls}`}>{live.text}</p>
           )}
         </div>
-      )}
-
-      {step === 'encrypt' && (
+      ),
+      secondary: back('bridge'),
+      primary: needsSave
+        ? {
+            label: 'Save & connect',
+            transact: connect,
+            disabled: !writable || !host.trim() || !port,
+            onClick: save,
+          }
+        : { label: 'Continue', onClick: () => setStep('encrypt') },
+    },
+    {
+      id: 'encrypt',
+      body: (
         <div>
           <h3>{secure ? 'Encryption is on' : 'Encrypt the connection?'}</h3>
           <div class="body">
@@ -241,7 +210,21 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
             )}
           </div>
         </div>
-      )}
-    </DialogSheet>
+      ),
+      secondary: back('connect'),
+      primary: secure
+        ? { label: 'Done', onClick: onClose }
+        : { label: 'Set up encryption', disabled: !writable, onClick: encrypt },
+    },
+  ];
+
+  return (
+    <FlowDialog
+      label="Bridge setup"
+      steps={steps}
+      current={step}
+      onDismiss={onClose}
+      dismissLabel={step === 'encrypt' ? 'Skip' : 'Cancel'}
+    />
   );
 }

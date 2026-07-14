@@ -8,20 +8,17 @@ import {
   transport,
   transportJourney,
 } from '../state/transport';
-import { Button } from './Button';
 import { ConfirmButton } from './ConfirmButton';
 import { CredentialReveal } from './CredentialReveal';
-import { DialogSheet } from './DialogSheet';
-import { ActionState, TransactButton } from './Transact';
-
-const WIZARD_STEPS = ['credential', 'enroll', 'activate', 'done'] as const;
+import { FlowDialog, type FlowStep } from './FlowDialog';
+import { ActionState } from './Transact';
 
 /**
  * The guided encryption setup: create the device's bridge credential, enroll
- * it on the bridge, verify, then activate — the same DialogSheet journey as
- * calibration and bridge setup. It resumes at whatever step the device's key
- * state is in, and only sequences the public transport endpoints; the Stream
- * target card stays the manual escape hatch for recovery and rotation.
+ * it on the bridge, verify, then activate — the same guided flow as input
+ * setup and bridge setup. It resumes at whatever step the device's key state
+ * is in, and only sequences the public transport endpoints; the Encryption
+ * card stays the manual escape hatch for recovery and rotation.
  */
 export function TransportWizard({ onClose }: { onClose: () => void }) {
   const writable = useWritable();
@@ -89,46 +86,10 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
 
   const bridgeConsoleUrl = c.target_host ? `http://${c.target_host}:8088/` : '';
 
-  return (
-    <DialogSheet
-      label="Encryption setup"
-      steps={WIZARD_STEPS}
-      currentStep={step}
-      onDismiss={onClose}
-      footer={
-        <>
-          <Button onClick={onClose}>{step === 'done' ? 'Close' : 'Continue later'}</Button>
-          <div class="sheetfoot-row">
-            {step === 'credential' &&
-              (credential || (journey !== 'opt-in' && journey !== 'secure') ? (
-                <Button kind="primary" onClick={() => advance('enroll')}>
-                  Continue
-                </Button>
-              ) : (
-                <TransactButton transact={lifecycle} disabled={!writable} onClick={stage}>
-                  {journey === 'secure' ? 'Create replacement credential' : 'Create credential'}
-                </TransactButton>
-              ))}
-            {step === 'enroll' && (
-              <TransactButton transact={lifecycle} disabled={!writable} onClick={verify}>
-                Verify with bridge
-              </TransactButton>
-            )}
-            {step === 'activate' && (
-              <TransactButton transact={lifecycle} disabled={!writable} onClick={activate}>
-                Activate encryption
-              </TransactButton>
-            )}
-            {step === 'done' && (
-              <Button kind="primary" onClick={onClose}>
-                Done
-              </Button>
-            )}
-          </div>
-        </>
-      }
-    >
-      {step === 'credential' && (
+  const steps: FlowStep[] = [
+    {
+      id: 'credential',
+      body: (
         <div>
           <h3>Create this device’s bridge credential</h3>
           <div class="body">
@@ -139,7 +100,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
             {!credential && journey !== 'opt-in' && journey !== 'secure' && (
               <p>
                 A credential is already waiting from an earlier session. Its PSK was shown once — if
-                you still have it, continue; if not, discard it under Recovery on the Stream target
+                you still have it, continue; if not, discard it under Recovery on the Encryption
                 card and start over.
               </p>
             )}
@@ -147,9 +108,20 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
           {credential && <CredentialReveal credential={credential} writable={writable} />}
           {!credential && <ActionState state={lifecycle.state} />}
         </div>
-      )}
-
-      {step === 'enroll' && (
+      ),
+      primary:
+        credential || (journey !== 'opt-in' && journey !== 'secure')
+          ? { label: 'Continue', onClick: () => advance('enroll') }
+          : {
+              label: journey === 'secure' ? 'Create replacement credential' : 'Create credential',
+              transact: lifecycle,
+              disabled: !writable,
+              onClick: stage,
+            },
+    },
+    {
+      id: 'enroll',
+      body: (
         <div>
           <h3>Add it to your bridge</h3>
           <div class="body">
@@ -192,9 +164,17 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
             />
           </div>
         </div>
-      )}
-
-      {step === 'activate' && (
+      ),
+      primary: {
+        label: 'Verify with bridge',
+        transact: lifecycle,
+        disabled: !writable,
+        onClick: verify,
+      },
+    },
+    {
+      id: 'activate',
+      body: (
         <div>
           <h3>Turn encryption on</h3>
           <div class="body">
@@ -206,9 +186,17 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
           </div>
           <ActionState state={lifecycle.state} />
         </div>
-      )}
-
-      {step === 'done' && (
+      ),
+      primary: {
+        label: 'Activate encryption',
+        transact: lifecycle,
+        disabled: !writable,
+        onClick: activate,
+      },
+    },
+    {
+      id: 'done',
+      body: (
         <div>
           <h3>{settled ? 'Encrypted and streaming' : 'Restarting…'}</h3>
           <div class="body">
@@ -230,7 +218,18 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
             )}
           </div>
         </div>
-      )}
-    </DialogSheet>
+      ),
+      primary: { label: 'Done', onClick: onClose },
+    },
+  ];
+
+  return (
+    <FlowDialog
+      label="Encryption setup"
+      steps={steps}
+      current={step}
+      onDismiss={onClose}
+      dismissLabel={step === 'done' ? 'Close' : 'Continue later'}
+    />
   );
 }

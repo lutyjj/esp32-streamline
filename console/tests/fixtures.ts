@@ -6,18 +6,22 @@ import type { DeviceStatus } from '../src/lib/api';
  */
 export function deviceStatus(
   overrides: Partial<
-    Omit<DeviceStatus, 'wifi' | 'target' | 'audio' | 'metrics' | 'diagnostics' | 'ota' | 'health'>
+    Omit<
+      DeviceStatus,
+      'wifi' | 'target' | 'audio' | 'metrics' | 'diagnostics' | 'system' | 'ota' | 'health'
+    >
   > & {
     wifi?: Partial<DeviceStatus['wifi']>;
     target?: Partial<DeviceStatus['target']>;
     audio?: Partial<DeviceStatus['audio']>;
     metrics?: Partial<DeviceStatus['metrics']>;
     diagnostics?: Partial<DeviceStatus['diagnostics']>;
+    system?: Partial<DeviceStatus['system']>;
     ota?: Partial<DeviceStatus['ota']>;
     health?: Partial<DeviceStatus['health']>;
   } = {},
 ): DeviceStatus {
-  const { wifi, target, audio, metrics, diagnostics, ota, health, ...top } = overrides;
+  const { wifi, target, audio, metrics, diagnostics, system, ota, health, ...top } = overrides;
   return {
     firmware_version: '0.4.0',
     device_name: '',
@@ -85,6 +89,18 @@ export function deviceStatus(
       ...metrics,
     },
     diagnostics: { reset_reason: 'power-on', last_fallback: '', last_ota: '', ...diagnostics },
+    system: {
+      uptime_seconds: 3600,
+      task_count: 14,
+      heap: {
+        free_bytes: 126000,
+        total_bytes: 323100,
+        minimum_free_bytes: 105000,
+        largest_free_block_bytes: 90000,
+      },
+      nvs: { used_entries: 275, available_entries: 355, total_entries: 756 },
+      ...system,
+    },
     indicator: { available: true, state: 'ready' },
     ota: {
       phase: 'idle',

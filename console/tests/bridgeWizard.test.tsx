@@ -2,40 +2,9 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BridgeWizard } from '../src/components/BridgeWizard';
-import type { DeviceConfig, TransportStatus } from '../src/lib/api';
 import { config, packetsMoving, status } from '../src/state/device';
 import { setupWizardRequested } from '../src/state/transport';
-import { deviceStatus } from './fixtures';
-
-function transportStatus(overrides: Partial<TransportStatus> = {}): TransportStatus {
-  return {
-    contract_version: 1,
-    mode: 'cleartext',
-    active_key_id: null,
-    pending_key_id: null,
-    pending_verified: false,
-    rollback_key_id: null,
-    ...overrides,
-  };
-}
-
-function deviceConfig(overrides: Partial<DeviceConfig> = {}): DeviceConfig {
-  return {
-    device_name: '',
-    ssid: 'home',
-    target_host: '',
-    target_port: 39000,
-    transport: transportStatus(),
-    auto_update_schedule: 'daily',
-    input_line: 2,
-    input_gain: 0,
-    adc_attenuation_db: 9,
-    analog_passthrough_enabled: false,
-    led_roles: [],
-    config_source: 'nvs',
-    ...overrides,
-  };
-}
+import { deviceConfig, deviceStatus, transportStatus } from './fixtures';
 
 function labels(host: HTMLElement): string[] {
   return [...host.querySelectorAll('button')].map((button) => button.textContent || '');
@@ -49,7 +18,7 @@ function click(host: HTMLElement, label: string): void {
 describe('BridgeWizard', () => {
   beforeEach(() => {
     status.value = deviceStatus({ auth_required: false, target: { target_host: '' } });
-    config.value = deviceConfig();
+    config.value = deviceConfig({ target_host: '' });
     packetsMoving.value = false;
     setupWizardRequested.value = false;
     window.location.hash = '';

@@ -2,39 +2,9 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TransportCard } from '../src/components/TransportCard';
-import type { DeviceConfig, TransportStatus } from '../src/lib/api';
 import { config, status } from '../src/state/device';
 import { setupWizardRequested, transport } from '../src/state/transport';
-import { deviceStatus } from './fixtures';
-
-function transportStatus(overrides: Partial<TransportStatus> = {}): TransportStatus {
-  return {
-    contract_version: 1,
-    mode: 'cleartext',
-    active_key_id: null,
-    pending_key_id: null,
-    pending_verified: false,
-    rollback_key_id: null,
-    ...overrides,
-  };
-}
-
-function deviceConfig(transport: TransportStatus): DeviceConfig {
-  return {
-    device_name: '',
-    ssid: 'home',
-    target_host: '192.0.2.20',
-    target_port: 39000,
-    transport,
-    auto_update_schedule: 'daily',
-    input_line: 2,
-    input_gain: 0,
-    adc_attenuation_db: 9,
-    analog_passthrough_enabled: false,
-    led_roles: [],
-    config_source: 'nvs',
-  };
-}
+import { deviceConfig, deviceStatus, transportStatus } from './fixtures';
 
 function buttonLabels(host: HTMLElement): string[] {
   return [...host.querySelectorAll('button:not(.disclosure-summary)')].map(
@@ -59,7 +29,7 @@ function toggle(host: HTMLElement): HTMLInputElement | null {
 describe('PCM encryption journey', () => {
   beforeEach(() => {
     status.value = deviceStatus({ auth_required: false });
-    config.value = deviceConfig(transportStatus());
+    config.value = deviceConfig({ transport: transportStatus() });
     transport.revealed.value = undefined;
     setupWizardRequested.value = false;
   });
@@ -93,9 +63,9 @@ describe('PCM encryption journey', () => {
   });
 
   it('shows a resume action and the discard exit while setup is underway', () => {
-    config.value = deviceConfig(
-      transportStatus({ pending_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
-    );
+    config.value = deviceConfig({
+      transport: transportStatus({ pending_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
+    });
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
@@ -118,7 +88,7 @@ describe('PCM encryption journey', () => {
   it('masks the one-time PSK until the owner explicitly reveals it', () => {
     const keyId = 'eli1-0123456789abcdef0123456789abcdef';
     const psk = '01'.repeat(32);
-    config.value = deviceConfig(transportStatus({ pending_key_id: keyId }));
+    config.value = deviceConfig({ transport: transportStatus({ pending_key_id: keyId }) });
     transport.revealed.value = { contract_version: 1, key_id: keyId, psk, recovery: false };
     const host = document.createElement('div');
     render(<TransportCard />, host);
@@ -135,13 +105,13 @@ describe('PCM encryption journey', () => {
   });
 
   it('keeps the steady state minimal with everything under Advanced security', () => {
-    config.value = deviceConfig(
-      transportStatus({
+    config.value = deviceConfig({
+      transport: transportStatus({
         mode: 'tls-psk',
         active_key_id: 'eli1-0123456789abcdef0123456789abcdef',
         rollback_key_id: 'eli1-fedcba9876543210fedcba9876543210',
       }),
-    );
+    });
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
@@ -170,9 +140,12 @@ describe('PCM encryption journey', () => {
   });
 
   it('hands credential replacement to the guided setup', () => {
-    config.value = deviceConfig(
-      transportStatus({ mode: 'tls-psk', active_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
-    );
+    config.value = deviceConfig({
+      transport: transportStatus({
+        mode: 'tls-psk',
+        active_key_id: 'eli1-0123456789abcdef0123456789abcdef',
+      }),
+    });
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
@@ -186,9 +159,12 @@ describe('PCM encryption journey', () => {
   });
 
   it('confirms before disabling encryption', () => {
-    config.value = deviceConfig(
-      transportStatus({ mode: 'tls-psk', active_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
-    );
+    config.value = deviceConfig({
+      transport: transportStatus({
+        mode: 'tls-psk',
+        active_key_id: 'eli1-0123456789abcdef0123456789abcdef',
+      }),
+    });
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
@@ -205,9 +181,12 @@ describe('PCM encryption journey', () => {
   });
 
   it('opens the leave-encryption path when the owner unchecks the mode', () => {
-    config.value = deviceConfig(
-      transportStatus({ mode: 'tls-psk', active_key_id: 'eli1-0123456789abcdef0123456789abcdef' }),
-    );
+    config.value = deviceConfig({
+      transport: transportStatus({
+        mode: 'tls-psk',
+        active_key_id: 'eli1-0123456789abcdef0123456789abcdef',
+      }),
+    });
     const host = document.createElement('div');
     render(<TransportCard />, host);
 

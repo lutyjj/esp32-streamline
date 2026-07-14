@@ -16,7 +16,7 @@ const capabilities: BoardCapabilities = {
   board: 'Board A',
   codec: { driver: 'es8388', i2c_address: 16 },
   pins: { i2c: { sda: 1, scl: 2 }, i2s: { mclk: 3, bclk: 4, ws: 5, din: 6 } },
-  status_led: null,
+  leds: [],
   input_lines: [{ line: 2, label: 'Line 2' }],
   input_gain_max: 100,
   adc_atten_max_db: 48,
@@ -49,6 +49,7 @@ const config: DeviceConfig = {
   input_gain: 7,
   adc_attenuation_db: 12,
   analog_passthrough_enabled: false,
+  led_roles: [],
   config_source: 'nvs',
 };
 

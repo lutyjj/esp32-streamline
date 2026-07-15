@@ -166,8 +166,8 @@ jobs:
           aarch64 linux/arm64
           EOF
 
-      # Draft state is the staging area. Existing assets are accepted only by
-      # exact SHA-256 digest, missing assets are uploaded once, and extras fail.
+      # Draft state is the durable staging area. Reruns adopt payload bytes
+      # already present there, verify API digests, and upload SHA256SUMS last.
       - name: Stage and verify GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -182,12 +182,13 @@ jobs:
           expected_names=$(mktemp)
           remote_names=$(mktemp)
           trap 'rm -f "$release" "$expected_names" "$remote_names"' EXIT
-          assets=(
-            "dist/firmware/SHA256SUMS"
+          payload_assets=(
             "dist/firmware/streamline-$VERSION-full.bin"
             "dist/firmware/streamline-$VERSION-ota.bin"
             "dist/firmware/streamline-$VERSION.elf"
           )
+          checksum_asset="dist/firmware/SHA256SUMS"
+          assets=("${payload_assets[@]}" "$checksum_asset")
           for asset in "${assets[@]}"; do
             test -f "$asset"
           done
@@ -232,6 +233,33 @@ jobs:
             api "repos/$GITHUB_REPOSITORY/releases/$release_id" > "$release"
           }
 
+          asset_count() {
+            jq --arg name "$1" '[.assets[] | select(.name == $name)] | length' "$release"
+          }
+
+          adopt_asset() {
+            path=$1
+            name=${path##*/}
+            refresh || return 2
+            count=$(asset_count "$name") || return 2
+            if [ "$count" -eq 0 ]; then
+              return 1
+            fi
+            if [ "$count" -ne 1 ]; then
+              echo "::error::$name appears more than once."
+              return 2
+            fi
+            asset_id=$(jq -r --arg name "$name" \
+              '.assets[] | select(.name == $name) | .id' "$release") || return 2
+            test -n "$asset_id" || return 2
+            if ! api -H 'Accept: application/octet-stream' \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$path.remote"; then
+              rm -f "$path.remote"
+              return 2
+            fi
+            mv "$path.remote" "$path" || return 2
+          }
+
           verify_digest() {
             path=$1
             name=${path##*/}
@@ -268,10 +296,46 @@ jobs:
             exit 1
           }
 
+          # ESP-IDF outputs can carry build metadata. Preserve any payload that
+          # crossed the draft boundary, then derive the checksum over that
+          # durable set. The checksum is uploaded only after every payload.
+          for asset in "${payload_assets[@]}"; do
+            if adopt_asset "$asset"; then
+              :
+            else
+              status=$?
+              test "$status" -eq 1 || exit "$status"
+            fi
+          done
+          refresh
+          checksum_count=$(asset_count "${checksum_asset##*/}")
+          if [ "$checksum_count" -eq 0 ]; then
+            (
+              cd dist/firmware
+              sha256sum \
+                "streamline-$VERSION-full.bin" \
+                "streamline-$VERSION-ota.bin" \
+                "streamline-$VERSION.elf" > SHA256SUMS
+            )
+          elif [ "$checksum_count" -eq 1 ]; then
+            for asset in "${payload_assets[@]}"; do
+              refresh
+              test "$(asset_count "${asset##*/}")" -eq 1 || {
+                echo "::error::SHA256SUMS exists before every payload."
+                exit 1
+              }
+            done
+            adopt_asset "$checksum_asset"
+            (cd dist/firmware && sha256sum --check SHA256SUMS)
+          else
+            echo "::error::SHA256SUMS appears more than once."
+            exit 1
+          fi
+
           for asset in "${assets[@]}"; do
             refresh
             name=${asset##*/}
-            count=$(jq --arg name "$name" '[.assets[] | select(.name == $name)] | length' "$release")
+            count=$(asset_count "$name")
             if [ "$count" -eq 0 ]; then
               if [ "$draft" != true ]; then
                 echo "::error::immutable release is missing $name."

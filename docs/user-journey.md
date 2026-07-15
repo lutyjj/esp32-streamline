@@ -68,29 +68,29 @@ waits.
 Promise: an owner who does not know what a bridge is still reaches streaming.
 The Overview raises a **No bridge yet** callout whose **Set up bridge** action
 opens a guided **Bridge setup** wizard. The wizard walks the whole stage: pick
-where the bridge runs — a Home Assistant add-on, Docker, or one already running
-— and it names that choice's install step and the address to enter; save the
-target; then read the Bridge tile, which the wizard narrates from restarting to
-the same **Sending** signal the tile computes, so success is observable without
-leaving the console. Every step stays skippable, and the Network tab's plain
-host-and-port form and the `/api/settings/target` endpoint remain the escape
-hatch: the wizard only sequences them. Cleartext works without an encryption
-decision during first setup.
+where the bridge runs (a Home Assistant add-on, Docker, or one already
+running), and it names that choice's install step and the address to enter;
+save the target; then read the Bridge tile, which the wizard narrates from
+restarting to the same **Sending** signal the tile computes, so success is
+observable without leaving the console. Every step stays skippable, and the
+Network tab's plain host-and-port form and the `/api/settings/target` endpoint
+remain the escape hatch: the wizard only sequences them. Cleartext works
+without an encryption decision during first setup.
 
 The wizard's final step offers encryption and continues straight into the
-guided **Encryption setup** sheet — the same step-dot dialog as calibration,
+guided **Encryption setup** sheet, the same step-dot dialog as calibration,
 so every guided task reads the same way. Its steps mirror the state machine:
 create the bridge credential, enroll it in the bridge console and switch the
 bridge to encrypted there, verify, then activate and restart. Audio keeps
 streaming through enrollment and pauses only between the bridge's switch and
 the device's restart, because each side accepts exactly one protocol. A
-verification failure names its cause and the next step — an unreachable port,
-a bridge still in cleartext, or a credential the bridge does not accept —
+verification failure names its cause and the next step (an unreachable port,
+a bridge still in cleartext, or a credential the bridge does not accept),
 keeps the retry visible, and never changes the device mode.
 
 The Network tab's **Stream target** card owns one host and one port. A
-separate **Encryption** card sits beside it — the same heading both consoles
-use — and encourages the owner to turn on encryption while streaming is
+separate **Encryption** card sits beside it (the same heading both consoles
+use) and encourages the owner to turn on encryption while streaming is
 cleartext. Its switch opens the same guide; a setup left mid-way shows a
 "setting up" state with a resume action, and **Recovery** can discard the
 pending credential, so opting in never traps the owner. Closing the sheet
@@ -99,7 +99,7 @@ shown only on request, and never available again after the owner dismisses
 it.
 
 The bridge console mirrors the device console's lock: one masthead lock chip,
-unlocked by the owner-set bridge API token, gates every bridge change —
+unlocked by the owner-set bridge API token, gates every bridge change:
 encryption mode, device credentials, and recordings. Reads stay open. A
 deployment without a token says which option to set instead of offering an
 unlock that cannot succeed.
@@ -137,11 +137,11 @@ Entry: streaming works. The device lives here for months.
 
 Promise: the Overview answers "is everything fine?" in one glance: status,
 signal, Wi-Fi, bridge. A device that came up without its audio codec says so
-here — the Status reads Fault, not a false Idle, with the fix named. Streaming
+here: the Status reads Fault, not a false Idle, with the fix named. Streaming
 follows the music, playing on signal and pausing on sustained silence, with no
 user action. Nothing asks for attention unless something needs it; every
-unprompted banner is real — clipping, a device unreachable, a codec that did
-not start — and is dismissible or resolves itself.
+unprompted banner is real (clipping, a device unreachable, a codec that did
+not start) and is dismissible or resolves itself.
 
 Source switching is explicit and observable: the Audio tab names the active
 profile or says `Custom settings`. An external automation can activate the same
@@ -176,8 +176,8 @@ Promise:
   idle audio, and can be disabled. Manual checks and installs remain available.
   Progress is a visible log, and the device either
   confirms the new version or rolls back by itself. A rollback is narrated
-  too — the console names the version still running rather than claiming a
-  success — and when the device holds a previous image, one button rolls
+  too (the console names the version still running rather than claiming a
+  success), and when the device holds a previous image, one button rolls
   back to it deliberately. [ota.md](ota.md) owns the mechanism.
 - Any change that restarts the device is narrated through to recovery, and
   an overdue recovery says what to check instead of spinning forever.
@@ -195,8 +195,8 @@ Promise:
   profiles, local-output intent, name, board, or update schedule. A device
   without valid saved configuration re-enters stage 2 with clean descriptor
   defaults.
-- A fault that appears after the network is up — an audio codec that will
-  not start — keeps the device on the home network and reachable, showing
+- A fault that appears after the network is up (an audio codec that will
+  not start) keeps the device on the home network and reachable, showing
   the fault and its fix, rather than dropping to the setup network. Only a
   lost network re-enters stage 2.
 - Factory reset demands explicit confirmation, states exactly what it

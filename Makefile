@@ -42,7 +42,7 @@ git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP REVISION
 
 .PHONY: check help lint test format clean smoke-qemu release-tools-image changelog changelog-check release release-history release-prepare release-lock-check release-check release-verify release-package release-notes \
-	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract docs-check api-contract-check version-check release-snapshot-check
+	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test docs-check api-contract-check version-check release-snapshot-check
 
 check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
 
@@ -90,16 +90,11 @@ firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;
-repository-check: version-check repository-container-contract
+repository-check: version-check repository-container-contract repository-secret-check
 	$(READONLY_REPO_RUN) $(ACTIONLINT_IMAGE) -color
 	$(READONLY_REPO_RUN) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs firmware/streamline/README.md ha-addon/DOCS.md ha-addon/README.md tools/README.md
 	$(READONLY_REPO_RUN) $(LYCHEE_IMAGE) --config /repo/lychee.toml /repo
 	$(READONLY_REPO_RUN) --entrypoint sh $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval --exit-status "." {} \; >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; yq eval --exit-status "." release-manifest.json >/dev/null; find docs -type f -name "*.json" -exec yq eval --exit-status "." {} \; >/dev/null'
-	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/docs --no-banner --redact
-	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/README.md --no-banner --redact
-	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/CONTRIBUTING.md --no-banner --redact
-	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/AGENTS.md --no-banner --redact
-	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/SECURITY.md --no-banner --redact
 	@test -z "$$(git grep -n 'actions/cache' -- .github/workflows)" || (echo "firmware cache actions belong in .github/actions/firmware-cache" >&2; exit 1)
 
 # Prove the shared runner works from a checkout hidden behind a mode-0700
@@ -122,6 +117,26 @@ repository-container-contract:
 		$(call container_readonly,$$fixture) $(GITLEAKS_IMAGE) dir /repo --no-banner --redact; \
 		after="$$(find "$$fixture" -type f -exec sha256sum {} + | LC_ALL=C sort)"; \
 		test "$$after" = "$$before"
+
+# Scan the current contents of every tracked path without mounting ignored local
+# files such as .env or generated build outputs. The tmpfs is destroyed with the
+# container, so the check leaves neither credentials nor artifacts on the host.
+repository-secret-check: repository-secret-scanner-self-test
+	@git ls-files -z | tar -C "$(REPO_ROOT)" --null -T - -cf - | \
+		$(CONTAINER) run --rm -i --user "$(CONTAINER_HOST_USER)" --env HOME="$(CONTAINER_SAFE_HOME)" --entrypoint sh \
+			--tmpfs /scan:rw,noexec,nosuid,size=16m,mode=1777 \
+			$(GITLEAKS_IMAGE) -ec 'tar -xf - -C /scan; exec gitleaks dir /scan --no-banner --no-color --redact'
+
+# Prove the pinned scanner still rejects a representative provider credential.
+# Split the synthetic value in this recipe so the repository scan does not need
+# an allowlist for its own canary.
+repository-secret-scanner-self-test:
+	@$(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" --env HOME="$(CONTAINER_SAFE_HOME)" --entrypoint sh \
+		--tmpfs /scan:rw,noexec,nosuid,size=1m,mode=1777 \
+		$(GITLEAKS_IMAGE) -ec 'for path in src tools .github/workflows ha-addon; do \
+			mkdir -p "/scan/$$path"; printf "%s%s\n" "AKIA" "QWERTYUIOPASDFGH" > "/scan/$$path/canary"; \
+			set +e; gitleaks dir "/scan/$$path" --no-banner --no-color --redact >/dev/null 2>&1; status=$$?; set -e; \
+			test "$$status" -eq 1; rm -rf "/scan/$$path"; done'
 docs-check: repository-check ;
 api-contract-check: firmware-openapi-check console-lint ;
 

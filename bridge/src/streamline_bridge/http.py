@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyQuery, HTTPAuthorizationCredentials, HTTPBearer
+from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from streamline_bridge.api_models import (
@@ -25,6 +26,7 @@ from streamline_bridge.api_models import (
     RecordingCapabilities,
     RecordingList,
     RecordingResult,
+    SourceIdentity,
     StartRecordingRequest,
     TransportKeyDeleteResult,
     TransportKeyRequest,
@@ -36,11 +38,12 @@ from streamline_bridge.api_models import (
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
 from streamline_bridge.recording import RecordingError
 from streamline_bridge.recording_http import RecordingHttpService
-from streamline_bridge.sources import Source, SourceRegistry, SourceSelectionError
+from streamline_bridge.source_identity import TRANSPORT_KEY_ID_PATTERN_TEXT
+from streamline_bridge.sources import SourceLease, SourceRegistry, SourceSelectionError
 from streamline_bridge.transport import DEFAULT_PORT, TransportControl
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterator, Mapping
+    from collections.abc import Callable, Generator, Iterator, Mapping
 
     from streamline_bridge.pipeline import AudioPipeline
     from streamline_bridge.recording import RecordingService
@@ -52,10 +55,11 @@ DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS = 10.0
 CONSOLE_PAGE = files("streamline_bridge").joinpath("console.html").read_bytes()
 INGRESS_BASE_PATTERN = re.compile(r"(?:/[A-Za-z0-9._~-]+)*")
 RECORDING_ID_PATTERN = r"^[a-zA-Z0-9-]+$"
-TRANSPORT_KEY_ID_PATTERN = r"^eli1-[0-9a-f]{32}$"
+TRANSPORT_KEY_ID_PATTERN = TRANSPORT_KEY_ID_PATTERN_TEXT
 RecordingId = Annotated[str, Path(pattern=RECORDING_ID_PATTERN)]
 TransportKeyId = Annotated[str, Path(pattern=TRANSPORT_KEY_ID_PATTERN)]
 bearer = HTTPBearer(auto_error=False, scheme_name="bearer_auth")
+recording_ticket = APIKeyQuery(name="ticket", auto_error=False, scheme_name="recording_ticket")
 
 
 def error_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
@@ -155,24 +159,24 @@ def recording_error(exc: RecordingError) -> JSONResponse:
         "storage-full": 507,
         "storage-unavailable": 507,
     }.get(exc.code, 500)
-    return error_response(status, exc.code, exc.message)
+    headers = {"WWW-Authenticate": 'Bearer realm="StreamLine bridge"'} if status == 401 else None
+    return error_response(status, exc.code, exc.message, headers)
 
 
-def stream_wav_body(
-    sources: SourceRegistry[AudioPipeline], source: Source[AudioPipeline], remote_addr: str, path: str
-) -> Generator[bytes]:
+def stream_wav_body(lease: SourceLease[AudioPipeline], remote_addr: str, path: str) -> Generator[bytes]:
     """Yield one WAV client stream and release all lifecycle state on close."""
-    sources.retain_http(source)
-    stream = source.hub.register_client(remote_addr, path)
+    stream = None
     try:
+        stream = lease.hub.register_client(remote_addr, path)
         yield wav_header()
         while (chunks := collect_http_batch(stream.queue)) is not None:
             body = b"".join(chunks)
             yield body
-            source.hub.record_client_write(stream.stats.id, len(body), len(chunks))
+            lease.hub.record_client_write(stream.stats.id, len(body), len(chunks))
     finally:
-        source.hub.unregister_client(stream.stats.id)
-        sources.release_http(source)
+        if stream is not None:
+            lease.hub.unregister_client(stream.stats.id)
+        lease.close()
 
 
 def make_app(
@@ -181,6 +185,7 @@ def make_app(
     recordings: RecordingService | None = None,
     api_token: str | None = None,
     transport: TransportControl | None = None,
+    healthy: Callable[[], bool] | None = None,
 ) -> FastAPI:
     """Build the runtime app whose routes and models own the OpenAPI contract."""
     app = BridgeApi(
@@ -192,6 +197,7 @@ def make_app(
     )
     app.add_middleware(BodyLimitMiddleware)
     recording_api = RecordingHttpService(recordings)
+    is_healthy = healthy or (lambda: True)
     if transport is None:
         transport = TransportControl(None, None, port=DEFAULT_PORT)
 
@@ -200,9 +206,14 @@ def make_app(
         message = exc.errors()[0].get("msg", "Request does not match the API contract.")
         return error_response(400, "invalid-request", str(message))
 
-    def authorize(
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)],
-    ) -> None:
+    def valid_bearer(credentials: HTTPAuthorizationCredentials | None) -> bool:
+        return (
+            api_token is not None
+            and credentials is not None
+            and hmac.compare_digest(credentials.credentials.encode(), api_token.encode())
+        )
+
+    def authorize(credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)]) -> None:
         if api_token is None:
             raise HTTPException(
                 status_code=503,
@@ -212,11 +223,7 @@ def make_app(
                     "(or set STREAMLINE_API_TOKEN), then restart the bridge.",
                 },
             )
-        if (
-            credentials is None
-            or credentials.scheme != "Bearer"
-            or not hmac.compare_digest(credentials.credentials.encode(), api_token.encode())
-        ):
+        if not valid_bearer(credentials):
             raise HTTPException(
                 status_code=401,
                 detail={"code": "unauthorized", "message": "Enter the bridge API token configured on this bridge."},
@@ -245,9 +252,16 @@ def make_app(
             }
         )
 
-    @app.get("/health", response_class=PlainTextResponse, operation_id="getBridgeHealth", summary="Check bridge health")
-    def get_health() -> str:
-        return "ok\n"
+    @app.get(
+        "/health",
+        response_class=PlainTextResponse,
+        responses={503: {"content": {"text/plain": {}}}},
+        operation_id="getBridgeHealth",
+        summary="Check bridge health",
+    )
+    def get_health() -> Response:
+        ready = is_healthy()
+        return PlainTextResponse("ok\n" if ready else "unhealthy\n", status_code=200 if ready else 503)
 
     @app.get(
         "/api/transport",
@@ -326,20 +340,26 @@ def make_app(
     @app.get(
         "/streamline.wav",
         response_class=StreamingResponse,
-        responses={200: {"content": {"audio/wav": {}}}, 400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+        responses={
+            200: {"content": {"audio/wav": {}}},
+            400: {"model": ErrorResponse},
+            404: {"model": ErrorResponse},
+            409: {"model": ErrorResponse},
+        },
         operation_id="streamWav",
         summary="Stream live PCM as WAV",
     )
-    def stream_wav(request: Request, source: str | None = Query(default=None)) -> Response:
+    def stream_wav(request: Request, source: Annotated[SourceIdentity | None, Query()] = None) -> Response:
         try:
-            selected = sources.select(source)
+            lease = sources.lease_http(source)
         except SourceSelectionError as exc:
             return error_response(int(exc.status), "invalid-source", exc.message)
         remote = request.client.host if request.client is not None else "unknown"
         return StreamingResponse(
-            stream_wav_body(sources, selected, remote, str(request.url.path)),
+            stream_wav_body(lease, remote, str(request.url.path)),
             media_type="audio/wav",
             headers={"Cache-Control": "no-store", "Connection": "close"},
+            background=BackgroundTask(lease.close),
         )
 
     @app.get(
@@ -420,11 +440,20 @@ def make_app(
             503: {"model": ErrorResponse},
         },
         operation_id="downloadRecording",
-        summary="Download a recording with a one-use ticket",
+        summary="Download a recording with bearer authentication or a one-use ticket",
     )
-    def download_recording(recording_id: RecordingId, ticket: str = Query(min_length=1)) -> Response:
+    def download_recording(
+        recording_id: RecordingId,
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)],
+        ticket: Annotated[str | None, Security(recording_ticket)],
+    ) -> Response:
         try:
-            opened = recording_api.open_download(recording_id, ticket)
+            if valid_bearer(credentials):
+                opened = recording_api.open_authorized(recording_id)
+            elif ticket:
+                opened = recording_api.open_download(recording_id, ticket)
+            else:
+                raise RecordingError("unauthorized", "Use the bridge API token or request a new download ticket.")
         except RecordingError as exc:
             return recording_error(exc)
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import ipaddress
 import json
 import os
 import queue
@@ -20,6 +19,7 @@ from typing import TYPE_CHECKING, BinaryIO, Literal, TypedDict, cast
 
 from streamline_bridge.playout import seq_distance
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
+from streamline_bridge.source_identity import parse_source_identity
 from streamline_bridge.sources import SourceSelectionError
 
 if TYPE_CHECKING:
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from streamline_bridge.pipeline import AudioPipeline
-    from streamline_bridge.sources import Source, SourceRegistry
+    from streamline_bridge.sources import SourceLease, SourceRegistry
 
 RecordingState = Literal[
     "waiting-for-audio",
@@ -157,9 +157,7 @@ class RecordingManifest:
         title = _manifest_string(data, "title", MAX_TITLE_CHARS)
         if not title:
             raise ValueError("empty recording title")
-        source = _manifest_string(data, "source", 45)
-        if source != "unknown":
-            ipaddress.IPv4Address(source)
+        source = parse_source_identity(_manifest_string(data, "source", 45), allow_recovery=True)
         state = _manifest_string(data, "state", 16)
         if state not in {"complete", "interrupted"}:
             raise ValueError("saved recording has an invalid state")
@@ -842,7 +840,7 @@ class RecordingSession:
 
 @dataclass
 class ActiveRecording:
-    source: Source[AudioPipeline]
+    lease: SourceLease[AudioPipeline]
     tap_id: int
     session: RecordingSession
 
@@ -879,16 +877,18 @@ class RecordingService:
         if self._store.free_bytes() < self._limits.min_free_bytes:
             raise RecordingError("storage-full", "Recording needs at least 256 MiB free. Delete files and retry.")
         try:
-            source = self._sources.select(source_key)
+            lease = self._sources.lease_recording(source_key)
         except SourceSelectionError as exc:
             raise RecordingError("invalid-source", exc.message) from exc
+        source = lease.source
         with self._lock:
-            if any(binding.source is source for binding in self._active.values()):
+            if any(binding.lease.source is source for binding in self._active.values()):
+                lease.close()
                 raise RecordingError(
                     "source-busy", "This source is already recording. Stop it before starting another."
                 )
-            paths = self._store.allocate(title)
             try:
+                paths = self._store.allocate(title)
                 session = RecordingSession(
                     paths,
                     title,
@@ -898,23 +898,26 @@ class RecordingService:
                     self._session_finished,
                 )
             except OSError as exc:
+                lease.close()
                 raise RecordingError(
                     "storage-unavailable", "Recording storage is unavailable. Check its permissions and retry."
                 ) from exc
-            self._sources.retain_recording(source)
+            except BaseException:
+                lease.close()
+                raise
             try:
                 tap_id = source.hub.register_packet_tap(session.offer)
             except Exception:
                 session.discard_unstarted()
-                self._sources.release_recording(source)
+                lease.close()
                 raise
-            self._active[session.id] = ActiveRecording(source, tap_id, session)
+            self._active[session.id] = ActiveRecording(lease, tap_id, session)
             try:
                 session.start()
             except Exception:
                 self._active.pop(session.id)
                 source.hub.unregister_packet_tap(tap_id)
-                self._sources.release_recording(source)
+                lease.close()
                 session.discard_unstarted()
                 raise
             return session.snapshot()
@@ -952,8 +955,8 @@ class RecordingService:
         with self._lock:
             binding = self._active.pop(recording_id, None)
         if binding is not None:
-            binding.source.hub.unregister_packet_tap(binding.tap_id)
-            self._sources.release_recording(binding.source)
+            binding.lease.hub.unregister_packet_tap(binding.tap_id)
+            binding.lease.close()
         return binding
 
 

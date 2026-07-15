@@ -2,9 +2,37 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, WithJsonSchema
+
+from streamline_bridge.source_identity import RECOVERY_SOURCE_ID, TRANSPORT_KEY_ID_PATTERN_TEXT, parse_source_identity
+
+
+def _source_identity_schema(*, allow_recovery: bool = False) -> dict[str, object]:
+    alternatives: list[dict[str, object]] = [
+        {"type": "string", "format": "ipv4"},
+        {"type": "string", "pattern": TRANSPORT_KEY_ID_PATTERN_TEXT},
+    ]
+    if allow_recovery:
+        alternatives.append({"type": "string", "const": RECOVERY_SOURCE_ID})
+    return {"oneOf": alternatives}
+
+
+def _parse_recoverable_source_identity(value: str) -> str:
+    return parse_source_identity(value, allow_recovery=True)
+
+
+SourceIdentity = Annotated[
+    str,
+    AfterValidator(parse_source_identity),
+    WithJsonSchema(_source_identity_schema()),
+]
+RecoverableSourceIdentity = Annotated[
+    str,
+    AfterValidator(_parse_recoverable_source_identity),
+    WithJsonSchema(_source_identity_schema(allow_recovery=True)),
+]
 
 
 class ContractModel(BaseModel):
@@ -30,6 +58,7 @@ class LevelSnapshot(ContractModel):
 class SourceLifecycle(ContractModel):
     state: Literal["pending", "connected", "http-selected", "allowlisted", "disconnected"]
     dynamic: bool
+    admission: Literal["open", "allowlisted"]
     http_clients: int = Field(ge=0)
     recording_sessions: int = Field(ge=0)
     idle_seconds: float = Field(ge=0)
@@ -150,7 +179,7 @@ class RecordingCapabilities(ContractModel):
 class RecordingSnapshot(ContractModel):
     id: str
     title: str
-    source: str
+    source: RecoverableSourceIdentity
     state: Literal["waiting-for-audio", "recording", "finalizing", "complete", "interrupted", "empty"]
     created_at: str
     audio_started_at: str | None
@@ -175,7 +204,7 @@ class RecordingList(ContractModel):
 
 
 class StartRecordingRequest(ContractModel):
-    source: str
+    source: SourceIdentity
     title: str = Field(min_length=1, max_length=80)
 
 

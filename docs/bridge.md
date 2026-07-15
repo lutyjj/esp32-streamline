@@ -18,7 +18,7 @@ locks all of those controls together.
 | `/streamline.wav` | Live WAV from the sole source, or a pending pipeline before a producer connects. |
 | `/streamline.wav?source=<source>` | Live WAV from an IPv4 cleartext source or authenticated TLS key id. |
 | `/status` | Bridge version, per-source playout/client statistics, latest PCM levels, and lifecycle state. |
-| `/health` | `200 OK` with `ok` while the HTTP process is running. |
+| `/health` | `200 OK` with `ok` while the required PCM listener is ready; `503` after a listener failure. |
 | `/api/openapi.json` | OpenAPI 3.1 contract generated from the running bridge routes and Pydantic models. |
 | `/` and `/recordings` | Bridge console with live sources and optional recordings. The Home Assistant add-on serves it through ingress. |
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
@@ -37,7 +37,9 @@ A cleartext source is keyed by its TCP peer IPv4 address. An encrypted source
 is keyed by its authenticated device key id; its lifecycle also reports the
 peer IPv4 address and `tls-psk` transport. `source_allow` always checks the peer
 address. An allowlisted address remains addressable before a cleartext source
-connects. A dynamic source is `connected` while its TCP producer is active,
+connects. The lifecycle reports peer admission as `open` or `allowlisted`
+independently from identity retention. A TLS key identity is dynamic even when
+its peer is allowlisted. A dynamic source is `connected` while its TCP producer is active,
 `http-selected` while an HTTP client holds it open, and `disconnected` after
 both end. A bare WAV request creates a `pending` dynamic pipeline that the first
 producer adopts.
@@ -45,8 +47,9 @@ producer adopts.
 The bridge retains an inactive dynamic source for
 `--source-eviction-idle-seconds` (300 seconds by default). A reconnect during
 that interval reuses its playout pipeline. An active TCP producer or HTTP
-client prevents eviction. The `/status` lifecycle block reports the state,
-HTTP client count, current idle duration, and eviction interval.
+client or recording session prevents eviction. The `/status` lifecycle block
+reports the state, admission policy, consumer counts, current idle duration,
+and eviction interval.
 
 Each source snapshot also includes `levels`, the peak and RMS absolute sample
 values for the latest accepted 16-bit stereo PCM packet. Each channel ranges
@@ -60,22 +63,33 @@ that artifact to generate a typed client; do not edit generated client files.
 
 | Option | Default | Constraint | Meaning |
 | --- | ---: | --- | --- |
-| `--tcp-port` | 39000 | integer >= 1 | PCM listener for the selected mode. |
+| `--tcp-port` | 39000 | integer 1..65535 | PCM listener for the selected mode. |
+| `--http-port` | 8088 | integer 1..65535 | HTTP WAV, status, and control listener. |
 | `--transport-state-file` | empty | writable path | Private listener mode and device-key state. Encryption control is disabled when empty. |
 | `--source-allow` | empty | IPv4 addresses | Repeat or comma-separate allowed producer addresses. |
-| `--max-sources` | 8 | integer >= 1 | Maximum retained source pipelines. |
-| `--max-http-connections` | 32 | integer >= 1 | Maximum simultaneous HTTP workers. Excess connections are rejected. |
-| `--http-request-timeout-seconds` | 10.0 | number >= 0.001 | Socket inactivity before an HTTP client is disconnected. |
-| `--client-buffer-chunks` | 2048 | integer >= 1 | Per-client output queue depth. Full queues evict the client. |
-| `--playout-buffer-seconds` | 1.0 | number >= 0.001 | Packets buffered before playout begins or resumes. |
-| `--max-repeat-conceal-packets` | 3 | integer >= 0 | Loss packets that repeat attenuated PCM before silence. |
-| `--max-outage-silence-seconds` | 5.0 | number >= 0.001 | Concealed outage before playout re-buffers. |
-| `--source-idle-timeout-seconds` | 5.0 | number >= 0.001 | Inactive TCP connection timeout. |
-| `--source-eviction-idle-seconds` | 300.0 | number >= 0.001 | Inactive dynamic source retention interval. |
+| `--max-sources` | 8 | integer 1..32 | Maximum retained source pipelines. |
+| `--max-http-connections` | 32 | integer 1..128 | Maximum simultaneous HTTP workers. Excess connections are rejected. |
+| `--http-request-timeout-seconds` | 10.0 | finite number 0.001..3600 | Socket inactivity before an HTTP client is disconnected. |
+| `--client-buffer-chunks` | 2048 | integer 1..4096 | Per-client output queue depth in 1 KiB chunks. Full queues evict the client. |
+| `--playout-buffer-seconds` | 1.0 | finite number 0.001..60 | Packets buffered before playout begins or resumes. |
+| `--max-repeat-conceal-packets` | 3 | integer 0..256 | Loss packets that repeat attenuated PCM before silence. |
+| `--max-outage-silence-seconds` | 5.0 | finite number 0.001..300 | Concealed outage before playout re-buffers. |
+| `--source-idle-timeout-seconds` | 5.0 | finite number 0.001..3600 | Inactive TCP connection timeout. |
+| `--source-eviction-idle-seconds` | 300.0 | finite number 0.001..86400 | Inactive dynamic source retention interval. |
 
 Home Assistant exposes the owner-facing tuning options. Its add-on adapter
 owns the private transport-state path, normalizes `source_allow`, and omits
 settings that the Supervisor did not provide.
+
+The bridge binds the PCM listener before it starts HTTP. An invalid or occupied
+PCM address therefore fails process startup instead of exposing an HTTP service
+that cannot receive audio.
+
+`--max-http-connections` is the number of application requests the bridge
+admits at once. The server adapter includes Uvicorn's current connection in its
+boundary accounting, so a limit of one serves one request. During shutdown,
+active HTTP responses have five seconds to finish before the server cancels
+them and closes PCM and recording workers.
 
 ## Encrypted devices
 

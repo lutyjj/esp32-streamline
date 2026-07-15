@@ -42,6 +42,7 @@ function source(rms: number): SourceSnapshot {
     lifecycle: {
       state: 'connected',
       dynamic: true,
+      admission: 'open',
       http_clients: 0,
       recording_sessions: 0,
       idle_seconds: 0,

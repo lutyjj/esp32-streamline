@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import math
 import os
 from dataclasses import dataclass
 
@@ -21,6 +22,7 @@ class BridgeOption:
     help: str
     minimum: int | float | None = None
     addon: bool = False
+    maximum: int | float | None = None
 
     @property
     def supervisor_schema(self) -> str:
@@ -31,7 +33,8 @@ class BridgeOption:
         if self.minimum is None:
             raise ValueError(f"numeric option {self.name} requires a minimum")
         type_name = "int" if self.value_type is int else "float"
-        return f"{type_name}({self.minimum},)"
+        maximum = "" if self.maximum is None else str(self.maximum)
+        return f"{type_name}({self.minimum},{maximum})"
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,7 @@ class AddonControlOption:
 
 BRIDGE_OPTIONS = (
     BridgeOption("tcp_bind", "--tcp-bind", str, "0.0.0.0", "TCP bind address"),
-    BridgeOption("tcp_port", "--tcp-port", int, DEFAULT_PORT, "PCM listen port", minimum=1),
+    BridgeOption("tcp_port", "--tcp-port", int, DEFAULT_PORT, "PCM listen port", minimum=1, maximum=65535),
     BridgeOption(
         "transport_state_file",
         "--transport-state-file",
@@ -62,7 +65,7 @@ BRIDGE_OPTIONS = (
         addon=True,
     ),
     BridgeOption("http_bind", "--http-bind", str, "0.0.0.0", "HTTP bind address"),
-    BridgeOption("http_port", "--http-port", int, 8088, "HTTP listen port", minimum=1),
+    BridgeOption("http_port", "--http-port", int, 8088, "HTTP listen port", minimum=1, maximum=65535),
     BridgeOption(
         "max_http_connections",
         "--max-http-connections",
@@ -71,6 +74,7 @@ BRIDGE_OPTIONS = (
         "maximum simultaneous HTTP clients",
         minimum=1,
         addon=True,
+        maximum=128,
     ),
     BridgeOption(
         "http_request_timeout_seconds",
@@ -80,6 +84,7 @@ BRIDGE_OPTIONS = (
         "disconnect an HTTP client after this many seconds without socket progress",
         minimum=0.001,
         addon=True,
+        maximum=3600.0,
     ),
     BridgeOption(
         "recordings_dir",
@@ -89,7 +94,14 @@ BRIDGE_OPTIONS = (
         "writable directory for lossless recordings; disabled when empty",
     ),
     BridgeOption(
-        "client_buffer_chunks", "--client-buffer-chunks", int, 2048, "per-client HTTP output queue depth", 1, True
+        "client_buffer_chunks",
+        "--client-buffer-chunks",
+        int,
+        2048,
+        "per-client HTTP output queue depth",
+        minimum=1,
+        addon=True,
+        maximum=4096,
     ),
     BridgeOption(
         "playout_buffer_seconds",
@@ -97,8 +109,9 @@ BRIDGE_OPTIONS = (
         float,
         1.0,
         "receiver jitter buffer before playout starts",
-        0.001,
-        True,
+        minimum=0.001,
+        addon=True,
+        maximum=60.0,
     ),
     BridgeOption(
         "max_repeat_conceal_packets",
@@ -106,8 +119,9 @@ BRIDGE_OPTIONS = (
         int,
         3,
         "repeat the previous packet this many times before filling loss with silence",
-        0,
-        True,
+        minimum=0,
+        addon=True,
+        maximum=256,
     ),
     BridgeOption(
         "max_outage_silence_seconds",
@@ -115,8 +129,9 @@ BRIDGE_OPTIONS = (
         float,
         5.0,
         "after this much concealed outage, pause playout and wait to re-buffer",
-        0.001,
-        True,
+        minimum=0.001,
+        addon=True,
+        maximum=300.0,
     ),
     BridgeOption(
         "source_idle_timeout_seconds",
@@ -124,8 +139,9 @@ BRIDGE_OPTIONS = (
         float,
         5.0,
         "drop an inactive TCP producer after this many seconds",
-        0.001,
-        True,
+        minimum=0.001,
+        addon=True,
+        maximum=3600.0,
     ),
     BridgeOption(
         "source_eviction_idle_seconds",
@@ -133,10 +149,20 @@ BRIDGE_OPTIONS = (
         float,
         300.0,
         "evict an idle disconnected dynamic source after this many seconds",
-        0.001,
-        True,
+        minimum=0.001,
+        addon=True,
+        maximum=86400.0,
     ),
-    BridgeOption("max_sources", "--max-sources", int, 8, "maximum number of producer pipelines to keep", 1, True),
+    BridgeOption(
+        "max_sources",
+        "--max-sources",
+        int,
+        8,
+        "maximum number of producer pipelines to keep",
+        minimum=1,
+        addon=True,
+        maximum=32,
+    ),
 )
 
 OPTIONS_BY_NAME = {option.name: option for option in BRIDGE_OPTIONS}
@@ -183,9 +209,7 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     for option in BRIDGE_OPTIONS:
         if option.name == "source_allow" or option.minimum is None:
             continue
-        if getattr(args, option.name) < option.minimum:
-            comparator = "at least" if option.minimum >= 1 else "greater than"
-            raise SystemExit(f"{option.flag} must be {comparator} {option.minimum}")
+        _validate_numeric(option, getattr(args, option.name))
 
     try:
         args.source_allow = frozenset(
@@ -216,10 +240,17 @@ def option_value(options: dict[str, object], option: BridgeOption) -> str:
     elif not isinstance(value, (int, float)) or isinstance(value, bool):
         raise SystemExit(f"{option.name} must be a number")
     if option.minimum is not None and isinstance(value, (int, float)):
-        numeric_value = float(value)
-        if numeric_value < option.minimum:
-            raise SystemExit(f"{option.name} must be at least {option.minimum}")
+        _validate_numeric(option, value)
     return str(value).lower() if isinstance(value, bool) else str(value)
+
+
+def _validate_numeric(option: BridgeOption, value: int | float) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise SystemExit(f"{option.flag} must be finite")
+    if option.minimum is not None and value < option.minimum:
+        raise SystemExit(f"{option.flag} must be at least {option.minimum}")
+    if option.maximum is not None and value > option.maximum:
+        raise SystemExit(f"{option.flag} must be at most {option.maximum}")
 
 
 def parse_bool(value: str) -> bool:

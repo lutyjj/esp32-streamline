@@ -158,7 +158,7 @@ The device always runs the embedded console and API. A bridge runs separately in
 - The Home Assistant add-on runs the same bridge package with Supervisor-owned options, private transport-key storage, and the same ports.
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
-`/health` is the bridge container liveness probe. A deployment with writable
+`/health` is the bridge readiness probe for its required PCM listener. A deployment with writable
 recording storage also serves `/recordings` and its authenticated API. Music
 Assistant, Snapcast, Icecast, editors, and media libraries remain downstream
 systems.

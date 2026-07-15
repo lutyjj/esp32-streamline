@@ -85,4 +85,26 @@ describe('FlowDialog', () => {
     act(() => buttons[0]?.click());
     expect(dismissed).toBe(true);
   });
+
+  it('disables every flow exit while an atomic transition is in flight', () => {
+    const host = document.createElement('div');
+    render(
+      <FlowDialog
+        label="Test flow"
+        steps={steps(
+          () => {},
+          () => {},
+        )}
+        current="two"
+        onDismiss={() => {}}
+        busy
+      />,
+      host,
+    );
+
+    expect([...host.querySelectorAll<HTMLButtonElement>('button')]).toHaveLength(3);
+    expect(
+      [...host.querySelectorAll<HTMLButtonElement>('button')].every((button) => button.disabled),
+    ).toBe(true);
+  });
 });

@@ -37,9 +37,18 @@ describe('contract reader', () => {
     expect(audioProfileConstraints(doc)).toEqual({
       maxProfiles: 8,
       idPattern: '^[a-z0-9][a-z0-9-]*$',
+      idMinChars: 0,
       idMaxChars: 32,
       nameMaxChars: 32,
     });
+  });
+
+  it('reads an optional minimum id length when the device declares one', () => {
+    const constrained: ApiDocument = structuredClone(doc);
+    const id = constrained.components?.schemas?.AudioProfile?.properties?.id;
+    if (!id) throw new Error('fixture is missing the profile id schema');
+    id.minLength = 3;
+    expect(audioProfileConstraints(constrained).idMinChars).toBe(3);
   });
 
   it('fails loudly when the contract omits a declared limit', () => {
@@ -62,6 +71,7 @@ describe('contract reader', () => {
     expect(audioProfileConstraints(generated)).toEqual({
       maxProfiles: 8,
       idPattern: '^[a-z0-9][a-z0-9-]*$',
+      idMinChars: 0,
       idMaxChars: 32,
       nameMaxChars: 32,
     });

@@ -27,7 +27,7 @@ interface AudioBaseline {
   atten: number;
 }
 
-type WizardStep = 'prepare' | 'silence' | 'loud' | 'passthrough' | 'done';
+type WizardStep = 'prepare' | 'silence' | 'loud' | 'passthrough' | 'done' | 'restore-failed';
 
 /**
  * Input setup guide: measure the source and pick the ADC attenuation, then —
@@ -46,8 +46,11 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
   const [live, setLive] = useState({ rms: 0, peak: 0 });
   const [log, setLog] = useState<LogLine[]>([]);
   const [result, setResult] = useState<{ atten: number; peakDb: string } | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
 
   const engine = useRef<CalibrationEngine | null>(null);
+  const closeInFlight = useRef(false);
   const original = useRef<AudioBaseline>({
     line: status.value?.audio.input_line ?? 2,
     gain: status.value?.audio.input_gain ?? 0,
@@ -57,13 +60,12 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
   const attenMax = status.value?.capabilities.adc_atten_max_db ?? CAL_ATTEN_MAX;
   const passthrough = status.value?.capabilities.analog_passthrough;
 
-  function newEngine(): CalibrationEngine {
-    engine.current?.cancel();
-    const applied = engine.current?.applied ?? null;
-    const next = new CalibrationEngine(
+  function calibration(): CalibrationEngine {
+    if (engine.current) return engine.current;
+    engine.current = new CalibrationEngine(
       {
-        sample: async (): Promise<LevelSample> => {
-          const s = await getStatus();
+        sample: async (signal): Promise<LevelSample> => {
+          const s = await getStatus({ signal });
           return {
             rms: Math.max(s.metrics.rms_left, s.metrics.rms_right),
             peak: Math.max(s.metrics.peak_abs_left, s.metrics.peak_abs_right),
@@ -71,13 +73,16 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
             threshold: s.metrics.clip_threshold_abs,
           };
         },
-        applyAttenuation: async (atten) => {
+        applyAttenuation: async (atten, signal) => {
           const o = original.current;
-          await setAudio({
-            input_line: o.line,
-            input_gain: o.gain,
-            adc_attenuation_db: atten,
-          });
+          await setAudio(
+            {
+              input_line: o.line,
+              input_gain: o.gain,
+              adc_attenuation_db: atten,
+            },
+            { signal },
+          );
         },
         delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         log: (text, cls = '') => setLog((lines) => [...lines, { text, cls }]),
@@ -89,11 +94,7 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
       },
       { attenMax, attenStep: CAL_ATTEN_STEP },
     );
-    // Carry the last applied attenuation across step re-entries so cancel can
-    // still restore the pre-wizard value.
-    next.applied = applied;
-    engine.current = next;
-    return next;
+    return engine.current;
   }
 
   async function runSilence() {
@@ -101,8 +102,14 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
     setSilenceNote('');
     setFloorText('—');
     setProgress(0);
-    const outcome = await newEngine().measureSilence();
+    const outcome = await calibration().measureSilence();
     if (outcome.kind === 'cancelled') return;
+    if (outcome.kind === 'unavailable') {
+      setSilenceNote(
+        `Could only read ${outcome.collected} of ${outcome.required} level samples — check the device connection, then measure again.`,
+      );
+      return;
+    }
     setFloorText(outcome.floor ? dbfs(outcome.floor) : '−∞');
     if (outcome.kind === 'playback-detected') {
       setSilenceNote(
@@ -116,7 +123,7 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
 
   async function runLoud() {
     setLog([]);
-    const outcome = await newEngine().findAttenuation(floor ?? 0);
+    const outcome = await calibration().findAttenuation(floor ?? 0);
     if (outcome.kind === 'cancelled') return;
     if (outcome.kind === 'apply-failed') {
       setLog((lines) => [
@@ -142,6 +149,7 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
   }
 
   function show(next: WizardStep) {
+    if (closeInFlight.current) return;
     engine.current?.cancel();
     setStep(next);
     if (next === 'silence') runSilence();
@@ -149,19 +157,35 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
   }
 
   async function close(restore: boolean) {
+    if (closeInFlight.current) return;
     const active = engine.current;
-    active?.cancel();
-    const o = original.current;
-    onClose();
-    if (!restore || !active) return;
+    if (!restore) {
+      active?.cancel();
+      onClose();
+      return;
+    }
+    if (!active) {
+      onClose();
+      return;
+    }
+    closeInFlight.current = true;
+    setRestoring(true);
+    setRestoreError(null);
+    let closeWizard = false;
     try {
-      if (await active.restore(o.atten)) {
-        toast(`Put ADC attenuation back to ${o.atten} dB`, 'ok');
+      if (await active.cancelAndRestore(original.current.atten)) {
+        toast(`Put ADC attenuation back to ${original.current.atten} dB`, 'ok');
         loadDeviceSettings().catch(() => {});
       }
+      closeWizard = true;
     } catch (error) {
-      toast(`Could not restore previous levels: ${errorMessage(error)}`, 'err');
+      setRestoreError(errorMessage(error));
+      setStep('restore-failed');
+    } finally {
+      closeInFlight.current = false;
+      setRestoring(false);
     }
+    if (closeWizard) onClose();
   }
 
   const doneRows: [string, string][] = result
@@ -313,6 +337,26 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
       ),
       primary: { label: 'Done', onClick: () => close(false) },
     },
+    ...(restoreError
+      ? [
+          {
+            id: 'restore-failed',
+            body: (
+              <div>
+                <h3>Previous levels need attention</h3>
+                <div class="body">
+                  <p>
+                    StreamLine could not put ADC attenuation back to {original.current.atten} dB:{' '}
+                    {restoreError}. Check that the device is reachable, then retry. You can also
+                    close and set the level manually in Audio.
+                  </p>
+                </div>
+              </div>
+            ),
+            primary: { label: 'Retry restore', onClick: () => close(true) },
+          } satisfies FlowStep,
+        ]
+      : []),
   ];
 
   return (
@@ -320,8 +364,17 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
       label="Input setup"
       steps={steps}
       current={step}
-      onDismiss={() => close(true)}
-      dismissLabel={step === 'done' ? 'Undo levels and close' : 'Cancel'}
+      onDismiss={() => close(step !== 'restore-failed')}
+      dismissLabel={
+        restoring
+          ? 'Restoring levels…'
+          : step === 'restore-failed'
+            ? 'Close without restoring'
+            : step === 'done'
+              ? 'Undo levels and close'
+              : 'Cancel'
+      }
+      busy={restoring}
     />
   );
 }

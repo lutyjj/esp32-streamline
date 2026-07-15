@@ -50,6 +50,7 @@ export function resolveSchema(doc: ApiDocument, schema?: ApiSchema): ApiSchema |
 export interface AudioProfileConstraints {
   maxProfiles: number;
   idPattern: string;
+  idMinChars: number;
   idMaxChars: number;
   nameMaxChars: number;
 }
@@ -67,6 +68,7 @@ export function audioProfileConstraints(doc: ApiDocument): AudioProfileConstrain
   return {
     maxProfiles: required(profiles?.maxItems, 'the audio profile count limit'),
     idPattern: required(id?.pattern, 'the audio profile id pattern'),
+    idMinChars: id?.minLength ?? 0,
     idMaxChars: required(id?.maxLength, 'the audio profile id length limit'),
     nameMaxChars: required(name?.maxLength, 'the audio profile name length limit'),
   };

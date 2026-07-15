@@ -27,6 +27,7 @@ const limits: AudioProfileImportLimits = {
   schemaVersion: 1,
   maxProfiles: 8,
   idPattern: '^[a-z0-9][a-z0-9-]*$',
+  idMinChars: 0,
   idMaxChars: 32,
   nameMaxChars: 32,
 };
@@ -58,9 +59,27 @@ const parse = (catalog: unknown) =>
 
 describe('audio profile model', () => {
   it('creates stable unique ids from display names', () => {
-    expect(nextProfileId('Vinyl / Phono', [])).toBe('vinyl-phono');
-    expect(nextProfileId('Vinyl', ['vinyl', 'vinyl-2'])).toBe('vinyl-3');
-    expect(nextProfileId('レコード', [])).toBe('profile');
+    expect(nextProfileId('Vinyl / Phono', [], limits)).toBe('vinyl-phono');
+    expect(nextProfileId('Vinyl', ['vinyl', 'vinyl-2'], limits)).toBe('vinyl-3');
+    expect(nextProfileId('レコード', [], limits)).toBe('profile');
+  });
+
+  it('uses declared id lengths for truncation, padding, and collision suffixes', () => {
+    const compact = { ...limits, idMinChars: 5, idMaxChars: 8 };
+    expect(nextProfileId('Long Profile Name', [], compact)).toBe('long-pro');
+    expect(nextProfileId('Long Profile Name', ['long-pro'], compact)).toBe('long-p-2');
+    expect(nextProfileId('CD', [], compact)).toBe('cd-pr');
+    expect(nextProfileId('CD', [], { ...limits, idMinChars: 32 })).toHaveLength(32);
+    expect(nextProfileId('CD', ['cd'], { ...limits, idMaxChars: 2 })).toBe('c2');
+  });
+
+  it('fails clearly when the declared id vocabulary cannot represent the slug', () => {
+    expect(() =>
+      nextProfileId('Vinyl', [], {
+        ...limits,
+        idPattern: '^[A-Z]+$',
+      }),
+    ).toThrow(/cannot generate/);
   });
 
   it('snapshots the applied device settings', () => {
@@ -119,6 +138,19 @@ describe('audio profile model', () => {
     expect(() => parse({ ...base, profiles: [{ ...base.profiles[0], id: 'Bad_Id' }] })).toThrow(
       /invalid id/,
     );
+    expect(() =>
+      parseAudioProfileCatalog(JSON.stringify(base), capabilities, {
+        ...limits,
+        idMinChars: 'vinyl'.length + 1,
+      }),
+    ).toThrow(/invalid id/);
+    expect(
+      parseAudioProfileCatalog(
+        JSON.stringify({ ...base, profiles: [{ ...base.profiles[0], id: '🎚️' }] }),
+        capabilities,
+        { ...limits, idPattern: '^.+$', idMinChars: 2, idMaxChars: 2 },
+      ).profiles[0]?.id,
+    ).toBe('🎚️');
     expect(() =>
       parse({
         ...base,

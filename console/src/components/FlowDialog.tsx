@@ -39,12 +39,15 @@ export function FlowDialog({
   current,
   onDismiss,
   dismissLabel = 'Cancel',
+  busy = false,
 }: {
   label: string;
   steps: FlowStep[];
   current: string;
   onDismiss: () => void;
   dismissLabel?: string;
+  /** Disable every exit while the flow commits an atomic transition. */
+  busy?: boolean;
 }) {
   const step = steps.find(({ id }) => id === current) ?? steps[0];
   return (
@@ -55,12 +58,16 @@ export function FlowDialog({
       onDismiss={onDismiss}
       footer={
         <>
-          <Button onClick={onDismiss}>{dismissLabel}</Button>
+          <Button disabled={busy} onClick={onDismiss}>
+            {dismissLabel}
+          </Button>
           <div class="sheetfoot-row">
             {step.secondary?.map((action) => (
-              <FlowButton key={action.label} action={action} fallbackKind="secondary" />
+              <FlowButton key={action.label} action={action} fallbackKind="secondary" busy={busy} />
             ))}
-            {step.primary && <FlowButton action={step.primary} fallbackKind="primary" />}
+            {step.primary && (
+              <FlowButton action={step.primary} fallbackKind="primary" busy={busy} />
+            )}
           </div>
         </>
       }
@@ -70,19 +77,28 @@ export function FlowDialog({
   );
 }
 
-function FlowButton({ action, fallbackKind }: { action: FlowAction; fallbackKind: ButtonKind }) {
+function FlowButton({
+  action,
+  fallbackKind,
+  busy,
+}: {
+  action: FlowAction;
+  fallbackKind: ButtonKind;
+  busy: boolean;
+}) {
   const kind = action.kind ?? fallbackKind;
+  const disabled = busy || action.disabled;
   return action.transact ? (
     <TransactButton
       transact={action.transact}
       kind={kind}
-      disabled={action.disabled}
+      disabled={disabled}
       onClick={action.onClick}
     >
       {action.label}
     </TransactButton>
   ) : (
-    <Button kind={kind} disabled={action.disabled} onClick={action.onClick}>
+    <Button kind={kind} disabled={disabled} onClick={action.onClick}>
       {action.label}
     </Button>
   );

@@ -50,6 +50,7 @@ export function addProfile(
   const id = nextProfileId(
     trimmed,
     catalog.profiles.map((profile) => profile.id),
+    limits,
   );
   return {
     catalog: {
@@ -86,22 +87,46 @@ export function removeProfile(catalog: AudioProfileCatalog, id: string): AudioPr
   };
 }
 
-export function nextProfileId(name: string, usedIds: Iterable<string>): string {
+/**
+ * Allocate a readable id within the limits declared by the device. Slugging
+ * intentionally supports the current lowercase ASCII vocabulary; a contract
+ * that changes that vocabulary fails here instead of producing an invalid
+ * request.
+ */
+export function nextProfileId(
+  name: string,
+  usedIds: Iterable<string>,
+  limits: AudioProfileConstraints,
+): string {
+  const valid = profileIdValidator(limits);
   const used = new Set(usedIds);
-  const base =
-    name
-      .normalize('NFKD')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 28)
-      .replace(/-+$/g, '') || 'profile';
-  if (!used.has(base)) return base;
-  for (let suffix = 2; suffix < 1000; suffix += 1) {
-    const candidate = `${base.slice(0, 32 - String(suffix).length - 1)}-${suffix}`;
-    if (!used.has(candidate)) return candidate;
+  const slug = name
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const seed = slug || 'profile';
+  const fitStem = (minimum: number, maximum: number): string => {
+    const target = Math.min(maximum, Math.max(minimum, seed.length));
+    let stem = seed;
+    while (stem.length < target) stem += '-profile';
+    stem = stem.slice(0, target).replace(/-+$/g, '');
+    while (stem.length < minimum) stem += 'p';
+    return stem;
+  };
+  const base = fitStem(limits.idMinChars, limits.idMaxChars);
+  if (valid(base) && !used.has(base)) return base;
+  for (const separator of ['-', '']) {
+    for (let suffix = 2; suffix < 1000; suffix += 1) {
+      const suffixText = `${separator}${suffix}`;
+      const maximumStem = limits.idMaxChars - suffixText.length;
+      const minimumStem = Math.max(1, limits.idMinChars - suffixText.length);
+      if (maximumStem < minimumStem) continue;
+      const candidate = `${fitStem(minimumStem, maximumStem)}${suffixText}`;
+      if (valid(candidate) && !used.has(candidate)) return candidate;
+    }
   }
-  throw new Error('could not allocate a profile id');
+  throw new Error('device contract cannot generate a unique audio profile id from this name');
 }
 
 /** Parse shared bytes once into the same bounded model the firmware accepts. */
@@ -126,13 +151,13 @@ export function parseAudioProfileCatalog(
     throw new Error(`profile catalog must contain at most ${limits.maxProfiles} profiles`);
   }
 
-  const idPattern = new RegExp(limits.idPattern);
+  const validId = profileIdValidator(limits);
   const ids = new Set<string>();
   const profiles = value.profiles.map((candidate, index) => {
     if (!isRecord(candidate)) throw new Error(`profile ${index + 1} is not an object`);
     const id = candidate.id;
     const name = candidate.name;
-    if (typeof id !== 'string' || id.length > limits.idMaxChars || !idPattern.test(id)) {
+    if (typeof id !== 'string' || !validId(id)) {
       throw new Error(`profile ${index + 1} has an invalid id`);
     }
     if (ids.has(id)) throw new Error(`profile id '${id}' appears more than once`);
@@ -179,6 +204,24 @@ export function exportAudioProfileCatalog(catalog: AudioProfileCatalog): string 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Compile the device's JSON-Schema constraint once for create and import. */
+function profileIdValidator(limits: AudioProfileConstraints): (id: string) => boolean {
+  if (
+    !Number.isInteger(limits.idMinChars) ||
+    !Number.isInteger(limits.idMaxChars) ||
+    limits.idMinChars < 0 ||
+    limits.idMaxChars < 1 ||
+    limits.idMinChars > limits.idMaxChars
+  ) {
+    throw new Error('device contract has invalid audio profile id length limits');
+  }
+  const pattern = new RegExp(limits.idPattern, 'u');
+  return (id) => {
+    const characters = [...id].length;
+    return characters >= limits.idMinChars && characters <= limits.idMaxChars && pattern.test(id);
+  };
 }
 
 function nonNegativeInteger(value: unknown, field: string): number {

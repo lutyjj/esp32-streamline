@@ -18,7 +18,27 @@ import type { AudioProfileImportLimits } from '../lib/profiles';
 import { rebootWaitTick } from './rebootWait';
 
 export const POLL_MS = 1500;
-const PEAK_HOLD_MS = 2500;
+export const PEAK_HOLD_MS = 2500;
+
+export interface PeakHold {
+  left: number;
+  right: number;
+  at: number;
+}
+
+/** Hold both channel peaks from the most recent rise for the full hold window. */
+export function nextPeakHold(
+  hold: PeakHold,
+  leftSample: number,
+  rightSample: number,
+  now: number,
+): PeakHold {
+  const expired = now - hold.at > PEAK_HOLD_MS;
+  const left = leftSample >= hold.left || expired ? leftSample : hold.left;
+  const right = rightSample >= hold.right || expired ? rightSample : hold.right;
+  const rose = left !== hold.left || right !== hold.right;
+  return { left, right, at: rose || expired ? now : hold.at };
+}
 
 export const status = signal<DeviceStatus | null>(null);
 /** Last /api/settings read; forms copy it into local edit state. */
@@ -43,7 +63,7 @@ export const unreachable = signal(false);
 /** Counts failed polls so subsystems (OTA) can react to the device vanishing. */
 export const pollFailures = signal(0);
 /** Peak-hold marks for the level meters. */
-export const peakHold = signal({ left: 0, right: 0, at: 0 });
+export const peakHold = signal<PeakHold>({ left: 0, right: 0, at: 0 });
 /** Packets seen on the previous poll, to tell whether audio still flows. */
 let lastPackets = -1;
 /** True when the packet counter moved between the last two polls. */
@@ -95,13 +115,12 @@ export async function refresh(): Promise<void> {
 
 function applyStatus(s: DeviceStatus): void {
   const now = Date.now();
-  const hold = peakHold.value;
-  const expired = now - hold.at > PEAK_HOLD_MS;
-  const left =
-    s.metrics.peak_abs_left >= hold.left || expired ? s.metrics.peak_abs_left : hold.left;
-  const right =
-    s.metrics.peak_abs_right >= hold.right || expired ? s.metrics.peak_abs_right : hold.right;
-  peakHold.value = { left, right, at: left !== hold.left || expired ? now : hold.at };
+  peakHold.value = nextPeakHold(
+    peakHold.value,
+    s.metrics.peak_abs_left,
+    s.metrics.peak_abs_right,
+    now,
+  );
 
   packetsMoving.value = lastPackets >= 0 && s.metrics.packets > lastPackets;
   lastPackets = s.metrics.packets;

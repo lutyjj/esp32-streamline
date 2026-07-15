@@ -9,14 +9,18 @@ permissions:
   contents: write
   packages: write
 
+# Publication is globally serialized. A stale rerun cannot race a newer tag's
+# GitHub release, mutable image aliases, or WebFlasher deployment.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-publication
   cancel-in-progress: false
 
 jobs:
   publish:
     name: Verify and publish release
     runs-on: ubuntu-latest
+    outputs:
+      deploy_latest: ${{ steps.latest.outputs.current }}
     env:
       CONTAINER_USER: 0:0
       CONTAINER_CARGO_HOME: /cargo-cache
@@ -31,17 +35,16 @@ jobs:
 
       - name: Derive and validate release version
         id: version
-        shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          make changelog-check VERSION="$version"
+          test "$GITHUB_REF_NAME" = "v$version"
+          make version-check VERSION="$version"
           printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
-      # CI owns cache writes. Publishing restores the same cache lifecycle and
-      # leaves its contents reusable by the next firmware verification.
+      # CI owns cache writes. Publishing only restores and reclaims the cache.
       - name: Restore firmware caches
         uses: ./.github/actions/firmware-cache
         with:
@@ -54,6 +57,7 @@ jobs:
         run: |
           make release-package \
             VERSION=${{ steps.version.outputs.value }} \
+            REVISION="$GITHUB_SHA" \
             BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
 
@@ -65,6 +69,9 @@ jobs:
           cargo-cache-path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
+      - name: Render release notes
+        run: make release-notes > release-notes.md
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
@@ -75,56 +82,299 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
-      - name: Publish container images
+      # Version tags are write-once in this workflow. A rerun accepts an
+      # existing tag only when its source revision is this exact release SHA.
+      - name: Publish versioned container images
         env:
-          BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
           ADDON_IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge-addon
+          BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          docker tag "$BRIDGE_IMAGE:$VERSION" "$BRIDGE_IMAGE:latest"
-          docker push "$BRIDGE_IMAGE:$VERSION"
-          docker push "$BRIDGE_IMAGE:latest"
+          is_missing_image_error() {
+            grep -Eiq 'manifest unknown|name unknown|: not found$' "$1"
+          }
+
+          image_exists() {
+            error=$(mktemp)
+            if docker buildx imagetools inspect "$1" >/dev/null 2>"$error"; then
+              rm -f "$error"
+              return 0
+            fi
+            if is_missing_image_error "$error"; then
+              rm -f "$error"
+              return 1
+            fi
+            cat "$error" >&2
+            rm -f "$error"
+            return 2
+          }
+
+          classifier_probe=$(mktemp)
+          printf '%s\n' 'ERROR: ghcr.io/example/image:tag: not found' > "$classifier_probe"
+          is_missing_image_error "$classifier_probe"
+          printf '%s\n' 'ERROR: denied: requested access is denied' > "$classifier_probe"
+          if is_missing_image_error "$classifier_probe"; then
+            echo "::error::registry absence classifier accepted an authorization failure."
+            exit 1
+          fi
+          rm -f "$classifier_probe"
+
+          verify_revision() {
+            actual=$(docker buildx imagetools inspect "$1" \
+              --format '{{index .Image.Config.Labels "org.opencontainers.image.revision"}}')
+            if [ "$actual" != "$GITHUB_SHA" ]; then
+              echo "::error::$1 contains revision $actual, expected $GITHUB_SHA."
+              return 1
+            fi
+          }
+
+          publish_local() {
+            if image_exists "$1"; then
+              verify_revision "$1"
+            else
+              status=$?
+              test "$status" -eq 1 || return "$status"
+              docker push "$1"
+              verify_revision "$1"
+            fi
+          }
+
+          bridge_ref="$BRIDGE_IMAGE:$VERSION"
+          publish_local "$bridge_ref"
+
           while read -r arch platform; do
             image="${ADDON_IMAGE_BASE%/*}/${arch}-${ADDON_IMAGE_BASE##*/}"
-            docker buildx build \
-              --platform "$platform" \
-              -f ha-addon/Dockerfile \
-              --build-arg BUILD_VERSION="$VERSION" \
-              --build-arg BUILD_ARCH="$arch" \
-              -t "$image:$VERSION" \
-              -t "$image:latest" \
-              --push \
-              .
+            ref="$image:$VERSION"
+            if image_exists "$ref"; then
+              verify_revision "$ref"
+            else
+              status=$?
+              test "$status" -eq 1 || exit "$status"
+              docker buildx build \
+                --platform "$platform" \
+                -f ha-addon/Dockerfile \
+                --build-arg BUILD_VERSION="$VERSION" \
+                --build-arg BUILD_ARCH="$arch" \
+                --build-arg BUILD_REVISION="$GITHUB_SHA" \
+                -t "$ref" \
+                --push \
+                .
+              verify_revision "$ref"
+            fi
           done <<'EOF'
           amd64 linux/amd64
           aarch64 linux/arm64
           EOF
 
-      # Same git-cliff source as ha-addon/CHANGELOG.md, so the GitHub release
-      # notes and the add-on changelog read identically.
-      - name: Render release notes
-        run: make release-notes > release-notes.md
-
-      - name: Create GitHub release
+      # Draft state is the staging area. Existing assets are accepted only by
+      # exact SHA-256 digest, missing assets are uploaded once, and extras fail.
+      - name: Stage and verify GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          # A semver pre-release (e.g. 0.4.0-rc.1) must not become GitHub's
-          # "latest": the firmware OTA path and the WebFlasher both track the
-          # latest stable release.
-          prerelease=
-          case "$VERSION" in *-*) prerelease=--prerelease ;; esac
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            dist/firmware/* --notes-file release-notes.md $prerelease
+          api() {
+            gh api -H 'X-GitHub-Api-Version: 2026-03-10' "$@"
+          }
 
-  # Refresh the GitHub Pages WebFlasher so it serves the firmware just released.
-  # Chained explicitly because releases created with GITHUB_TOKEN don't emit a
-  # `release` event capable of triggering the pages workflow on their own.
+          tag="v$VERSION"
+          release=$(mktemp)
+          error=$(mktemp)
+          expected_names=$(mktemp)
+          remote_names=$(mktemp)
+          trap 'rm -f "$release" "$error" "$expected_names" "$remote_names"' EXIT
+          assets=(
+            "dist/firmware/SHA256SUMS"
+            "dist/firmware/streamline-$VERSION-full.bin"
+            "dist/firmware/streamline-$VERSION-ota.bin"
+            "dist/firmware/streamline-$VERSION.elf"
+          )
+          for asset in "${assets[@]}"; do
+            test -f "$asset"
+          done
+          printf '%s\n' "${assets[@]##*/}" | LC_ALL=C sort > "$expected_names"
+
+          if ! api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" >"$release" 2>"$error"; then
+            if ! grep -q 'HTTP 404' "$error"; then
+              cat "$error" >&2
+              exit 1
+            fi
+            gh release create "$tag" \
+              --draft \
+              --latest=false \
+              --notes-file release-notes.md \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$tag" \
+              --verify-tag
+            api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$release"
+          fi
+
+          jq -e --arg tag "$tag" --rawfile notes release-notes.md \
+            '.tag_name == $tag and .name == $tag and .body == $notes and .prerelease == false' \
+            "$release" >/dev/null
+          draft=$(jq -r '.draft' "$release")
+          if [ "$draft" = false ]; then
+            test "$(jq -r '.immutable' "$release")" = true
+          else
+            test "$draft" = true
+          fi
+
+          refresh() {
+            api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$release"
+          }
+
+          verify_digest() {
+            path=$1
+            name=${path##*/}
+            expected="sha256:$(sha256sum "$path" | cut -d' ' -f1)"
+            attempt=1
+            while [ "$attempt" -le 10 ]; do
+              refresh
+              count=$(jq --arg name "$name" '[.assets[] | select(.name == $name)] | length' "$release")
+              if [ "$count" -eq 1 ]; then
+                actual=$(jq -r --arg name "$name" \
+                  '.assets[] | select(.name == $name) | .digest // empty' "$release")
+                if [ "$actual" = "$expected" ]; then
+                  return 0
+                fi
+                if [ -n "$actual" ]; then
+                  echo "::error::$name has digest $actual, expected $expected."
+                  return 1
+                fi
+              elif [ "$count" -gt 1 ]; then
+                echo "::error::$name appears more than once."
+                return 1
+              fi
+              sleep 2
+              attempt=$((attempt + 1))
+            done
+            echo "::error::$name has no verifiable digest."
+            return 1
+          }
+
+          jq -r '.assets[].name' "$release" | LC_ALL=C sort > "$remote_names"
+          unexpected=$(comm -13 "$expected_names" "$remote_names")
+          test -z "$unexpected" || {
+            echo "::error::unexpected release assets: $unexpected"
+            exit 1
+          }
+
+          for asset in "${assets[@]}"; do
+            refresh
+            name=${asset##*/}
+            count=$(jq --arg name "$name" '[.assets[] | select(.name == $name)] | length' "$release")
+            if [ "$count" -eq 0 ]; then
+              if [ "$draft" != true ]; then
+                echo "::error::immutable release is missing $name."
+                exit 1
+              fi
+              gh release upload "$tag" "$asset" --repo "$GITHUB_REPOSITORY"
+            elif [ "$count" -ne 1 ]; then
+              echo "::error::$name appears more than once."
+              exit 1
+            fi
+            verify_digest "$asset"
+          done
+
+          refresh
+          jq -r '.assets[].name' "$release" | LC_ALL=C sort > "$remote_names"
+          diff -u "$expected_names" "$remote_names"
+
+      # Publishing is the commit point: GitHub's prior latest release and all
+      # mutable image aliases stay untouched until the complete draft is ready.
+      - name: Publish the immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          api() {
+            gh api -H 'X-GitHub-Api-Version: 2026-03-10' "$@"
+          }
+
+          tag="v$VERSION"
+          release=$(api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")
+          if [ "$(jq -r '.draft' <<<"$release")" = true ]; then
+            mark_latest=true
+            latest_error=$(mktemp)
+            if latest=$(api "repos/$GITHUB_REPOSITORY/releases/latest" 2>"$latest_error"); then
+              latest_tag=$(jq -r '.tag_name' <<<"$latest")
+              latest_version=${latest_tag#v}
+              newest=$(printf '%s\n' "$VERSION" "$latest_version" | sort -V | tail -n 1)
+              if [ "$newest" != "$VERSION" ]; then
+                mark_latest=false
+              fi
+            elif ! grep -q 'HTTP 404' "$latest_error"; then
+              cat "$latest_error" >&2
+              rm -f "$latest_error"
+              exit 1
+            fi
+            rm -f "$latest_error"
+            if [ "$mark_latest" = true ]; then
+              gh release edit "$tag" --draft=false --latest --repo "$GITHUB_REPOSITORY"
+            else
+              gh release edit "$tag" --draft=false --latest=false --repo "$GITHUB_REPOSITORY"
+            fi
+          fi
+
+          attempt=1
+          while [ "$attempt" -le 12 ]; do
+            release=$(api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")
+            if [ "$(jq -r '.draft' <<<"$release")" = false ] && \
+               [ "$(jq -r '.immutable' <<<"$release")" = true ]; then
+              exit 0
+            fi
+            sleep 5
+            attempt=$((attempt + 1))
+          done
+          echo "::error::$tag was published without immutable release protection."
+          exit 1
+
+      # Mutable aliases follow only the official latest stable release. Copying
+      # the versioned manifest preserves the exact digest without rebuilding.
+      - name: Update latest container aliases
+        id: latest
+        env:
+          ADDON_IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge-addon
+          BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          tag="v$VERSION"
+          latest=$(gh api -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          if [ "$latest" != "$tag" ]; then
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          manifest_digest() {
+            digest=$(docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}')
+            case "$digest" in sha256:*) ;; *) return 1 ;; esac
+            printf '%s\n' "$digest"
+          }
+
+          images=(
+            "$BRIDGE_IMAGE"
+            "${ADDON_IMAGE_BASE%/*}/amd64-${ADDON_IMAGE_BASE##*/}"
+            "${ADDON_IMAGE_BASE%/*}/aarch64-${ADDON_IMAGE_BASE##*/}"
+          )
+          for image in "${images[@]}"; do
+            version_digest=$(manifest_digest "$image:$VERSION")
+            docker buildx imagetools create \
+              --prefer-index=false \
+              --tag "$image:latest" \
+              "$image:$VERSION"
+            latest_digest=$(manifest_digest "$image:latest")
+            test "$latest_digest" = "$version_digest"
+          done
+          echo "current=true" >> "$GITHUB_OUTPUT"
+
+  # Refresh the WebFlasher only when this tag is still GitHub's official latest
+  # stable release. The reusable workflow and artifact names are rerun-safe.
   deploy-flasher:
     name: Refresh WebFlasher
     needs: publish
+    if: ${{ needs.publish.outputs.deploy_latest == 'true' }}
     permissions:
       contents: read
       pages: write

@@ -59,6 +59,7 @@ image: lint
 	$(CONTAINER) build --platform $(PLATFORM) -f Dockerfile \
 		--build-arg BUILD_VERSION=$(VERSION) \
 		--build-arg BUILD_ARCH=$(BUILD_ARCH) \
+		--build-arg BUILD_REVISION=$(REVISION) \
 		-t $(IMAGE):$(VERSION) \
 		..
 

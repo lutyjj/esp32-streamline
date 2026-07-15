@@ -1,12 +1,6 @@
 include mk/common.mk
 
 PROJECT_VERSION := $(call toml_version,bridge/pyproject.toml)
-FIRMWARE_VERSION := $(call toml_version,firmware/streamline/Cargo.toml)
-FIRMWARE_LOCK_VERSION := $(shell awk '\
-  /^\[\[package\]\]$$/ { package = 0 } \
-  /^name = "streamline-firmware"$$/ { package = 1; next } \
-  package && /^version = "/ { split($$0, fields, "\""); print fields[2]; exit }' firmware/streamline/Cargo.lock)
-ADDON_VERSION := $(shell sed -n 's/^version: "\([^"]*\)"/\1/p' ha-addon/config.yaml)
 VERSION ?= $(PROJECT_VERSION)
 PORT ?= /dev/cu.usbserial-0001
 CAPTURE_SECS ?= 20
@@ -17,6 +11,7 @@ BRIDGE_IMAGE ?=
 ADDON_IMAGE ?=
 REF ?=
 CAP ?=
+CHANGED_PATHS ?=
 
 # Repository checks use maintained linters in pinned public containers. The
 # version tag names the tool and the digest fixes the supplied image.
@@ -25,6 +20,7 @@ LYCHEE_IMAGE := lycheeverse/lychee:0.24.2@sha256:e2d19e57cf6ab037026f20b8e449a1f
 MARKDOWNLINT_IMAGE := ghcr.io/igorshubovych/markdownlint-cli:v0.49.0@sha256:ac8605cdc57270579cc445fdc389bcab0ed9401b80b4770e90c05af7199dd40f
 YQ_IMAGE := mikefarah/yq:4.53.3@sha256:11a1f0b604b13dbbdc662260d8db6f644b22d8553122a25c1b5b2e8713ca6977
 GITLEAKS_IMAGE := zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+PYTHON_CHECK_IMAGE := python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9
 
 # The root Dockerfile keeps the changelog generator pinned and Dependabot-managed.
 GIT_CLIFF_IMAGE := esp32-streamline-release-tools
@@ -39,14 +35,14 @@ GIT_COMMON_DIR := $(abspath $(shell git rev-parse --git-common-dir))
 # is pure-Rust and needs no git binary).
 git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 	-v "$(GIT_COMMON_DIR):$(GIT_COMMON_DIR)" \
-	-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(GIT_CLIFF_IMAGE) $(1)
+	-u $(CONTAINER_HOST_USER) -e HOME=$(CONTAINER_SAFE_HOME) $(GIT_CLIFF_IMAGE) $(1)
 
 # Reach the component sub-makes through the environment so the `<component>-%`
 # forwarding rules below stay argument-free.
-export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
+export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP REVISION
 
 .PHONY: check help lint test format clean smoke-qemu release-tools-image changelog changelog-check release release-history release-prepare release-lock-check release-check release-verify release-package release-notes \
-	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check docs-check api-contract-check version-check
+	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract docs-check api-contract-check version-check release-snapshot-check
 
 check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
 
@@ -94,17 +90,38 @@ firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;
-repository-check: version-check
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(LYCHEE_IMAGE) --config /repo/lychee.toml /repo
-	$(CONTAINER) run --rm --entrypoint sh -v "$(REPO_ROOT):/repo:ro" -w /repo $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval --exit-status "." {} \; >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; find docs -type f -name "*.json" -exec yq eval --exit-status "." {} \; >/dev/null'
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/docs --no-banner --redact
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/README.md --no-banner --redact
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/CONTRIBUTING.md --no-banner --redact
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/AGENTS.md --no-banner --redact
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/SECURITY.md --no-banner --redact
+repository-check: version-check repository-container-contract
+	$(READONLY_REPO_RUN) $(ACTIONLINT_IMAGE) -color
+	$(READONLY_REPO_RUN) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs firmware/streamline/README.md ha-addon/DOCS.md ha-addon/README.md tools/README.md
+	$(READONLY_REPO_RUN) $(LYCHEE_IMAGE) --config /repo/lychee.toml /repo
+	$(READONLY_REPO_RUN) --entrypoint sh $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval --exit-status "." {} \; >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; yq eval --exit-status "." release-manifest.json >/dev/null; find docs -type f -name "*.json" -exec yq eval --exit-status "." {} \; >/dev/null'
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/docs --no-banner --redact
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/README.md --no-banner --redact
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/CONTRIBUTING.md --no-banner --redact
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/AGENTS.md --no-banner --redact
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/SECURITY.md --no-banner --redact
 	@test -z "$$(git grep -n 'actions/cache' -- .github/workflows)" || (echo "firmware cache actions belong in .github/actions/firmware-cache" >&2; exit 1)
+
+# Prove the shared runner works from a checkout hidden behind a mode-0700
+# parent and cannot modify its repository mount.
+repository-container-contract:
+	@set -eu; \
+		fixture="$$(mktemp -d /tmp/streamline-repository-check.XXXXXX)"; \
+		trap 'rm -rf "$$fixture"' EXIT INT TERM; \
+		chmod 700 "$$fixture"; \
+		mkdir -p "$$fixture/.git" "$$fixture/.github/workflows" "$$fixture/docs"; \
+		printf '%s\n' 'name: Fixture' 'on: [push]' 'jobs:' '  check:' '    runs-on: ubuntu-latest' '    steps:' '      - run: "true"' > "$$fixture/.github/workflows/fixture.yml"; \
+		printf '%s\n' '{}' > "$$fixture/.markdownlint.json"; \
+		printf '%s\n' '# Fixture' > "$$fixture/README.md"; \
+		printf '%s\n' '{}' > "$$fixture/docs/contract.json"; \
+		before="$$(find "$$fixture" -type f -exec sha256sum {} + | LC_ALL=C sort)"; \
+		$(call container_readonly,$$fixture) $(ACTIONLINT_IMAGE) -color; \
+		$(call container_readonly,$$fixture) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md; \
+		$(call container_readonly,$$fixture) $(LYCHEE_IMAGE) /repo; \
+		$(call container_readonly,$$fixture) --entrypoint sh $(YQ_IMAGE) -ec 'yq eval --exit-status "." .github/workflows/fixture.yml >/dev/null; yq eval --exit-status "." docs/contract.json >/dev/null; ! touch /repo/write-probe 2>/dev/null'; \
+		$(call container_readonly,$$fixture) $(GITLEAKS_IMAGE) dir /repo --no-banner --redact; \
+		after="$$(find "$$fixture" -type f -exec sha256sum {} + | LC_ALL=C sort)"; \
+		test "$$after" = "$$before"
 docs-check: repository-check ;
 api-contract-check: firmware-openapi-check console-lint ;
 
@@ -130,11 +147,20 @@ ha-addon-%:
 
 version-check:
 	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
-	@test "$(VERSION)" = "$(PROJECT_VERSION)" || (echo "VERSION=$(VERSION) does not match bridge/pyproject.toml ($(PROJECT_VERSION))" >&2; exit 2)
-	@test "$(VERSION)" = "$(FIRMWARE_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.toml ($(FIRMWARE_VERSION))" >&2; exit 2)
-	@test "$(VERSION)" = "$(FIRMWARE_LOCK_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.lock ($(FIRMWARE_LOCK_VERSION))" >&2; exit 2)
-	@test "$(VERSION)" = "$(ADDON_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(ADDON_VERSION))" >&2; exit 2)
-	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || (echo "VERSION must be a stable X.Y.Z release version" >&2; exit 2)
+	$(READONLY_REPO_RUN) --env PYTHONDONTWRITEBYTECODE=1 --env PYTHONPATH=/repo/tools/src \
+		$(PYTHON_CHECK_IMAGE) python3 -m streamline_tools.release check-versions --root /repo --version "$(VERSION)"
+
+# CI and promotion pass the pull request's complete changed-file list here.
+# The manifest is sorted, and the comparison rejects both missing and extra
+# release files.
+release-snapshot-check:
+	@test -n "$(CHANGED_PATHS)" -a -f "$(CHANGED_PATHS)" || (echo "CHANGED_PATHS=/path/to/file-list is required" >&2; exit 2)
+	@set -eu; \
+		expected="$$(mktemp)"; actual="$$(mktemp)"; \
+		trap 'rm -f "$$expected" "$$actual"' EXIT INT TERM; \
+		$(READONLY_REPO_RUN) $(YQ_IMAGE) eval --unwrapScalar '.snapshot_paths[]' release-manifest.json | LC_ALL=C sort -u > "$$expected"; \
+		LC_ALL=C sort -u "$(CHANGED_PATHS)" > "$$actual"; \
+		diff -u "$$expected" "$$actual"
 
 # Prepare the only files that carry the product version, then regenerate the
 # add-on metadata from the same git history the published release will use.
@@ -152,6 +178,9 @@ release-prepare: release-history
 	$(MAKE) changelog CHANGELOG_TAG=v$(VERSION)
 	$(MAKE) version-check VERSION=$(VERSION)
 	$(MAKE) changelog-check VERSION=$(VERSION)
+	@changed="$$(mktemp)"; trap 'rm -f "$$changed"' EXIT INT TERM; \
+		git diff --name-only > "$$changed"; \
+		$(MAKE) release-snapshot-check CHANGED_PATHS="$$changed"
 
 # A release version changes the bridge package metadata, which uv records in
 # bridge/uv.lock. Cargo.lock carries the firmware package version directly.
@@ -163,7 +192,7 @@ release-check: lint bridge-test console-test firmware-test ha-addon-test
 
 # Verify a prepared release without changing its files. Release PRs and
 # promotion use this target against a fixed commit.
-release-verify: changelog-check release-lock-check release-check firmware-artifacts bridge-image
+release-verify: repository-check changelog-check release-lock-check release-check firmware-openapi-check bridge-openapi-check firmware-artifacts bridge-image
 	$(MAKE) ha-addon-image BUILD_ARCH=aarch64 VERSION=$(VERSION)
 	$(MAKE) ha-addon-image BUILD_ARCH=amd64 VERSION=$(VERSION)
 

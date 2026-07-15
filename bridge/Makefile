@@ -61,7 +61,7 @@ openapi-check: dev-image
 	$(CONTAINER_RUN) sh -c 'python3 -m streamline_bridge.openapi /tmp/bridge-openapi.json && diff -u /repo/docs/bridge-openapi.json /tmp/bridge-openapi.json'
 
 image: console-asset
-	$(CONTAINER) build -f Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) .
+	$(CONTAINER) build -f Dockerfile --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) -t $(IMAGE):$(VERSION) .
 
 run: image
 	$(CONTAINER) run --rm $(BRIDGE_PORTS) $(IMAGE):$(VERSION) $(BRIDGE_ARGS)

@@ -1,0 +1,80 @@
+# CI ownership is data: dorny/paths-filter consumes this file directly and the
+# tools path-matrix test pins representative inputs to every owning check.
+shared: &shared
+  - '.github/workflows/ci.yml'
+  - '.github/ci-paths.yml'
+  - '.github/actions/**'
+  - 'Makefile'
+  - 'mk/**'
+
+repository:
+  - *shared
+  - '.github/**'
+  - '.markdownlint.json'
+  - 'Dockerfile.release-tools'
+  - 'cliff.toml'
+  - 'lychee.toml'
+  - 'release-manifest.json'
+  - 'repository.yaml'
+  - '*.md'
+  - '**/*.md'
+  - 'docs/**'
+
+bridge:
+  - *shared
+  - 'bridge/**'
+  - 'console/**'
+  - 'docs/bridge-openapi.json'
+  - 'docs/pcm-protocol.md'
+  - 'docs/pcm-transport.json'
+  - 'docs/pcm-frame-vectors.json'
+  # The bridge option-contract test pins the add-on's config.
+  - 'ha-addon/config.yaml'
+
+console:
+  - *shared
+  - 'console/**'
+  - 'bridge/**'
+  - 'docs/bridge-openapi.json'
+
+tools:
+  - *shared
+  - 'tools/**'
+  - 'release-manifest.json'
+
+webflasher:
+  - *shared
+  - 'webflasher/**'
+
+ha-addon:
+  - *shared
+  - 'ha-addon/**'
+  - 'console/**'
+  - 'repository.yaml'
+  - 'bridge/pyproject.toml'
+  - 'bridge/uv.lock'
+  - 'bridge/src/**'
+  - 'bridge/tests/**'
+
+firmware:
+  - *shared
+  - 'firmware/**'
+  - 'docs/pcm-protocol.md'
+  - 'docs/pcm-transport.json'
+  - 'docs/pcm-frame-vectors.json'
+
+api_contract:
+  - *shared
+  - 'docs/openapi.json'
+
+qemu_smoke:
+  - *shared
+  - 'firmware/**'
+  - 'docs/openapi.json'
+  - 'tools/Dockerfile'
+  - 'tools/Makefile'
+  - 'tools/pyproject.toml'
+  - 'tools/uv.lock'
+  - 'tools/smoke/**'
+  - 'tools/src/streamline_tools/device/**'
+  - 'tools/src/streamline_tools/smoke.py'

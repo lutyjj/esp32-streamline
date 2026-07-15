@@ -12,6 +12,18 @@ CONTAINER ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo po
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))..)
 dotenv = $(shell sed -n 's/^$(1)=//p' $(REPO_ROOT)/.env 2>/dev/null)
 
+# Read-only repository tools run as the caller with a disposable home. The
+# parameter is the checkout to mount, which lets the repository contract test
+# exercise paths whose parents are not world-readable.
+CONTAINER_HOST_USER ?= $(shell id -u):$(shell id -g)
+CONTAINER_SAFE_HOME ?= /tmp
+container_readonly = $(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" \
+	--env HOME="$(CONTAINER_SAFE_HOME)" --volume "$(1):/repo:ro" --workdir /repo
+READONLY_REPO_RUN = $(call container_readonly,$(REPO_ROOT))
+
+# Published images identify the exact source commit they contain.
+REVISION ?= $(shell git -C "$(REPO_ROOT)" rev-parse HEAD)
+
 # Named volume shared by all Python components for ruff/mypy caches.
 PYTHON_CACHE_VOLUME ?= esp32-streamline-python-cache
 

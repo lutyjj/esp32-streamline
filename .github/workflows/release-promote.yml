@@ -8,6 +8,7 @@ on:
 permissions:
   actions: write
   contents: write
+  pull-requests: read
 
 concurrency:
   group: release-promote-${{ github.event.pull_request.number }}
@@ -31,6 +32,41 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Revalidate the merged pull request
+        env:
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EVENT_MERGE_SHA"
+          pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+          jq -e \
+            --arg head "$EVENT_HEAD_SHA" \
+            --arg merge "$EVENT_MERGE_SHA" \
+            --arg branch "$RELEASE_BRANCH" \
+            '.merged == true and .head.sha == $head and .merge_commit_sha == $merge and
+             .head.ref == $branch and .base.ref == "mainline"' \
+            <<<"$pull" >/dev/null
+          git fetch --no-tags origin \
+            "refs/pull/$PR_NUMBER/head:refs/remotes/origin/release-pr-head"
+          test "$(git rev-parse refs/remotes/origin/release-pr-head)" = "$EVENT_HEAD_SHA"
+          expected=$(mktemp)
+          changed=$(mktemp)
+          api_changed=$(mktemp)
+          manifest=$(mktemp)
+          trap 'rm -f "$expected" "$changed" "$api_changed" "$manifest"' EXIT
+          git show "$EVENT_BASE_SHA:release-manifest.json" > "$manifest"
+          jq -e '.schema_version == 1 and (.snapshot_paths | type == "array" and length > 0)' \
+            "$manifest" >/dev/null
+          jq -r '.snapshot_paths[]' "$manifest" | LC_ALL=C sort -u > "$expected"
+          git diff --name-only --no-renames "$EVENT_BASE_SHA...$EVENT_HEAD_SHA" -- \
+            | LC_ALL=C sort -u > "$changed"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[].filename' | LC_ALL=C sort -u > "$api_changed"
+          diff -u "$api_changed" "$changed"
+          diff -u "$expected" "$changed"
+
       - name: Set up QEMU for cross-architecture builds
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
@@ -40,10 +76,6 @@ jobs:
           version=$(sed -n 's/^version: "\([^"]*\)"/\1/p' ha-addon/config.yaml)
           test -n "$version"
           test "$RELEASE_BRANCH" = "release/$version"
-          if git rev-parse --verify --quiet "refs/tags/v$version"; then
-            echo "::error::v$version already exists."
-            exit 1
-          fi
           printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Re-verify the exact merge commit
@@ -56,8 +88,18 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          git tag "v$VERSION" HEAD
-          git push origin "v$VERSION"
+          tag="v$VERSION"
+          expected=$(git rev-parse HEAD)
+          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            actual=$(git rev-list -n 1 "$tag")
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$tag points to $actual, expected $expected."
+              exit 1
+            fi
+          else
+            git tag "$tag" "$expected"
+            git push origin "$tag"
+          fi
 
       - name: Dispatch publishing from the tag
         env:

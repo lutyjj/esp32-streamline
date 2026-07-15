@@ -61,10 +61,26 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bridge/pyproject.toml bridge/uv.lock firmware/streamline/Cargo.toml firmware/streamline/Cargo.lock ha-addon/config.yaml ha-addon/CHANGELOG.md
+          mapfile -t release_paths < <(jq -r '.snapshot_paths[]' release-manifest.json)
+          test "${#release_paths[@]}" -gt 0
+          git add -- "${release_paths[@]}"
+          test -z "$(git diff --name-only)" || {
+            echo "::error::release preparation left unstaged changes."
+            git diff --name-only
+            exit 1
+          }
+          test -z "$(git ls-files --others --exclude-standard)" || {
+            echo "::error::release preparation created untracked files."
+            git ls-files --others --exclude-standard
+            exit 1
+          }
+          changed=$(mktemp)
+          trap 'rm -f "$changed"' EXIT
+          git diff --cached --name-only > "$changed"
+          make release-snapshot-check CHANGED_PATHS="$changed"
           git diff --cached --quiet && { echo "::error::release preparation produced no changes."; exit 1; }
           git commit -m "chore: release $VERSION"
           git push --set-upstream origin "release/$VERSION"
           gh pr create --repo "$GITHUB_REPOSITORY" --base mainline --head "release/$VERSION" --draft \
             --title "chore: release $VERSION" \
-            --body "Prepared and validated by the release workflow. Merging this PR promotes the exact merge commit to v$VERSION."
+            --body "Prepared from release-manifest.json. CI validates the snapshot before merging. Merging this PR promotes the exact merge commit to v$VERSION."

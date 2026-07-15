@@ -143,7 +143,7 @@ Persistent and cross-boundary values enter business logic only after parsing and
 | PCM frame | [PCM protocol](pcm-protocol.md) | Rust encoder and Python parser, checked byte-for-byte against [conformance vectors](pcm-frame-vectors.json) in both component tests |
 | PCM transport constants | [Machine contract](pcm-transport.json) | Rust and Python constants, mechanically checked by both component tests |
 | Bridge device-key map | Bridge transport store | Private versioned file with bounded atomic replacement |
-| Release version | Bridge `pyproject.toml`, firmware `Cargo.toml`, add-on `config.yaml` | `make version-check` requires equality |
+| Release snapshot | `release-manifest.json` | Version-owner updates and validation, the release PR file set, staging, CI, and promotion |
 | User-visible stages | [User journey](user-journey.md) | Console and firmware behavior |
 | Security posture | [Security notes](security.md) | Device, bridge, add-on, and deployment guidance |
 | Recording timeline and file lifecycle | [Lossless recordings](recordings.md) | Bridge service, HTTP adapter, page, and deployment adapters |
@@ -167,9 +167,11 @@ systems.
 
 Make is the public command interface. Each component Makefile exposes the verbs that apply to it, and the root Makefile forwards `make <component>-<verb>`. Keep build mechanics behind these targets so local runs and CI execute the same commands.
 
-CI detects changed components and runs their `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. A single `CI complete` job rolls skipped and executed component checks into the branch-protection status.
+CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. Device-contract, smoke-harness, QEMU helper, tools-image, and firmware changes run the QEMU suite against images built from the tested commit. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. A single `CI complete` job rolls skipped and executed component checks into the branch-protection status.
 
-Tag builds call the same release target used locally, then publish firmware artifacts, bridge images, architecture-specific add-on images, release notes, and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
+`release-manifest.json` owns the checked-in release snapshot and version files. Preparation, CI, and promotion require that exact file set. Promotion verifies the merged commit, then dispatches publication from its tag. Publication builds versioned images, stages digest-verified firmware assets in a draft, and publishes an immutable GitHub release as its commit point. Mutable image aliases and the WebFlasher update only when the tag is GitHub's official latest stable release. Each stage accepts its completed state, so rerunning converges without replacing versioned artifacts.
+
+The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
 
 The Makefiles remain routing and reproducibility boundaries. Keep component logic in language-native code and split reusable GitHub workflow mechanics into actions when more than one workflow owns the same lifecycle.
 

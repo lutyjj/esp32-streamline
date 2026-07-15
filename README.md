@@ -217,7 +217,13 @@ Docs: [architecture](docs/architecture.md) ·
 Use **Actions → Prepare release** with a stable `X.Y.Z` target version. The workflow
 prepares the release snapshot and opens a draft `release/X.Y.Z` PR, which CI verifies
 in full. Merging that PR re-verifies the exact merge commit, creates `vX.Y.Z`, and starts
-publishing from the tag.
+publishing from the tag. Repository settings must enable immutable releases.
+
+[`release-manifest.json`](release-manifest.json) owns the exact files allowed in a
+release PR and every checked-in version owner. Publication stages write-once image
+tags and digest-verified assets in a draft GitHub release. Publishing the immutable
+release is the commit point; `latest` image aliases and the WebFlasher follow it.
+Promotion and publication are safe to rerun after an interrupted step.
 
 For a local release snapshot, start from a clean release branch and run:
 

@@ -21,10 +21,11 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
   reads files into frames, `align` recovers the lag, `transform` scores channel
   mappings, `measure` reports level and spectral stats, and `report` renders
   those typed results behind the `streamline-analyze` CLI.
-- `src/streamline_tools/serial_capture.py`, `release.py` — standalone tools
-  with their own entry points.
+- `src/streamline_tools/serial_capture.py`, `release.py`: standalone tools.
+  The release tool prepares and validates the owners declared in the root
+  `release-manifest.json`.
 
-## Tools
+## Commands
 
 - `streamline-analyze` (`make tools-analyze REF=ref.flac CAP=capture.wav`) —
   compares a captured stream against its reference audio and reports offset,

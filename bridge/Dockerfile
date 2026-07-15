@@ -31,8 +31,11 @@ RUN uv sync --locked --no-editable
 FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS runtime
 
 ARG VERSION=dev
+ARG REVISION=unknown
 LABEL org.opencontainers.image.title="ESP32 StreamLine bridge"
 LABEL org.opencontainers.image.version=$VERSION
+LABEL org.opencontainers.image.revision=$REVISION
+LABEL org.opencontainers.image.source="https://github.com/lutyjj/esp32-streamline"
 
 WORKDIR /app
 ENV PATH="/opt/venv/bin:$PATH" \

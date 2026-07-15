@@ -20,8 +20,9 @@ ADMIN_KEY ?= $(call dotenv,STREAMLINE_ADMIN_KEY)
 # Run a check in the tools image with the source mounted and the shared
 # ruff/mypy cache volume attached.
 CONTAINER_RUN := $(CONTAINER) run --rm \
-	-v "$(CURDIR):/workspace" -v "$(PYTHON_CACHE_VOLUME):/cache" \
+	-v "$(CURDIR):/workspace" -v "$(REPO_ROOT):/repo:ro" -v "$(PYTHON_CACHE_VOLUME):/cache" \
 	-e RUFF_CACHE_DIR=/cache/ruff-tools -e MYPY_CACHE_DIR=/cache/mypy-tools \
+	-e STREAMLINE_REPO_ROOT=/repo \
 	-w /workspace $(DEV_IMAGE)
 LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 	-v "$(CURDIR):/workspace" -e UV_CACHE_DIR=/tmp/uv-cache \
@@ -33,7 +34,7 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
-.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze smoke-qemu smoke-device release-prepare
+.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze smoke-qemu smoke-device release-prepare release-version-check
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
@@ -103,4 +104,10 @@ release-prepare: image
 	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
 	$(CONTAINER) run --rm -v "$(REPO_ROOT)":/repo -w /repo \
 		-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(IMAGE) \
-		python3 -m streamline_tools.release --root /repo --version "$(VERSION)"
+		python3 -m streamline_tools.release prepare --root /repo --version "$(VERSION)"
+
+release-version-check: image
+	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
+	$(CONTAINER) run --rm -v "$(REPO_ROOT)":/repo:ro -w /repo \
+		-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(IMAGE) \
+		python3 -m streamline_tools.release check-versions --root /repo --version "$(VERSION)"

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "snapshot_paths": [
+    "bridge/pyproject.toml",
+    "bridge/uv.lock",
+    "firmware/streamline/Cargo.lock",
+    "firmware/streamline/Cargo.toml",
+    "ha-addon/CHANGELOG.md",
+    "ha-addon/config.yaml"
+  ],
+  "version_files": [
+    {
+      "path": "bridge/pyproject.toml",
+      "format": "toml"
+    },
+    {
+      "path": "firmware/streamline/Cargo.lock",
+      "format": "cargo-lock"
+    },
+    {
+      "path": "firmware/streamline/Cargo.toml",
+      "format": "toml"
+    },
+    {
+      "path": "ha-addon/config.yaml",
+      "format": "yaml"
+    }
+  ]
+}

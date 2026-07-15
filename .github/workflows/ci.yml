@@ -7,6 +7,9 @@ on:
     branches: [mainline]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
   group: ci-${{ github.ref }}
@@ -22,73 +25,62 @@ jobs:
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       components: ${{ steps.matrix.outputs.components }}
       firmware: ${{ steps.filter.outputs.firmware }}
       api_contract: ${{ steps.filter.outputs.api_contract }}
+      qemu_smoke: ${{ steps.filter.outputs.qemu_smoke }}
+      release_snapshot: ${{ steps.release-snapshot.outputs.exact }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         id: filter
         with:
-          # A change to the shared build entrypoints re-runs every component.
-          filters: |
-            shared: &shared
-              - '.github/workflows/ci.yml'
-              - '.github/actions/**'
-              - 'Makefile'
-              - 'mk/**'
-            repository:
-              - '.github/**'
-              - 'AGENTS.md'
-              - 'CONTRIBUTING.md'
-              - 'Dockerfile.release-tools'
-              - 'README.md'
-              - 'cliff.toml'
-              - 'repository.yaml'
-              - 'docs/**'
-            bridge:
-              - *shared
-              - 'bridge/**'
-              - 'console/**'
-              - 'docs/bridge-openapi.json'
-              - 'docs/pcm-transport.json'
-              - 'docs/pcm-frame-vectors.json'
-              # The bridge option-contract test pins the add-on's config.
-              - 'ha-addon/config.yaml'
-            console:
-              - *shared
-              - 'console/**'
-              - 'bridge/**'
-              - 'docs/bridge-openapi.json'
-            tools:
-              - *shared
-              - 'tools/**'
-            webflasher:
-              - *shared
-              - 'webflasher/**'
-            ha-addon:
-              - *shared
-              - 'ha-addon/**'
-              - 'console/**'
-              - 'repository.yaml'
-              - 'bridge/pyproject.toml'
-              - 'bridge/uv.lock'
-              - 'bridge/src/**'
-              - 'bridge/tests/**'
-            firmware:
-              - *shared
-              - 'firmware/**'
-              - 'docs/pcm-transport.json'
-              - 'docs/pcm-frame-vectors.json'
-            api_contract:
-              - 'docs/openapi.json'
+          filters: .github/ci-paths.yml
+      - name: Classify a release snapshot
+        id: release-snapshot
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          exact=false
+          if [ "$EVENT_NAME" = pull_request ] && [[ "$HEAD_REF" == release/* ]]; then
+            expected=$(mktemp)
+            changed=$(mktemp)
+            api_changed=$(mktemp)
+            manifest=$(mktemp)
+            trap 'rm -f "$expected" "$changed" "$api_changed" "$manifest"' EXIT
+            git fetch --no-tags origin \
+              "refs/pull/$PR_NUMBER/head:refs/remotes/origin/release-pr-head"
+            test "$(git rev-parse refs/remotes/origin/release-pr-head)" = "$HEAD_SHA"
+            git show "$BASE_SHA:release-manifest.json" > "$manifest"
+            jq -e '.schema_version == 1 and (.snapshot_paths | type == "array" and length > 0)' \
+              "$manifest" >/dev/null
+            jq -r '.snapshot_paths[]' "$manifest" | LC_ALL=C sort -u > "$expected"
+            git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" -- \
+              | LC_ALL=C sort -u > "$changed"
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+              --jq '.[].filename' | LC_ALL=C sort -u > "$api_changed"
+            if diff -u "$api_changed" "$changed" && diff -u "$expected" "$changed"; then
+              exact=true
+            fi
+          fi
+          echo "exact=$exact" >> "$GITHUB_OUTPUT"
       - id: matrix
         # Fan out over every matched component except the bespoke firmware job
-        # and the internal `shared` and `api_contract` pseudo-filters.
+        # and the internal pseudo-filters.
         run: |
           components=$(echo '${{ steps.filter.outputs.changes }}' \
-            | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract")]')
+            | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract" and . != "qemu_smoke")]')
           echo "components=$components" >> "$GITHUB_OUTPUT"
 
   # One job, every lightweight component. The command is uniform because each
@@ -98,7 +90,8 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.components != '[]' &&
-      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
+      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') &&
+        needs.changes.outputs.release_snapshot == 'true')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -112,8 +105,9 @@ jobs:
     name: Firmware (clippy · test · release build)
     needs: changes
     if: >-
-      needs.changes.outputs.firmware == 'true' &&
-      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
+      (needs.changes.outputs.firmware == 'true' || needs.changes.outputs.qemu_smoke == 'true') &&
+      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') &&
+        needs.changes.outputs.release_snapshot == 'true')
     runs-on: ubuntu-latest
     env:
       CONTAINER_USER: 0:0
@@ -133,6 +127,7 @@ jobs:
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
       - name: Check
+        if: ${{ needs.changes.outputs.firmware == 'true' }}
         run: |
           make firmware-check \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
@@ -148,7 +143,7 @@ jobs:
       - name: Upload QEMU variant images
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: qemu-firmware-images
+          name: qemu-firmware-images-${{ github.sha }}-${{ github.run_attempt }}
           path: |
             dist/firmware/streamline-qemu-full.bin
             dist/firmware/streamline-qemu-ota.bin
@@ -175,21 +170,21 @@ jobs:
 
   # Boots the QEMU firmware variant and runs the emulated-device test suite:
   # boot, HTTP API, provisioning persistence, key gating, factory reset, and
-  # the OTA slot switch. Gated on firmware changes because the firmware job
-  # supplies the images; a tools-only change validates the suite through
-  # tools-check and rides the next firmware or shared-path run.
+  # the OTA slot switch. The firmware job supplies images built from the exact
+  # commit selected by the QEMU ownership filter.
   qemu-smoke:
     name: QEMU device smoke
     needs: [changes, firmware]
     if: >-
-      needs.changes.outputs.firmware == 'true' &&
-      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
+      needs.changes.outputs.qemu_smoke == 'true' &&
+      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') &&
+        needs.changes.outputs.release_snapshot == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: qemu-firmware-images
+          name: qemu-firmware-images-${{ github.sha }}-${{ github.run_attempt }}
           path: dist/firmware
       - run: make tools-smoke-qemu
 
@@ -198,7 +193,8 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.api_contract == 'true' &&
-      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
+      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') &&
+        needs.changes.outputs.release_snapshot == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -206,6 +202,7 @@ jobs:
 
   release-verify:
     name: Release snapshot
+    needs: changes
     if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
     runs-on: ubuntu-latest
     steps:
@@ -213,6 +210,8 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      - name: Require the exact release file set
+        run: test "${{ needs.changes.outputs.release_snapshot }}" = true
       - name: Set up QEMU for cross-architecture builds
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
       - run: make release-verify
@@ -227,6 +226,7 @@ jobs:
     if: ${{ always() }}
     needs: [changes, checks, firmware, qemu-smoke, api-contract, release-verify]
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - name: Verify no required job failed
         run: |

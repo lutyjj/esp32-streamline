@@ -46,17 +46,31 @@ pub fn create<'d>(
 const CONNECT_ATTEMPTS: u32 = 3;
 const CONNECT_RETRY_DELAY_MS: u32 = 2_000;
 
-pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) -> Result<()> {
-    let station = Configuration::Client(ClientConfiguration {
+/// Bounded poll for the soft-AP address when the framework's blocking wait
+/// cannot be used because the station shares the radio (recovery mode). About
+/// five seconds total.
+const AP_READY_POLLS: u32 = 50;
+const AP_READY_POLL_INTERVAL_MS: u32 = 100;
+/// Bounded poll for the station address after a recovery association attempt,
+/// covering the DHCP lease. About five seconds total.
+const STATION_READY_POLLS: u32 = 50;
+const STATION_READY_POLL_INTERVAL_MS: u32 = 100;
+
+/// The saved home network as a station configuration, shared by the initial
+/// connect and the recovery retry.
+fn station_config(config: &RuntimeConfig) -> Result<ClientConfiguration> {
+    Ok(ClientConfiguration {
         ssid: config.ssid.as_str().try_into()?,
         bssid: None,
         auth_method: AuthMethod::WPA2Personal,
         password: config.password.as_str().try_into()?,
         channel: None,
         ..Default::default()
-    });
+    })
+}
 
-    wifi.set_configuration(&station)?;
+pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) -> Result<()> {
+    wifi.set_configuration(&Configuration::Client(station_config(config)?))?;
     wifi.start()?;
 
     let mut attempt = 1;
@@ -78,27 +92,97 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
     }
 }
 
-/// Start the physical-presence setup network. It is deliberately open because
-/// initial configuration has no pre-shared secret; HTTP writes are only enabled
-/// in this mode and the AP is never started on a provisioned device.
+/// Start the physical-presence setup network as an open AP: initial
+/// configuration has no pre-shared secret to authenticate against. The AP runs
+/// only in setup and recovery, never while the device is on its home network.
 pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<String> {
+    start_ap(wifi, suffix, None)
+}
+
+/// Start the setup AP alongside a station that keeps retrying the saved Wi-Fi.
+/// A provisioned device that fell back to recovery runs both interfaces, so the
+/// owner keeps a reachable console while the device rejoins its home network on
+/// its own through repeated [`reconnect_station`] calls. The AP stays up whether
+/// or not the station associates.
+pub fn start_recovery_ap(
+    wifi: &mut WifiController<'_>,
+    suffix: &str,
+    config: &RuntimeConfig,
+) -> Result<String> {
+    start_ap(wifi, suffix, Some(config))
+}
+
+fn start_ap(
+    wifi: &mut WifiController<'_>,
+    suffix: &str,
+    station: Option<&RuntimeConfig>,
+) -> Result<String> {
     let ssid = format!("esp32-streamline-{suffix}");
-    let access_point = Configuration::AccessPoint(AccessPointConfiguration {
+    let access_point = AccessPointConfiguration {
         ssid: ssid.as_str().try_into()?,
         ssid_hidden: false,
         auth_method: AuthMethod::None,
         password: "".try_into()?,
         channel: 1,
         ..Default::default()
-    });
+    };
+    let configuration = match station {
+        Some(config) => Configuration::Mixed(station_config(config)?, access_point),
+        None => Configuration::AccessPoint(access_point),
+    };
 
-    wifi.set_configuration(&access_point)?;
+    wifi.set_configuration(&configuration)?;
     wifi.start()?;
-    wifi.wait_netif_up()?;
+    wait_access_point_ready(wifi, station.is_none())?;
     if let Err(error) = advertise_setup_dns() {
         log::warn!("setup DHCP DNS advertisement unavailable: {error:#}");
     }
     Ok(ssid)
+}
+
+/// Wait for the soft-AP interface to obtain its address before advertising DNS.
+///
+/// In AP-only setup the framework's blocking wait suffices. In recovery the
+/// station is configured but not yet connected, so `wait_netif_up` could block
+/// on the station link; poll the AP address directly instead.
+fn wait_access_point_ready(wifi: &mut WifiController<'_>, ap_only: bool) -> Result<()> {
+    if ap_only {
+        wifi.wait_netif_up()?;
+        return Ok(());
+    }
+    for _ in 0..AP_READY_POLLS {
+        if access_point_address().is_some() {
+            return Ok(());
+        }
+        FreeRtos::delay_ms(AP_READY_POLL_INTERVAL_MS);
+    }
+    Err(anyhow!("setup AP address did not come up"))
+}
+
+/// Drive one station association attempt without tearing down the setup AP.
+///
+/// The combined AP-and-station configuration is already set by
+/// [`start_recovery_ap`], so this only initiates association and reports whether
+/// the station obtained an address. A failure leaves the AP up for the next
+/// attempt; success means the home network is reachable again.
+pub fn reconnect_station(wifi: &mut WifiController<'_>) -> bool {
+    // A prior attempt may have associated but leased an address only after its
+    // poll window closed; if the station now holds one, the network is back and
+    // there is no need to reconnect an already-connected station.
+    if station_ip().is_some() {
+        return true;
+    }
+    if let Err(error) = wifi.connect() {
+        log::info!("recovery Wi-Fi retry did not associate: {error}");
+        return false;
+    }
+    for _ in 0..STATION_READY_POLLS {
+        if station_ip().is_some() {
+            return true;
+        }
+        FreeRtos::delay_ms(STATION_READY_POLL_INTERVAL_MS);
+    }
+    false
 }
 
 /// Make the setup AP's DNS responder authoritative in every DHCP lease.

@@ -45,7 +45,8 @@ pub enum Mode {
     /// set. Capture and streaming are down.
     Setup,
     /// A provisioned device that could not join its saved Wi-Fi starts the
-    /// setup AP with its validated state and keeps writes behind its key. A
+    /// setup AP with its validated state, keeps writes behind its key, and
+    /// retries the saved network in the background so it rejoins on its own. A
     /// persisted local analog route remains independent of that network fault.
     Recovery,
     /// Station on the home network: console behind the admin key, capture

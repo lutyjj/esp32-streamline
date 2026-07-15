@@ -137,6 +137,8 @@ check: it validates the image against the `sha256` the caller supplies from
   Compose configuration makes the image filesystem read-only, drops every
   Linux capability, sets `no-new-privileges`, and mounts only `/tmp` and the
   recording volume writable.
+- The transport state file must be owned by the bridge process user with mode
+  `0600`. The bridge validates both properties before parsing enrolled PSKs.
 - The Home Assistant add-on uses Supervisor-owned `/data` for options and
   recordings. It maps no additional writable host folder and does not request
   host networking, devices, privileged mode, the Docker socket, Home Assistant

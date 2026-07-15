@@ -106,6 +106,10 @@ class TransportStateStore:
             details = os.fstat(descriptor)
             if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
                 raise TransportStateError("transport state file must be one regular file")
+            if stat.S_IMODE(details.st_mode) != 0o600:
+                raise TransportStateError("transport state file permissions must be 0600")
+            if details.st_uid != os.geteuid():
+                raise TransportStateError("transport state file must be owned by the bridge user")
             if details.st_size > MAX_STATE_FILE_BYTES:
                 raise TransportStateError("transport state file exceeds its size limit")
             with os.fdopen(descriptor, "rb", closefd=False) as source:

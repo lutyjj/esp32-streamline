@@ -99,7 +99,9 @@ in one place. The mode and the enrolled device keys persist together in the
 transport state file: Compose uses the private `transport-data` volume at
 `/data/transport.json`; the Home Assistant add-on uses its
 Supervisor-owned `/data` directory. The file is mode `0600`, bounded,
-validated on load, and replaced atomically after each mutation.
+owned by the bridge process user, validated before its contents are parsed, and
+replaced atomically after each mutation. The bridge fails closed when a mounted
+state file grants any group or world access or belongs to another user.
 
 The bridge console accepts the one-time key id and PSK from the device console
 in either listener mode, so a credential can be enrolled before the switch.

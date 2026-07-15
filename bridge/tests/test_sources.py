@@ -179,18 +179,18 @@ class SourceRegistryTests(unittest.TestCase):
 
     def test_one_slot_key_rotation_reuses_an_eligible_disconnected_identity(self) -> None:
         registry = self.registry(1, frozenset({"192.0.2.10"}))
-        first_key = "eli1-00112233445566778899aabbccddeeff"
-        second_key = "eli1-ffeeddccbbaa99887766554433221100"
+        first_id = "eli1-00112233445566778899aabbccddeeff"
+        second_id = "eli1-ffeeddccbbaa99887766554433221100"
         first_server, first_peer = socket.socketpair()
         second_server, second_peer = socket.socketpair()
         try:
-            first = registry.lease_producer(first_key, first_server, peer_ip="192.0.2.10", transport="tls-psk")
+            first = registry.lease_producer(first_id, first_server, peer_ip="192.0.2.10", transport="tls-psk")
             first.close()
 
-            second = registry.lease_producer(second_key, second_server, peer_ip="192.0.2.10", transport="tls-psk")
+            second = registry.lease_producer(second_id, second_server, peer_ip="192.0.2.10", transport="tls-psk")
 
             self.assertIs(second.hub, first.hub)
-            self.assertEqual(registry.snapshot().keys(), {second_key})
+            self.assertEqual(registry.snapshot().keys(), {second_id})
         finally:
             first.close()
             second.close()
@@ -201,34 +201,34 @@ class SourceRegistryTests(unittest.TestCase):
 
     def test_distinct_tls_identities_from_one_peer_use_available_slots(self) -> None:
         registry = self.registry(2, frozenset({"192.0.2.10"}))
-        first_key = "eli1-00112233445566778899aabbccddeeff"
-        second_key = "eli1-ffeeddccbbaa99887766554433221100"
-        first = self.disconnect(registry, first_key, peer_ip="192.0.2.10", transport="tls-psk")
+        first_id = "eli1-00112233445566778899aabbccddeeff"
+        second_id = "eli1-ffeeddccbbaa99887766554433221100"
+        first = self.disconnect(registry, first_id, peer_ip="192.0.2.10", transport="tls-psk")
 
-        second = self.disconnect(registry, second_key, peer_ip="192.0.2.10", transport="tls-psk")
+        second = self.disconnect(registry, second_id, peer_ip="192.0.2.10", transport="tls-psk")
 
         self.assertIsNot(first, second)
-        self.assertEqual(registry.snapshot().keys(), {first_key, second_key})
+        self.assertEqual(registry.snapshot().keys(), {first_id, second_id})
 
     def test_active_identity_claims_block_one_slot_key_rotation(self) -> None:
-        first_key = "eli1-00112233445566778899aabbccddeeff"
-        second_key = "eli1-ffeeddccbbaa99887766554433221100"
+        first_id = "eli1-00112233445566778899aabbccddeeff"
+        second_id = "eli1-ffeeddccbbaa99887766554433221100"
         for kind in ("producer", "http", "recording"):
             with self.subTest(kind=kind):
                 registry = self.registry(1, frozenset({"192.0.2.10"}))
-                source = self.disconnect(registry, first_key, peer_ip="192.0.2.10", transport="tls-psk")
+                source = self.disconnect(registry, first_id, peer_ip="192.0.2.10", transport="tls-psk")
                 server, peer = socket.socketpair()
                 replacement, replacement_peer = socket.socketpair()
                 if kind == "producer":
-                    claim = registry.lease_producer(first_key, server, peer_ip="192.0.2.10", transport="tls-psk")
+                    claim = registry.lease_producer(first_id, server, peer_ip="192.0.2.10", transport="tls-psk")
                 elif kind == "http":
-                    claim = registry.lease_http(first_key)
+                    claim = registry.lease_http(first_id)
                 else:
-                    claim = registry.lease_recording(first_key)
+                    claim = registry.lease_recording(first_id)
                 try:
                     with self.assertRaises(SourceAdmissionError):
                         registry.lease_producer(
-                            second_key,
+                            second_id,
                             replacement,
                             peer_ip="192.0.2.10",
                             transport="tls-psk",

@@ -179,10 +179,9 @@ jobs:
 
           tag="v$VERSION"
           release=$(mktemp)
-          error=$(mktemp)
           expected_names=$(mktemp)
           remote_names=$(mktemp)
-          trap 'rm -f "$release" "$error" "$expected_names" "$remote_names"' EXIT
+          trap 'rm -f "$release" "$expected_names" "$remote_names"' EXIT
           assets=(
             "dist/firmware/SHA256SUMS"
             "dist/firmware/streamline-$VERSION-full.bin"
@@ -194,11 +193,14 @@ jobs:
           done
           printf '%s\n' "${assets[@]##*/}" | LC_ALL=C sort > "$expected_names"
 
-          if ! api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" >"$release" 2>"$error"; then
-            if ! grep -q 'HTTP 404' "$error"; then
-              cat "$error" >&2
-              exit 1
-            fi
+          find_release() {
+            api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              | jq -s --arg tag "$tag" '[.[][] | select(.tag_name == $tag)]'
+          }
+
+          matches=$(find_release)
+          count=$(jq 'length' <<<"$matches")
+          if [ "$count" -eq 0 ]; then
             gh release create "$tag" \
               --draft \
               --latest=false \
@@ -206,8 +208,15 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "$tag" \
               --verify-tag
-            api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$release"
+            matches=$(find_release)
+            count=$(jq 'length' <<<"$matches")
           fi
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected one release for $tag, found $count."
+            exit 1
+          fi
+          release_id=$(jq -r '.[0].id' <<<"$matches")
+          api "repos/$GITHUB_REPOSITORY/releases/$release_id" > "$release"
 
           jq -e --arg tag "$tag" --rawfile notes release-notes.md \
             '.tag_name == $tag and .name == $tag and .body == $notes and .prerelease == false' \
@@ -220,7 +229,7 @@ jobs:
           fi
 
           refresh() {
-            api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$release"
+            api "repos/$GITHUB_REPOSITORY/releases/$release_id" > "$release"
           }
 
           verify_digest() {
@@ -292,7 +301,15 @@ jobs:
           }
 
           tag="v$VERSION"
-          release=$(api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")
+          matches=$(api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            | jq -s --arg tag "$tag" '[.[][] | select(.tag_name == $tag)]')
+          count=$(jq 'length' <<<"$matches")
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected one release for $tag, found $count."
+            exit 1
+          fi
+          release_id=$(jq -r '.[0].id' <<<"$matches")
+          release=$(api "repos/$GITHUB_REPOSITORY/releases/$release_id")
           if [ "$(jq -r '.draft' <<<"$release")" = true ]; then
             mark_latest=true
             latest_error=$(mktemp)
@@ -318,7 +335,7 @@ jobs:
 
           attempt=1
           while [ "$attempt" -le 12 ]; do
-            release=$(api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")
+            release=$(api "repos/$GITHUB_REPOSITORY/releases/$release_id")
             if [ "$(jq -r '.draft' <<<"$release")" = false ] && \
                [ "$(jq -r '.immutable' <<<"$release")" = true ]; then
               exit 0

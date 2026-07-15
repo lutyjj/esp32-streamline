@@ -77,7 +77,8 @@ downloadable and states why it stopped.
 
 The store writes `.<id>.wav.part`, repairs the finite WAV lengths, syncs the
 file, and atomically renames it to `<id>.wav`. A versioned JSON manifest records
-the title, source, timestamps, audio frames, gap counters, and outcome. Startup
+the title, canonical IPv4 or TLS key source identity, timestamps, audio frames,
+gap counters, and outcome. Startup
 recovers a leftover part as an interrupted WAV instead of discarding captured
 audio. The WAV file remains the primary artifact; the store can rebuild a
 missing manifest from it.
@@ -88,13 +89,14 @@ At 192,000 bytes per second, a recording uses about 11 MiB per minute or
 ## API
 
 `GET /api/recordings/capabilities` is open and reports whether the deployment
-enabled recording plus its format and limits. Every other recording operation
-requires `Authorization: Bearer <bridge-api-token>`.
+enabled recording plus its format and limits. Listing and mutations require
+`Authorization: Bearer <bridge-api-token>`; file download also accepts a valid
+one-use ticket.
 
 | Operation | Contract |
 | --- | --- |
 | `GET /api/recordings` | List active and saved recordings plus storage availability. |
-| `POST /api/recordings` | Start `{ "source": "192.0.2.10", "title": "Album disc 1" }`. One session may run per source. |
+| `POST /api/recordings` | Start with a canonical IPv4 or TLS key source id and a title. One session may run per source. |
 | `POST /api/recordings/{id}/stop` | Detach the packet tap, drain its queue, and finalize or discard the session. |
 | `POST /api/recordings/{id}/download-ticket` | Create a one-use download URL that expires after 60 seconds. |
 | `GET /api/recordings/{id}/file` | Download with bearer authentication or a valid one-use ticket. |

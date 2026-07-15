@@ -12,6 +12,7 @@ import tempfile
 import threading
 from typing import TYPE_CHECKING, Final
 
+from streamline_bridge.source_identity import TRANSPORT_KEY_ID_PATTERN, TRANSPORT_KEY_ID_PATTERN_TEXT
 from streamline_bridge.tcp import AuthenticatedConnection, CleartextAuthenticator
 
 if TYPE_CHECKING:
@@ -23,8 +24,8 @@ if TYPE_CHECKING:
 
 CONTRACT_VERSION: Final = 1
 DEFAULT_PORT: Final = 39000
-KEY_ID_PATTERN_TEXT: Final = r"^eli1-[0-9a-f]{32}$"
-KEY_ID_PATTERN = re.compile(KEY_ID_PATTERN_TEXT)
+KEY_ID_PATTERN_TEXT: Final = TRANSPORT_KEY_ID_PATTERN_TEXT
+KEY_ID_PATTERN = TRANSPORT_KEY_ID_PATTERN
 PSK_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 PSK_BYTES: Final = 32
 MAX_KEYS: Final = 64

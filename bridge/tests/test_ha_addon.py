@@ -6,7 +6,14 @@ import unittest
 from pathlib import Path
 
 from streamline_bridge.ha_addon import bridge_argv, bridge_environment, load_options, normalize_source_allow
-from streamline_bridge.options import ADDON_CONTROL_OPTIONS, AddonControlOption, BridgeOption, addon_options
+from streamline_bridge.options import (
+    ADDON_CONTROL_OPTIONS,
+    AddonControlOption,
+    BridgeOption,
+    addon_options,
+    parse_args,
+    validate_args,
+)
 
 
 class HomeAssistantAddonOptionTests(unittest.TestCase):
@@ -110,6 +117,43 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
     def test_unknown_supervisor_options_fail_clearly(self) -> None:
         with self.assertRaisesRegex(SystemExit, "unknown Home Assistant option"):
             bridge_argv({"not_a_bridge_option": True})
+
+    def test_cli_ports_accept_only_the_socket_port_range(self) -> None:
+        for flag in ("--tcp-port", "--http-port"):
+            for accepted in (1, 65535):
+                with self.subTest(flag=flag, accepted=accepted):
+                    self.assertEqual(
+                        getattr(validate_args(parse_args([flag, str(accepted)])), flag[2:].replace("-", "_")), accepted
+                    )
+            for rejected in (0, 65536):
+                with self.subTest(flag=flag, rejected=rejected), self.assertRaises(SystemExit):
+                    validate_args(parse_args([flag, str(rejected)]))
+
+    def test_cli_and_addon_reject_nonfinite_floats_with_the_same_message(self) -> None:
+        flag = "--playout-buffer-seconds"
+        for raw in ("nan", "inf", "-inf"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(SystemExit) as cli:
+                    validate_args(parse_args([f"{flag}={raw}"]))
+                with self.assertRaises(SystemExit) as addon:
+                    bridge_argv({"playout_buffer_seconds": float(raw)})
+                self.assertEqual(str(cli.exception), str(addon.exception))
+                self.assertEqual(str(cli.exception), f"{flag} must be finite")
+
+    def test_cli_and_addon_share_resource_maximum_errors(self) -> None:
+        cases = {
+            "max_sources": 33,
+            "max_http_connections": 129,
+            "client_buffer_chunks": 4097,
+        }
+        for name, rejected in cases.items():
+            flag = f"--{name.replace('_', '-')}"
+            with self.subTest(name=name):
+                with self.assertRaises(SystemExit) as cli:
+                    validate_args(parse_args([flag, str(rejected)]))
+                with self.assertRaises(SystemExit) as addon:
+                    bridge_argv({name: rejected})
+                self.assertEqual(str(cli.exception), str(addon.exception))
 
     def test_supervisor_config_matches_the_bridge_owned_option_contract(self) -> None:
         config_path = Path(

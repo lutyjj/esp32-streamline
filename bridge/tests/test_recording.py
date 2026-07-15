@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import tempfile
 import time
 import unittest
@@ -20,7 +21,7 @@ from streamline_bridge.recording import (
     WavRecordingFile,
     wav_header,
 )
-from streamline_bridge.sources import SourceRegistry
+from streamline_bridge.sources import Source, SourceRegistry
 
 
 class FixedTime:
@@ -40,13 +41,28 @@ def payload(sample: int) -> bytes:
 
 
 class RecordingServiceTests(unittest.TestCase):
+    def connect_source(
+        self,
+        key: str,
+        *,
+        peer_ip: str | None = None,
+        transport: str = "cleartext",
+    ) -> Source[AudioPipeline]:
+        server, peer = socket.socketpair()
+        lease = self.sources.lease_producer(key, server, peer_ip=peer_ip, transport=transport)
+        self.addCleanup(peer.close)
+        self.addCleanup(server.close)
+        self.addCleanup(lease.close)
+        return lease.source
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.store = RecordingStore(Path(self.temp.name), now=FixedTime())
         self.sources = SourceRegistry(make_pipeline, max_sources=2)
-        self.source = self.sources.acquire("192.0.2.10")
+        self.source = self.connect_source("192.0.2.10")
         self.service = RecordingService(self.sources, self.store)
+        self.addCleanup(self.service.shutdown)
 
     def test_sequence_gaps_become_silence_and_duplicates_do_not_repeat_audio(self) -> None:
         started = self.service.start("192.0.2.10", "Rare album")
@@ -117,13 +133,30 @@ class RecordingServiceTests(unittest.TestCase):
         first = self.service.start("192.0.2.10", "First")
         with self.assertRaisesRegex(Exception, "already recording"):
             self.service.start("192.0.2.10", "Duplicate")
-        other = self.sources.acquire("192.0.2.11")
+        other = self.connect_source("192.0.2.11")
         second = self.service.start("192.0.2.11", "Second")
         self.source.hub.ingest(1, payload(1))
         other.hub.ingest(1, payload(2))
 
         self.assertEqual(self.service.stop(first["id"])["state"], "complete")
         self.assertEqual(self.service.stop(second["id"])["state"], "complete")
+
+    def test_tls_key_identity_is_persisted_and_valid_after_store_reopen(self) -> None:
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+        source = self.connect_source(key_id, peer_ip="192.0.2.20", transport="tls-psk")
+        started = self.service.start(key_id, "Encrypted source")
+        source.hub.ingest(1, payload(123))
+
+        stopped = self.service.stop(started["id"])
+        reopened = RecordingStore(Path(self.temp.name), now=FixedTime())
+
+        self.assertEqual(stopped["source"], key_id)
+        self.assertEqual(reopened.list_saved()[0]["source"], key_id)
+        opened = reopened.open_file(started["id"])
+        with opened.source:
+            self.assertEqual(opened.source.read(4), b"RIFF")
+        reopened.delete(started["id"])
+        self.assertEqual(reopened.list_saved(), [])
 
     def wait_for_saved(self) -> dict[str, object]:
         deadline = time.monotonic() + 1
@@ -248,6 +281,11 @@ class RecordingRecoveryTests(unittest.TestCase):
             manifest["title"] = {"not": "a string"}
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
+            self.assertEqual(store.list_saved(), [])
+
+            manifest["title"] = "Rare album"
+            manifest["source"] = "device.local"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             self.assertEqual(store.list_saved(), [])
 
             manifest_path.write_bytes(b"x" * (64 * 1024 + 1))

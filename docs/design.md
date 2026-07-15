@@ -116,9 +116,9 @@ It exposes:
 
 ```text
 /streamline.wav              live HTTP WAV stream
-/streamline.wav?source=<ip>  live HTTP WAV stream from one ESP32 source
+/streamline.wav?source=<source>  live HTTP WAV stream from one IPv4 or TLS key source
 /status                      per-source JSON bridge stats
-/health                      health check
+/health                      PCM listener readiness
 ```
 
 Run it:

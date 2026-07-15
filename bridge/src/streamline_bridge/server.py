@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -19,6 +18,7 @@ from streamline_bridge.tcp import TcpIngestServer
 from streamline_bridge.transport import TlsPskAuthenticator, TransportControl, TransportStateStore
 
 logger = logging.getLogger(__name__)
+HTTP_GRACEFUL_SHUTDOWN_SECONDS = 5
 
 
 def bridge_version() -> str:
@@ -69,26 +69,35 @@ def main() -> int:
         authenticators=transport,
     )
     transport.bind_producer_disconnect(pcm_server.close_producers)
-    threading.Thread(target=pcm_server.serve_forever, daemon=True).start()
     server = uvicorn.Server(
         uvicorn.Config(
-            make_app(sources, bridge_version(), recordings, api_token, transport),
+            make_app(sources, bridge_version(), recordings, api_token, transport, healthy=lambda: pcm_server.healthy),
             host=args.http_bind,
             port=args.http_port,
             log_config=None,
-            limit_concurrency=args.max_http_connections,
+            # Uvicorn counts the current connection before applying its >= limit.
+            limit_concurrency=args.max_http_connections + 1,
             timeout_keep_alive=args.http_request_timeout_seconds,
+            timeout_graceful_shutdown=HTTP_GRACEFUL_SHUTDOWN_SECONDS,
         )
     )
-    logger.info("serving HTTP WAV on http://%s:%s/streamline.wav", args.http_bind, args.http_port)
+    result = 0
     try:
+        pcm_server.start(on_failure=lambda _exc: setattr(server, "should_exit", True))
+        logger.info("serving HTTP WAV on http://%s:%s/streamline.wav", args.http_bind, args.http_port)
         server.run()
+        if pcm_server.failure is not None:
+            result = 1
+    except OSError as exc:
+        logger.error("cannot start PCM listener on %s:%s: %s", args.tcp_bind, args.tcp_port, exc)
+        result = 1
     except KeyboardInterrupt:
         logger.info("stopped")
     finally:
+        pcm_server.close()
         if recordings is not None:
             recordings.shutdown()
-    return 0
+    return result
 
 
 if __name__ == "__main__":

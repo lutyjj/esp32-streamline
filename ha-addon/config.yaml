@@ -41,13 +41,13 @@ options:
 schema:
   api_token: password
   source_allow: str
-  max_sources: "int(1,)"
-  max_http_connections: "int(1,)"
-  http_request_timeout_seconds: "float(0.001,)"
-  client_buffer_chunks: "int(1,)"
-  playout_buffer_seconds: "float(0.001,)"
-  max_repeat_conceal_packets: "int(0,)"
-  max_outage_silence_seconds: "float(0.001,)"
-  source_idle_timeout_seconds: "float(0.001,)"
-  source_eviction_idle_seconds: "float(0.001,)"
+  max_sources: "int(1,32)"
+  max_http_connections: "int(1,128)"
+  http_request_timeout_seconds: "float(0.001,3600.0)"
+  client_buffer_chunks: "int(1,4096)"
+  playout_buffer_seconds: "float(0.001,60.0)"
+  max_repeat_conceal_packets: "int(0,256)"
+  max_outage_silence_seconds: "float(0.001,300.0)"
+  source_idle_timeout_seconds: "float(0.001,3600.0)"
+  source_eviction_idle_seconds: "float(0.001,86400.0)"
   recordings_enabled: bool

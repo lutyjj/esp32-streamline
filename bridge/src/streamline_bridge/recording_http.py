@@ -68,6 +68,10 @@ class RecordingHttpService:
             raise RecordingError("unauthorized", "Request a new recording download.")
         return self._enabled().open_file(recording_id)
 
+    def open_authorized(self, recording_id: str) -> OpenedRecording:
+        """Open a recording after the HTTP adapter validates bearer auth."""
+        return self._enabled().open_file(recording_id)
+
     def _enabled(self) -> RecordingService:
         if self._service is None:
             raise RecordingError(

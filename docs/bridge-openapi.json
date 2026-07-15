@@ -449,8 +449,21 @@
             "type": "string"
           },
           "source": {
-            "title": "Source",
-            "type": "string"
+            "oneOf": [
+              {
+                "format": "ipv4",
+                "type": "string"
+              },
+              {
+                "pattern": "^eli1-[0-9a-f]{32}$",
+                "type": "string"
+              },
+              {
+                "const": "unknown",
+                "type": "string"
+              }
+            ],
+            "title": "Source"
           },
           "state": {
             "enum": [
@@ -506,6 +519,14 @@
       "SourceLifecycle": {
         "additionalProperties": false,
         "properties": {
+          "admission": {
+            "enum": [
+              "open",
+              "allowlisted"
+            ],
+            "title": "Admission",
+            "type": "string"
+          },
           "dynamic": {
             "title": "Dynamic",
             "type": "boolean"
@@ -564,6 +585,7 @@
         "required": [
           "state",
           "dynamic",
+          "admission",
           "http_clients",
           "recording_sessions",
           "idle_seconds",
@@ -823,8 +845,17 @@
         "additionalProperties": false,
         "properties": {
           "source": {
-            "title": "Source",
-            "type": "string"
+            "oneOf": [
+              {
+                "format": "ipv4",
+                "type": "string"
+              },
+              {
+                "pattern": "^eli1-[0-9a-f]{32}$",
+                "type": "string"
+              }
+            ],
+            "title": "Source"
           },
           "title": {
             "maxLength": 80,
@@ -1017,6 +1048,11 @@
       "bearer_auth": {
         "scheme": "bearer",
         "type": "http"
+      },
+      "recording_ticket": {
+        "in": "query",
+        "name": "ticket",
+        "type": "apiKey"
       }
     }
   },
@@ -1341,16 +1377,6 @@
               "title": "Recording Id",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "ticket",
-            "required": true,
-            "schema": {
-              "minLength": 1,
-              "title": "Ticket",
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -1401,7 +1427,15 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Download a recording with a one-use ticket"
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "recording_ticket": []
+          }
+        ],
+        "summary": "Download a recording with bearer authentication or a one-use ticket"
       }
     },
     "/api/recordings/{recording_id}/stop": {
@@ -1774,6 +1808,12 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "text/plain": {}
+            },
+            "description": "Service Unavailable"
           }
         },
         "summary": "Check bridge health"
@@ -1808,7 +1848,16 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "oneOf": [
+                    {
+                      "format": "ipv4",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^eli1-[0-9a-f]{32}$",
+                      "type": "string"
+                    }
+                  ]
                 },
                 {
                   "type": "null"
@@ -1844,6 +1893,16 @@
               }
             },
             "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "summary": "Stream live PCM as WAV"

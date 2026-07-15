@@ -27,6 +27,7 @@ pub mod packet;
 pub mod play;
 pub mod profiles;
 pub mod protocol;
+pub mod reconnect;
 pub mod recovery;
 pub mod state;
 pub mod stream;

@@ -34,13 +34,13 @@ use streamline_firmware::{
     health::{BootFacts, HealthReport},
     identity,
     profiles::AudioProfileCatalog,
-    recovery, runtime, stream,
+    recovery, stream,
     transport::KeyVerifier,
     update,
 };
 
 #[cfg(not(feature = "qemu"))]
-use streamline_firmware::analog_passthrough::AnalogPassthroughRoute;
+use streamline_firmware::{analog_passthrough::AnalogPassthroughRoute, reconnect, runtime};
 
 fn main() -> Result<()> {
     // Required by esp-idf-sys to link runtime patches on an ESP-IDF target.
@@ -92,7 +92,7 @@ fn main() -> Result<()> {
     // The network is the one seam between the hardware image and the QEMU
     // image; exactly one `network_boot` variant below compiles into each,
     // and nothing after this call knows which network the device is on.
-    let (_network, (mode, config, stream, codec, analog_passthrough, health)) = network_boot(
+    let (network, (mode, config, stream, codec, analog_passthrough, health)) = network_boot(
         peripherals,
         event_loop,
         nvs_partition,
@@ -100,6 +100,13 @@ fn main() -> Result<()> {
         &board,
         persisted,
     )?;
+    // The composition root holds the network link for the life of the process.
+    // On hardware the recovery boot loop drives station retries through it; the
+    // QEMU link has no radio and only needs to stay alive.
+    #[cfg(not(feature = "qemu"))]
+    let mut network = network;
+    #[cfg(feature = "qemu")]
+    let _network = network;
 
     // Reaching the home network with the console up is the signal an
     // over-the-air image booted correctly; confirm the slot so the rollback
@@ -189,30 +196,53 @@ fn main() -> Result<()> {
     };
     let booted_at = Instant::now();
     let mut auto_update_timer = update::AutoUpdateTimer::default();
+    #[cfg(not(feature = "qemu"))]
+    let mut reconnect_timer = reconnect::ReconnectTimer::default();
     loop {
         FreeRtos::delay_ms(1_000);
-        if mode != Mode::Provisioned {
-            continue;
-        }
-        let schedule = state
-            .config
-            .lock()
-            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
-            .auto_update_schedule;
-        let audio_idle = state
-            .stream
-            .as_ref()
-            .map(|stream| !stream.snapshot().playing)
-            .unwrap_or(true);
-        if auto_update_timer.take_due(booted_at.elapsed(), schedule, audio_idle) {
-            log::info!("automatic firmware update check started");
-            if let Err(error) = ota::spawn_update(
-                Arc::clone(&state.ota),
-                Arc::clone(&state.store),
-                ota::Source::LatestRelease,
-            ) {
-                log::warn!("automatic firmware update check could not start: {error:#}");
+        match mode {
+            Mode::Provisioned => {
+                let schedule = state
+                    .config
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
+                    .auto_update_schedule;
+                let audio_idle = state
+                    .stream
+                    .as_ref()
+                    .map(|stream| !stream.snapshot().playing)
+                    .unwrap_or(true);
+                if auto_update_timer.take_due(booted_at.elapsed(), schedule, audio_idle) {
+                    log::info!("automatic firmware update check started");
+                    if let Err(error) = ota::spawn_update(
+                        Arc::clone(&state.ota),
+                        Arc::clone(&state.store),
+                        ota::Source::LatestRelease,
+                    ) {
+                        log::warn!("automatic firmware update check could not start: {error:#}");
+                    }
+                }
             }
+            // A device that fell back to recovery keeps its setup AP up while it
+            // retries the saved Wi-Fi. Once the home network answers, confirm the
+            // running slot (reaching it proves the image boots) and reboot into
+            // the normal provisioned path, which brings up audio, mDNS, and the
+            // stream. Confirming before the reboot keeps a transient outage right
+            // after an OTA from tripping the pending-verify rollback.
+            #[cfg(not(feature = "qemu"))]
+            Mode::Recovery => {
+                if reconnect_timer.take_due(booted_at.elapsed()) {
+                    log::info!("recovery: retrying the saved Wi-Fi");
+                    if wifi::reconnect_station(&mut network) {
+                        log::info!(
+                            "recovery: home network reachable; confirming slot and rejoining"
+                        );
+                        ota::mark_current_valid();
+                        unsafe { esp_idf_svc::sys::esp_restart() };
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -547,7 +577,12 @@ fn start_setup(
     board: &Board,
     persisted: Option<RuntimeConfig>,
 ) -> Result<SetupState> {
-    let ssid = wifi::start_setup_ap(wifi, suffix)?;
+    // A provisioned device that fell back runs the station beside the AP so it
+    // can rejoin its home network on its own; a first-run device is AP-only.
+    let ssid = match persisted.as_ref() {
+        Some(config) => wifi::start_recovery_ap(wifi, suffix, config)?,
+        None => wifi::start_setup_ap(wifi, suffix)?,
+    };
     log::info!("setup AP started: {ssid}");
     Ok((
         if persisted.is_some() {

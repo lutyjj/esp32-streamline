@@ -3,7 +3,7 @@
 import json
 import unittest
 
-from streamline_tools.device.api import api_checks, wait_for_api
+from streamline_tools.device.api import DeviceApi, api_checks, wait_for_api
 from streamline_tools.device.checks import CheckResult
 
 
@@ -14,6 +14,10 @@ def result(results: list[CheckResult], check: str) -> CheckResult:
 
 
 class ApiChecksTest(unittest.TestCase):
+    def test_client_repr_never_includes_its_admin_key(self) -> None:
+        client = DeviceApi(base_url="http://192.0.2.1", admin_key="private-fixture-key")
+        self.assertNotIn("private-fixture-key", repr(client))
+
     def test_healthy_api_passes(self) -> None:
         bodies = {
             "/api/status": json.dumps({"mode": "provisioned", "firmware_version": "0.5.5"}),

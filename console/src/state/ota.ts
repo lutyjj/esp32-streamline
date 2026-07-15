@@ -71,6 +71,14 @@ export function customImageProblem(url: string, sha256: string): string | null {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return 'the image URL must use http or https';
   }
+  // The device rejects these shapes too; explaining them here keeps the
+  // possibly signed URL out of a device error round-trip.
+  if (parsed.username || parsed.password) {
+    return 'the image URL must not carry a username or password';
+  }
+  if (parsed.hash) {
+    return 'the image URL must not carry a #fragment';
+  }
   if (!/^[0-9a-f]{64}$/i.test(sha256.trim())) {
     return 'the SHA-256 must be exactly 64 hex characters';
   }

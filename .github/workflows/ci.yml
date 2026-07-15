@@ -38,6 +38,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         id: filter
         with:
@@ -55,22 +56,20 @@ jobs:
           exact=false
           if [ "$EVENT_NAME" = pull_request ] && [[ "$HEAD_REF" == release/* ]]; then
             expected=$(mktemp)
-            changed=$(mktemp)
             api_changed=$(mktemp)
             manifest=$(mktemp)
-            trap 'rm -f "$expected" "$changed" "$api_changed" "$manifest"' EXIT
-            git fetch --no-tags origin \
-              "refs/pull/$PR_NUMBER/head:refs/remotes/origin/release-pr-head"
-            test "$(git rev-parse refs/remotes/origin/release-pr-head)" = "$HEAD_SHA"
+            trap 'rm -f "$expected" "$api_changed" "$manifest"' EXIT
+            pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+            jq -e --arg base "$BASE_SHA" --arg head "$HEAD_SHA" \
+              '.base.sha == $base and .head.sha == $head' <<<"$pull" >/dev/null
             git show "$BASE_SHA:release-manifest.json" > "$manifest"
             jq -e '.schema_version == 1 and (.snapshot_paths | type == "array" and length > 0)' \
               "$manifest" >/dev/null
             jq -r '.snapshot_paths[]' "$manifest" | LC_ALL=C sort -u > "$expected"
-            git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" -- \
-              | LC_ALL=C sort -u > "$changed"
             gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
-              --jq '.[].filename' | LC_ALL=C sort -u > "$api_changed"
-            if diff -u "$api_changed" "$changed" && diff -u "$expected" "$changed"; then
+              --jq '.[] | .filename, (.previous_filename // empty)' \
+              | LC_ALL=C sort -u > "$api_changed"
+            if diff -u "$expected" "$api_changed"; then
               exact=true
             fi
           fi

@@ -22,7 +22,6 @@ ADMIN_KEY ?= $(call dotenv,STREAMLINE_ADMIN_KEY)
 CONTAINER_RUN := $(CONTAINER) run --rm \
 	-v "$(CURDIR):/workspace" -v "$(REPO_ROOT):/repo:ro" -v "$(PYTHON_CACHE_VOLUME):/cache" \
 	-e RUFF_CACHE_DIR=/cache/ruff-tools -e MYPY_CACHE_DIR=/cache/mypy-tools \
-	-e STREAMLINE_REPO_ROOT=/repo \
 	-w /workspace $(DEV_IMAGE)
 LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 	-v "$(CURDIR):/workspace" -e UV_CACHE_DIR=/tmp/uv-cache \

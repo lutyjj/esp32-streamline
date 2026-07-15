@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 import unittest
 from collections.abc import Iterable
@@ -8,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-REPO_ROOT = Path(os.environ["STREAMLINE_REPO_ROOT"])
+REPO_ROOT = Path("/repo")
 FILTERS_PATH = REPO_ROOT / ".github/ci-paths.yml"
 
 

@@ -42,7 +42,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts
+.PHONY: image console-asset format lint lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -129,6 +129,19 @@ artifacts: build
 	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/streamline-$(VERSION)-ota.bin $(ELF)'
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-$(VERSION).elf
 	cd $(DIST_DIR)/firmware && shasum -a 256 streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf > SHA256SUMS
+
+# Rebuilding one commit reproduces the packaged images byte-for-byte
+# (CONFIG_APP_REPRODUCIBLE_BUILD in sdkconfig.defaults); release retries and
+# asset verification rely on it. Snapshots the packaged artifacts, rebuilds
+# from a clean target, and compares.
+repro-check:
+	@test -f "$(DIST_DIR)/firmware/streamline-$(VERSION)-full.bin" || (echo "package the artifacts first: make artifacts VERSION=$(VERSION)" >&2; exit 2)
+	@set -eu; snapshot="$$(mktemp -d)"; trap 'rm -rf "$$snapshot"' EXIT INT TERM; \
+		files="streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf SHA256SUMS"; \
+		for f in $$files; do cp "$(DIST_DIR)/firmware/$$f" "$$snapshot/"; done; \
+		$(MAKE) clean; \
+		$(MAKE) artifacts VERSION=$(VERSION); \
+		for f in $$files; do cmp "$$snapshot/$$f" "$(DIST_DIR)/firmware/$$f" || { echo "$$f is not reproducible" >&2; exit 1; }; done
 
 # The QEMU-emulated device's images: the merged image the smoke harness
 # boots, and the bare application image its OTA test installs into the

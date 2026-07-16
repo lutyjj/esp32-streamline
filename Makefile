@@ -162,8 +162,10 @@ release-lock-check: version-check bridge-lock-check firmware-lock-check ;
 release-check: lint bridge-test console-test firmware-test ha-addon-test
 
 # Verify a prepared release without changing its files. Release PRs and
-# promotion use this target against a fixed commit.
-release-verify: changelog-check release-lock-check release-check firmware-artifacts bridge-image
+# promotion use this target against a fixed commit. firmware-repro-check
+# rebuilds the packaged images once from a clean target and requires byte
+# equality, which is what lets release publication retry idempotently.
+release-verify: changelog-check release-lock-check release-check firmware-artifacts firmware-repro-check bridge-image
 	$(MAKE) ha-addon-image BUILD_ARCH=aarch64 VERSION=$(VERSION)
 	$(MAKE) ha-addon-image BUILD_ARCH=amd64 VERSION=$(VERSION)
 

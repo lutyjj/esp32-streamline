@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import re
 import unittest
 from collections.abc import Iterable
 from pathlib import Path
 
 import yaml
+from wcmatch import glob
 
 REPO_ROOT = Path("/repo")
 FILTERS_PATH = REPO_ROOT / ".github/ci-paths.yml"
@@ -78,26 +78,8 @@ def flatten(values: object) -> Iterable[str]:
 
 
 def matching_filters(filters: dict[str, list[str]], path: str) -> set[str]:
-    return {name for name, patterns in filters.items() if any(glob_matches(path, pattern) for pattern in patterns)}
-
-
-def glob_matches(path: str, pattern: str) -> bool:
-    expression = ""
-    index = 0
-    while index < len(pattern):
-        if pattern.startswith("**/", index):
-            expression += "(?:.*/)?"
-            index += 3
-        elif pattern.startswith("**", index):
-            expression += ".*"
-            index += 2
-        elif pattern[index] == "*":
-            expression += "[^/]*"
-            index += 1
-        elif pattern[index] == "?":
-            expression += "[^/]"
-            index += 1
-        else:
-            expression += re.escape(pattern[index])
-            index += 1
-    return re.fullmatch(expression, path) is not None
+    # GLOBSTAR and DOTGLOB mirror how dorny/paths-filter feeds patterns to
+    # picomatch with `dot: true`.
+    return {
+        name for name, patterns in filters.items() if glob.globmatch(path, patterns, flags=glob.GLOBSTAR | glob.DOTGLOB)
+    }

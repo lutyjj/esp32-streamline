@@ -27,6 +27,7 @@ dev = [
   "pyyaml>=6.0.3,<7",
   "ruff",
   "types-pyyaml",
+  "wcmatch>=10.1,<11",
 ]
 
 [tool.ruff]

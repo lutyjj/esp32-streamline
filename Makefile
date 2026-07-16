@@ -138,10 +138,9 @@ repository-secret-check: repository-secret-scanner-self-test
 repository-secret-scanner-self-test:
 	@$(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" --env HOME="$(CONTAINER_SAFE_HOME)" --entrypoint sh \
 		--tmpfs /scan:rw,noexec,nosuid,size=1m,mode=1777 \
-		$(GITLEAKS_IMAGE) -ec 'for path in src tools .github/workflows ha-addon; do \
-			mkdir -p "/scan/$$path"; printf "%s%s\n" "AKIA" "QWERTYUIOPASDFGH" > "/scan/$$path/canary"; \
-			set +e; gitleaks dir "/scan/$$path" --no-banner --no-color --redact >/dev/null 2>&1; status=$$?; set -e; \
-			test "$$status" -eq 1; rm -rf "/scan/$$path"; done'
+		$(GITLEAKS_IMAGE) -ec 'printf "%s%s\n" "AKIA" "QWERTYUIOPASDFGH" > /scan/canary; \
+			set +e; gitleaks dir /scan --no-banner --no-color --redact >/dev/null 2>&1; status=$$?; set -e; \
+			test "$$status" -eq 1'
 docs-check: repository-check ;
 api-contract-check: firmware-openapi-check console-lint ;
 

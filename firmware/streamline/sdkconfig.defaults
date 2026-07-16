@@ -17,6 +17,12 @@ CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 # itself valid, so a bad over-the-air image cannot brick the device.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
+# Rebuilding one commit yields byte-identical images: the app and bootloader
+# descriptors carry no compile time/date, and debug paths are remapped to
+# fixed prefixes. Release retries and provenance checks rely on this; the
+# descriptors' version fields still carry the product version.
+CONFIG_APP_REPRODUCIBLE_BUILD=y
+
 # OpenCores Ethernet backs the QEMU image variant (cargo feature `qemu`).
 # Always enabled so both variants share one ESP-IDF build; the hardware image
 # never references the driver, so the linker drops it there.

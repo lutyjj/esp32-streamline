@@ -33,7 +33,7 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
-.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze smoke-qemu smoke-device release-prepare release-version-check
+.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze smoke-qemu smoke-device release-prepare
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
@@ -104,9 +104,3 @@ release-prepare: image
 	$(CONTAINER) run --rm -v "$(REPO_ROOT)":/repo -w /repo \
 		-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(IMAGE) \
 		python3 -m streamline_tools.release prepare --root /repo --version "$(VERSION)"
-
-release-version-check: image
-	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
-	$(CONTAINER) run --rm -v "$(REPO_ROOT)":/repo:ro -w /repo \
-		-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(IMAGE) \
-		python3 -m streamline_tools.release check-versions --root /repo --version "$(VERSION)"

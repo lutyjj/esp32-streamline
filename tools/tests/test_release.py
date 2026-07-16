@@ -96,6 +96,19 @@ class PrepareReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "release-manifest.json, tools/extra.py"):
                 check_snapshot(base, [*paths, "release-manifest.json", "tools/extra.py"])
 
+    def test_snapshot_compares_against_an_explicit_manifest(self) -> None:
+        with ReleaseFixture() as root:
+            manifest = json.loads((root / "release-manifest.json").read_text())
+            manifest["snapshot_paths"] = sorted([*manifest["snapshot_paths"], "tools/extra.py"])
+            base_manifest = root / "base-manifest.json"
+            write(base_manifest, json.dumps(manifest))
+            write(root / "tools/extra.py", "\n")
+            paths = [str(path) for path in load_manifest(root, base_manifest).snapshot_paths]
+
+            check_snapshot(root, paths, base_manifest)
+            with self.assertRaisesRegex(ValueError, "unexpected: tools/extra.py"):
+                check_snapshot(root, paths)
+
     def test_manifest_rejects_paths_outside_the_repository(self) -> None:
         with ReleaseFixture() as root:
             manifest_path = root / "release-manifest.json"

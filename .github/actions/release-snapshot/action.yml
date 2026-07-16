@@ -1,0 +1,51 @@
+name: Release snapshot
+description: >-
+  Compare a release pull request's changed files against the base commit's
+  release-manifest.json. Requires a full-history checkout (fetch-depth 0) so
+  the base commit's manifest is readable.
+
+inputs:
+  pr-number:
+    description: Pull request number to classify.
+    required: true
+  base-sha:
+    description: Base commit SHA from the triggering event.
+    required: true
+  head-sha:
+    description: Head commit SHA from the triggering event.
+    required: true
+
+outputs:
+  exact:
+    description: Whether the PR changes exactly the manifest's snapshot paths.
+    value: ${{ steps.compare.outputs.exact }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compare changed files against the base manifest
+      id: compare
+      shell: bash
+      env:
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+      run: |
+        manifest=$(mktemp)
+        changed=$(mktemp)
+        trap 'rm -f "$manifest" "$changed"' EXIT
+        # Refuse to classify a stale event: the PR must still be at the SHAs
+        # the workflow run was triggered for.
+        pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+        jq -e --arg base "$BASE_SHA" --arg head "$HEAD_SHA" \
+          '.base.sha == $base and .head.sha == $head' <<<"$pull" >/dev/null
+        git show "$BASE_SHA:release-manifest.json" > "$manifest"
+        gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+          --jq '.[] | .filename, (.previous_filename // empty)' > "$changed"
+        if make release-snapshot-check CHANGED_PATHS="$changed" RELEASE_MANIFEST="$manifest"; then
+          exact=true
+        else
+          exact=false
+        fi
+        echo "exact=$exact" >> "$GITHUB_OUTPUT"

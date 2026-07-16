@@ -43,37 +43,17 @@ jobs:
         id: filter
         with:
           filters: .github/ci-paths.yml
+      # Skipped outside release PRs, which leaves the output empty and every
+      # `== 'true'` comparison false.
       - name: Classify a release snapshot
         id: release-snapshot
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          EVENT_NAME: ${{ github.event_name }}
-          HEAD_REF: ${{ github.head_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          exact=false
-          if [ "$EVENT_NAME" = pull_request ] && [[ "$HEAD_REF" == release/* ]]; then
-            expected=$(mktemp)
-            api_changed=$(mktemp)
-            manifest=$(mktemp)
-            trap 'rm -f "$expected" "$api_changed" "$manifest"' EXIT
-            pull=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
-            jq -e --arg base "$BASE_SHA" --arg head "$HEAD_SHA" \
-              '.base.sha == $base and .head.sha == $head' <<<"$pull" >/dev/null
-            git show "$BASE_SHA:release-manifest.json" > "$manifest"
-            jq -e '.schema_version == 1 and (.snapshot_paths | type == "array" and length > 0)' \
-              "$manifest" >/dev/null
-            jq -r '.snapshot_paths[]' "$manifest" | LC_ALL=C sort -u > "$expected"
-            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
-              --jq '.[] | .filename, (.previous_filename // empty)' \
-              | LC_ALL=C sort -u > "$api_changed"
-            if diff -u "$expected" "$api_changed"; then
-              exact=true
-            fi
-          fi
-          echo "exact=$exact" >> "$GITHUB_OUTPUT"
+        if: >-
+          github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')
+        uses: ./.github/actions/release-snapshot
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
       - id: matrix
         # Fan out over every matched component except the bespoke firmware job
         # and the internal pseudo-filters.

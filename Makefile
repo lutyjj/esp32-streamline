@@ -12,6 +12,7 @@ ADDON_IMAGE ?=
 REF ?=
 CAP ?=
 CHANGED_PATHS ?=
+RELEASE_MANIFEST ?= release-manifest.json
 
 # Repository checks use maintained linters in pinned public containers. The
 # version tag names the tool and the digest fixes the supplied image.
@@ -21,6 +22,10 @@ MARKDOWNLINT_IMAGE := ghcr.io/igorshubovych/markdownlint-cli:v0.49.0@sha256:ac86
 YQ_IMAGE := mikefarah/yq:4.53.3@sha256:11a1f0b604b13dbbdc662260d8db6f644b22d8553122a25c1b5b2e8713ca6977
 GITLEAKS_IMAGE := zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 PYTHON_CHECK_IMAGE := python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9
+
+# The release tool is stdlib-only, so version and snapshot checks run it from
+# source in the plain Python image instead of building the tools image.
+RELEASE_TOOL_RUN = $(READONLY_REPO_RUN) --env PYTHONDONTWRITEBYTECODE=1 --env PYTHONPATH=/repo/tools/src
 
 # The root Dockerfile keeps the changelog generator pinned and Dependabot-managed.
 GIT_CLIFF_IMAGE := esp32-streamline-release-tools
@@ -162,20 +167,19 @@ ha-addon-%:
 
 version-check:
 	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
-	$(READONLY_REPO_RUN) --env PYTHONDONTWRITEBYTECODE=1 --env PYTHONPATH=/repo/tools/src \
-		$(PYTHON_CHECK_IMAGE) python3 -m streamline_tools.release check-versions --root /repo --version "$(VERSION)"
+	$(RELEASE_TOOL_RUN) $(PYTHON_CHECK_IMAGE) python3 -m streamline_tools.release \
+		check-versions --root /repo --version "$(VERSION)"
 
-# CI and promotion pass the pull request's complete changed-file list here.
-# The manifest is sorted, and the comparison rejects both missing and extra
-# release files.
+# CI and promotion pass the pull request's complete changed-file list here,
+# with RELEASE_MANIFEST pointing at the base commit's manifest so a release PR
+# cannot expand its own allowlist. The comparison rejects both missing and
+# extra release files.
 release-snapshot-check:
 	@test -n "$(CHANGED_PATHS)" -a -f "$(CHANGED_PATHS)" || (echo "CHANGED_PATHS=/path/to/file-list is required" >&2; exit 2)
-	@set -eu; \
-		expected="$$(mktemp)"; actual="$$(mktemp)"; \
-		trap 'rm -f "$$expected" "$$actual"' EXIT INT TERM; \
-		$(READONLY_REPO_RUN) $(YQ_IMAGE) eval --unwrapScalar '.snapshot_paths[]' release-manifest.json | LC_ALL=C sort -u > "$$expected"; \
-		LC_ALL=C sort -u "$(CHANGED_PATHS)" > "$$actual"; \
-		diff -u "$$expected" "$$actual"
+	$(RELEASE_TOOL_RUN) --interactive \
+		--volume "$(abspath $(RELEASE_MANIFEST)):/release-manifest.json:ro" \
+		$(PYTHON_CHECK_IMAGE) python3 -m streamline_tools.release \
+		check-snapshot --root /repo --manifest /release-manifest.json < "$(CHANGED_PATHS)"
 
 # Prepare the only files that carry the product version, then regenerate the
 # add-on metadata from the same git history the published release will use.

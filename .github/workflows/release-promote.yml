@@ -35,7 +35,6 @@ jobs:
 
       - name: Revalidate the merged pull request
         env:
-          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -49,18 +48,17 @@ jobs:
             '.merged == true and .head.sha == $head and .merge_commit_sha == $merge and
              .head.ref == $branch and .base.ref == "mainline"' \
             <<<"$pull" >/dev/null
-          expected=$(mktemp)
-          api_changed=$(mktemp)
-          manifest=$(mktemp)
-          trap 'rm -f "$expected" "$api_changed" "$manifest"' EXIT
-          git show "$EVENT_BASE_SHA:release-manifest.json" > "$manifest"
-          jq -e '.schema_version == 1 and (.snapshot_paths | type == "array" and length > 0)' \
-            "$manifest" >/dev/null
-          jq -r '.snapshot_paths[]' "$manifest" | LC_ALL=C sort -u > "$expected"
-          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
-            --jq '.[] | .filename, (.previous_filename // empty)' \
-            | LC_ALL=C sort -u > "$api_changed"
-          diff -u "$expected" "$api_changed"
+
+      - name: Compare the merged files against the release manifest
+        id: snapshot
+        uses: ./.github/actions/release-snapshot
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
+
+      - name: Require the exact release file set
+        run: test "${{ steps.snapshot.outputs.exact }}" = true
 
       - name: Set up QEMU for cross-architecture builds
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4

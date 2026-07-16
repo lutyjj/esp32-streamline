@@ -35,10 +35,15 @@ class ReleaseManifest:
     version_files: tuple[VersionFile, ...]
 
 
-def load_manifest(root: Path) -> ReleaseManifest:
-    """Load the release file contract and reject ambiguous paths or owners."""
+def load_manifest(root: Path, manifest_path: Path | None = None) -> ReleaseManifest:
+    """Load the release file contract and reject ambiguous paths or owners.
+
+    CI and promotion pass the pull request's base-commit manifest through
+    `manifest_path` so a release PR cannot expand its own allowlist; snapshot
+    paths are still required to exist under `root`.
+    """
     try:
-        document: Any = json.loads((root / MANIFEST_PATH).read_text())
+        document: Any = json.loads((manifest_path or root / MANIFEST_PATH).read_text())
     except (OSError, json.JSONDecodeError) as error:
         msg = f"cannot read {MANIFEST_PATH}: {error}"
         raise ValueError(msg) from error
@@ -122,9 +127,9 @@ def check_versions(root: Path, expected: str) -> None:
             raise ValueError(msg)
 
 
-def check_snapshot(root: Path, changed_paths: Iterable[str]) -> None:
+def check_snapshot(root: Path, changed_paths: Iterable[str], manifest_path: Path | None = None) -> None:
     """Require the changed path set to match the release manifest exactly."""
-    expected = set(load_manifest(root).snapshot_paths)
+    expected = set(load_manifest(root, manifest_path).snapshot_paths)
     actual = {Path(value.strip()) for value in changed_paths if value.strip()}
     missing = sorted(expected - actual)
     unexpected = sorted(actual - expected)
@@ -176,6 +181,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     prepare.add_argument("--version", required=True)
     snapshot = commands.add_parser("check-snapshot", help="validate changed paths from stdin")
     snapshot.add_argument("--root", type=Path, default=Path.cwd())
+    snapshot.add_argument("--manifest", type=Path, default=None, help="manifest to compare against")
     versions = commands.add_parser("check-versions", help="validate every version owner")
     versions.add_argument("--root", type=Path, default=Path.cwd())
     versions.add_argument("--version", required=True)
@@ -187,7 +193,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "check-versions":
             check_versions(args.root, args.version)
         else:
-            check_snapshot(args.root, sys.stdin)
+            check_snapshot(args.root, sys.stdin, args.manifest)
     except ValueError as error:
         parser.error(str(error))
     return 0

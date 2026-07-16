@@ -310,13 +310,7 @@ jobs:
           refresh
           checksum_count=$(asset_count "${checksum_asset##*/}")
           if [ "$checksum_count" -eq 0 ]; then
-            (
-              cd dist/firmware
-              sha256sum \
-                "streamline-$VERSION-full.bin" \
-                "streamline-$VERSION-ota.bin" \
-                "streamline-$VERSION.elf" > SHA256SUMS
-            )
+            (cd dist/firmware && sha256sum "${payload_assets[@]##*/}" > SHA256SUMS)
           elif [ "$checksum_count" -eq 1 ]; then
             for asset in "${payload_assets[@]}"; do
               refresh

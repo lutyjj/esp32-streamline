@@ -15,7 +15,13 @@ import { bytes, duration } from '../lib/format';
 import { useTransact, useWritable } from '../lib/hooks';
 import { ApiError } from '../lib/http';
 import { config, configResource, loadConfig, status } from '../state/device';
-import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
+import {
+  beginOtaSession,
+  customImageProblem,
+  OTA_INSTALLING_PHASES,
+  otaLog,
+  prettyPhase,
+} from '../state/ota';
 import { beginResetHandoff, resetHandoff, resetHandoffMessage } from '../state/resetHandoff';
 import { Button } from './Button';
 import { Card, CardFooter } from './Card';
@@ -259,7 +265,13 @@ function FirmwareCard() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            beginOtaSession(`Installing custom image from ${url.trim()}…`);
+            const problem = customImageProblem(url, sha256);
+            if (problem) {
+              // Nothing leaves the browser on an invalid form.
+              customTransact.setState({ text: problem, cls: 'err' });
+              return;
+            }
+            beginOtaSession(`Installing custom image from ${url.trim()}…`, 'custom');
             customTransact.run(() => otaUpdate({ url: url.trim(), sha256: sha256.trim() }), {
               busyText: 'Installing…',
               okText: 'Install started — progress below',

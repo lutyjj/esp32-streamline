@@ -35,6 +35,8 @@ console:
   - 'console/**'
   - 'bridge/**'
   - 'docs/bridge-openapi.json'
+  # The curl-example disposition test pins every device-contract operation.
+  - 'docs/openapi.json'
 
 tools:
   - *shared

@@ -1,6 +1,20 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.7.0]
+
+### 🚀 Features
+- Build byte-reproducible release images
+- Rejoin Wi-Fi on its own after a network outage
+
+### 🐛 Bug Fixes
+- Make source and listener lifecycles atomic
+- Harden audio calibration and profile contracts
+
+### 📚 Documentation
+- Replace leftover em dashes with plain punctuation
+- Promise self-heal and a recovery form on AP fallback
+
 ## [0.6.2]
 
 ### 🚀 Features

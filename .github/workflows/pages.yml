@@ -59,6 +59,27 @@ jobs:
           mv webflasher/manifest.json.tmp webflasher/manifest.json
           cp console/dist/flasher/flasher.html webflasher/index.html
 
+      # The syntax lint ran before patching; this validates what actually
+      # ships: the manifest must describe the exact binary beside it and
+      # carry the release it was patched with.
+      - name: Verify the assembled site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
+          manifest=webflasher/manifest.json
+          test "$(jq -r '.version' "$manifest")" = "${tag#v}"
+          test "$(jq '.builds | length' "$manifest")" = 1
+          test "$(jq -r '.builds[0].chipFamily' "$manifest")" = ESP32
+          test "$(jq '.builds[0].parts | length' "$manifest")" -ge 1
+          jq -r '.builds[0].parts[] | "\(.path) \(.offset)"' "$manifest" | while read -r path offset; do
+            test "$offset" = 0
+            # The merged image bundles bootloader + table + app; a tiny file
+            # means the wrong asset was bundled.
+            test "$(stat -c %s "webflasher/$path")" -gt 1000000
+          done
+          test -s webflasher/index.html
+
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:

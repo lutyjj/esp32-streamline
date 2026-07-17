@@ -6,7 +6,7 @@ DEFAULT_BUILD_ARCH := $(if $(filter arm64 aarch64,$(HOST_ARCH)),aarch64,amd64)
 BUILD_ARCH ?= $(DEFAULT_BUILD_ARCH)
 IMAGE := $(or $(ADDON_IMAGE),$(BUILD_ARCH)-esp32-streamline-bridge-addon)
 PLATFORM := $(if $(filter aarch64,$(BUILD_ARCH)),linux/arm64,linux/amd64)
-CONFIG_VERSION := $(shell sed -n 's/^version: "\([^"]*\)"/\1/p' config.yaml)
+CONFIG_VERSION := $(shell sed -n 's/^version: "\([^"]*\)".*/\1/p' config.yaml)
 
 .PHONY: format lint test image check
 

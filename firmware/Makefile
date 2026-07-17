@@ -42,7 +42,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check
+.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -52,6 +52,12 @@ console-asset:
 
 format: image
 	$(CONTAINER_RUN) cargo fmt --all
+
+# Refresh Cargo.lock from the manifest without upgrading dependencies, e.g.
+# after a version bump. `--workspace` rewrites only the workspace members'
+# own lock entries.
+lock: image
+	$(CONTAINER_RUN) cargo update --workspace
 
 lock-check: image
 	$(CONTAINER_RUN) cargo metadata --locked --no-deps --format-version 1 > /dev/null

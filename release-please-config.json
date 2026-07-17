@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "pull-request-title-pattern": "chore: release ${version}",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "changelog-path": "ha-addon/CHANGELOG.md",
+      "include-component-in-tag": false,
+      "draft": true,
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        { "type": "generic", "path": "bridge/pyproject.toml" },
+        { "type": "generic", "path": "firmware/streamline/Cargo.toml" },
+        { "type": "generic", "path": "ha-addon/config.yaml" },
+        {
+          "type": "toml",
+          "path": "bridge/uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='streamline-bridge')].version"
+        },
+        {
+          "type": "toml",
+          "path": "firmware/streamline/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='streamline-firmware')].version"
+        }
+      ]
+    }
+  }
+}

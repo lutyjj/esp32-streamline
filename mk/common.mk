@@ -25,4 +25,4 @@ READONLY_REPO_RUN = $(call container_readonly,$(REPO_ROOT))
 PYTHON_CACHE_VOLUME ?= esp32-streamline-python-cache
 
 # Extract `version = "X.Y.Z"` from a TOML file: $(call toml_version,path/to/file.toml)
-toml_version = $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' $(1))
+toml_version = $(shell sed -n 's/^version = "\([^"]*\)".*/\1/p' $(1))

@@ -21,8 +21,8 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
   reads files into frames, `align` recovers the lag, `transform` scores channel
   mappings, `measure` reports level and spectral stats, and `report` renders
   those typed results behind the `streamline-analyze` CLI.
-- `src/streamline_tools/serial_capture.py`, `release.py` — standalone tools
-  with their own entry points.
+- `src/streamline_tools/serial_capture.py` — standalone serial capture tool
+  with its own entry point.
 
 ## Commands
 

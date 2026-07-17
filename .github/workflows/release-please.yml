@@ -1,0 +1,25 @@
+name: Release Please
+
+# Maintains the release PR from conventional commits: version owners and
+# lockfiles per release-please-config.json, plus the add-on changelog. Merging
+# the release PR creates the vX.Y.Z tag and a draft GitHub release; the
+# publication workflow attaches verified assets and publishes it (immutable
+# releases lock assets at publish time).
+on:
+  push:
+    branches: [mainline]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # With the default token, CI on the release PR waits for a manual
+      # "Approve and run"; set a RELEASE_PLEASE_TOKEN fine-grained PAT to make
+      # it start on its own.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}

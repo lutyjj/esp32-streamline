@@ -17,6 +17,7 @@ import { type ApiDocument, audioProfileConstraints } from '../lib/contract';
 import type { AudioProfileImportLimits } from '../lib/profiles';
 import { resource } from '../lib/resource';
 import { rebootWaitTick } from './rebootWait';
+import { resetHandoff } from './resetHandoff';
 
 export const POLL_MS = 1500;
 export const PEAK_HOLD_MS = 2500;
@@ -114,7 +115,7 @@ export async function refresh(): Promise<void> {
     unreachable.value = false;
   } catch {
     pollFailures.value += 1;
-    if (!rebootWaitTick(true) && status.value) unreachable.value = true;
+    if (!rebootWaitTick(true) && status.value && !resetHandoff.value) unreachable.value = true;
   } finally {
     refreshing = false;
   }

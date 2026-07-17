@@ -7,6 +7,9 @@ on:
     branches: [mainline]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
   group: ci-${{ github.ref }}
@@ -23,6 +26,9 @@ jobs:
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       components: ${{ steps.matrix.outputs.components }}
       firmware: ${{ steps.filter.outputs.firmware }}
@@ -30,6 +36,8 @@ jobs:
       qemu_smoke: ${{ steps.filter.outputs.qemu_smoke }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         id: filter
         with:
@@ -182,6 +190,7 @@ jobs:
     if: ${{ always() }}
     needs: [changes, checks, firmware, qemu-smoke, api-contract, release-verify]
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - name: Verify no required job failed
         run: |

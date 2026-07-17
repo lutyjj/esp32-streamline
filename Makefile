@@ -39,14 +39,14 @@ GIT_COMMON_DIR := $(abspath $(shell git rev-parse --git-common-dir))
 # is pure-Rust and needs no git binary).
 git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
 	-v "$(GIT_COMMON_DIR):$(GIT_COMMON_DIR)" \
-	-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(GIT_CLIFF_IMAGE) $(1)
+	-u $(CONTAINER_HOST_USER) -e HOME=$(CONTAINER_SAFE_HOME) $(GIT_CLIFF_IMAGE) $(1)
 
 # Reach the component sub-makes through the environment so the `<component>-%`
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
 .PHONY: check help lint test format clean smoke-qemu release-tools-image changelog changelog-check release release-history release-prepare release-lock-check release-check release-verify release-package release-notes \
-	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check docs-check api-contract-check version-check
+	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract docs-check api-contract-check version-check
 
 check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
 
@@ -94,17 +94,38 @@ firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;
-repository-check: version-check
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(ACTIONLINT_IMAGE) -color
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(LYCHEE_IMAGE) --config /repo/lychee.toml /repo
-	$(CONTAINER) run --rm --entrypoint sh -v "$(REPO_ROOT):/repo:ro" -w /repo $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval --exit-status "." {} \; >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; find docs -type f -name "*.json" -exec yq eval --exit-status "." {} \; >/dev/null'
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/docs --no-banner --redact
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/README.md --no-banner --redact
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/CONTRIBUTING.md --no-banner --redact
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/AGENTS.md --no-banner --redact
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" -w /repo $(GITLEAKS_IMAGE) dir /repo/SECURITY.md --no-banner --redact
+repository-check: version-check repository-container-contract
+	$(READONLY_REPO_RUN) $(ACTIONLINT_IMAGE) -color
+	$(READONLY_REPO_RUN) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs firmware/streamline/README.md ha-addon/DOCS.md ha-addon/README.md tools/README.md
+	$(READONLY_REPO_RUN) $(LYCHEE_IMAGE) --config /repo/lychee.toml /repo
+	$(READONLY_REPO_RUN) --entrypoint sh $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval --exit-status "." {} \; >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; find docs -type f -name "*.json" -exec yq eval --exit-status "." {} \; >/dev/null'
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/docs --no-banner --redact
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/README.md --no-banner --redact
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/CONTRIBUTING.md --no-banner --redact
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/AGENTS.md --no-banner --redact
+	$(READONLY_REPO_RUN) $(GITLEAKS_IMAGE) dir /repo/SECURITY.md --no-banner --redact
 	@test -z "$$(git grep -n 'actions/cache' -- .github/workflows)" || (echo "firmware cache actions belong in .github/actions/firmware-cache" >&2; exit 1)
+
+# Prove the shared runner works from a checkout hidden behind a mode-0700
+# parent and cannot modify its repository mount.
+repository-container-contract:
+	@set -eu; \
+		fixture="$$(mktemp -d /tmp/streamline-repository-check.XXXXXX)"; \
+		trap 'rm -rf "$$fixture"' EXIT INT TERM; \
+		chmod 700 "$$fixture"; \
+		mkdir -p "$$fixture/.git" "$$fixture/.github/workflows" "$$fixture/docs"; \
+		printf '%s\n' 'name: Fixture' 'on: [push]' 'jobs:' '  check:' '    runs-on: ubuntu-latest' '    steps:' '      - run: "true"' > "$$fixture/.github/workflows/fixture.yml"; \
+		printf '%s\n' '{}' > "$$fixture/.markdownlint.json"; \
+		printf '%s\n' '# Fixture' > "$$fixture/README.md"; \
+		printf '%s\n' '{}' > "$$fixture/docs/contract.json"; \
+		before="$$(find "$$fixture" -type f -exec sha256sum {} + | LC_ALL=C sort)"; \
+		$(call container_readonly,$$fixture) $(ACTIONLINT_IMAGE) -color; \
+		$(call container_readonly,$$fixture) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md; \
+		$(call container_readonly,$$fixture) $(LYCHEE_IMAGE) /repo; \
+		$(call container_readonly,$$fixture) --entrypoint sh $(YQ_IMAGE) -ec 'yq eval --exit-status "." .github/workflows/fixture.yml >/dev/null; yq eval --exit-status "." docs/contract.json >/dev/null; ! touch /repo/write-probe 2>/dev/null'; \
+		$(call container_readonly,$$fixture) $(GITLEAKS_IMAGE) dir /repo --no-banner --redact; \
+		after="$$(find "$$fixture" -type f -exec sha256sum {} + | LC_ALL=C sort)"; \
+		test "$$after" = "$$before"
 docs-check: repository-check ;
 api-contract-check: firmware-openapi-check console-lint ;
 

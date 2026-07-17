@@ -48,9 +48,22 @@ jobs:
     outputs:
       latest: ${{ steps.release-state.outputs.latest }}
     steps:
+      # A draft release holds only the intended tag name — GitHub creates the
+      # tag ref when the release is published. Resolve the release commit from
+      # the tag when it exists, else from the draft's target commit.
+      - name: Resolve the release commit
+        id: commit
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha="$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null \
+            || gh release view "$TAG" --json targetCommitish --jq .targetCommitish)"
+          test -n "$sha"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: ${{ steps.commit.outputs.sha }}
 
       - name: Verify the tagged tree carries the tag's version
         id: version

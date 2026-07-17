@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'preact/hooks';
 import { setAudio } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
-import { config, loadDeviceSettings, status } from '../state/device';
+import {
+  audioProfilesResource,
+  config,
+  configResource,
+  contractResource,
+  loadDeviceSettings,
+  status,
+} from '../state/device';
 import { AnalogPassthrough } from './AnalogPassthrough';
 import { AudioProfiles } from './AudioProfiles';
 import { Card, CardFooter } from './Card';
 import { GuidePrompt } from './GuidePrompt';
+import { ResourceNotice } from './ResourceNotice';
 import { ActionState, TransactButton } from './Transact';
 
 export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
@@ -50,6 +58,9 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
 
   return (
     <>
+      <ResourceNotice of={configResource} />
+      <ResourceNotice of={audioProfilesResource} />
+      <ResourceNotice of={contractResource} />
       <AudioProfiles />
       <Card
         gated
@@ -113,7 +124,7 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
             </div>
           </div>
           <CardFooter>
-            <TransactButton transact={transact} type="submit" disabled={!writable}>
+            <TransactButton transact={transact} type="submit" disabled={!writable || !c}>
               Save
             </TransactButton>
             <ActionState state={transact.state} />

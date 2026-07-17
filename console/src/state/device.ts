@@ -15,6 +15,7 @@ import {
 } from '../lib/api';
 import { type ApiDocument, audioProfileConstraints } from '../lib/contract';
 import type { AudioProfileImportLimits } from '../lib/profiles';
+import { resource } from '../lib/resource';
 import { rebootWaitTick } from './rebootWait';
 
 export const POLL_MS = 1500;
@@ -42,11 +43,17 @@ export function nextPeakHold(
 
 export const status = signal<DeviceStatus | null>(null);
 /** Last /api/settings read; forms copy it into local edit state. */
-export const config = signal<DeviceConfig | null>(null);
+export const configResource = resource<DeviceConfig>('device settings', getSettings);
+export const config = configResource.data;
 /** Device-owned named audio profiles, stored separately from raw settings. */
-export const audioProfiles = signal<AudioProfileCatalog | null>(null);
+export const audioProfilesResource = resource<AudioProfileCatalog>(
+  'audio profiles',
+  getAudioProfiles,
+);
+export const audioProfiles = audioProfilesResource.data;
 /** The device-served OpenAPI contract; the console validates imports from it. */
-export const contract = signal<ApiDocument | null>(null);
+export const contractResource = resource<ApiDocument>('the device contract', getContract);
+export const contract = contractResource.data;
 /**
  * Audio-profile import limits: structural bounds declared on the contract plus
  * the catalog schema version the device currently speaks. Both come from the
@@ -129,11 +136,11 @@ function applyStatus(s: DeviceStatus): void {
 }
 
 export async function loadConfig(): Promise<void> {
-  config.value = await getSettings();
+  await configResource.load();
 }
 
 export async function loadAudioProfiles(): Promise<void> {
-  audioProfiles.value = await getAudioProfiles();
+  await audioProfilesResource.load();
 }
 
 export async function loadDeviceSettings(): Promise<void> {
@@ -142,12 +149,18 @@ export async function loadDeviceSettings(): Promise<void> {
 
 /** The contract is static for a firmware build, so it loads once at startup. */
 export async function loadContract(): Promise<void> {
-  contract.value = await getContract();
+  await contractResource.load();
 }
 
-/** Wire the poll loop and the initial settings read; called once from main. */
+/**
+ * Wire the poll loop and the initial settings read; called once from main.
+ * Each resource fails independently and retries from its own notice — a
+ * failed settings read never hides the status the poll can still deliver.
+ */
 export function startPolling(): void {
-  Promise.all([loadDeviceSettings(), loadContract(), refresh()]).catch(() => {
+  void loadDeviceSettings();
+  void loadContract();
+  refresh().catch(() => {
     unreachable.value = true;
   });
   setInterval(refresh, POLL_MS);

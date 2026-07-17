@@ -2,7 +2,14 @@ import { useEffect, useState } from 'preact/hooks';
 import { setTarget, setWifi } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
-import { config, noBridge, packetsMoving, setupMode, status } from '../state/device';
+import {
+  config,
+  configResource,
+  noBridge,
+  packetsMoving,
+  setupMode,
+  status,
+} from '../state/device';
 import { handoffMessage, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
@@ -11,6 +18,7 @@ import { Card, CardFooter, CardStack } from './Card';
 import { Chip } from './Chip';
 import { GuidePrompt } from './GuidePrompt';
 import { KeyReveal } from './KeyReveal';
+import { ResourceNotice } from './ResourceNotice';
 import { ActionState, TransactButton } from './Transact';
 import { TransportCard } from './TransportCard';
 
@@ -93,6 +101,7 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
 
   return (
     <CardStack>
+      <ResourceNotice of={configResource} />
       <Card
         gated
         title="Wi-Fi"
@@ -150,7 +159,7 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
           </div>
         </div>
         <CardFooter>
-          <TransactButton transact={wifiTransact} disabled={!writable} onClick={saveWifi}>
+          <TransactButton transact={wifiTransact} disabled={!writable || !c} onClick={saveWifi}>
             Save &amp; restart
           </TransactButton>
           <ActionState state={wifiTransact.state} />
@@ -213,7 +222,7 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
         )}
 
         <CardFooter>
-          <TransactButton transact={targetTransact} disabled={!writable} onClick={saveTarget}>
+          <TransactButton transact={targetTransact} disabled={!writable || !c} onClick={saveTarget}>
             Save &amp; restart
           </TransactButton>
           <ActionState state={targetTransact.state} />

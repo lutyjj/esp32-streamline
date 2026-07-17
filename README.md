@@ -214,20 +214,14 @@ Docs: [architecture](docs/architecture.md) ·
 
 ### Releases
 
-Use **Actions → Prepare release** with a stable `X.Y.Z` target version. The workflow
-prepares the release snapshot and opens a draft `release/X.Y.Z` PR, which CI verifies
-in full. Merging that PR re-verifies the exact merge commit, creates `vX.Y.Z`, and starts
-publishing from the tag.
-
-For a local release snapshot, start from a clean release branch and run:
-
-```sh
-make release VERSION=0.6.0
-```
-
-The command updates the checked-in version files and generated add-on
-changelog, then runs release verification. Commit those changes in a release
-PR. Never edit the changelog by hand.
+[release-please](https://github.com/googleapis/release-please) maintains a
+release PR from the Conventional Commits on `mainline`: it computes the next
+version, updates every checked-in version owner and lockfile declared in
+[`release-please-config.json`](release-please-config.json), and prepends the
+add-on changelog. Merging that PR creates the `vX.Y.Z` tag and a draft GitHub
+release; publication attaches verified assets and publishes it. Never edit
+the version files or changelog by hand — land a Conventional Commit and let
+the release PR carry it.
 
 ## Scope
 

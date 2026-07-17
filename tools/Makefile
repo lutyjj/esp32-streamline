@@ -33,7 +33,7 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
-.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze smoke-qemu smoke-device release-prepare
+.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze smoke-qemu smoke-device
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
@@ -98,9 +98,3 @@ smoke-device: qemu-image
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_SMOKE_TARGET="http://$(DEVICE)" \
 		-e STREAMLINE_ADMIN_KEY="$(ADMIN_KEY)" \
 		$(QEMU_IMAGE) pytest smoke -v,@echo "DEVICE is unset: skipping the API contract suite")
-
-release-prepare: image
-	@test -n "$(VERSION)" || (echo "VERSION is required" >&2; exit 2)
-	$(CONTAINER) run --rm -v "$(REPO_ROOT)":/repo -w /repo \
-		-u $(shell id -u):$(shell id -g) -e HOME=/tmp $(IMAGE) \
-		python3 -m streamline_tools.release --root /repo --version "$(VERSION)"

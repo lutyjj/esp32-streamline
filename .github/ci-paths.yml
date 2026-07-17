@@ -11,9 +11,11 @@ repository:
   - *shared
   - '.github/**'
   - '.markdownlint.json'
+  - '.release-please-manifest.json'
   - 'Dockerfile.release-tools'
   - 'cliff.toml'
   - 'lychee.toml'
+  - 'release-please-config.json'
   - 'repository.yaml'
   - '*.md'
   - '**/*.md'

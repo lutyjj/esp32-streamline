@@ -178,15 +178,14 @@ Build outputs (`dist/`, `firmware/streamline/target/`, `.embuild/`), captures
 (`captures/`, `analysis-data/`), site-bundled binaries (`webflasher/*.bin`),
 and secrets (`.env`) stay out of git. See `.gitignore`; extend it if needed.
 
-## Releases are tag-based
+## Releases are release-please's job
 
-The version in `bridge/pyproject.toml`, `firmware/streamline/Cargo.toml`, and
-`ha-addon/config.yaml` is the checked-in product version. `make release
-VERSION=X.Y.Z` prepares all version files and the git-cliff-generated
-`ha-addon/CHANGELOG.md`, then validates the release snapshot. Commit the result
-in a `release/X.Y.Z` PR. After merge, release promotion revalidates the merge
-commit, tags it, and dispatches publishing from that tag. See the
-[README release steps](README.md#releases).
+release-please maintains the release PR from Conventional Commits:
+`release-please-config.json` declares every checked-in version owner and
+lockfile, and merging the release PR creates the `vX.Y.Z` tag and a draft
+GitHub release that publication completes. Never bump version files or edit
+`ha-addon/CHANGELOG.md` by hand — land a Conventional Commit and let the
+release PR carry it. See the [README release steps](README.md#releases).
 
 ## Docs win on conflict
 

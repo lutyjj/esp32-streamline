@@ -99,8 +99,16 @@ function AdminUnlock({ onDone }: { onDone: () => void }) {
         }
         throw new Error('admin key rejected');
       }
-      unlockSettings(key, remember);
-      toast('Settings unlocked for 15 minutes', 'ok');
+      // The unlock succeeded against the device either way; degraded local
+      // custody only changes how long this browser keeps the key.
+      if (unlockSettings(key, remember)) {
+        toast('Settings unlocked for 15 minutes', 'ok');
+      } else {
+        toast(
+          'Unlocked for this tab only — browser storage is unavailable, so the key cannot be remembered',
+          'err',
+        );
+      }
       onDone();
     } catch (error) {
       toast(errorMessage(error), 'err');

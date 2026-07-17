@@ -6,7 +6,7 @@ FIRMWARE_LOCK_VERSION := $(shell awk '\
   /^\[\[package\]\]$$/ { package = 0 } \
   /^name = "streamline-firmware"$$/ { package = 1; next } \
   package && /^version = "/ { split($$0, fields, "\""); print fields[2]; exit }' firmware/streamline/Cargo.lock)
-ADDON_VERSION := $(shell sed -n 's/^version: "\([^"]*\)"/\1/p' ha-addon/config.yaml)
+ADDON_VERSION := $(shell sed -n 's/^version: "\([^"]*\)".*/\1/p' ha-addon/config.yaml)
 VERSION ?= $(PROJECT_VERSION)
 PORT ?= /dev/cu.usbserial-0001
 CAPTURE_SECS ?= 20

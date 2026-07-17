@@ -80,8 +80,15 @@ export class BridgeController {
   readonly capabilities = signal<RecordingCapabilities>();
   readonly recordings = signal<RecordingList>();
   readonly unreachable = signal(false);
+  /** When the last successful status poll landed; drives the stale-age hint. */
+  readonly statusAt = signal(0);
   readonly access = signal<BridgeAccess>('checking');
   readonly error = signal('');
+  /** Load failures per resource, so each renders its own named retry. */
+  readonly capabilitiesError = signal('');
+  readonly recordingsError = signal('');
+  /** One recording mutation at a time; a second click is ignored in flight. */
+  private actionInFlight = false;
 
   private recordingTimer?: number;
   private statusTimer?: number;
@@ -120,6 +127,7 @@ export class BridgeController {
         this.access.value = 'locked';
       }
       this.unreachable.value = false;
+      this.statusAt.value = Date.now();
     } catch {
       this.unreachable.value = true;
     } finally {
@@ -130,9 +138,10 @@ export class BridgeController {
   async loadCapabilities(): Promise<void> {
     try {
       this.capabilities.value = await this.api.capabilities();
+      this.capabilitiesError.value = '';
       await this.maybeLoadRecordings();
     } catch (error) {
-      this.error.value = message(error);
+      this.capabilitiesError.value = message(error);
     }
   }
 
@@ -197,24 +206,28 @@ export class BridgeController {
     }
   }
 
-  async refreshRecordings(): Promise<void> {
+  /** Returns true when the list is now current. */
+  async refreshRecordings(): Promise<boolean> {
     try {
       this.updateRecordings(await this.api.recordings());
+      this.recordingsError.value = '';
+      return true;
     } catch (error) {
-      this.error.value = message(error);
+      this.recordingsError.value = message(error);
       if (this.recordings.value?.active.length) this.scheduleRecordingRefresh();
+      return false;
     }
   }
 
-  async startRecording(request: StartRecordingRequest): Promise<boolean> {
+  async startRecording(request: StartRecordingRequest): Promise<MutationOutcome> {
     return this.runRecordingAction(() => this.api.start(request));
   }
 
-  async stopRecording(id: string): Promise<boolean> {
+  async stopRecording(id: string): Promise<MutationOutcome> {
     return this.runRecordingAction(() => this.api.stop(id));
   }
 
-  async deleteRecording(id: string): Promise<boolean> {
+  async deleteRecording(id: string): Promise<MutationOutcome> {
     return this.runRecordingAction(() => this.api.delete(id));
   }
 
@@ -263,18 +276,30 @@ export class BridgeController {
     this.recordingTimer = this.schedule(() => void this.refreshRecordings(), 1000);
   }
 
-  private async runRecordingAction(action: () => Promise<void>): Promise<boolean> {
+  private async runRecordingAction(action: () => Promise<void>): Promise<MutationOutcome> {
+    if (this.actionInFlight) return 'in-flight';
+    this.actionInFlight = true;
     try {
       await action();
-      await this.refreshRecordings();
-      this.error.value = '';
-      return true;
     } catch (error) {
       this.error.value = message(error);
-      return false;
+      return 'failed';
+    } finally {
+      this.actionInFlight = false;
     }
+    this.error.value = '';
+    // The bridge accepted the mutation; a refresh failure must not be
+    // reported as the mutation failing.
+    return (await this.refreshRecordings()) ? 'done' : 'refresh-failed';
   }
 }
+
+/**
+ * How a recording mutation ended: `done` means applied and the list is
+ * current, `refresh-failed` means applied but the list is stale, `failed`
+ * means the bridge rejected it, `in-flight` means an earlier one still runs.
+ */
+export type MutationOutcome = 'done' | 'refresh-failed' | 'failed' | 'in-flight';
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

@@ -2,6 +2,7 @@ import { Button } from './Button';
 import { RememberSwitch } from './RememberSwitch';
 
 interface UnlockPanelProps {
+  id?: string;
   secret: string;
   onSecret: (value: string) => void;
   onUnlock: () => void;
@@ -22,6 +23,7 @@ interface UnlockPanelProps {
  * custody — the panel only lays it out.
  */
 export function UnlockPanel({
+  id,
   secret,
   onSecret,
   onUnlock,
@@ -32,7 +34,7 @@ export function UnlockPanel({
   forget,
 }: UnlockPanelProps) {
   return (
-    <div class="unlockpanel">
+    <div class="unlockpanel" id={id}>
       <input
         type="password"
         autocomplete={autoComplete}

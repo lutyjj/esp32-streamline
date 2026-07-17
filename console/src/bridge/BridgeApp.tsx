@@ -82,7 +82,14 @@ export function BridgeApp() {
         </div>
         <div class="masthead-actions">
           <ThemeSwitch />
-          <LockChip state={chip.state} text={chip.text} sub={chip.sub} onClick={onLockClick} />
+          <LockChip
+            state={chip.state}
+            text={chip.text}
+            sub={chip.sub}
+            onClick={onLockClick}
+            expanded={access === 'locked' && panelOpen}
+            controls="bridge-unlock-panel"
+          />
         </div>
       </header>
       {access === 'locked' && panelOpen && <BridgeUnlock onDone={() => setPanelOpen(false)} />}
@@ -131,6 +138,7 @@ function BridgeUnlock({ onDone }: { onDone: () => void }) {
 
   return (
     <UnlockPanel
+      id="bridge-unlock-panel"
       secret={token}
       onSecret={setToken}
       onUnlock={unlock}

@@ -24,7 +24,10 @@ streamline-smoke = "streamline_tools.smoke:main"
 [dependency-groups]
 dev = [
   "mypy",
+  "pyyaml>=6.0.3,<7",
   "ruff",
+  "types-pyyaml",
+  "wcmatch>=10.1,<11",
 ]
 
 [tool.ruff]

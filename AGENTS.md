@@ -103,7 +103,7 @@ cross-cutting values. The root `Makefile` is the public interface:
 `make lint | test | check | format` fan out across all of them. Prefer these
 targets over ad-hoc docker invocations. To add a component: give it a
 Makefile with the standard verbs, a `<name>-check` aggregate in the root
-Makefile, and a filter entry in `.github/workflows/ci.yml`.
+Makefile, and a filter entry in `.github/ci-paths.yml`.
 
 ## Self-contained beats shared
 

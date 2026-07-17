@@ -55,9 +55,7 @@ jobs:
   checks:
     name: ${{ matrix.component }}
     needs: changes
-    if: >-
-      needs.changes.outputs.components != '[]' &&
-      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
+    if: ${{ needs.changes.outputs.components != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -70,9 +68,7 @@ jobs:
   firmware:
     name: Firmware (clippy · test · release build)
     needs: changes
-    if: >-
-      (needs.changes.outputs.firmware == 'true' || needs.changes.outputs.qemu_smoke == 'true') &&
-      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
+    if: ${{ needs.changes.outputs.firmware == 'true' || needs.changes.outputs.qemu_smoke == 'true' }}
     runs-on: ubuntu-latest
     env:
       CONTAINER_USER: 0:0
@@ -144,9 +140,7 @@ jobs:
   qemu-smoke:
     name: QEMU device smoke
     needs: [changes, firmware]
-    if: >-
-      needs.changes.outputs.qemu_smoke == 'true' &&
-      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
+    if: ${{ needs.changes.outputs.qemu_smoke == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -159,26 +153,11 @@ jobs:
   api-contract:
     name: Device API contract
     needs: changes
-    if: >-
-      needs.changes.outputs.api_contract == 'true' &&
-      !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
+    if: ${{ needs.changes.outputs.api_contract == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - run: make api-contract-check
-
-  release-verify:
-    name: Release snapshot
-    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-      - name: Set up QEMU for cross-architecture builds
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
-      - run: make release-verify
 
   # Single stable status the whole workflow rolls up into. Mark THIS as the
   # required check in branch protection: it passes when the relevant jobs pass
@@ -188,17 +167,17 @@ jobs:
   ci-complete:
     name: CI complete
     if: ${{ always() }}
-    needs: [changes, checks, firmware, qemu-smoke, api-contract, release-verify]
+    needs: [changes, checks, firmware, qemu-smoke, api-contract]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
       - name: Verify no required job failed
         run: |
-          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }} qemu_smoke=${{ needs.qemu-smoke.result }} api_contract=${{ needs.api-contract.result }} release=${{ needs.release-verify.result }}"
+          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }} qemu_smoke=${{ needs.qemu-smoke.result }} api_contract=${{ needs.api-contract.result }}"
           if [ "${{ needs.changes.result }}" != "success" ]; then
             echo "::error::change detection failed"; exit 1
           fi
-          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}" "${{ needs.qemu-smoke.result }}" "${{ needs.api-contract.result }}" "${{ needs.release-verify.result }}"; do
+          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}" "${{ needs.qemu-smoke.result }}" "${{ needs.api-contract.result }}"; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a required job did not pass ($r)"; exit 1 ;;

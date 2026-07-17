@@ -1,43 +1,76 @@
 name: Release
 
+# Publishes the draft release the Release Please workflow created at the tag.
+# Order is what makes an interrupted run safe to redispatch at the same tag:
+# verify the tagged tree, build byte-reproducible firmware, attest and attach
+# assets to the draft, push write-once versioned images, publish the release
+# as the commit point, and only then move the mutable `latest` aliases and the
+# WebFlasher. Reruns converge — identical bytes re-upload cleanly, existing
+# versioned images are kept, and a published release is left untouched.
 on:
-  # Promotion dispatches this workflow at the verified release tag. Do not
-  # publish directly from an arbitrary tag push: that could bypass promotion.
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (vX.Y.Z)
+        required: true
+        type: string
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
   publish:
     name: Verify and publish release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
     env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
       CONTAINER_USER: 0:0
       CONTAINER_CARGO_HOME: /cargo-cache
       FIRMWARE_CARGO_CACHE_PATH: firmware/streamline/.cargo-home
       FIRMWARE_EMBUILD_CACHE_PATH: firmware/streamline/.embuild
+      BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
+      ADDON_IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge-addon
+    outputs:
+      latest: ${{ steps.release-state.outputs.latest }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          # git-cliff needs full history and tags to render the release notes.
-          fetch-depth: 0
-          fetch-tags: true
+          ref: refs/tags/${{ inputs.tag }}
 
-      - name: Derive and validate release version
+      - name: Verify the tagged tree carries the tag's version
         id: version
-        shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          make changelog-check VERSION="$version"
+          version="${TAG#v}"
+          make version-check VERSION="$version"
           printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
+      # A release older than the published latest must not steal the `latest`
+      # marker, the image aliases, or the WebFlasher.
+      - name: Decide whether this tag becomes latest
+        id: release-state
+        run: |
+          gh release view "$TAG" --json isDraft >/dev/null
+          current="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // ""')"
+          latest=false
+          if [ "$(printf '%s\n%s\n' "$current" "$TAG" | sort -V | tail -1)" = "$TAG" ]; then latest=true; fi
+          printf 'latest=%s\n' "$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU for cross-architecture builds
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       # CI owns cache writes. Publishing restores the same cache lifecycle and
@@ -50,11 +83,13 @@ jobs:
           cargo-cache-path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
-      - name: Build release assets
+      - name: Build firmware artifacts and prove reproducibility
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
-          make release-package \
-            VERSION=${{ steps.version.outputs.value }} \
-            BRIDGE_IMAGE=ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge \
+          make firmware-artifacts VERSION="$VERSION" \
+            CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
+          make firmware-repro-check VERSION="$VERSION" \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
 
       - name: Reclaim firmware caches
@@ -65,6 +100,11 @@ jobs:
           cargo-cache-path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
+      - name: Attest firmware provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: dist/firmware/streamline-*
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
         with:
@@ -72,59 +112,61 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-
-      - name: Publish container images
+      # Versioned tags are write-once: a rerun keeps an already-published
+      # image rather than replacing it under consumers.
+      - name: Push versioned container images
         env:
-          BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
-          ADDON_IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge-addon
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          push_if_absent() {
+            if docker manifest inspect "$1" >/dev/null 2>&1; then
+              echo "$1 already published; keeping it"
+            else
+              docker push "$1"
+            fi
+          }
+          make bridge-image VERSION="$VERSION" BRIDGE_IMAGE="$BRIDGE_IMAGE"
+          push_if_absent "$BRIDGE_IMAGE:$VERSION"
+          for arch in amd64 aarch64; do
+            image="${ADDON_IMAGE_BASE%/*}/${arch}-${ADDON_IMAGE_BASE##*/}"
+            make ha-addon-image BUILD_ARCH="$arch" VERSION="$VERSION" ADDON_IMAGE="$image"
+            push_if_absent "$image:$VERSION"
+          done
+
+      # The commit point. Assets attach while the release is a draft;
+      # publishing locks them (immutable releases). A rerun that finds the
+      # release already published leaves it untouched.
+      - name: Attach assets and publish the release
+        env:
+          LATEST: ${{ steps.release-state.outputs.latest }}
+        run: |
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release upload "$TAG" dist/firmware/* --clobber
+            gh release edit "$TAG" --draft=false --latest="$LATEST"
+          else
+            echo "release $TAG is already published"
+          fi
+
+      - name: Move latest image aliases
+        if: ${{ steps.release-state.outputs.latest == 'true' }}
+        env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           docker tag "$BRIDGE_IMAGE:$VERSION" "$BRIDGE_IMAGE:latest"
-          docker push "$BRIDGE_IMAGE:$VERSION"
           docker push "$BRIDGE_IMAGE:latest"
-          while read -r arch platform; do
+          for arch in amd64 aarch64; do
             image="${ADDON_IMAGE_BASE%/*}/${arch}-${ADDON_IMAGE_BASE##*/}"
-            docker buildx build \
-              --platform "$platform" \
-              -f ha-addon/Dockerfile \
-              --build-arg BUILD_VERSION="$VERSION" \
-              --build-arg BUILD_ARCH="$arch" \
-              -t "$image:$VERSION" \
-              -t "$image:latest" \
-              --push \
-              .
-          done <<'EOF'
-          amd64 linux/amd64
-          aarch64 linux/arm64
-          EOF
+            docker tag "$image:$VERSION" "$image:latest"
+            docker push "$image:latest"
+          done
 
-      # Same git-cliff source as ha-addon/CHANGELOG.md, so the GitHub release
-      # notes and the add-on changelog read identically.
-      - name: Render release notes
-        run: make release-notes > release-notes.md
-
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          # A semver pre-release (e.g. 0.4.0-rc.1) must not become GitHub's
-          # "latest": the firmware OTA path and the WebFlasher both track the
-          # latest stable release.
-          prerelease=
-          case "$VERSION" in *-*) prerelease=--prerelease ;; esac
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
-            dist/firmware/* --notes-file release-notes.md $prerelease
-
-  # Refresh the GitHub Pages WebFlasher so it serves the firmware just released.
-  # Chained explicitly because releases created with GITHUB_TOKEN don't emit a
-  # `release` event capable of triggering the pages workflow on their own.
+  # Refresh the GitHub Pages WebFlasher so it serves the firmware just
+  # released. Chained explicitly because releases handled with GITHUB_TOKEN
+  # don't emit a `release` event capable of triggering the pages workflow.
   deploy-flasher:
     name: Refresh WebFlasher
     needs: publish
+    if: ${{ needs.publish.outputs.latest == 'true' }}
     permissions:
       contents: read
       pages: write

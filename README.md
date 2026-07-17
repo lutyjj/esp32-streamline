@@ -219,7 +219,10 @@ release PR from the Conventional Commits on `mainline`: it computes the next
 version, updates every checked-in version owner and lockfile declared in
 [`release-please-config.json`](release-please-config.json), and prepends the
 add-on changelog. Merging that PR creates the `vX.Y.Z` tag and a draft GitHub
-release; publication attaches verified assets and publishes it. Never edit
+release; publication verifies the tagged tree, attaches byte-reproducible
+firmware assets with provenance attestations, publishes the release, then
+pushes container images. If publication is interrupted, rerun
+**Actions → Release** with the same tag — every step converges. Never edit
 the version files or changelog by hand — land a Conventional Commit and let
 the release PR carry it.
 

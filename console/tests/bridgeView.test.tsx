@@ -3,7 +3,7 @@ import { act } from 'preact/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BridgeApp, SourceCard } from '../src/bridge/BridgeApp';
 import { bridge } from '../src/bridge/state';
-import type { SourceSnapshot } from '../src/generated/bridge';
+import type { RecordingSnapshot, SourceSnapshot } from '../src/generated/bridge';
 
 function source(rms: number): SourceSnapshot {
   return {
@@ -160,5 +160,112 @@ describe('bridge lock flow', () => {
     render(<BridgeApp />, host);
     const unlocked = host.querySelector<HTMLInputElement>('.transport-mode input[role="switch"]');
     expect(unlocked?.disabled).toBe(false);
+  });
+});
+
+describe('recording states drive their own affordances', () => {
+  function snapshot(overrides: Partial<RecordingSnapshot>): RecordingSnapshot {
+    return {
+      audio_started_at: null,
+      bytes: 1024,
+      created_at: '2026-07-17T10:00:00Z',
+      duplicate_packets: 0,
+      duration_seconds: 10,
+      error: null,
+      file_name: 'take.wav',
+      finished_at: null,
+      frames: 100,
+      gap_packets: 0,
+      id: 'rec-1',
+      source: '192.0.2.10',
+      state: 'complete',
+      title: 'Take',
+      ...overrides,
+    };
+  }
+
+  function mountWith(items: RecordingSnapshot[]): HTMLElement {
+    bridge.access.value = 'unlocked';
+    bridge.capabilities.value = {
+      enabled: true,
+      format: {
+        bytes_per_second: 176400,
+        bits_per_sample: 16,
+        channels: 2,
+        codec: 'pcm_s16le',
+        container: 'wav',
+        sample_rate: 44100,
+      },
+      limits: {
+        max_duration_seconds: 5400,
+        max_gap_seconds: 300,
+        max_title_chars: 48,
+        min_free_bytes: 1,
+        queue_chunks: 64,
+      },
+    };
+    const active = items.filter((i) =>
+      ['waiting-for-audio', 'recording', 'finalizing'].includes(i.state),
+    );
+    bridge.recordings.value = {
+      active,
+      saved: items.filter((i) => !active.includes(i)),
+      storage: { free_bytes: 5_000_000_000 },
+    };
+    const host = document.createElement('div');
+    render(<BridgeApp />, host);
+    return host;
+  }
+
+  function cardButtons(host: HTMLElement, id: string): string[] {
+    const card = [...host.querySelectorAll('article.recording')].find((el) =>
+      el.textContent?.includes(id),
+    );
+    return [...(card?.querySelectorAll('button') ?? [])].map((b) => b.textContent || '');
+  }
+
+  it('offers stop only while audio can still arrive, download only with a file', () => {
+    const host = mountWith([
+      snapshot({ id: 'r-wait', title: 'wait', state: 'waiting-for-audio', file_name: null }),
+      snapshot({ id: 'r-rec', title: 'rec', state: 'recording', file_name: null }),
+      snapshot({ id: 'r-fin', title: 'fin', state: 'finalizing', file_name: null }),
+      snapshot({ id: 'r-done', title: 'done', state: 'complete' }),
+      snapshot({ id: 'r-int', title: 'int', state: 'interrupted' }),
+      snapshot({ id: 'r-empty', title: 'nofile', state: 'empty', file_name: null }),
+    ]);
+
+    expect(cardButtons(host, 'wait')).toEqual(['Stop and save']);
+    expect(cardButtons(host, 'rec')).toEqual(['Stop and save']);
+    // Finalizing can no longer be stopped and has no file yet.
+    expect(cardButtons(host, 'fin')).toEqual([]);
+    expect(cardButtons(host, 'done')).toEqual(['Download WAV', 'Delete']);
+    expect(cardButtons(host, 'int')).toEqual(['Download WAV', 'Delete']);
+    // No file: nothing to download, but the entry can be cleaned up.
+    expect(cardButtons(host, 'nofile')).toEqual(['Delete']);
+  });
+
+  it('surfaces the error and integrity counters the contract reports', () => {
+    const host = mountWith([
+      snapshot({
+        id: 'r-err',
+        title: 'hurt',
+        state: 'interrupted',
+        error: 'bridge restarted mid-write',
+        gap_packets: 3,
+        duplicate_packets: 2,
+      }),
+    ]);
+    const card = [...host.querySelectorAll('article.recording')].find((el) =>
+      el.textContent?.includes('hurt'),
+    );
+    expect(card?.textContent).toContain('bridge restarted mid-write');
+    expect(card?.textContent).toContain('3 silent gaps');
+    expect(card?.textContent).toContain('2 duplicate packets');
+  });
+
+  it('sizes the estimate and limits from the capability contract', () => {
+    const host = mountWith([]);
+    expect(host.textContent).toContain('per minute');
+    expect(host.querySelector<HTMLInputElement>('#rec-title')?.maxLength).toBe(48);
   });
 });

@@ -76,7 +76,11 @@ export function BridgeApp() {
           <div class="devname">Bridge console</div>
           <div class="chips">
             <Chip tone={bridge.unreachable.value ? 'bad' : status ? 'good' : 'neutral'} dot>
-              {status ? `v${status.bridge_version}` : 'Checking…'}
+              {status
+                ? bridge.unreachable.value
+                  ? `v${status.bridge_version} — unreachable, last seen ${Math.max(1, Math.round((Date.now() - bridge.statusAt.value) / 1000))}s ago`
+                  : `v${status.bridge_version}`
+                : 'Checking…'}
             </Chip>
           </div>
         </div>
@@ -348,7 +352,18 @@ export function SourceCard({ ip, source }: { ip: string; source: SourceSnapshot 
 function Recordings() {
   const access = bridge.access.value;
   const capabilities = bridge.capabilities.value;
-  if (!capabilities) return null;
+  if (!capabilities) {
+    if (!bridge.capabilitiesError.value) return null;
+    return (
+      <section class="bridge-group">
+        <SectionHead title="Recordings" note="unavailable" />
+        <EmptyState>
+          Couldn’t load recording capabilities — {bridge.capabilitiesError.value}.{' '}
+          <Button onClick={() => void bridge.loadCapabilities()}>Retry</Button>
+        </EmptyState>
+      </section>
+    );
+  }
   return (
     <section class="bridge-group">
       <SectionHead
@@ -372,23 +387,42 @@ function Recordings() {
 
 function RecordingWorkspace() {
   const data = bridge.recordings.value;
+  const capabilities = bridge.capabilities.value;
   const sources = Object.keys(bridge.status.value?.sources || {}).filter(
     (source) => source !== 'pending',
   );
   const [source, setSource] = useState(sources[0] || '');
   const [title, setTitle] = useState('');
   const selectedSource = sources.includes(source) ? source : sources[0] || '';
-  if (!data) return <EmptyState>Loading recordings…</EmptyState>;
+  if (!data) {
+    if (!bridge.recordingsError.value) return <EmptyState>Loading recordings…</EmptyState>;
+    return (
+      <EmptyState>
+        Couldn’t load recordings — {bridge.recordingsError.value}.{' '}
+        <Button onClick={() => void bridge.refreshRecordings()}>Retry</Button>
+      </EmptyState>
+    );
+  }
+  // The capability contract sizes the estimate and the limits; nothing here
+  // hardcodes what the bridge already declares.
+  const perMinute = capabilities ? formatBytes(capabilities.format.bytes_per_second * 60) : '';
   return (
     <div class="cardstack">
+      {data && bridge.recordingsError.value && (
+        <EmptyState>
+          Showing the last loaded list — refresh failed: {bridge.recordingsError.value}.{' '}
+          <Button onClick={() => void bridge.refreshRecordings()}>Refresh</Button>
+        </EmptyState>
+      )}
       <Card
         title="New recording"
-        lead="Start first, then play the source. WAV uses about 11 MiB per minute."
+        lead={`Start first, then play the source.${perMinute ? ` WAV uses about ${perMinute} per minute.` : ''} ${formatBytes(data.storage.free_bytes)} free.`}
       >
         <form
           onSubmit={async (event) => {
             event.preventDefault();
-            if (await bridge.startRecording({ source: selectedSource, title })) setTitle('');
+            const outcome = await bridge.startRecording({ source: selectedSource, title });
+            if (outcome === 'done' || outcome === 'refresh-failed') setTitle('');
           }}
         >
           <div class="formgrid">
@@ -413,7 +447,7 @@ function RecordingWorkspace() {
                 id="rec-title"
                 type="text"
                 value={title}
-                maxlength={80}
+                maxlength={capabilities?.limits.max_title_chars ?? 80}
                 onInput={(event) => setTitle(event.currentTarget.value)}
                 required
               />
@@ -427,26 +461,18 @@ function RecordingWorkspace() {
           </CardFooter>
         </form>
       </Card>
-      <RecordingList title="Active" items={data.active} active />
+      <RecordingList title="Active" items={data.active} />
       <RecordingList title="Saved" items={data.saved} />
     </div>
   );
 }
 
-function RecordingList({
-  title,
-  items,
-  active = false,
-}: {
-  title: string;
-  items: RecordingSnapshot[];
-  active?: boolean;
-}) {
+function RecordingList({ title, items }: { title: string; items: RecordingSnapshot[] }) {
   return (
     <Card title={title}>
       <div class="bridge-list">
         {items.length ? (
-          items.map((item) => <RecordingCard key={item.id} item={item} active={active} />)
+          items.map((item) => <RecordingCard key={item.id} item={item} />)
         ) : (
           <EmptyState>No {title.toLowerCase()} recordings.</EmptyState>
         )}
@@ -455,7 +481,15 @@ function RecordingList({
   );
 }
 
-function RecordingCard({ item, active }: { item: RecordingSnapshot; active: boolean }) {
+/** States whose recording is still in progress; stopping applies to these. */
+const ACTIVE_STATES: readonly string[] = ['waiting-for-audio', 'recording', 'finalizing'];
+
+function RecordingCard({ item }: { item: RecordingSnapshot }) {
+  // Every affordance derives from the recording's own state and file, not
+  // from which list happened to render it.
+  const active = ACTIVE_STATES.includes(item.state);
+  const stoppable = item.state === 'waiting-for-audio' || item.state === 'recording';
+  const downloadable = !active && Boolean(item.file_name);
   return (
     <article class="recording">
       <div>
@@ -466,27 +500,32 @@ function RecordingCard({ item, active }: { item: RecordingSnapshot; active: bool
           <span>{formatDuration(item.duration_seconds)}</span>
           <span>{formatBytes(item.bytes)}</span>
           <span>{item.gap_packets ? `${item.gap_packets} silent gaps` : 'No timeline gaps'}</span>
+          {item.duplicate_packets > 0 && <span>{item.duplicate_packets} duplicate packets</span>}
         </div>
+        {item.error && <div class="meta err">{item.error}</div>}
       </div>
       <div class="actions">
-        {active ? (
+        {stoppable && (
           <Button kind="danger" onClick={() => void bridge.stopRecording(item.id)}>
             Stop and save
           </Button>
-        ) : (
+        )}
+        {!active && (
           <>
-            <Button
-              onClick={async () => {
-                const ticket = await bridge.downloadTicket(item.id);
-                if (!ticket) return;
-                const link = document.createElement('a');
-                link.href = `${bridgeBase()}${ticket.url}`;
-                link.download = item.file_name || `${item.title}.wav`;
-                link.click();
-              }}
-            >
-              Download WAV
-            </Button>
+            {downloadable && (
+              <Button
+                onClick={async () => {
+                  const ticket = await bridge.downloadTicket(item.id);
+                  if (!ticket) return;
+                  const link = document.createElement('a');
+                  link.href = `${bridgeBase()}${ticket.url}`;
+                  link.download = item.file_name || `${item.title}.wav`;
+                  link.click();
+                }}
+              >
+                Download WAV
+              </Button>
+            )}
             <ConfirmButton
               label="Delete"
               confirmLabel="Delete"

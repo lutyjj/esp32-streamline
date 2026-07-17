@@ -201,11 +201,73 @@ describe('bridge controller', () => {
     const api = fakeApi({ start: vi.fn(async () => Promise.reject(new Error('storage full'))) });
     const controller = new BridgeController(api);
 
-    const succeeded = await controller.startRecording({ source: '192.0.2.10', title: 'Album' });
+    const outcome = await controller.startRecording({ source: '192.0.2.10', title: 'Album' });
 
-    expect(succeeded).toBe(false);
+    expect(outcome).toBe('failed');
     expect(controller.error.value).toBe('storage full');
     expect(api.recordings).not.toHaveBeenCalled();
+  });
+
+  it('qualifies success when the mutation lands but the list refresh fails', async () => {
+    const api = fakeApi({
+      recordings: vi.fn(async () => Promise.reject(new Error('list down'))),
+    });
+    const controller = new BridgeController(api);
+
+    const outcome = await controller.startRecording({ source: '192.0.2.10', title: 'Album' });
+
+    // The bridge accepted the mutation; only the list is stale.
+    expect(outcome).toBe('refresh-failed');
+    expect(controller.error.value).toBe('');
+    expect(controller.recordingsError.value).toBe('list down');
+  });
+
+  it('ignores a second click while a recording mutation is in flight', async () => {
+    let release: () => void = () => {};
+    const api = fakeApi({
+      start: vi.fn(() => new Promise<void>((res) => (release = res))),
+    });
+    const controller = new BridgeController(api);
+
+    const first = controller.startRecording({ source: '192.0.2.10', title: 'A' });
+    const second = await controller.startRecording({ source: '192.0.2.10', title: 'A' });
+    expect(second).toBe('in-flight');
+    release();
+    await first;
+    expect(api.start).toHaveBeenCalledOnce();
+  });
+
+  it('recovers capabilities through its own retry after an initial failure', async () => {
+    const capabilities = vi
+      .fn<BridgeApi['capabilities']>()
+      .mockRejectedValueOnce(new Error('boot race'))
+      .mockResolvedValueOnce({
+        enabled: true,
+        format: {
+          bytes_per_second: 176400,
+          bits_per_sample: 16,
+          channels: 2,
+          codec: 'pcm_s16le',
+          container: 'wav',
+          sample_rate: 44100,
+        },
+        limits: {
+          max_duration_seconds: 5400,
+          max_gap_seconds: 300,
+          max_title_chars: 80,
+          min_free_bytes: 1,
+          queue_chunks: 64,
+        },
+      });
+    const controller = new BridgeController(fakeApi({ capabilities }));
+
+    await controller.loadCapabilities();
+    expect(controller.capabilitiesError.value).toBe('boot race');
+    expect(controller.capabilities.value).toBeUndefined();
+
+    await controller.loadCapabilities();
+    expect(controller.capabilitiesError.value).toBe('');
+    expect(controller.capabilities.value?.enabled).toBe(true);
   });
 
   it('keeps the console unlocked after a rejected key so provisioning can be retried', async () => {

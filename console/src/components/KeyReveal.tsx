@@ -1,4 +1,4 @@
-import { copyText } from '../lib/adminKey';
+import { copyText } from '../lib/custody';
 import { toast } from '../state/toasts';
 import { Button } from './Button';
 import { RememberSwitch } from './RememberSwitch';

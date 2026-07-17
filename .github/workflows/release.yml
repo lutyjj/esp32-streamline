@@ -49,16 +49,16 @@ jobs:
       latest: ${{ steps.release-state.outputs.latest }}
     steps:
       # A draft release holds only the intended tag name — GitHub creates the
-      # tag ref when the release is published. Resolve the release commit from
-      # the tag when it exists, else from the draft's target commit.
+      # tag ref when the release is published. The release record stores the
+      # exact commit in both states, so read it from there and require a full
+      # SHA rather than risking a branch-name checkout.
       - name: Resolve the release commit
         id: commit
         env:
           GH_REPO: ${{ github.repository }}
         run: |
-          sha="$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null \
-            || gh release view "$TAG" --json targetCommitish --jq .targetCommitish)"
-          test -n "$sha"
+          sha="$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)"
+          echo "$sha" | grep -Eq '^[0-9a-f]{40}$'
           printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7

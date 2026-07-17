@@ -9,6 +9,9 @@ name: Release Please
 on:
   push:
     branches: [mainline]
+  # Manual refresh for the release PR, e.g. after branch-protection reports it
+  # behind a mainline that carried no releasable commits.
+  workflow_dispatch:
 
 permissions:
   contents: write

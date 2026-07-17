@@ -94,9 +94,3 @@ updates:
       - "*"
     multi-ecosystem-group: webflasher
 
-  - package-ecosystem: docker
-    directory: /
-    schedule:
-      interval: weekly
-    patterns:
-      - "*"

@@ -26,26 +26,11 @@ MARKDOWNLINT_IMAGE := ghcr.io/igorshubovych/markdownlint-cli:v0.49.0@sha256:ac86
 YQ_IMAGE := mikefarah/yq:4.53.3@sha256:11a1f0b604b13dbbdc662260d8db6f644b22d8553122a25c1b5b2e8713ca6977
 GITLEAKS_IMAGE := zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 
-# The root Dockerfile keeps the changelog generator pinned and Dependabot-managed.
-GIT_CLIFF_IMAGE := esp32-streamline-release-tools
-CHANGELOG_FILE := ha-addon/CHANGELOG.md
-# Render pending commits under this version instead of "Unreleased" — set it
-# during release prep, e.g. `make changelog CHANGELOG_TAG=v0.6.0`.
-CHANGELOG_TAG ?=
-GIT_COMMON_DIR := $(abspath $(shell git rev-parse --git-common-dir))
-
-# $(call git_cliff,ARGS) runs the pinned generator over the repo as the host
-# user, so generated files stay editable and the repo reads as owned (git-cliff
-# is pure-Rust and needs no git binary).
-git_cliff = $(CONTAINER) run --rm -v "$(REPO_ROOT)":/app -w /app \
-	-v "$(GIT_COMMON_DIR):$(GIT_COMMON_DIR)" \
-	-u $(CONTAINER_HOST_USER) -e HOME=$(CONTAINER_SAFE_HOME) $(GIT_CLIFF_IMAGE) $(1)
-
 # Reach the component sub-makes through the environment so the `<component>-%`
 # forwarding rules below stay argument-free.
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
 
-.PHONY: check help lint test format clean smoke-qemu release-tools-image changelog changelog-check release-history release-lock-check release-check release-verify release-package release-notes \
+.PHONY: check help lint test format clean smoke-qemu \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test docs-check api-contract-check version-check
 
 check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
@@ -58,15 +43,9 @@ help:
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
 	@echo "                                        e.g. firmware-flash PORT=..., bridge-run, bridge-up"
 	@echo "  make repository-check                  validate docs, repository metadata, and release versions"
-	@echo "  make changelog[-check] VERSION=X.Y.Z  generate or validate the add-on changelog"
-	@echo "  make release-lock-check VERSION=X.Y.Z validate release-owned lockfiles"
-	@echo "  make release-verify VERSION=X.Y.Z    verify a release-please release PR snapshot"
-	@echo "  make release-package VERSION=X.Y.Z   build verified release assets for publishing"
+	@echo "  make version-check VERSION=X.Y.Z     require one version across the release-owned files"
 
 format: bridge-format console-format firmware-format tools-format ha-addon-format
-
-release-tools-image:
-	$(CONTAINER) build -f Dockerfile.release-tools -t $(GIT_CLIFF_IMAGE) .
 
 lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
 
@@ -171,58 +150,3 @@ version-check:
 	@test "$(VERSION)" = "$(ADDON_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(ADDON_VERSION))" >&2; exit 2)
 	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || (echo "VERSION must be a stable X.Y.Z release version" >&2; exit 2)
 
-# The changelog generator needs the full tag history the published release
-# will reference.
-release-history:
-	@remote="$$(git remote | sed -n '1p')"; \
-		test -n "$$remote" || { echo "a git remote is required for release history" >&2; exit 2; }; \
-		git fetch --quiet --force --prune --prune-tags "$$remote" '+refs/tags/*:refs/tags/*'
-
-# A release version changes the bridge package metadata, which uv records in
-# bridge/uv.lock. Cargo.lock carries the firmware package version directly.
-release-lock-check: version-check bridge-lock-check firmware-lock-check ;
-
-# Run all release checks without compiling the firmware twice: the artifact
-# target below performs the cross build that ordinary `make test` would do.
-release-check: lint bridge-test console-test firmware-test ha-addon-test
-
-# Verify a prepared release without changing its files. Release PRs and
-# promotion use this target against a fixed commit. firmware-repro-check
-# rebuilds the packaged images once from a clean target and requires byte
-# equality, which is what lets release publication retry idempotently.
-release-verify: changelog-check release-lock-check release-check firmware-artifacts firmware-repro-check bridge-image
-	$(MAKE) ha-addon-image BUILD_ARCH=aarch64 VERSION=$(VERSION)
-	$(MAKE) ha-addon-image BUILD_ARCH=amd64 VERSION=$(VERSION)
-
-# Promotion verifies this exact commit before publishing. Publishing needs the
-# distributable firmware and bridge image; Buildx publishes the two add-on
-# images directly in the release workflow.
-release-package: changelog-check release-lock-check firmware-artifacts bridge-image
-
-# Regenerate ha-addon/CHANGELOG.md from Conventional Commits. During release
-# prep (after the version bump, before tagging) pass CHANGELOG_TAG=vX.Y.Z so the
-# new commits land under that version instead of "Unreleased".
-changelog: release-history release-tools-image
-	$(call git_cliff,$(if $(CHANGELOG_TAG),--tag $(CHANGELOG_TAG) )--output $(CHANGELOG_FILE))
-
-# The versioned release commit carries the exact add-on changelog that
-# Supervisor will render. Render the same tag into stdout and compare it
-# without changing the working tree.
-changelog-check: release-history release-tools-image version-check
-	@test -z "$$(grep -F 'timestamp | date' cliff.toml)" || (echo "release changelog must not depend on the generator clock." >&2; exit 1)
-	@$(call git_cliff,--tag v$(VERSION)) | diff -u "$(CHANGELOG_FILE)" - || { \
-		status=$$?; \
-		if [ "$$status" -eq 1 ]; then \
-			echo "$(CHANGELOG_FILE) does not match git-cliff for v$(VERSION)." >&2; \
-			echo "Run 'make changelog CHANGELOG_TAG=v$(VERSION)' and commit the result." >&2; \
-		fi; \
-		exit "$$status"; \
-	}
-
-# Print the newest release's notes only (no header/footer) for the GitHub
-# release body. The release workflow feeds this to `gh release create`, so
-# stdout must carry the notes and nothing else — build the image with its
-# output on stderr to keep the recipe echo out of the release body.
-release-notes: release-history
-	@$(MAKE) release-tools-image 1>&2
-	@$(call git_cliff,--latest --strip all)

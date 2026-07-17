@@ -105,7 +105,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
               </p>
             )}
           </div>
-          {credential && <CredentialReveal credential={credential} writable={writable} />}
+          {credential && <CredentialReveal credential={credential} />}
           {!credential && <ActionState state={lifecycle.state} />}
         </div>
       ),
@@ -152,7 +152,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
             </ol>
             <p>Then come back and verify — the device makes a real test connection.</p>
           </div>
-          {credential && <CredentialReveal credential={credential} writable={writable} />}
+          {credential && <CredentialReveal credential={credential} />}
           <ActionState state={lifecycle.state} />
           <div class="wizard-abandon">
             <ConfirmButton

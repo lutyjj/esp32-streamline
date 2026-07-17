@@ -17,12 +17,12 @@ describe('KeyReveal', () => {
     expect(host.querySelector('button')?.textContent).toContain('Copy key');
   });
 
-  it('disables its controls when the caller is locked', () => {
-    const host = mount(
-      <KeyReveal secret="abc123" remember={false} onRemember={() => {}} disabled />,
-    );
-    expect(host.querySelector('input')?.disabled).toBe(true);
-    expect(host.querySelector('button')?.disabled).toBe(true);
+  it('keeps copy and remember usable regardless of lock state', () => {
+    // The secret is already on screen; copying it and choosing custody are
+    // local actions, so an expiring unlock window cannot brick them.
+    const host = mount(<KeyReveal secret="abc123" remember={false} onRemember={() => {}} />);
+    expect(host.querySelector('input')?.disabled).toBe(false);
+    expect(host.querySelector('button')?.disabled).toBe(false);
   });
 });
 

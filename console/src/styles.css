@@ -24,6 +24,7 @@
   --bad: #c62828;
   --warn: #9a5b00;
   --focus: rgba(9, 105, 186, 0.35);
+  --log-text: #475569;
   --motion-fast: 140ms;
   --motion-panel: 180ms;
   --motion-disclosure-max: min(70vh, 720px);
@@ -38,6 +39,7 @@
   --surface: #181b1f;
   --surface-2: #20252b;
   --inset: #0c0e11;
+  --log-text: #c8d1dc;
   --line: #2b3138;
   --line-soft: #22272d;
   --text: #e7e9ec;
@@ -69,6 +71,7 @@
     --surface: #181b1f;
     --surface-2: #20252b;
     --inset: #0c0e11;
+    --log-text: #c8d1dc;
     --line: #2b3138;
     --line-soft: #22272d;
     --text: #e7e9ec;
@@ -1517,7 +1520,7 @@ select:disabled {
   max-height: 200px;
   overflow: auto;
   font: 12px / 1.7 var(--mono);
-  color: #c8d1dc;
+  color: var(--log-text);
 }
 .log .t {
   color: var(--faint);

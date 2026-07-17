@@ -68,6 +68,27 @@ the stage or recovery response. Device state transitions are failure-atomic.
 The bridge bounds its key map and publishes it with durable atomic replacement.
 Neither side logs or reads back PSKs.
 
+## Release artifact verification
+
+Every published release asset and container image carries signed provenance
+recorded by GitHub attestations, and each release ships an SPDX SBOM
+(`streamline-<version>.spdx.json` beside the firmware binaries; image SBOMs
+are attached as attestations on the image digest). Verify any artifact with
+one command:
+
+```sh
+# Any release asset: firmware images, ELF, SHA256SUMS, or the SBOM itself
+gh attestation verify streamline-<version>-ota.bin --repo lutyjj/esp32-streamline
+
+# Any published container image
+gh attestation verify oci://ghcr.io/lutyjj/esp32-streamline-bridge:<version> --repo lutyjj/esp32-streamline
+```
+
+Publication verifies every attestation before the release goes public and
+fails closed on mismatch. The device's own OTA update keeps its independent
+check: it validates the image against the `sha256` the caller supplies from
+`SHA256SUMS`.
+
 ## Tracked items
 
 | Item | Tracking | Notes |

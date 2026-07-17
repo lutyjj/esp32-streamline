@@ -1,0 +1,44 @@
+name: Image evidence
+description: >-
+  Resolve a pushed image's manifest digest, generate its SPDX SBOM, and bind
+  SBOM and build-provenance attestations to that digest.
+inputs:
+  image:
+    description: Full image reference with tag (name:tag), already pushed
+    required: true
+outputs:
+  digest:
+    description: The image manifest digest (sha256:...)
+    value: ${{ steps.digest.outputs.value }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve manifest digest
+      id: digest
+      shell: bash
+      run: |
+        digest="$(docker buildx imagetools inspect '${{ inputs.image }}' --format '{{.Manifest.Digest}}')"
+        echo "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+        printf 'value=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+        printf 'name=%s\n' "$(name='${{ inputs.image }}'; echo "${name%:*}")" >> "$GITHUB_OUTPUT"
+
+    - name: Generate image SBOM
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ${{ inputs.image }}
+        format: spdx-json
+        output-file: ${{ runner.temp }}/image-evidence.spdx.json
+        upload-artifact: false
+
+    - name: Attest image SBOM
+      uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+      with:
+        subject-name: ${{ steps.digest.outputs.name }}
+        subject-digest: ${{ steps.digest.outputs.value }}
+        sbom-path: ${{ runner.temp }}/image-evidence.spdx.json
+
+    - name: Attest image provenance
+      uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+      with:
+        subject-name: ${{ steps.digest.outputs.name }}
+        subject-digest: ${{ steps.digest.outputs.value }}

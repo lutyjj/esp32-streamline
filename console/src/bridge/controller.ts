@@ -18,7 +18,12 @@ import {
   type TransportModeRequestMode,
   unlockBridge,
 } from '../generated/bridge';
-import { bridgeToken, forgetBridgeToken, rememberBridgeToken } from './http';
+import {
+  bridgeToken,
+  forgetBridgeToken,
+  rememberBridgeToken,
+  setAuthRejectedHandler,
+} from './http';
 
 export interface BridgeApi {
   status(): Promise<BridgeStatus>;
@@ -93,6 +98,9 @@ export class BridgeController {
   ) {}
 
   start(): void {
+    // A rejected authenticated request anywhere is one lock transition:
+    // the transport already forgot the token; drop private state here.
+    setAuthRejectedHandler(() => this.lock());
     void this.pollStatus();
     void this.loadCapabilities();
     if (this.storedToken()) void this.resume();

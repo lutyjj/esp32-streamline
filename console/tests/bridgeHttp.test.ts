@@ -1,8 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bridgeBase,
   bridgeFetch,
+  bridgeToken,
   rememberBridgeToken,
+  SECURED_OPERATIONS,
+  setAuthRejectedHandler,
   setBridgeTransport,
 } from '../src/bridge/http';
 
@@ -56,5 +61,58 @@ describe('bridge HTTP transport', () => {
       null,
       null,
     ]);
+  });
+});
+
+describe('authorization derives from the generated contract', () => {
+  it('classifies every artifact operation exactly — a new one fails here', () => {
+    const artifact = JSON.parse(
+      readFileSync(resolve(import.meta.dirname, '../../docs/bridge-openapi.json'), 'utf8'),
+    ) as {
+      paths?: Record<string, Record<string, { security?: unknown[] }>>;
+    };
+    const declared = new Set<string>();
+    for (const [path, item] of Object.entries(artifact.paths ?? {})) {
+      for (const [method, op] of Object.entries(item)) {
+        if (op && typeof op === 'object' && 'security' in op && op.security?.length) {
+          declared.add(`${method.toUpperCase()} ${path}`);
+        }
+      }
+    }
+    expect(new Set(SECURED_OPERATIONS)).toEqual(declared);
+  });
+
+  it('locks once on an authenticated 401: token forgotten, handler notified', async () => {
+    rememberBridgeToken('stale');
+    const onLock = vi.fn();
+    setAuthRejectedHandler(onLock);
+    setBridgeTransport(async () => new Response('{"error":{"message":"denied"}}', { status: 401 }));
+
+    await expect(bridgeFetch('/api/recordings', { method: 'GET' })).rejects.toThrow('denied');
+    expect(onLock).toHaveBeenCalledOnce();
+    expect(bridgeToken()).toBe('');
+    setAuthRejectedHandler(() => {});
+  });
+
+  it('keeps 400 and 409 as ordinary retryable errors', async () => {
+    rememberBridgeToken('valid');
+    const onLock = vi.fn();
+    setAuthRejectedHandler(onLock);
+    setBridgeTransport(async () => new Response('{"error":{"message":"busy"}}', { status: 409 }));
+
+    await expect(bridgeFetch('/api/recordings', { method: 'POST' })).rejects.toThrow('busy');
+    expect(onLock).not.toHaveBeenCalled();
+    expect(bridgeToken()).toBe('valid');
+    setAuthRejectedHandler(() => {});
+  });
+
+  it('never locks on a 401 from an open route', async () => {
+    const onLock = vi.fn();
+    setAuthRejectedHandler(onLock);
+    setBridgeTransport(async () => new Response('nope', { status: 401 }));
+
+    await expect(bridgeFetch('/status', { method: 'GET' })).rejects.toThrow();
+    expect(onLock).not.toHaveBeenCalled();
+    setAuthRejectedHandler(() => {});
   });
 });

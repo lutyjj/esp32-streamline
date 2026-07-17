@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TransportCard } from '../src/components/TransportCard';
 import { config, status } from '../src/state/device';
 import { setupWizardRequested, transport } from '../src/state/transport';
@@ -209,5 +209,40 @@ describe('PCM encryption journey', () => {
 
     expect(toggle(host)?.disabled).toBe(true);
     expect(host.textContent).toContain('Save the stream target before changing encryption.');
+  });
+});
+
+describe('destructive credential lifecycle', () => {
+  it('retires the previous credential only through explicit confirmation', async () => {
+    status.value = deviceStatus({ auth_required: false });
+    config.value = deviceConfig({
+      transport: transportStatus({
+        mode: 'tls-psk',
+        active_key_id: 'key-2',
+        rollback_key_id: 'key-1',
+      }),
+    });
+    const retire = vi.spyOn(transport, 'retire').mockResolvedValue({});
+    const host = document.createElement('div');
+    render(<TransportCard />, host);
+    open(host, 'Advanced security');
+
+    const forget = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Forget previous credential',
+    );
+    expect(forget).toBeDefined();
+    act(() => forget?.click());
+    // Armed, not executed: the first click must make no API request.
+    expect(retire).not.toHaveBeenCalled();
+    expect(buttonLabels(host)).toContain('Cancel');
+
+    const confirm = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Forget it',
+    );
+    await act(async () => {
+      confirm?.click();
+    });
+    expect(retire).toHaveBeenCalledOnce();
+    retire.mockRestore();
   });
 });

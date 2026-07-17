@@ -8,6 +8,7 @@
 
 import { signal } from '@preact/signals';
 import type { Ack } from './api';
+import { localStore, sessionStore } from './custody';
 
 const ADMIN_KEY_STORAGE = 'streamline_admin_key';
 const LEGACY_TOKEN_STORAGE = 'streamline_token';
@@ -28,52 +29,57 @@ export function useAuthEpoch(): number {
 
 export function storedAdminKey(): string {
   return (
-    sessionStorage.getItem(ADMIN_KEY_STORAGE) ||
-    localStorage.getItem(ADMIN_KEY_STORAGE) ||
-    localStorage.getItem(LEGACY_TOKEN_STORAGE) ||
+    sessionStore.get(ADMIN_KEY_STORAGE) ||
+    localStore.get(ADMIN_KEY_STORAGE) ||
+    localStore.get(LEGACY_TOKEN_STORAGE) ||
     ''
   );
 }
 
-export function rememberAdminKey(key: string, remember: boolean): void {
-  sessionStorage.setItem(ADMIN_KEY_STORAGE, key);
+/** Returns true when the key reached the storage the caller asked for. */
+export function rememberAdminKey(key: string, remember: boolean): boolean {
+  const tabHeld = sessionStore.set(ADMIN_KEY_STORAGE, key);
+  let persisted = tabHeld;
   if (remember) {
-    localStorage.setItem(ADMIN_KEY_STORAGE, key);
+    persisted = localStore.set(ADMIN_KEY_STORAGE, key);
   } else {
-    localStorage.removeItem(ADMIN_KEY_STORAGE);
-    localStorage.removeItem(LEGACY_TOKEN_STORAGE);
+    localStore.remove(ADMIN_KEY_STORAGE);
+    localStore.remove(LEGACY_TOKEN_STORAGE);
   }
   touch();
+  return persisted;
 }
 
 export function keyRemembered(): boolean {
-  return Boolean(localStorage.getItem(ADMIN_KEY_STORAGE));
+  return Boolean(localStore.get(ADMIN_KEY_STORAGE));
 }
 
 export function unlockUntil(): number {
-  return Number(sessionStorage.getItem(UNLOCK_UNTIL_STORAGE) || '0');
+  return Number(sessionStore.get(UNLOCK_UNTIL_STORAGE) || '0');
 }
 
 export function isUnlocked(): boolean {
   return Boolean(storedAdminKey()) && unlockUntil() > Date.now();
 }
 
-export function unlockSettings(key: string, remember: boolean): void {
-  rememberAdminKey(key, remember);
-  sessionStorage.setItem(UNLOCK_UNTIL_STORAGE, String(Date.now() + UNLOCK_WINDOW_MS));
+/** Returns true when the key reached the storage the caller asked for. */
+export function unlockSettings(key: string, remember: boolean): boolean {
+  const persisted = rememberAdminKey(key, remember);
+  sessionStore.set(UNLOCK_UNTIL_STORAGE, String(Date.now() + UNLOCK_WINDOW_MS));
   touch();
+  return persisted;
 }
 
 export function lockSettings(): void {
-  sessionStorage.removeItem(UNLOCK_UNTIL_STORAGE);
+  sessionStore.remove(UNLOCK_UNTIL_STORAGE);
   touch();
 }
 
 export function forgetAdminKey(): void {
-  sessionStorage.removeItem(ADMIN_KEY_STORAGE);
-  localStorage.removeItem(ADMIN_KEY_STORAGE);
-  localStorage.removeItem(LEGACY_TOKEN_STORAGE);
-  sessionStorage.removeItem(UNLOCK_UNTIL_STORAGE);
+  sessionStore.remove(ADMIN_KEY_STORAGE);
+  localStore.remove(ADMIN_KEY_STORAGE);
+  localStore.remove(LEGACY_TOKEN_STORAGE);
+  sessionStore.remove(UNLOCK_UNTIL_STORAGE);
   touch();
 }
 
@@ -101,23 +107,4 @@ export function generateAdminKey(): string {
   const bytes = new Uint8Array(24);
   window.crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-export async function copyText(value: string): Promise<void> {
-  if (!value) return;
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
-  // The device serves plain HTTP, so the async clipboard API is unavailable
-  // and the deprecated fallback is the only path that works.
-  const scratch = document.createElement('textarea');
-  scratch.value = value;
-  scratch.setAttribute('readonly', '');
-  scratch.style.position = 'fixed';
-  scratch.style.opacity = '0';
-  document.body.appendChild(scratch);
-  scratch.select();
-  document.execCommand('copy');
-  scratch.remove();
 }

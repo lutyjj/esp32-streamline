@@ -167,21 +167,13 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
       {targetDirty && <span class="help">Save the stream target before changing encryption.</span>}
 
       {credential && !setupUnderway && (
-        <CredentialReveal
-          credential={credential}
-          writable={writable}
-          onDone={() => transport.dismissReveal()}
-        />
+        <CredentialReveal credential={credential} onDone={() => transport.dismissReveal()} />
       )}
 
       {setupUnderway && (
         <>
           {credential && (
-            <CredentialReveal
-              credential={credential}
-              writable={writable}
-              onDone={() => transport.dismissReveal()}
-            />
+            <CredentialReveal credential={credential} onDone={() => transport.dismissReveal()} />
           )}
           <div class="transport-keys">
             <Kv rows={credentialRows} />
@@ -238,14 +230,17 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
               </TransactButton>
             )}
             {actions.canRetire && (
-              <TransactButton
-                transact={lifecycle}
-                kind="secondary"
-                disabled={!writable}
-                onClick={() => lifecycle.run(() => transport.retire())}
-              >
-                Forget previous credential
-              </TransactButton>
+              <ConfirmButton
+                label="Forget previous credential"
+                confirmLabel="Forget it"
+                disabled={!writable || lifecycle.busy}
+                message="The previous credential is deleted from the device — switching back to it is no longer possible."
+                onConfirm={() =>
+                  lifecycle.run(() => transport.retire(), {
+                    okText: 'Previous credential forgotten',
+                  })
+                }
+              />
             )}
             <ActionState state={lifecycle.state} />
           </CardFooter>

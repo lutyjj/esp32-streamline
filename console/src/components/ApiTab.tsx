@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'preact/hooks';
-import { copyText } from '../lib/adminKey';
 import { getContract } from '../lib/api';
 import {
   type ApiDocument,
@@ -7,6 +6,7 @@ import {
   type ApiSchema,
   resolveSchema,
 } from '../lib/contract';
+import { copyText } from '../lib/custody';
 import { errorMessage } from '../lib/errors';
 import { toast } from '../state/toasts';
 import { Button } from './Button';

@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { copyText } from '../lib/adminKey';
+import { copyText } from '../lib/custody';
 import { toast } from '../state/toasts';
 import type { RevealedTransportKey } from '../state/transport';
 import { Button } from './Button';

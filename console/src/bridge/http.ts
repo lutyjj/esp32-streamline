@@ -1,3 +1,4 @@
+import { sessionStore } from '../lib/custody';
 import { ApiError, type FetchLike } from '../lib/http';
 
 const TOKEN_KEY = 'streamline.bridgeToken';
@@ -9,18 +10,18 @@ export function setBridgeTransport(next: FetchLike): void {
 }
 
 export function bridgeToken(): string {
-  return sessionStorage.getItem(TOKEN_KEY) || '';
+  return sessionStore.get(TOKEN_KEY) || '';
 }
 
 // The token is a shared deployment secret, so it never persists past the tab —
 // unlike the per-device admin key. See docs/security.md ("no persistent token
 // storage").
 export function rememberBridgeToken(token: string): void {
-  sessionStorage.setItem(TOKEN_KEY, token);
+  sessionStore.set(TOKEN_KEY, token);
 }
 
 export function forgetBridgeToken(): void {
-  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStore.remove(TOKEN_KEY);
 }
 
 export function bridgeBase(): string {

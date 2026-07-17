@@ -1,7 +1,7 @@
 import type { ComponentChildren, TargetedTransitionEvent } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
-const CLOSE_MS = 180;
+const PANEL_MS = 180;
 
 interface DisclosureProps {
   title: string;
@@ -28,13 +28,19 @@ export function Disclosure({
   const controlled = controlledOpen !== undefined;
   const [open, setOpen] = useState(controlled ? controlledOpen : defaultOpen);
   const [present, setPresent] = useState(open);
+  // The panel clips overflow only while its size animates; once opening
+  // settles, overflow is freed so intrinsic-height content is never clipped.
+  // Mounting open paints at rest with no transition, so it starts settled.
+  const [settled, setSettled] = useState(open);
   const openFrame = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
+  const settleTimer = useRef<number | null>(null);
 
   useEffect(
     () => () => {
       if (openFrame.current !== null) window.cancelAnimationFrame(openFrame.current);
       if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+      if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
     },
     [],
   );
@@ -43,6 +49,12 @@ export function Disclosure({
     if (closeTimer.current === null) return;
     window.clearTimeout(closeTimer.current);
     closeTimer.current = null;
+  }
+
+  function clearSettleTimer() {
+    if (settleTimer.current === null) return;
+    window.clearTimeout(settleTimer.current);
+    settleTimer.current = null;
   }
 
   function openDisclosure() {
@@ -55,6 +67,12 @@ export function Disclosure({
         setOpen(true);
       });
     });
+    // Reduced-motion mode fires no transitionend; the timer settles instead.
+    clearSettleTimer();
+    settleTimer.current = window.setTimeout(() => {
+      settleTimer.current = null;
+      setSettled(true);
+    }, PANEL_MS);
   }
 
   function closeDisclosure() {
@@ -62,11 +80,13 @@ export function Disclosure({
       window.cancelAnimationFrame(openFrame.current);
       openFrame.current = null;
     }
+    clearSettleTimer();
+    setSettled(false);
     setOpen(false);
     closeTimer.current = window.setTimeout(() => {
       closeTimer.current = null;
       setPresent(false);
-    }, CLOSE_MS);
+    }, PANEL_MS);
   }
 
   // Follow the parent's state through the same animation as a click.
@@ -88,19 +108,26 @@ export function Disclosure({
     else closeDisclosure();
   }
 
-  function finishClose(event: TargetedTransitionEvent<HTMLDivElement>) {
-    if (event.target !== event.currentTarget || open) return;
+  function onPanelTransitionEnd(event: TargetedTransitionEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget) return;
+    if (open) {
+      clearSettleTimer();
+      setSettled(true);
+      return;
+    }
     clearCloseTimer();
     setPresent(false);
   }
 
   return (
-    <div class={`disclosure${open ? ' open' : ''}${className ? ` ${className}` : ''}`}>
+    <div
+      class={`disclosure${open ? ' open' : ''}${settled ? ' settled' : ''}${className ? ` ${className}` : ''}`}
+    >
       <button class="disclosure-summary" type="button" aria-expanded={open} onClick={toggle}>
         {title}
       </button>
       {present && (
-        <div class="disclosure-panel" onTransitionEnd={finishClose}>
+        <div class="disclosure-panel" onTransitionEnd={onPanelTransitionEnd}>
           <div class="disclosure-body">{children}</div>
         </div>
       )}

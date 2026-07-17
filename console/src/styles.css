@@ -24,9 +24,9 @@
   --bad: #c62828;
   --warn: #9a5b00;
   --focus: rgba(9, 105, 186, 0.35);
+  --log-text: #475569;
   --motion-fast: 140ms;
   --motion-panel: 180ms;
-  --motion-disclosure-max: min(70vh, 720px);
   --motion-ease: cubic-bezier(0.2, 0, 0, 1);
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -38,6 +38,7 @@
   --surface: #181b1f;
   --surface-2: #20252b;
   --inset: #0c0e11;
+  --log-text: #c8d1dc;
   --line: #2b3138;
   --line-soft: #22272d;
   --text: #e7e9ec;
@@ -56,7 +57,6 @@
   --focus: rgba(109, 183, 255, 0.35);
   --motion-fast: 140ms;
   --motion-panel: 180ms;
-  --motion-disclosure-max: min(70vh, 720px);
   --motion-ease: cubic-bezier(0.2, 0, 0, 1);
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -69,6 +69,7 @@
     --surface: #181b1f;
     --surface-2: #20252b;
     --inset: #0c0e11;
+    --log-text: #c8d1dc;
     --line: #2b3138;
     --line-soft: #22272d;
     --text: #e7e9ec;
@@ -868,21 +869,32 @@ body.locked .gated :is(form, .cardfoot) {
   transform: rotate(90deg);
 }
 .disclosure-panel {
-  max-height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
   opacity: 0;
-  overflow: hidden;
   transform: translateY(-3px);
-  transition:
-    max-height var(--motion-panel) var(--motion-ease),
-    opacity var(--motion-panel) var(--motion-ease),
-    transform var(--motion-panel) var(--motion-ease);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .disclosure-panel {
+    transition:
+      grid-template-rows var(--motion-panel) var(--motion-ease),
+      opacity var(--motion-panel) var(--motion-ease),
+      transform var(--motion-panel) var(--motion-ease);
+  }
 }
 .disclosure.open .disclosure-panel {
-  max-height: var(--motion-disclosure-max);
+  grid-template-rows: 1fr;
   opacity: 1;
   transform: translateY(0);
 }
+/* The body clips only while the row animates; a settled disclosure ends at
+   intrinsic height with overflow free, so tall or nested content is never
+   cut off. */
 .disclosure-body {
+  min-height: 0;
+  overflow: hidden;
+}
+.disclosure.settled .disclosure-body {
   overflow: visible;
 }
 .kv {
@@ -1517,7 +1529,7 @@ select:disabled {
   max-height: 200px;
   overflow: auto;
   font: 12px / 1.7 var(--mono);
-  color: #c8d1dc;
+  color: var(--log-text);
 }
 .log .t {
   color: var(--faint);

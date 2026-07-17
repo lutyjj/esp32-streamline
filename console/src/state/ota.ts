@@ -43,11 +43,47 @@ export function logOta(text: string, cls: OtaLogLine['cls'] = ''): void {
   otaLog.value = [...otaLog.value, { at: new Date().toLocaleTimeString(), text, cls }];
 }
 
+/** What the running session installs from; recovery narration depends on it. */
+export type OtaSource = 'release' | 'custom';
+
+let sessionSource: OtaSource = 'release';
+
 /** Reset the log when the user starts a check or install. */
-export function beginOtaSession(line: string): void {
+export function beginOtaSession(line: string, source: OtaSource = 'release'): void {
   otaLog.value = [];
   loggedPhase = null;
+  sessionSource = source;
   logOta(line);
+}
+
+/**
+ * Reject a custom-image request before it leaves the browser: a blank or
+ * malformed form must never fall through to a release install.
+ */
+export function customImageProblem(url: string, sha256: string): string | null {
+  if (!url.trim() || !sha256.trim()) return 'enter both the image URL and its SHA-256';
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return 'the image URL must be a full http(s) address';
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return 'the image URL must use http or https';
+  }
+  if (!/^[0-9a-f]{64}$/i.test(sha256.trim())) {
+    return 'the SHA-256 must be exactly 64 hex characters';
+  }
+  return null;
+}
+
+/**
+ * The version an install aims for. Only a release install can expect the
+ * release metadata's version; a custom image's target is unknown, so its
+ * recovery reads as observed rather than presumed.
+ */
+export function expectedVersion(source: OtaSource, latest: string): string {
+  return source === 'release' ? latest : '';
 }
 
 /** How a firmware update ended, read from the versions seen across the reboot. */
@@ -77,7 +113,7 @@ function beginUpdateRebootWait(): void {
   const s = status.value;
   pendingUpdate = {
     from: s?.firmware_version ?? '',
-    expected: s?.ota.latest_version ?? '',
+    expected: expectedVersion(sessionSource, s?.ota.latest_version ?? ''),
   };
   beginRebootWait('the firmware update', undefined, narrateUpdateRecovery);
 }

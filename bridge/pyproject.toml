@@ -9,7 +9,7 @@ description = "ESP32 StreamLine TCP PCM to HTTP WAV bridge"
 requires-python = ">=3.13"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
-  "fastapi>=0.116,<1",
+  "fastapi>=0.139.2,<1",
   "uvicorn>=0.35,<1",
 ]
 
@@ -19,7 +19,7 @@ streamline-ha-addon = "streamline_bridge.ha_addon:main"
 
 [dependency-groups]
 dev = [
-  "httpx2>=2,<3",
+  "httpx2>=2.7.0,<3",
   "mypy",
   "ruff",
 ]

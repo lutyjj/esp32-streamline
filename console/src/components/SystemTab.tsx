@@ -13,7 +13,7 @@ import {
 } from '../lib/api';
 import { bytes, duration } from '../lib/format';
 import { useTransact, useWritable } from '../lib/hooks';
-import { config, status } from '../state/device';
+import { config, configResource, loadConfig, status } from '../state/device';
 import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
 import { Button } from './Button';
 import { Card, CardFooter } from './Card';
@@ -22,12 +22,14 @@ import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
 import { LedControls } from './LedControls';
+import { ResourceNotice } from './ResourceNotice';
 import { ActionState, TransactButton } from './Transact';
 import { UsageBar } from './UsageBar';
 
 export function SystemTab() {
   return (
     <>
+      <ResourceNotice of={configResource} />
       <DeviceHealthCard />
       <FirmwareCard />
       <NameCard />
@@ -325,10 +327,19 @@ function NameCard() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          transact.run(() => setDeviceName({ name }), {
-            busyText: 'Saving…',
-            okText: 'Saved',
-          });
+          transact.run(
+            async () => {
+              const ack = await setDeviceName({ name });
+              // The snapshot must carry the accepted name, or a remount
+              // reverts the form to the old one.
+              await loadConfig();
+              return ack;
+            },
+            {
+              busyText: 'Saving…',
+              okText: 'Saved',
+            },
+          );
         }}
       >
         <div class="formgrid">
@@ -348,7 +359,7 @@ function NameCard() {
           </div>
         </div>
         <CardFooter>
-          <TransactButton transact={transact} type="submit" disabled={!writable}>
+          <TransactButton transact={transact} type="submit" disabled={!writable || !c}>
             Save
           </TransactButton>
           <ActionState state={transact.state} />

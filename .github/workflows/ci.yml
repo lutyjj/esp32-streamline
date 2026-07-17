@@ -13,12 +13,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Single source of truth for "what is a component". The `filters` block maps
-  # paths to component names; this job turns the ones a change touched into a
-  # matrix. Adding a lightweight component is two declarative edits and no new
-  # job: a filter entry here, plus a `<name>-check` target in the Makefile.
-  # `firmware` is deliberately excluded from the matrix — its toolchain caching
-  # makes it fundamentally different, so it keeps a bespoke job below.
+  # Single source of truth for "what is a component". `.github/ci-paths.yml`
+  # maps paths to component names; this job turns the ones a change touched
+  # into a matrix. Adding a lightweight component is two declarative edits and
+  # no new job: a filter entry there, plus a `<name>-check` target in the
+  # Makefile. `firmware` is deliberately excluded from the matrix — its
+  # toolchain caching makes it fundamentally different, so it keeps a bespoke
+  # job below.
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
@@ -26,69 +27,19 @@ jobs:
       components: ${{ steps.matrix.outputs.components }}
       firmware: ${{ steps.filter.outputs.firmware }}
       api_contract: ${{ steps.filter.outputs.api_contract }}
+      qemu_smoke: ${{ steps.filter.outputs.qemu_smoke }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         id: filter
         with:
-          # A change to the shared build entrypoints re-runs every component.
-          filters: |
-            shared: &shared
-              - '.github/workflows/ci.yml'
-              - '.github/actions/**'
-              - 'Makefile'
-              - 'mk/**'
-            repository:
-              - '.github/**'
-              - 'AGENTS.md'
-              - 'CONTRIBUTING.md'
-              - 'Dockerfile.release-tools'
-              - 'README.md'
-              - 'cliff.toml'
-              - 'repository.yaml'
-              - 'docs/**'
-            bridge:
-              - *shared
-              - 'bridge/**'
-              - 'console/**'
-              - 'docs/bridge-openapi.json'
-              - 'docs/pcm-transport.json'
-              - 'docs/pcm-frame-vectors.json'
-              # The bridge option-contract test pins the add-on's config.
-              - 'ha-addon/config.yaml'
-            console:
-              - *shared
-              - 'console/**'
-              - 'bridge/**'
-              - 'docs/bridge-openapi.json'
-            tools:
-              - *shared
-              - 'tools/**'
-            webflasher:
-              - *shared
-              - 'webflasher/**'
-            ha-addon:
-              - *shared
-              - 'ha-addon/**'
-              - 'console/**'
-              - 'repository.yaml'
-              - 'bridge/pyproject.toml'
-              - 'bridge/uv.lock'
-              - 'bridge/src/**'
-              - 'bridge/tests/**'
-            firmware:
-              - *shared
-              - 'firmware/**'
-              - 'docs/pcm-transport.json'
-              - 'docs/pcm-frame-vectors.json'
-            api_contract:
-              - 'docs/openapi.json'
+          filters: .github/ci-paths.yml
       - id: matrix
         # Fan out over every matched component except the bespoke firmware job
-        # and the internal `shared` and `api_contract` pseudo-filters.
+        # and the internal pseudo-filters.
         run: |
           components=$(echo '${{ steps.filter.outputs.changes }}' \
-            | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract")]')
+            | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract" and . != "qemu_smoke")]')
           echo "components=$components" >> "$GITHUB_OUTPUT"
 
   # One job, every lightweight component. The command is uniform because each
@@ -112,7 +63,7 @@ jobs:
     name: Firmware (clippy · test · release build)
     needs: changes
     if: >-
-      needs.changes.outputs.firmware == 'true' &&
+      (needs.changes.outputs.firmware == 'true' || needs.changes.outputs.qemu_smoke == 'true') &&
       !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
     runs-on: ubuntu-latest
     env:
@@ -133,6 +84,7 @@ jobs:
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
       - name: Check
+        if: ${{ needs.changes.outputs.firmware == 'true' }}
         run: |
           make firmware-check \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
@@ -175,14 +127,13 @@ jobs:
 
   # Boots the QEMU firmware variant and runs the emulated-device test suite:
   # boot, HTTP API, provisioning persistence, key gating, factory reset, and
-  # the OTA slot switch. Gated on firmware changes because the firmware job
-  # supplies the images; a tools-only change validates the suite through
-  # tools-check and rides the next firmware or shared-path run.
+  # the OTA slot switch. The firmware job supplies images built from the exact
+  # commit selected by the QEMU ownership filter.
   qemu-smoke:
     name: QEMU device smoke
     needs: [changes, firmware]
     if: >-
-      needs.changes.outputs.firmware == 'true' &&
+      needs.changes.outputs.qemu_smoke == 'true' &&
       !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
     runs-on: ubuntu-latest
     steps:

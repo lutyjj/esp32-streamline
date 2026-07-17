@@ -1,4 +1,4 @@
-import type { ComponentChildren, TargetedKeyboardEvent } from 'preact';
+import type { ComponentChildren, TargetedEvent } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 
 interface DialogSheetProps {
@@ -10,6 +10,12 @@ interface DialogSheetProps {
   onDismiss: () => void;
 }
 
+/**
+ * The modal sheet behind every guided flow. A native `<dialog>` shown with
+ * `showModal()` owns the hard parts as platform behavior: focus is trapped in
+ * the sheet, the background becomes inert, Escape raises `cancel`, and closing
+ * returns focus to the opener.
+ */
 export function DialogSheet({
   label,
   steps,
@@ -19,43 +25,38 @@ export function DialogSheet({
   onDismiss,
 }: DialogSheetProps) {
   const stepIndex = steps.indexOf(currentStep);
-  const sheet = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => sheet.current?.focus(), []);
+  useEffect(() => {
+    const dialog = sheet.current;
+    if (!dialog || dialog.open) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
 
-  function dismissOnEscape(event: TargetedKeyboardEvent<HTMLDivElement>) {
-    if (event.key !== 'Escape') return;
-    event.stopPropagation();
+  function dismissOnCancel(event: TargetedEvent<HTMLDialogElement>) {
+    // The dialog stays mounted until the flow's own state unmounts it.
+    event.preventDefault();
     onDismiss();
   }
 
   return (
-    <div class="overlay">
-      <div
-        ref={sheet}
-        class="sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        tabIndex={-1}
-        onKeyDown={dismissOnEscape}
-      >
-        <div class="stepline">
-          {label}
-          <span class="sr-only">
-            Step {stepIndex + 1} of {steps.length}
-          </span>
-          <span class="stepdots" aria-hidden="true">
-            {steps.map((name, index) => (
-              <i key={name} class={index <= stepIndex ? 'on' : ''} />
-            ))}
-          </span>
-        </div>
-        <div class="sheetcontent" key={currentStep}>
-          {children}
-        </div>
-        <div class="sheetfoot">{footer}</div>
+    <dialog ref={sheet} class="sheet" aria-label={label} onCancel={dismissOnCancel}>
+      <div class="stepline">
+        {label}
+        <span class="sr-only">
+          Step {stepIndex + 1} of {steps.length}
+        </span>
+        <span class="stepdots" aria-hidden="true">
+          {steps.map((name, index) => (
+            <i key={name} class={index <= stepIndex ? 'on' : ''} />
+          ))}
+        </span>
       </div>
-    </div>
+      <div class="sheetcontent" key={currentStep}>
+        {children}
+      </div>
+      <div class="sheetfoot">{footer}</div>
+    </dialog>
   );
 }

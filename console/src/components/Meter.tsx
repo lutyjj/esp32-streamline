@@ -43,7 +43,16 @@ export function MeterRow({ label, rms, peak }: { label: string; rms: number; pea
   return (
     <div class="meterrow">
       <span class="chn">{label}</span>
-      <div class="track">
+      {/* biome-ignore lint/a11y/useSemanticElements: the layered zones/fill/peak-hold visualization cannot be a native <meter>; the role carries the semantics. */}
+      <div
+        class="track"
+        role="meter"
+        aria-label={`${label} level`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(meterPct(rms))}
+        aria-valuetext={`${dbfs(rms)} dBFS`}
+      >
         <div class="zones" />
         <div class="fill" style={{ clipPath: `inset(0 ${100 - meterPct(rms)}% 0 0)` }} />
         <div class="peakhold" style={{ left: `calc(${meterPct(peak)}% - 1px)` }} />

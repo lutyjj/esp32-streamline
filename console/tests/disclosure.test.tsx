@@ -112,4 +112,18 @@ describe('settled overflow lifecycle', () => {
     act(() => void vi.advanceTimersByTime(200));
     expect(host.textContent).not.toContain('body');
   });
+
+  it('links the summary to the panel it controls', () => {
+    const host = document.createElement('div');
+    render(
+      <Disclosure title="Details" defaultOpen>
+        <p>body</p>
+      </Disclosure>,
+      host,
+    );
+    const summary = host.querySelector('.disclosure-summary');
+    const panel = host.querySelector('.disclosure-panel');
+    expect(summary?.getAttribute('aria-controls')).toBe(panel?.id);
+    expect(panel?.id).toBeTruthy();
+  });
 });

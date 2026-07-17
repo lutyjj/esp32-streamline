@@ -1,5 +1,5 @@
 import type { ComponentChildren, TargetedTransitionEvent } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useId, useRef, useState } from 'preact/hooks';
 
 const PANEL_MS = 180;
 
@@ -26,6 +26,7 @@ export function Disclosure({
   onToggle,
 }: DisclosureProps) {
   const controlled = controlledOpen !== undefined;
+  const panelId = useId();
   const [open, setOpen] = useState(controlled ? controlledOpen : defaultOpen);
   const [present, setPresent] = useState(open);
   // The panel clips overflow only while its size animates; once opening
@@ -123,11 +124,17 @@ export function Disclosure({
     <div
       class={`disclosure${open ? ' open' : ''}${settled ? ' settled' : ''}${className ? ` ${className}` : ''}`}
     >
-      <button class="disclosure-summary" type="button" aria-expanded={open} onClick={toggle}>
+      <button
+        class="disclosure-summary"
+        type="button"
+        aria-expanded={open}
+        aria-controls={present ? panelId : undefined}
+        onClick={toggle}
+      >
         {title}
       </button>
       {present && (
-        <div class="disclosure-panel" onTransitionEnd={onPanelTransitionEnd}>
+        <div class="disclosure-panel" id={panelId} onTransitionEnd={onPanelTransitionEnd}>
           <div class="disclosure-body">{children}</div>
         </div>
       )}

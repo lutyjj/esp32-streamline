@@ -36,7 +36,7 @@ export function ActionState({ state }: { state: ActionStateValue }) {
   // Nothing to show while idle; a bare success still renders its checkmark.
   if (!state.text && state.cls !== 'ok') return null;
   return (
-    <span class={`actionstate ${state.cls}`}>
+    <span class={`actionstate ${state.cls}`} role="status">
       {state.cls === 'ok' && (
         <span class="actionstate-check" aria-hidden="true">
           ✓

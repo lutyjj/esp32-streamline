@@ -1733,30 +1733,21 @@ select:disabled {
 
 /* --- Calibration wizard --------------------------------------------------- */
 
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(8, 10, 12, 0.72);
-  padding: 20px;
-}
-.overlay[hidden] {
-  display: none;
-}
 .sheet {
   width: 560px;
-  max-width: 100%;
+  max-width: calc(100vw - 40px);
   max-height: min(640px, 92vh);
   overflow: auto;
   background: var(--surface);
+  color: inherit;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 24px;
   display: grid;
   gap: 16px;
+}
+.sheet::backdrop {
+  background: rgba(8, 10, 12, 0.72);
 }
 .stepline {
   display: flex;

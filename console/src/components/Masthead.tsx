@@ -71,7 +71,14 @@ export function Masthead() {
         </div>
         <div class="masthead-actions">
           <ThemeSwitch />
-          <LockChip state={chip.state} text={chip.text} sub={chip.sub} onClick={onChipClick} />
+          <LockChip
+            state={chip.state}
+            text={chip.text}
+            sub={chip.sub}
+            onClick={onChipClick}
+            expanded={panelOpen && !isUnlocked()}
+            controls="admin-unlock-panel"
+          />
         </div>
       </header>
       {panelOpen && !isUnlocked() && <AdminUnlock onDone={() => setPanelOpen(false)} />}
@@ -119,6 +126,7 @@ function AdminUnlock({ onDone }: { onDone: () => void }) {
 
   return (
     <UnlockPanel
+      id="admin-unlock-panel"
       secret={secret}
       onSecret={setSecret}
       onUnlock={unlock}

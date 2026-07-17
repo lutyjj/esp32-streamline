@@ -13,8 +13,10 @@ import {
 } from '../lib/api';
 import { bytes, duration } from '../lib/format';
 import { useTransact, useWritable } from '../lib/hooks';
+import { ApiError } from '../lib/http';
 import { config, configResource, loadConfig, status } from '../state/device';
 import { beginOtaSession, OTA_INSTALLING_PHASES, otaLog, prettyPhase } from '../state/ota';
+import { beginResetHandoff, resetHandoff, resetHandoffMessage } from '../state/resetHandoff';
 import { Button } from './Button';
 import { Card, CardFooter } from './Card';
 import { ConfirmButton } from './ConfirmButton';
@@ -22,6 +24,7 @@ import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
 import { LedControls } from './LedControls';
+import { Notice } from './Notice';
 import { ResourceNotice } from './ResourceNotice';
 import { ActionState, TransactButton } from './Transact';
 import { UsageBar } from './UsageBar';
@@ -434,10 +437,23 @@ function AccessCard() {
   );
 }
 
-function ResetCard() {
+export function ResetCard() {
   const writable = useWritable();
   const restart = useTransact();
   const factory = useTransact();
+
+  // Reset is a handoff, not a reboot wait: the device abandons this network
+  // for its setup AP, so the card's last render is the way there.
+  if (resetHandoff.value) {
+    return (
+      <Card title="Reset">
+        <Notice tone="info">
+          <strong class="strong">Factory reset done.</strong> {resetHandoffMessage()} Installed
+          firmware stays; every setting was erased.
+        </Notice>
+      </Card>
+    );
+  }
 
   return (
     <Card gated title="Reset">
@@ -459,12 +475,23 @@ function ResetCard() {
           label="Factory reset"
           confirmLabel="Erase everything"
           disabled={!writable}
-          message="This erases Wi-Fi, the stream target, audio settings and profiles, and the admin key. The device returns to its setup network."
+          message="This erases Wi-Fi credentials, the stream target, audio settings and profiles, transport encryption keys, LED roles, the device name, the update schedule, and the admin key. Installed firmware stays. The device returns to its setup network."
           onConfirm={() =>
-            factory.run(() => factoryReset(), {
-              busyText: 'Erasing…',
-              reboots: 'the factory reset',
-            })
+            factory.run(
+              async () => {
+                try {
+                  await factoryReset();
+                } catch (error) {
+                  // A rejection came back over HTTP: inline and retryable.
+                  if (error instanceof ApiError) throw error;
+                  // A dropped connection is the reset tearing this network
+                  // down — the handoff itself, not a failure.
+                }
+                beginResetHandoff();
+                return undefined;
+              },
+              { busyText: 'Erasing…', okText: '' },
+            )
           }
         />
         <ActionState state={factory.state} />

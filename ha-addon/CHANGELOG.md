@@ -1,6 +1,13 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.7.1](https://github.com/lutyjj/esp32-streamline/compare/v0.7.0...v0.7.1) (2026-07-17)
+
+
+### Bug Fixes
+
+* **ci:** keep QEMU smoke reruns on the attempt's images ([8c91bba](https://github.com/lutyjj/esp32-streamline/commit/8c91bbade50cad33a28010706fa6060f50ab91ba))
+
 ## [0.7.0]
 
 ### 🚀 Features
@@ -348,5 +355,3 @@ Notable changes per release, grouped by type.
 
 ### 🚀 Features
 - 0.1.0
-
-

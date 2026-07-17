@@ -29,16 +29,50 @@ export function bridgeBase(): string {
   return /^(\/[A-Za-z0-9._~-]+)*$/.test(raw) ? raw : '';
 }
 
-/** Every mutating bridge route; reads stay open per docs/security.md. */
-function requiresToken(path: string): boolean {
-  if (path === '/api/unlock' || path === '/api/transport/mode') return true;
-  if (path.startsWith('/api/transport/keys/')) return true;
-  return path.startsWith('/api/recordings') && !path.includes('/capabilities');
+/**
+ * Authorization is the generated contract's, not inferred from path shapes:
+ * every operation declaring `security` in docs/bridge-openapi.json, as
+ * "METHOD /path/template". The parity test walks the artifact and fails on
+ * any drift, so a new operation cannot ship unclassified.
+ */
+export const SECURED_OPERATIONS = [
+  'GET /api/recordings',
+  'POST /api/recordings',
+  'DELETE /api/recordings/{recording_id}',
+  'POST /api/recordings/{recording_id}/download-ticket',
+  'GET /api/recordings/{recording_id}/file',
+  'POST /api/recordings/{recording_id}/stop',
+  'PUT /api/transport/keys/{key_id}',
+  'DELETE /api/transport/keys/{key_id}',
+  'PUT /api/transport/mode',
+  'POST /api/unlock',
+] as const;
+
+export function operationSecured(method: string, path: string): boolean {
+  const upper = method.toUpperCase();
+  return SECURED_OPERATIONS.some((entry) => {
+    const [entryMethod, template] = entry.split(' ');
+    if (entryMethod !== upper) return false;
+    const pattern = new RegExp(`^${template.replaceAll(/\{[^}]+\}/g, '[^/]+')}$`);
+    return pattern.test(path);
+  });
+}
+
+/**
+ * An authenticated request the bridge rejected is one lock transition, owned
+ * here so every surface behaves the same: the token is forgotten and the
+ * registered handler drops private state. 400/409 stay ordinary errors.
+ */
+let onAuthRejected: () => void = () => {};
+
+export function setAuthRejectedHandler(next: () => void): void {
+  onAuthRejected = next;
 }
 
 export async function bridgeFetch<T>(path: string, options: RequestInit): Promise<T> {
   const request = new Request(`${bridgeBase()}${path}`, options);
-  if (requiresToken(path)) {
+  const secured = operationSecured(options.method ?? 'GET', path);
+  if (secured) {
     const token = bridgeToken();
     if (token) request.headers.set('Authorization', `Bearer ${token}`);
   }
@@ -46,6 +80,10 @@ export async function bridgeFetch<T>(path: string, options: RequestInit): Promis
   const text = await response.text();
   const body = parseBody(text);
   if (!response.ok) {
+    if (response.status === 401 && secured) {
+      forgetBridgeToken();
+      onAuthRejected();
+    }
     const detail = body as { error?: { message?: string } } | undefined;
     throw new ApiError(response.status, detail?.error?.message || text || String(response.status));
   }

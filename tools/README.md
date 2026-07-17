@@ -24,7 +24,7 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
 - `src/streamline_tools/serial_capture.py`, `release.py` — standalone tools
   with their own entry points.
 
-## Tools
+## Commands
 
 - `streamline-analyze` (`make tools-analyze REF=ref.flac CAP=capture.wav`) —
   compares a captured stream against its reference audio and reports offset,

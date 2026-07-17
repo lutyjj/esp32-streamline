@@ -7,6 +7,7 @@ import { EmptyState } from '../components/EmptyState';
 import { LockChip, type LockState } from '../components/LockChip';
 import { MeterRow } from '../components/Meter';
 import { Notice } from '../components/Notice';
+import { LoadFailure } from '../components/ResourceNotice';
 import { SectionHead } from '../components/SectionHead';
 import { ThemeSwitch } from '../components/ThemeSwitch';
 import { Toasts } from '../components/Toasts';
@@ -357,10 +358,11 @@ function Recordings() {
     return (
       <section class="bridge-group">
         <SectionHead title="Recordings" note="unavailable" />
-        <EmptyState>
-          Couldn’t load recording capabilities — {bridge.capabilitiesError.value}.{' '}
-          <Button onClick={() => void bridge.loadCapabilities()}>Retry</Button>
-        </EmptyState>
+        <LoadFailure
+          name="recording capabilities"
+          error={bridge.capabilitiesError.value}
+          onRetry={() => void bridge.loadCapabilities()}
+        />
       </section>
     );
   }
@@ -397,10 +399,11 @@ function RecordingWorkspace() {
   if (!data) {
     if (!bridge.recordingsError.value) return <EmptyState>Loading recordings…</EmptyState>;
     return (
-      <EmptyState>
-        Couldn’t load recordings — {bridge.recordingsError.value}.{' '}
-        <Button onClick={() => void bridge.refreshRecordings()}>Retry</Button>
-      </EmptyState>
+      <LoadFailure
+        name="recordings"
+        error={bridge.recordingsError.value}
+        onRetry={() => void bridge.refreshRecordings()}
+      />
     );
   }
   // The capability contract sizes the estimate and the limits; nothing here
@@ -409,10 +412,10 @@ function RecordingWorkspace() {
   return (
     <div class="cardstack">
       {data && bridge.recordingsError.value && (
-        <EmptyState>
+        <Notice tone="warn">
           Showing the last loaded list — refresh failed: {bridge.recordingsError.value}.{' '}
           <Button onClick={() => void bridge.refreshRecordings()}>Refresh</Button>
-        </EmptyState>
+        </Notice>
       )}
       <Card
         title="New recording"

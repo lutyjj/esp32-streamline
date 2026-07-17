@@ -1,6 +1,15 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.7.2](https://github.com/lutyjj/esp32-streamline/compare/v0.7.1...v0.7.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* **ci:** publish from the release commit, not a tag that publish creates ([eadcc5b](https://github.com/lutyjj/esp32-streamline/commit/eadcc5b305d0f1c81c57fa8da6cc9ec1073ed266))
+* **ci:** resolve the release commit from the release record alone ([d2d5bf5](https://github.com/lutyjj/esp32-streamline/commit/d2d5bf533de828c432bd985f7f61c86bdc2d7677))
+* **ci:** scope release-please write permissions to its job ([4f14ebf](https://github.com/lutyjj/esp32-streamline/commit/4f14ebf86e11efc8c7da054a9c871e5ed0c4ae74))
+
 ## [0.7.1](https://github.com/lutyjj/esp32-streamline/compare/v0.7.0...v0.7.1) (2026-07-17)
 
 

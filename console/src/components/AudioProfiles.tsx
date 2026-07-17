@@ -18,6 +18,7 @@ import {
 } from '../state/device';
 import { Button } from './Button';
 import { Card } from './Card';
+import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
 import { ActionState, TransactButton } from './Transact';
 
@@ -151,7 +152,7 @@ export function AudioProfiles() {
           <label for="audio_profile">Saved profile</label>
           <select
             id="audio_profile"
-            disabled={!writable || currentCatalog.profiles.length === 0}
+            disabled={currentCatalog.profiles.length === 0}
             value={selectedId}
             onChange={(event) => choose(event.currentTarget.value)}
           >
@@ -170,7 +171,6 @@ export function AudioProfiles() {
             id="audio_profile_name"
             type="text"
             maxlength={currentLimits.nameMaxChars}
-            disabled={!writable}
             value={name}
             placeholder="Vinyl"
             onInput={(event) => setName(event.currentTarget.value)}
@@ -197,14 +197,12 @@ export function AudioProfiles() {
         >
           Update
         </TransactButton>
-        <TransactButton
-          transact={transact}
-          kind="danger"
-          disabled={!writable || !selected}
-          onClick={deleteSelected}
-        >
-          Delete
-        </TransactButton>
+        <ConfirmButton
+          label="Delete"
+          confirmLabel={`Delete ${selected?.name ?? 'profile'}`}
+          disabled={!writable || !selected || transact.busy}
+          onConfirm={deleteSelected}
+        />
         <ActionState state={transact.state} />
       </div>
       <Disclosure title="Import or export profiles" className="profile-share">
@@ -214,21 +212,21 @@ export function AudioProfiles() {
         </p>
         <textarea
           aria-label="Audio profile catalog JSON"
-          disabled={!writable}
           value={sharedJson}
           placeholder="Paste an exported profile catalog here"
           onInput={(event) => setSharedJson(event.currentTarget.value)}
         />
         <div class="profileactions">
-          <Button
-            disabled={!writable}
-            onClick={() => setSharedJson(exportAudioProfileCatalog(currentCatalog))}
-          >
+          <Button onClick={() => setSharedJson(exportAudioProfileCatalog(currentCatalog))}>
             Show export
           </Button>
-          <Button disabled={!writable || !sharedJson.trim()} onClick={importCatalog}>
-            Import
-          </Button>
+          <ConfirmButton
+            label="Import"
+            confirmLabel="Replace saved profiles"
+            disabled={!writable || !sharedJson.trim() || transact.busy}
+            message="Import replaces every saved profile on the device. Live levels stay unchanged."
+            onConfirm={importCatalog}
+          />
         </div>
       </Disclosure>
     </Card>

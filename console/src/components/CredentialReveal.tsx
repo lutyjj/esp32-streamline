@@ -11,11 +11,9 @@ import { Button } from './Button';
  */
 export function CredentialReveal({
   credential,
-  writable,
   onDone,
 }: {
   credential: RevealedTransportKey;
-  writable: boolean;
   /** Present where dismissing the reveal is the owner's own step. */
   onDone?: () => void;
 }) {
@@ -40,14 +38,10 @@ export function CredentialReveal({
       <div class="keyblock">{pskVisible ? credential.psk : '•••• •••• •••• ••••'}</div>
       <p class="help">Secret. Anyone with this PSK can impersonate the device to this bridge.</p>
       <div class="keypanel-actions">
-        <Button
-          kind="primary"
-          disabled={!writable}
-          onClick={() => copy(credential.key_id, 'Credential ID')}
-        >
+        <Button kind="primary" onClick={() => copy(credential.key_id, 'Credential ID')}>
           Copy credential ID
         </Button>
-        <Button kind="primary" disabled={!writable} onClick={() => copy(credential.psk, 'PSK')}>
+        <Button kind="primary" onClick={() => copy(credential.psk, 'PSK')}>
           Copy PSK
         </Button>
         <Button onClick={() => setPskVisible((visible) => !visible)}>

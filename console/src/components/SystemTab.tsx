@@ -407,16 +407,13 @@ function AccessCard() {
               secret={staged}
               remember={remember}
               onRemember={setRemember}
-              disabled={!manageable}
               copiedToast="New admin key copied"
             />
             <CardFooter>
               <TransactButton transact={transact} type="submit" disabled={!manageable}>
                 Save
               </TransactButton>
-              <Button disabled={!manageable} onClick={() => setStaged('')}>
-                Cancel
-              </Button>
+              <Button onClick={() => setStaged('')}>Cancel</Button>
               <ActionState state={transact.state} />
             </CardFooter>
           </div>

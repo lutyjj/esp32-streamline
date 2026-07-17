@@ -44,7 +44,8 @@ jobs:
       FIRMWARE_CARGO_CACHE_PATH: firmware/streamline/.cargo-home
       FIRMWARE_EMBUILD_CACHE_PATH: firmware/streamline/.embuild
       BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
-      ADDON_IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge-addon
+      ADDON_IMAGE_AMD64: ghcr.io/${{ github.repository_owner }}/amd64-esp32-streamline-bridge-addon
+      ADDON_IMAGE_AARCH64: ghcr.io/${{ github.repository_owner }}/aarch64-esp32-streamline-bridge-addon
     outputs:
       latest: ${{ steps.release-state.outputs.latest }}
     steps:
@@ -113,10 +114,28 @@ jobs:
           cargo-cache-path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
+      # One SPDX SBOM from the locked cargo graph, published beside the
+      # binaries and bound to each of them by an SBOM attestation.
+      - name: Generate firmware SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: firmware/streamline
+          format: spdx-json
+          output-file: dist/firmware/streamline-${{ steps.version.outputs.value }}.spdx.json
+          upload-artifact: false
+
       - name: Attest firmware provenance
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
-          subject-path: dist/firmware/streamline-*
+          subject-path: dist/firmware/*
+
+      - name: Attest firmware SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: |
+            dist/firmware/streamline-*.bin
+            dist/firmware/streamline-*.elf
+          sbom-path: dist/firmware/streamline-${{ steps.version.outputs.value }}.spdx.json
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
@@ -140,10 +159,41 @@ jobs:
           }
           make bridge-image VERSION="$VERSION" BRIDGE_IMAGE="$BRIDGE_IMAGE"
           push_if_absent "$BRIDGE_IMAGE:$VERSION"
-          for arch in amd64 aarch64; do
-            image="${ADDON_IMAGE_BASE%/*}/${arch}-${ADDON_IMAGE_BASE##*/}"
-            make ha-addon-image BUILD_ARCH="$arch" VERSION="$VERSION" ADDON_IMAGE="$image"
-            push_if_absent "$image:$VERSION"
+          make ha-addon-image BUILD_ARCH=amd64 VERSION="$VERSION" ADDON_IMAGE="$ADDON_IMAGE_AMD64"
+          push_if_absent "$ADDON_IMAGE_AMD64:$VERSION"
+          make ha-addon-image BUILD_ARCH=aarch64 VERSION="$VERSION" ADDON_IMAGE="$ADDON_IMAGE_AARCH64"
+          push_if_absent "$ADDON_IMAGE_AARCH64:$VERSION"
+
+      - name: Bridge image evidence
+        id: bridge-evidence
+        uses: ./.github/actions/image-evidence
+        with:
+          image: ${{ env.BRIDGE_IMAGE }}:${{ steps.version.outputs.value }}
+
+      - name: Add-on amd64 image evidence
+        id: addon-amd64-evidence
+        uses: ./.github/actions/image-evidence
+        with:
+          image: ${{ env.ADDON_IMAGE_AMD64 }}:${{ steps.version.outputs.value }}
+
+      - name: Add-on aarch64 image evidence
+        id: addon-aarch64-evidence
+        uses: ./.github/actions/image-evidence
+        with:
+          image: ${{ env.ADDON_IMAGE_AARCH64 }}:${{ steps.version.outputs.value }}
+
+      # Fail closed: nothing publishes unless every asset and image verifies
+      # against its recorded attestations.
+      - name: Verify attestations before publishing
+        run: |
+          for f in dist/firmware/*; do
+            gh attestation verify "$f" --repo "$GITHUB_REPOSITORY"
+          done
+          for subject in \
+            "$BRIDGE_IMAGE@${{ steps.bridge-evidence.outputs.digest }}" \
+            "$ADDON_IMAGE_AMD64@${{ steps.addon-amd64-evidence.outputs.digest }}" \
+            "$ADDON_IMAGE_AARCH64@${{ steps.addon-aarch64-evidence.outputs.digest }}"; do
+            gh attestation verify "oci://$subject" --repo "$GITHUB_REPOSITORY"
           done
 
       # The commit point. Assets attach while the release is a draft;
@@ -165,10 +215,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          docker tag "$BRIDGE_IMAGE:$VERSION" "$BRIDGE_IMAGE:latest"
-          docker push "$BRIDGE_IMAGE:latest"
-          for arch in amd64 aarch64; do
-            image="${ADDON_IMAGE_BASE%/*}/${arch}-${ADDON_IMAGE_BASE##*/}"
+          for image in "$BRIDGE_IMAGE" "$ADDON_IMAGE_AMD64" "$ADDON_IMAGE_AARCH64"; do
             docker tag "$image:$VERSION" "$image:latest"
             docker push "$image:latest"
           done

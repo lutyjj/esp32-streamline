@@ -221,7 +221,9 @@ version, updates every checked-in version owner and lockfile declared in
 add-on changelog. Merging that PR creates the `vX.Y.Z` tag and a draft GitHub
 release; publication verifies the tagged tree, attaches byte-reproducible
 firmware assets with provenance attestations, publishes the release, then
-pushes container images. If publication is interrupted, rerun
+pushes container images. Every asset and image carries verifiable provenance
+and an SPDX SBOM — see [artifact verification](docs/security.md#release-artifact-verification).
+If publication is interrupted, rerun
 **Actions → Release** with the same tag — every step converges. Never edit
 the version files or changelog by hand — land a Conventional Commit and let
 the release PR carry it.

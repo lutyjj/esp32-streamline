@@ -10,6 +10,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.4",
+    "@playwright/test": "1.61.1",
     "@preact/preset-vite": "^2.10.0",
     "happy-dom": "^20.0.0",
     "msw": "^2.15.0",

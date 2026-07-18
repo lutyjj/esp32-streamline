@@ -1,6 +1,7 @@
 include ../mk/common.mk
 
 DEV_IMAGE := esp32-streamline-console-dev
+E2E_IMAGE := esp32-streamline-console-e2e
 WEBFLASHER_DIR := $(abspath ../webflasher)
 # Device the vite dev server proxies /api to; see the `dev` target. Defaults
 # to STREAMLINE_DEVICE from the root .env, else the setup-AP address.
@@ -9,16 +10,20 @@ HOST_USER := $(shell id -u):$(shell id -g)
 ROOT_DIR := $(abspath ..)
 WORKSPACE := /repo
 
-CONTAINER_RUN := $(CONTAINER) run --rm \
+CONTAINER_BASE := $(CONTAINER) run --rm \
 	--user "$(HOST_USER)" -v "$(ROOT_DIR):$(WORKSPACE)" \
 	-v "$(WEBFLASHER_DIR):/webflasher:ro" -e STREAMLINE_WEBFLASHER_DIR=/webflasher \
 	-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
-	-e npm_config_update_notifier=false -w $(WORKSPACE)/console $(DEV_IMAGE)
+	-e npm_config_update_notifier=false -w $(WORKSPACE)/console
+CONTAINER_RUN := $(CONTAINER_BASE) $(DEV_IMAGE)
 
-.PHONY: dev-image deps lock generate format lint test build build-bridge dev dev-mock
+.PHONY: dev-image e2e-image deps lock generate format lint test e2e build build-bridge dev dev-mock
 
 dev-image:
 	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
+
+e2e-image:
+	$(CONTAINER) build -f Dockerfile.e2e -t $(E2E_IMAGE) .
 
 # npm ci wipes node_modules on every run; the stamp reruns it only when the
 # lockfile actually moved.
@@ -43,6 +48,11 @@ lint: generate
 
 test: generate
 	$(CONTAINER_RUN) npx vitest run
+
+# Journey specs for both consoles against the fake backends, in the pinned
+# Playwright container (see playwright.config.ts and Dockerfile.e2e).
+e2e: generate e2e-image
+	$(CONTAINER_BASE) $(E2E_IMAGE) npx playwright test
 
 # One self-contained HTML file in dist/; the firmware embeds it at compile
 # time (see the `web` target in firmware/Makefile). The WebFlasher builds as a

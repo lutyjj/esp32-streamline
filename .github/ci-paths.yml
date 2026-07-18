@@ -44,6 +44,14 @@ console:
   # The curl-example disposition test pins every device-contract operation.
   - 'docs/openapi.json'
 
+# The e2e journeys drive both consoles against mocks generated from the two
+# API contracts, so only the console and the contracts retrigger them.
+console_e2e:
+  - *shared
+  - 'console/**'
+  - 'docs/openapi.json'
+  - 'docs/bridge-openapi.json'
+
 tools:
   - *shared
   - 'tools/**'

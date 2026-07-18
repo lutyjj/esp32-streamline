@@ -34,6 +34,7 @@ jobs:
       firmware: ${{ steps.filter.outputs.firmware }}
       api_contract: ${{ steps.filter.outputs.api_contract }}
       qemu_smoke: ${{ steps.filter.outputs.qemu_smoke }}
+      console_e2e: ${{ steps.filter.outputs.console_e2e }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -47,7 +48,7 @@ jobs:
         # and the internal pseudo-filters.
         run: |
           components=$(echo '${{ steps.filter.outputs.changes }}' \
-            | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract" and . != "qemu_smoke")]')
+            | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract" and . != "qemu_smoke" and . != "console_e2e")]')
           echo "components=$components" >> "$GITHUB_OUTPUT"
 
   # One job, every lightweight component. The command is uniform because each
@@ -158,6 +159,18 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - run: make api-contract-check
+
+  # Console journey specs for both consoles against the mock backends, in the
+  # pinned Playwright container. A separate lane outside ci-complete's needs
+  # while it builds a quiet history; promote it there once proven.
+  console-e2e:
+    name: Console e2e journeys
+    needs: changes
+    if: ${{ needs.changes.outputs.console_e2e == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - run: make console-e2e
 
   # Single stable status the whole workflow rolls up into. Mark THIS as the
   # required check in branch protection: it passes when the relevant jobs pass

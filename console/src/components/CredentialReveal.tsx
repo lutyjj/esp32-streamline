@@ -1,8 +1,7 @@
 import { useState } from 'preact/hooks';
-import { copyText } from '../lib/custody';
-import { toast } from '../state/toasts';
 import type { RevealedTransportKey } from '../state/transport';
 import { Button } from './Button';
+import { CopyButton } from './CopyButton';
 
 /**
  * The one-time bridge credential panel shared by the Encryption card and the
@@ -19,13 +18,6 @@ export function CredentialReveal({
 }) {
   const [pskVisible, setPskVisible] = useState(false);
 
-  const copy = (value: string, label: string) => {
-    copyText(value).then(
-      () => toast(`${label} copied`, 'ok'),
-      (error) => toast(error.message, 'err'),
-    );
-  };
-
   return (
     <div class="keypanel transport-credential">
       <p>
@@ -38,12 +30,12 @@ export function CredentialReveal({
       <div class="keyblock">{pskVisible ? credential.psk : '•••• •••• •••• ••••'}</div>
       <p class="help">Secret. Anyone with this PSK can impersonate the device to this bridge.</p>
       <div class="keypanel-actions">
-        <Button kind="primary" onClick={() => copy(credential.key_id, 'Credential ID')}>
+        <CopyButton kind="primary" value={credential.key_id} copied="Credential ID copied">
           Copy credential ID
-        </Button>
-        <Button kind="primary" onClick={() => copy(credential.psk, 'PSK')}>
+        </CopyButton>
+        <CopyButton kind="primary" value={credential.psk} copied="PSK copied">
           Copy PSK
-        </Button>
+        </CopyButton>
         <Button onClick={() => setPskVisible((visible) => !visible)}>
           {pskVisible ? 'Hide PSK' : 'Reveal PSK'}
         </Button>

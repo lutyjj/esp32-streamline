@@ -6,11 +6,9 @@ import {
   type ApiSchema,
   resolveSchema,
 } from '../lib/contract';
-import { copyText } from '../lib/custody';
 import { errorMessage } from '../lib/errors';
-import { toast } from '../state/toasts';
-import { Button } from './Button';
 import { Card } from './Card';
+import { CopyButton } from './CopyButton';
 
 type OperationEntry = {
   method: 'GET' | 'POST';
@@ -113,17 +111,9 @@ function OperationCard({
         <div class="api-example">
           <div>
             <h3>curl</h3>
-            <Button
-              className="api-copy"
-              onClick={() =>
-                copyText(command).then(
-                  () => toast('curl command copied', 'ok'),
-                  (error) => toast(errorMessage(error), 'err'),
-                )
-              }
-            >
+            <CopyButton className="api-copy" value={command} copied="curl command copied">
               Copy
-            </Button>
+            </CopyButton>
           </div>
           <pre>{command}</pre>
         </div>

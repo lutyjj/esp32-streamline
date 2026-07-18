@@ -43,8 +43,10 @@ Each component builds from a public base and owns its dependency and tool
 configuration. Register every new component or dependency surface in
 `.github/dependabot.yml` in the same change. The firmware embeds the device
 console build. The bridge packages the bridge console build, and the Home
-Assistant add-on packages the bridge. These are deliberate build-time
-dependencies, not shared runtime state.
+Assistant add-on packages the bridge and that console into a self-contained
+context the official Home Assistant builder validates for each published
+architecture. These are deliberate build-time dependencies, not shared runtime
+state.
 
 ## Firmware boundaries
 

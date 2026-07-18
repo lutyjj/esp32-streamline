@@ -73,7 +73,7 @@ console-check: console-lint console-test console-build ;
 firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-ota-size-self-test firmware-build ;
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 webflasher-check: webflasher-lint ;
-ha-addon-check: ha-addon-lint ha-addon-test ;
+ha-addon-check: ha-addon-lint ha-addon-validate ha-addon-test ;
 repository-check: version-check repository-container-contract repository-secret-check repository-dependency-audit
 	$(READONLY_REPO_RUN) $(ACTIONLINT_IMAGE) -color
 	$(READONLY_REPO_RUN) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs firmware/streamline/README.md ha-addon/DOCS.md ha-addon/README.md tools/README.md

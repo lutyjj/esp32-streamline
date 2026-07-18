@@ -20,12 +20,14 @@ Working against a real device? Copy [.env.example](.env.example) to `.env`
 (gitignored) and set your device's address there — Makefiles and agents read
 it, so `make console-dev` proxies to your node without extra flags.
 
-No device? `make console-dev-mock` serves both consoles against in-memory
-fake backends: <http://localhost:5173/> is the device console
-(`?scenario=first-boot` starts at onboarding), `/bridge.html` the bridge
-console. The fake device unlocks with 48 `a`s as the admin key; the fake
-bridge with the token `mock-bridge-token`. `make console-e2e` runs the
-Playwright journey specs against the same fakes.
+No device? `make console-dev-mock` serves the device console against an
+in-memory fake and the bridge console against a real bridge container:
+<http://localhost:5173/> is the device console (`?scenario=first-boot`
+starts at onboarding), `/bridge.html` the bridge console. The fake device
+unlocks with 48 `a`s as the admin key; the bridge with the token
+`streamline-dev-bridge-token` (override with `BRIDGE_TOKEN=…`).
+`make console-e2e` runs the Playwright journey specs against the same
+backends.
 
 ## Pull requests
 

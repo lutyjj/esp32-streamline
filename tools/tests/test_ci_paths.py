@@ -20,7 +20,7 @@ class CiPathOwnershipTests(unittest.TestCase):
             ".markdownlint.json": {"repository"},
             "lychee.toml": {"repository"},
             "SECURITY.md": {"repository"},
-            "bridge/README.md": {"bridge", "console", "repository"},
+            "bridge/README.md": {"bridge", "console", "console_e2e", "repository"},
             "firmware/streamline/README.md": {"firmware", "qemu_smoke", "repository"},
             "ha-addon/DOCS.md": {"ha-addon", "repository"},
             "tools/README.md": {"repository", "tools"},

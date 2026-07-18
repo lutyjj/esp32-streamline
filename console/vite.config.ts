@@ -25,10 +25,23 @@ function mockWorkerScript(): Plugin {
   };
 }
 
+// In mock mode the device page's requests never reach the network (MSW
+// intercepts them), so `/api` can proxy to the real bridge for the bridge
+// page, along with the bridge's root-level routes.
+const bridge = process.env.STREAMLINE_BRIDGE;
+const proxy = bridge
+  ? Object.fromEntries(
+      ['/api', '/status', '/health', '/streamline.wav'].map((path) => [
+        path,
+        { target: `http://${bridge}` },
+      ]),
+    )
+  : { '/api': { target: `http://${process.env.STREAMLINE_DEVICE || '192.168.71.1'}` } };
+
 // The build inlines everything into one dist/index.html so the firmware
 // embeds a single asset. The WebFlasher has its own self-contained entry.
-// The dev server proxies the API to a real device (`make dev DEVICE=<ip>`) or
-// serves the fake backends (`make dev-mock`).
+// The dev server proxies the API to a real device (`make dev DEVICE=<ip>`)
+// or serves the fake device beside a real bridge (`make dev-mock`).
 export default defineConfig({
   plugins: [preact(), viteSingleFile(), mockWorkerScript()],
   publicDir: webflasherDir,
@@ -36,11 +49,7 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_MOCK': JSON.stringify(process.env.VITE_MOCK ?? ''),
   },
-  server: {
-    proxy: {
-      '/api': { target: `http://${process.env.STREAMLINE_DEVICE || '192.168.71.1'}` },
-    },
-  },
+  server: { proxy },
   build: {
     outDir: buildTarget === 'device' ? 'dist' : `dist/${buildTarget}`,
     rollupOptions:

@@ -145,10 +145,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Versioned tags are write-once: a rerun keeps an already-published
-      # image rather than replacing it under consumers.
+      # image rather than replacing it under consumers. The add-on owns its
+      # own architecture mapping, labels, write-once push, and digest output;
+      # this step holds no add-on Docker details.
       - name: Push versioned container images
         env:
           VERSION: ${{ steps.version.outputs.value }}
+          REVISION: ${{ steps.commit.outputs.sha }}
         run: |
           push_if_absent() {
             if docker manifest inspect "$1" >/dev/null 2>&1; then
@@ -159,10 +162,8 @@ jobs:
           }
           make bridge-image VERSION="$VERSION" BRIDGE_IMAGE="$BRIDGE_IMAGE"
           push_if_absent "$BRIDGE_IMAGE:$VERSION"
-          make ha-addon-image BUILD_ARCH=amd64 VERSION="$VERSION" ADDON_IMAGE="$ADDON_IMAGE_AMD64"
-          push_if_absent "$ADDON_IMAGE_AMD64:$VERSION"
-          make ha-addon-image BUILD_ARCH=aarch64 VERSION="$VERSION" ADDON_IMAGE="$ADDON_IMAGE_AARCH64"
-          push_if_absent "$ADDON_IMAGE_AARCH64:$VERSION"
+          make ha-addon-publish VERSION="$VERSION" REVISION="$REVISION" \
+            ADDON_IMAGE_AMD64="$ADDON_IMAGE_AMD64" ADDON_IMAGE_AARCH64="$ADDON_IMAGE_AARCH64"
 
       - name: Bridge image evidence
         id: bridge-evidence

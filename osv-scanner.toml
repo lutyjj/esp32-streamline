@@ -1,0 +1,14 @@
+# Accepted advisories for `make repository-dependency-audit`.
+#
+# Every entry needs the advisory id, a reason the finding is not actionable
+# here, and an expiry so the acceptance is re-argued instead of forgotten:
+#
+#   [[IgnoredVulns]]
+#   id = "GHSA-xxxx-xxxx-xxxx"
+#   ignoreUntil = 2026-12-31T00:00:00Z
+#   reason = "the vulnerable API is unreachable from StreamLine; re-check on expiry"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0173"
+ignoreUntil = 2027-01-01T00:00:00Z
+reason = "unmaintained-crate notice, no fix released: proc-macro-error2 is a build-time proc macro pulled through defmt-macros in the ESP-IDF stack; re-check whether defmt dropped it on expiry"

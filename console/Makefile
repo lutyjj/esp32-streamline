@@ -15,7 +15,7 @@ CONTAINER_RUN := $(CONTAINER) run --rm \
 	-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
 	-e npm_config_update_notifier=false -w $(WORKSPACE)/console $(DEV_IMAGE)
 
-.PHONY: dev-image deps lock generate format lint test build build-bridge dev
+.PHONY: dev-image deps lock generate format lint test build build-bridge dev dev-mock
 
 dev-image:
 	$(CONTAINER) build -f Dockerfile.dev -t $(DEV_IMAGE) .
@@ -56,13 +56,20 @@ build: generate
 build-bridge: generate
 	$(CONTAINER_RUN) sh -c 'STREAMLINE_BUILD=bridge npx vite build'
 
+# The vite dev server, published on host port 5173.
+DEV_SERVE := $(CONTAINER) run --rm --user "$(HOST_USER)" -v "$(ROOT_DIR):$(WORKSPACE)" \
+	-v "$(WEBFLASHER_DIR):/webflasher:ro" -e STREAMLINE_WEBFLASHER_DIR=/webflasher \
+	-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
+	-e npm_config_update_notifier=false -p 5173:5173 -w $(WORKSPACE)/console
+
 # Live-reload UI development against a real device:
 # `make dev DEVICE=192.0.2.10` (or set STREAMLINE_DEVICE in the root .env),
 # then open http://localhost:5173/.
 dev: deps
-	$(CONTAINER) run --rm --user "$(HOST_USER)" -v "$(ROOT_DIR):$(WORKSPACE)" \
-		-v "$(WEBFLASHER_DIR):/webflasher:ro" -e STREAMLINE_WEBFLASHER_DIR=/webflasher \
-		-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
-		-e npm_config_update_notifier=false \
-		-e STREAMLINE_DEVICE=$(DEVICE) -p 5173:5173 -w $(WORKSPACE)/console \
-		$(DEV_IMAGE) npx vite --host
+	$(DEV_SERVE) -e STREAMLINE_DEVICE=$(DEVICE) $(DEV_IMAGE) npx vite --host
+
+# Both consoles against their in-memory fake backends — no hardware. Open
+# http://localhost:5173/ (device; ?scenario=first-boot for onboarding) or
+# http://localhost:5173/bridge.html (bridge).
+dev-mock: deps
+	$(DEV_SERVE) -e VITE_MOCK=1 $(DEV_IMAGE) npx vite --host

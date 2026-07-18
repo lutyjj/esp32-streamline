@@ -2,9 +2,9 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TransportCard } from '../src/components/TransportCard';
+import { deviceConfig, deviceStatus, transportStatus } from '../src/mocks/fixtures';
 import { config, status } from '../src/state/device';
 import { setupWizardRequested, transport } from '../src/state/transport';
-import { deviceConfig, deviceStatus, transportStatus } from './fixtures';
 
 function buttonLabels(host: HTMLElement): string[] {
   return [...host.querySelectorAll('button:not(.disclosure-summary)')].map(

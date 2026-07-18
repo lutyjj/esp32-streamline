@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { deviceStatus } from '../src/mocks/fixtures';
 import { bridgeConnection, packetsMoving, status } from '../src/state/device';
-import { deviceStatus } from './fixtures';
 
 describe('bridgeConnection', () => {
   beforeEach(() => {

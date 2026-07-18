@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputWizard } from '../src/components/InputWizard';
 import { setTransport } from '../src/lib/api';
 import { CAL_POLL_MS, CAL_SILENCE_SAMPLES } from '../src/lib/calibration';
+import { deviceStatus } from '../src/mocks/fixtures';
 import { status } from '../src/state/device';
-import { deviceStatus } from './fixtures';
 
 let mountedHost: HTMLElement | null = null;
 

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, isUnlocked } from '../src/lib/adminKey';
 import { setTransport } from '../src/lib/api';
+import { deviceStatus } from '../src/mocks/fixtures';
 import { status } from '../src/state/device';
 import { expectedHostname, handoff, joinNetwork } from '../src/state/join';
 import { rebootWait } from '../src/state/rebootWait';
 import { setupKey } from '../src/state/setupKey';
-import { deviceStatus } from './fixtures';
 
 beforeEach(() => {
   status.value = null;

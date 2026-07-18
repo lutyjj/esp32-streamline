@@ -21,6 +21,19 @@ pub struct Endpoint {
     pub method: HttpMethod,
     pub path: &'static str,
     pub auth: bool,
+    pub contract: ResponseContract,
+}
+
+/// How an endpoint declares its response set in the generated spec.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResponseContract {
+    /// Endpoint-specific responses, written out in the declaration.
+    Custom,
+    /// A device-configuration mutation: one success status plus the complete
+    /// [`crate::mutation::MutationError`] taxonomy and the auth failure. The
+    /// `mutation` macro arm declares the set once; a test pins the generated
+    /// artifact to the runtime taxonomy.
+    Mutation { success: u16 },
 }
 
 macro_rules! endpoint {
@@ -29,6 +42,7 @@ macro_rules! endpoint {
             method: HttpMethod::$method,
             path: $path,
             auth: false,
+            contract: ResponseContract::Custom,
         };
         #[cfg(feature = "api-spec")]
         #[allow(dead_code)]
@@ -40,6 +54,7 @@ macro_rules! endpoint {
             method: HttpMethod::$method,
             path: $path,
             auth: true,
+            contract: ResponseContract::Custom,
         };
         #[cfg(feature = "api-spec")]
         #[allow(dead_code)]
@@ -48,6 +63,37 @@ macro_rules! endpoint {
             path = $path,
             security(("bearer_auth" = [])),
             $($contract)*
+        )]
+        fn $operation() {}
+    };
+    ($name:ident, $operation:ident, $method:ident, $verb:ident, $path:literal, mutation($success:literal, $body:ty) $(,)?) => {
+        endpoint!(@mutation $name, $operation, $method, $verb, $path, ($success, $body),);
+    };
+    ($name:ident, $operation:ident, $method:ident, $verb:ident, $path:literal, mutation($success:literal, $body:ty), $($contract:tt)+) => {
+        endpoint!(@mutation $name, $operation, $method, $verb, $path, ($success, $body), $($contract)+,);
+    };
+    (@mutation $name:ident, $operation:ident, $method:ident, $verb:ident, $path:literal, ($success:literal, $body:ty), $($contract:tt)*) => {
+        pub const $name: Endpoint = Endpoint {
+            method: HttpMethod::$method,
+            path: $path,
+            auth: true,
+            contract: ResponseContract::Mutation { success: $success },
+        };
+        #[cfg(feature = "api-spec")]
+        #[allow(dead_code)]
+        #[utoipa::path(
+            $verb,
+            path = $path,
+            security(("bearer_auth" = [])),
+            $($contract)*
+            responses(
+                (status = $success, body = $body),
+                (status = 400, body = ErrorResponse),
+                (status = 401, body = ErrorResponse),
+                (status = 409, body = ErrorResponse),
+                (status = 503, body = ErrorResponse),
+                (status = 500, body = ErrorResponse)
+            )
         )]
         fn $operation() {}
     };
@@ -132,16 +178,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/wifi",
-    authenticated,
+    mutation(200, Ack),
     summary = "Set Wi-Fi settings",
     request_body(
         content = WifiSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -150,16 +191,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/target",
-    authenticated,
+    mutation(200, Ack),
     summary = "Set stream target",
     request_body(
         content = TargetSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -168,16 +204,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/transport",
-    authenticated,
+    mutation(200, Ack),
     summary = "Set the PCM transport mode",
     request_body(
         content = TransportSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -186,13 +217,8 @@ endpoint!(
     Post,
     post,
     "/api/transport/keys/stage",
-    authenticated,
-    summary = "Generate and stage a per-device PCM transport key",
-    responses(
-        (status = 200, body = TransportKeyResponse),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
-    )
+    mutation(200, TransportKeyResponse),
+    summary = "Generate and stage a per-device PCM transport key"
 );
 endpoint!(
     TRANSPORT_KEY_VERIFY,
@@ -200,14 +226,8 @@ endpoint!(
     Post,
     post,
     "/api/transport/keys/verify",
-    authenticated,
-    summary = "Verify the pending PCM transport key against the bridge",
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse),
-        (status = 503, body = ErrorResponse)
-    )
+    mutation(200, Ack),
+    summary = "Verify the pending PCM transport key against the bridge"
 );
 endpoint!(
     TRANSPORT_KEY_ACTIVATE,
@@ -215,13 +235,8 @@ endpoint!(
     Post,
     post,
     "/api/transport/keys/activate",
-    authenticated,
-    summary = "Activate the verified PCM transport key",
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
-    )
+    mutation(200, Ack),
+    summary = "Activate the verified PCM transport key"
 );
 endpoint!(
     TRANSPORT_KEY_DISCARD,
@@ -229,13 +244,8 @@ endpoint!(
     Post,
     post,
     "/api/transport/keys/discard",
-    authenticated,
-    summary = "Discard the pending PCM transport key",
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
-    )
+    mutation(200, Ack),
+    summary = "Discard the pending PCM transport key"
 );
 endpoint!(
     TRANSPORT_KEY_ROLLBACK,
@@ -243,13 +253,8 @@ endpoint!(
     Post,
     post,
     "/api/transport/keys/rollback",
-    authenticated,
-    summary = "Restore the previous PCM transport key",
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
-    )
+    mutation(200, Ack),
+    summary = "Restore the previous PCM transport key"
 );
 endpoint!(
     TRANSPORT_KEY_RETIRE,
@@ -257,13 +262,8 @@ endpoint!(
     Post,
     post,
     "/api/transport/keys/retire",
-    authenticated,
-    summary = "Retire the PCM transport rollback key",
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
-    )
+    mutation(200, Ack),
+    summary = "Retire the PCM transport rollback key"
 );
 endpoint!(
     TRANSPORT_RECOVER,
@@ -271,13 +271,8 @@ endpoint!(
     Post,
     post,
     "/api/transport/recover",
-    authenticated,
-    summary = "Return to cleartext and replace an unusable pending key",
-    responses(
-        (status = 200, body = TransportKeyResponse),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
-    )
+    mutation(200, TransportKeyResponse),
+    summary = "Return to cleartext and replace an unusable pending key"
 );
 endpoint!(
     SET_BOARD,
@@ -285,16 +280,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/board",
-    authenticated,
+    mutation(200, Ack),
     summary = "Select a board descriptor",
     request_body(
         content = BoardSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -303,16 +293,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/audio",
-    authenticated,
+    mutation(200, Ack),
     summary = "Set audio levels",
     request_body(
         content = AudioSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -321,17 +306,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/analog-passthrough",
-    authenticated,
+    mutation(200, Ack),
     summary = "Set the local analog output",
     request_body(
         content = AnalogPassthroughSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse),
-        (status = 503, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -340,16 +319,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/led",
-    authenticated,
+    mutation(200, Ack),
     summary = "Assign a role to a board LED",
     request_body(
         content = LedSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -358,16 +332,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/audio-profiles",
-    authenticated,
+    mutation(200, Ack),
     summary = "Replace saved audio profiles",
     request_body(
         content = AudioProfilesSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -376,16 +345,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/audio-profile",
-    authenticated,
+    mutation(200, Ack),
     summary = "Activate an audio profile",
     request_body(
         content = ActiveAudioProfileRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -394,16 +358,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/name",
-    authenticated,
+    mutation(200, Ack),
     summary = "Set device name",
     request_body(
         content = NameSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -412,16 +371,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/admin-key",
-    authenticated,
+    mutation(200, Ack),
     summary = "Replace the admin key",
     request_body(
         content = AdminKeySettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -430,16 +384,11 @@ endpoint!(
     Post,
     post,
     "/api/settings/firmware",
-    authenticated,
+    mutation(200, Ack),
     summary = "Set the automatic update schedule",
     request_body(
         content = FirmwareSettingsRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 200, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -448,13 +397,8 @@ endpoint!(
     Post,
     post,
     "/api/ota/check",
-    authenticated,
-    summary = "Check for a firmware update",
-    responses(
-        (status = 202, body = Ack),
-        (status = 409, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
-    )
+    mutation(202, Ack),
+    summary = "Check for a firmware update"
 );
 endpoint!(
     OTA_UPDATE,
@@ -462,17 +406,11 @@ endpoint!(
     Post,
     post,
     "/api/ota/update",
-    authenticated,
+    mutation(202, Ack),
     summary = "Install firmware",
     request_body(
         content = OtaUpdateRequest,
         content_type = "application/x-www-form-urlencoded"
-    ),
-    responses(
-        (status = 202, body = Ack),
-        (status = 400, body = ErrorResponse),
-        (status = 409, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
     )
 );
 endpoint!(
@@ -481,13 +419,8 @@ endpoint!(
     Post,
     post,
     "/api/ota/rollback",
-    authenticated,
-    summary = "Roll back firmware",
-    responses(
-        (status = 200, body = Ack),
-        (status = 409, body = ErrorResponse),
-        (status = 401, body = ErrorResponse)
-    )
+    mutation(200, Ack),
+    summary = "Roll back firmware"
 );
 endpoint!(
     UNLOCK,
@@ -525,7 +458,8 @@ endpoint!(
     summary = "Factory-reset the device",
     responses(
         (status = 200, body = Ack),
-        (status = 401, body = ErrorResponse)
+        (status = 401, body = ErrorResponse),
+        (status = 500, body = ErrorResponse)
     )
 );
 
@@ -1174,6 +1108,48 @@ pub fn openapi_json() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_mutation_endpoint_declares_the_complete_runtime_taxonomy() {
+        use std::collections::BTreeSet;
+
+        use crate::mutation::MutationError;
+
+        let spec: serde_json::Value =
+            serde_json::from_str(include_str!("../../../docs/openapi.json"))
+                .expect("docs/openapi.json parses");
+        // The error statuses the runtime mapping can emit, straight from the
+        // taxonomy, plus the adapter's auth failure.
+        let mut expected_errors: BTreeSet<u16> = [
+            MutationError::InvalidInput(String::new()),
+            MutationError::Conflict(String::new()),
+            MutationError::Unavailable(String::new()),
+            MutationError::Persistence(String::new()),
+            MutationError::Internal(String::new()),
+        ]
+        .iter()
+        .map(MutationError::status)
+        .collect();
+        expected_errors.insert(401);
+
+        let mut mutations = 0;
+        for endpoint in ENDPOINTS {
+            let ResponseContract::Mutation { success } = endpoint.contract else {
+                continue;
+            };
+            mutations += 1;
+            let declared: BTreeSet<u16> = spec["paths"][endpoint.path]["post"]["responses"]
+                .as_object()
+                .unwrap_or_else(|| panic!("responses for {}", endpoint.path))
+                .keys()
+                .map(|code| code.parse().expect("numeric status"))
+                .collect();
+            let mut expected = expected_errors.clone();
+            expected.insert(success);
+            assert_eq!(declared, expected, "response set for {}", endpoint.path);
+        }
+        assert!(mutations > 0, "no mutation endpoints found");
+    }
 
     #[test]
     fn endpoint_method_and_path_pairs_are_unique() {

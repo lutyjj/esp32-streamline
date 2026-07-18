@@ -513,9 +513,10 @@ pub struct WifiSettingsRequest {
     pub target_host: Option<String>,
     #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
     pub target_port: Option<u16>,
-    /// Admin key. Empty preserves the stored key.
+    /// Generated 48-character lowercase-hex admin key. Empty preserves the
+    /// stored key.
     #[serde(default)]
-    #[cfg_attr(feature = "api-spec", schema(min_length = 8))]
+    #[cfg_attr(feature = "api-spec", schema(pattern = "^$|^[0-9a-f]{48}$"))]
     pub admin_secret: String,
 }
 
@@ -606,7 +607,11 @@ pub struct NameSettingsRequest {
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AdminKeySettingsRequest {
-    #[cfg_attr(feature = "api-spec", schema(min_length = 8))]
+    /// Generated 48-character lowercase-hex admin key.
+    #[cfg_attr(
+        feature = "api-spec",
+        schema(min_length = 48, max_length = 48, pattern = "^[0-9a-f]{48}$")
+    )]
     pub admin_secret: String,
 }
 
@@ -1062,12 +1067,20 @@ mod spec {
         }
         let schemas = &json["components"]["schemas"];
         assert_eq!(
-            schemas["WifiSettingsRequest"]["properties"]["admin_secret"]["minLength"],
-            crate::config::MIN_ADMIN_SECRET_LEN
+            schemas["WifiSettingsRequest"]["properties"]["admin_secret"]["pattern"],
+            format!("^$|{}", crate::config::ADMIN_SECRET_PATTERN)
+        );
+        assert_eq!(
+            schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["pattern"],
+            crate::config::ADMIN_SECRET_PATTERN
         );
         assert_eq!(
             schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["minLength"],
-            crate::config::MIN_ADMIN_SECRET_LEN
+            crate::config::ADMIN_SECRET_HEX_CHARS
+        );
+        assert_eq!(
+            schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["maxLength"],
+            crate::config::ADMIN_SECRET_HEX_CHARS
         );
         assert_eq!(
             schemas["NameSettingsRequest"]["properties"]["name"]["maxLength"],

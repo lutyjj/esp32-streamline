@@ -27,7 +27,7 @@ BOOT_TIMEOUT = 120.0
 API_TIMEOUT = 60.0
 # Synthetic commissioning credential; it exists only inside throwaway
 # emulated flash copies.
-ADMIN_KEY = "qemu-smoke-admin"
+ADMIN_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef"
 
 
 def _hardware_url() -> str | None:

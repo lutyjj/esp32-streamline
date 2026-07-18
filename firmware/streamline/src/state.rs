@@ -360,7 +360,7 @@ mod tests {
                 target_host: "bridge.local".to_owned(),
                 target_port: 39_000,
                 transport: Default::default(),
-                admin_secret: format!("{name}-admin-key"),
+                admin_secret: crate::config::TEST_ADMIN_SECRET.to_owned(),
                 device_name: name.to_owned(),
                 auto_update_schedule: AutoUpdateSchedule::Daily,
                 audio: AudioSettings {

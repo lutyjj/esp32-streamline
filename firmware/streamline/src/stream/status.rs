@@ -1,31 +1,35 @@
-//! Lock-free streaming counters read by the HTTP status endpoint.
+//! Streaming counters read by the HTTP status endpoint.
 
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use crate::{counter::Counter64, levels::LevelStats};
+use portable_atomic::AtomicU64;
 
-/// Atomics keep HTTP status reads out of both real-time task critical paths.
-/// The capture and network engines record through the methods below rather than
-/// touching fields, so every counter has one owner and stays host-testable.
+use crate::levels::LevelStats;
+
+/// Atomics keep HTTP status reads off both real-time task critical paths: a
+/// scrape reads each counter independently instead of holding one lock across
+/// the whole snapshot. The capture and network engines record through the
+/// methods below rather than touching fields, so every counter has one owner
+/// and stays host-testable.
 #[derive(Default)]
 pub struct StreamStatus {
     sequence: AtomicU32,
-    packets: Counter64,
-    bytes: Counter64,
-    read_errors: Counter64,
-    short_reads: Counter64,
-    queue_drops: Counter64,
-    stale_drops: Counter64,
-    network_errors: Counter64,
-    tls_handshake_failures: Counter64,
-    reconnects: Counter64,
+    packets: AtomicU64,
+    bytes: AtomicU64,
+    read_errors: AtomicU64,
+    short_reads: AtomicU64,
+    queue_drops: AtomicU64,
+    stale_drops: AtomicU64,
+    network_errors: AtomicU64,
+    tls_handshake_failures: AtomicU64,
+    reconnects: AtomicU64,
     queue_depth: AtomicU32,
     peak_left: AtomicU32,
     peak_right: AtomicU32,
     rms_left: AtomicU32,
     rms_right: AtomicU32,
     noise_floor: AtomicU32,
-    clipped_total: Counter64,
+    clipped_total: AtomicU64,
     playing: AtomicBool,
     relearn: AtomicBool,
 }
@@ -45,15 +49,15 @@ impl StreamStatus {
     }
 
     pub(crate) fn reset_clipped(&self) {
-        self.clipped_total.reset();
+        self.clipped_total.store(0, Ordering::Relaxed);
     }
 
     pub(crate) fn record_read_error(&self) {
-        self.read_errors.add(1);
+        self.read_errors.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(crate) fn record_short_read(&self) {
-        self.short_reads.add(1);
+        self.short_reads.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(crate) fn record_levels(&self, levels: LevelStats) {
@@ -66,7 +70,8 @@ impl StreamStatus {
         self.rms_right
             .store(u32::from(levels.rms_right), Ordering::Relaxed);
         if levels.clipped > 0 {
-            self.clipped_total.add(levels.clipped);
+            self.clipped_total
+                .fetch_add(u64::from(levels.clipped), Ordering::Relaxed);
         }
     }
 
@@ -92,13 +97,13 @@ impl StreamStatus {
     }
 
     pub(crate) fn record_queue_drop(&self) {
-        self.queue_drops.add(1);
+        self.queue_drops.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Account one packet discarded because retrying it outlived the queue's
     /// latency bound.
     pub(crate) fn record_stale_drop(&self) {
-        self.stale_drops.add(1);
+        self.stale_drops.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(crate) fn set_queue_depth(&self, depth: usize) {
@@ -109,39 +114,40 @@ impl StreamStatus {
     /// reconnect only after the first success, so the initial connect is not
     /// miscounted.
     pub(crate) fn record_sent(&self, payload_bytes: usize, reconnected: bool) {
-        if reconnected && self.packets.load() > 0 {
-            self.reconnects.add(1);
+        if reconnected && self.packets.load(Ordering::Relaxed) > 0 {
+            self.reconnects.fetch_add(1, Ordering::Relaxed);
         }
-        self.packets.add(1);
-        self.bytes.add(payload_bytes as u32);
+        self.packets.fetch_add(1, Ordering::Relaxed);
+        self.bytes
+            .fetch_add(payload_bytes as u64, Ordering::Relaxed);
     }
 
     pub(crate) fn record_network_error(&self, secure_handshake: bool) {
-        self.network_errors.add(1);
+        self.network_errors.fetch_add(1, Ordering::Relaxed);
         if secure_handshake {
-            self.tls_handshake_failures.add(1);
+            self.tls_handshake_failures.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     pub fn snapshot(&self) -> StreamSnapshot {
         StreamSnapshot {
             sequence: self.sequence.load(Ordering::Relaxed),
-            packets: self.packets.load(),
-            bytes: self.bytes.load(),
-            read_errors: self.read_errors.load(),
-            short_reads: self.short_reads.load(),
-            queue_drops: self.queue_drops.load(),
-            stale_drops: self.stale_drops.load(),
-            network_errors: self.network_errors.load(),
-            tls_handshake_failures: self.tls_handshake_failures.load(),
-            reconnects: self.reconnects.load(),
+            packets: self.packets.load(Ordering::Relaxed),
+            bytes: self.bytes.load(Ordering::Relaxed),
+            read_errors: self.read_errors.load(Ordering::Relaxed),
+            short_reads: self.short_reads.load(Ordering::Relaxed),
+            queue_drops: self.queue_drops.load(Ordering::Relaxed),
+            stale_drops: self.stale_drops.load(Ordering::Relaxed),
+            network_errors: self.network_errors.load(Ordering::Relaxed),
+            tls_handshake_failures: self.tls_handshake_failures.load(Ordering::Relaxed),
+            reconnects: self.reconnects.load(Ordering::Relaxed),
             queue_depth: self.queue_depth.load(Ordering::Relaxed),
             peak_left: self.peak_left.load(Ordering::Relaxed),
             peak_right: self.peak_right.load(Ordering::Relaxed),
             rms_left: self.rms_left.load(Ordering::Relaxed),
             rms_right: self.rms_right.load(Ordering::Relaxed),
             noise_floor: self.noise_floor.load(Ordering::Relaxed),
-            clipped_total: self.clipped_total.load(),
+            clipped_total: self.clipped_total.load(Ordering::Relaxed),
             playing: self.playing.load(Ordering::Relaxed),
         }
     }

@@ -24,7 +24,8 @@ No device? `make console-dev-mock` serves both consoles against in-memory
 fake backends: <http://localhost:5173/> is the device console
 (`?scenario=first-boot` starts at onboarding), `/bridge.html` the bridge
 console. The fake device unlocks with 48 `a`s as the admin key; the fake
-bridge with the token `mock-bridge-token`.
+bridge with the token `mock-bridge-token`. `make console-e2e` runs the
+Playwright journey specs against the same fakes.
 
 ## Pull requests
 

@@ -14,7 +14,6 @@ CAPTURE_ARGS ?=
 BRIDGE_ARGS ?=
 BRIDGE_PORTS ?= -p 39000:39000 -p 8088:8088
 BRIDGE_IMAGE ?=
-ADDON_IMAGE ?=
 REF ?=
 CAP ?=
 
@@ -29,7 +28,7 @@ OSV_SCANNER_IMAGE := ghcr.io/google/osv-scanner:v2.4.0@sha256:5116601dedc01c1c58
 
 # Reach the component sub-makes through the environment so the `<component>-%`
 # forwarding rules below stay argument-free.
-export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE ADDON_IMAGE REF CAP
+export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE REF CAP
 
 .PHONY: check help lint test format clean smoke-qemu \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test repository-dependency-audit docs-check api-contract-check version-check

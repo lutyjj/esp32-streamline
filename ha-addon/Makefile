@@ -4,9 +4,10 @@ VERSION ?= $(call toml_version,../bridge/pyproject.toml)
 HOST_ARCH := $(shell uname -m)
 DEFAULT_BUILD_ARCH := $(if $(filter arm64 aarch64,$(HOST_ARCH)),aarch64,amd64)
 BUILD_ARCH ?= $(DEFAULT_BUILD_ARCH)
-IMAGE := $(or $(ADDON_IMAGE),$(BUILD_ARCH)-esp32-streamline-bridge-addon)
+IMAGE := $(BUILD_ARCH)-esp32-streamline-bridge-addon
 PLATFORM := $(if $(filter aarch64,$(BUILD_ARCH)),linux/arm64,linux/amd64)
 CONFIG_VERSION := $(shell sed -n 's/^version: "\([^"]*\)".*/\1/p' config.yaml)
+REVISION ?= $(shell git -C $(REPO_ROOT) rev-parse HEAD 2>/dev/null || echo unknown)
 
 # `make context` assembles this self-contained add-on tree from the bridge
 # distribution and the freshly built console asset; every build and the
@@ -20,11 +21,18 @@ HA_BUILDER := ghcr.io/home-assistant/amd64-builder:2025.09.0@sha256:ca73413c4397
 HA_BUILDER_RUN = $(CONTAINER) run --rm --privileged \
 	-v /var/run/docker.sock:/var/run/docker.sock
 
+# Published add-on image names come from config.yaml's `image:` template — the
+# add-on's own source of truth — so the Makefile and the store agree by
+# construction. Override the whole name per arch to publish under another owner.
+IMAGE_TEMPLATE := $(shell sed -n 's/^image: "\(.*\)".*/\1/p' config.yaml)
+ADDON_IMAGE_AMD64 ?= $(subst {arch},amd64,$(IMAGE_TEMPLATE))
+ADDON_IMAGE_AARCH64 ?= $(subst {arch},aarch64,$(IMAGE_TEMPLATE))
+
 # Build arguments shared by every image build so the local image, the release
 # image, and the validator agree on the labels they stamp.
-ADDON_BUILD_ARGS := --build-arg BUILD_VERSION=$(VERSION)
+ADDON_BUILD_ARGS := --build-arg BUILD_VERSION=$(VERSION) --build-arg BUILD_REVISION=$(REVISION)
 
-.PHONY: format lint context validate test image check
+.PHONY: format lint context validate test image publish check
 
 format:
 	@true
@@ -105,5 +113,39 @@ test: image
 		-v "$$stub_dir:/test-bin:ro" \
 		-e PATH="/test-bin:/opt/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
 		"$(IMAGE):$(VERSION)"
+
+# Own the published images end to end: build both architectures with verified
+# version/arch/revision labels, write-once push each versioned tag, and print
+# every image digest. `PUBLISH_DRY_RUN=1` proves a clean checkout can build and
+# stage a publish without a registry or a push. The release workflow calls this
+# and holds no add-on Docker details of its own.
+publish: lint context
+	@set -eu; \
+	printf '%s\n%s\n' "amd64 $(ADDON_IMAGE_AMD64) linux/amd64" "aarch64 $(ADDON_IMAGE_AARCH64) linux/arm64" \
+		| while read -r arch image platform; do \
+		echo "==> $$image:$(VERSION) ($$platform)"; \
+		$(CONTAINER) build --platform "$$platform" $(ADDON_BUILD_ARGS) \
+			--build-arg BUILD_ARCH="$$arch" -t "$$image:$(VERSION)" $(BUILD_CONTEXT); \
+		for pair in \
+			"org.opencontainers.image.version=$(VERSION)" \
+			"org.opencontainers.image.revision=$(REVISION)" \
+			"io.hass.arch=$$arch"; do \
+			key="$${pair%%=*}"; want="$${pair#*=}"; \
+			got="$$($(CONTAINER) inspect --format "{{index .Config.Labels \"$$key\"}}" "$$image:$(VERSION)")"; \
+			test "$$got" = "$$want" || { echo "label $$key is '$$got', expected '$$want'" >&2; exit 1; }; \
+		done; \
+		if [ -n "$(PUBLISH_DRY_RUN)" ]; then \
+			echo "dry-run: built $$image:$(VERSION) ($$($(CONTAINER) inspect --format '{{.Id}}' "$$image:$(VERSION)")), labels verified, push skipped"; \
+			continue; \
+		fi; \
+		if $(CONTAINER) manifest inspect "$$image:$(VERSION)" >/dev/null 2>&1; then \
+			echo "$$image:$(VERSION) already published; keeping it"; \
+		else \
+			$(CONTAINER) push "$$image:$(VERSION)"; \
+		fi; \
+		digest="$$($(CONTAINER) buildx imagetools inspect "$$image:$(VERSION)" --format '{{.Manifest.Digest}}')"; \
+		echo "$$digest" | grep -Eq '^sha256:[0-9a-f]{64}$$'; \
+		echo "published $$image@$$digest"; \
+	done
 
 check: lint validate test

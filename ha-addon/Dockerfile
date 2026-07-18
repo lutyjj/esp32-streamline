@@ -23,12 +23,14 @@ FROM python:3.14-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084
 
 ARG BUILD_VERSION=dev
 ARG BUILD_ARCH=amd64
+ARG BUILD_REVISION=unknown
 
 LABEL org.opencontainers.image.title="Home Assistant Add-on: ESP32 StreamLine Bridge"
 LABEL org.opencontainers.image.description="ESP32 StreamLine TCP PCM to HTTP WAV bridge for Home Assistant"
 LABEL org.opencontainers.image.source="https://github.com/lutyjj/esp32-streamline"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 LABEL org.opencontainers.image.version="${BUILD_VERSION}"
+LABEL org.opencontainers.image.revision="${BUILD_REVISION}"
 LABEL io.hass.version="${BUILD_VERSION}"
 LABEL io.hass.type="app"
 LABEL io.hass.arch="${BUILD_ARCH}"

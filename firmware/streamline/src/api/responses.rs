@@ -2,6 +2,8 @@
 //! endpoints.
 
 use serde::Serialize;
+#[cfg(feature = "api-spec")]
+use serde_json::json;
 
 use crate::{board::Board, health::HealthReport};
 
@@ -52,6 +54,7 @@ pub struct ErrorResponse<'a> {
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::config())))]
 pub struct ConfigResponse<'a> {
     pub device_name: &'a str,
     pub ssid: &'a str,
@@ -106,6 +109,7 @@ pub struct BoardCatalogResponse<'a> {
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::status())))]
 pub struct StatusResponse<'a> {
     pub firmware_version: &'a str,
     pub device_name: &'a str,

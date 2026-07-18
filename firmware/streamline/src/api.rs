@@ -7,6 +7,8 @@
 //! accepts (`requests`), and the response DTOs it returns (`responses`).
 
 mod endpoints;
+#[cfg(feature = "api-spec")]
+pub mod examples;
 mod requests;
 mod responses;
 

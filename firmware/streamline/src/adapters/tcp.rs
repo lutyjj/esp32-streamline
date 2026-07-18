@@ -237,47 +237,55 @@ impl TlsConnection {
     }
 }
 
-/// mbedTLS network-layer codes esp-tls forwards; absent from the generated
-/// bindings because only the ssl-layer headers are bound.
-const MBEDTLS_ERR_NET_RECV_FAILED: i32 = -0x004C;
-const MBEDTLS_ERR_NET_CONN_RESET: i32 = -0x0050;
+/// The host-testable classifier mirrors the binding constants numerically;
+/// any drift between the two fails this build.
+const _: () = {
+    use crate::transport_diagnostics::tls_codes as codes;
+    assert!(
+        sys::ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME
+            == codes::ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME
+    );
+    assert!(
+        sys::ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET == codes::ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET
+    );
+    assert!(
+        sys::ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST
+            == codes::ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST
+    );
+    assert!(sys::ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT == codes::ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT);
+    assert!(sys::ESP_ERR_ESP_TLS_TCP_CLOSED_FIN == codes::ESP_ERR_ESP_TLS_TCP_CLOSED_FIN);
+    assert!(
+        sys::ESP_ERR_ESP_TLS_SERVER_HANDSHAKE_TIMEOUT
+            == codes::ESP_ERR_ESP_TLS_SERVER_HANDSHAKE_TIMEOUT
+    );
+    assert!(sys::MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE == codes::MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE);
+    assert!(sys::MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE == codes::MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE);
+    assert!(sys::MBEDTLS_ERR_SSL_CONN_EOF == codes::MBEDTLS_ERR_SSL_CONN_EOF);
+    assert!(sys::MBEDTLS_ERR_SSL_INVALID_RECORD == codes::MBEDTLS_ERR_SSL_INVALID_RECORD);
+    assert!(sys::MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE == codes::MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE);
+    assert!(sys::MBEDTLS_ERR_SSL_TIMEOUT == codes::MBEDTLS_ERR_SSL_TIMEOUT);
+};
 
-/// Reduce the esp-tls error record of a failed connect to one [`TlsFailure`].
+/// Read the captured error of a failed connect through the public esp-tls
+/// accessor — never the record struct's layout — and classify it in the
+/// host-testable core.
 fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
-    let mut record = sys::esp_tls_last_error::default();
     let mut error_handle: sys::esp_tls_error_handle_t = std::ptr::null_mut();
+    let mut last_error: i32 = 0;
+    let mut captured_stack: i32 = 0;
+    let mut certificate_flags: i32 = 0;
     if unsafe { sys::esp_tls_get_error_handle(handle, &mut error_handle) } == 0
         && !error_handle.is_null()
     {
-        record = unsafe { *error_handle };
+        last_error = unsafe {
+            sys::esp_tls_get_and_clear_last_error(
+                error_handle,
+                &mut captured_stack,
+                &mut certificate_flags,
+            )
+        };
     }
-    // esp-tls captures the mbedTLS return value negated; flip it back so it
-    // compares against the MBEDTLS_ERR_* constants.
-    let detail = -record.esp_tls_error_code;
-    match record.last_error {
-        sys::ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME
-        | sys::ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET
-        | sys::ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST => TlsFailure::Unreachable,
-        sys::ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT | sys::ESP_ERR_ESP_TLS_SERVER_HANDSHAKE_TIMEOUT => {
-            TlsFailure::Timeout
-        }
-        sys::ESP_ERR_ESP_TLS_TCP_CLOSED_FIN => TlsFailure::ClosedBeforeHandshake,
-        code => match detail {
-            sys::MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE | sys::MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE => {
-                TlsFailure::CredentialRejected
-            }
-            sys::MBEDTLS_ERR_SSL_CONN_EOF
-            | sys::MBEDTLS_ERR_SSL_INVALID_RECORD
-            | sys::MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE
-            | MBEDTLS_ERR_NET_RECV_FAILED
-            | MBEDTLS_ERR_NET_CONN_RESET => TlsFailure::ClosedBeforeHandshake,
-            sys::MBEDTLS_ERR_SSL_TIMEOUT => TlsFailure::Timeout,
-            _ => TlsFailure::Other {
-                code,
-                detail: record.esp_tls_error_code,
-            },
-        },
-    }
+    crate::transport_diagnostics::classify_tls_failure(last_error, captured_stack)
 }
 
 fn validate_tls_profile(handle: *mut sys::esp_tls_t) -> Result<()> {

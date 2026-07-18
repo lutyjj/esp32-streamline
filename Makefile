@@ -70,7 +70,7 @@ clean: firmware-clean
 # fans out over these by name.
 bridge-check: bridge-lock-check bridge-lint bridge-test bridge-openapi-check bridge-image ;
 console-check: console-lint console-test console-build ;
-firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-build ;
+firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-ota-size-self-test firmware-build ;
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-test ;

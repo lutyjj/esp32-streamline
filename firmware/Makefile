@@ -12,6 +12,9 @@ PORT ?= /dev/cu.usbserial-0001
 FLASH_SIZE ?= 4mb
 FLASH_SIZE_UPPER := $(shell echo $(FLASH_SIZE) | tr a-z A-Z)
 DIST_DIR ?= $(abspath ../dist)
+# macOS ships shasum, minimal Linux hosts only sha256sum; both print the same
+# "hash  filename" lines SHA256SUMS consumers expect.
+SHA256 := $(shell command -v shasum >/dev/null 2>&1 && echo "shasum -a 256" || echo sha256sum)
 ROOT_DIR := $(abspath ..)
 CONSOLE_DIR := $(ROOT_DIR)/console
 CONTAINER_WORKSPACE := /repo
@@ -42,7 +45,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check
+.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -133,8 +136,42 @@ artifacts: build
 	mkdir -p $(DIST_DIR)/firmware
 	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-$(VERSION)-full.bin --merge --skip-padding --flash-size $(FLASH_SIZE) --bootloader target/$(TARGET)/release/bootloader.bin --partition-table partitions.csv
 	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/streamline-$(VERSION)-ota.bin $(ELF)'
+	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-$(VERSION)-ota.bin
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-$(VERSION).elf
-	cd $(DIST_DIR)/firmware && shasum -a 256 streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf > SHA256SUMS
+	cd $(DIST_DIR)/firmware && $(SHA256) streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf > SHA256SUMS
+
+# The packaged application image must fit its OTA slot with room to keep
+# updating: refuse to package one that exceeds the slot minus the declared
+# margin. The slot size is parsed from partitions.csv, so the budget cannot
+# drift from the real layout, and the report states bytes, percentage, and
+# remaining headroom so growth is visible before it blocks a release.
+OTA_SIZE_MARGIN_BYTES ?= 65536
+OTA_IMAGE ?= $(DIST_DIR)/firmware/streamline-$(VERSION)-ota.bin
+
+ota-size-check:
+	@set -eu; \
+		image="$(OTA_IMAGE)"; \
+		test -f "$$image" || { echo "ota-size-check: $$image not found; build it with: make artifacts VERSION=$(VERSION)" >&2; exit 2; }; \
+		slot=$$(( $$(awk -F', *' '$$1 == "ota_0" { print $$5 }' $(SRC)/partitions.csv) )); \
+		size=$$(wc -c < "$$image"); \
+		limit=$$(( slot - $(OTA_SIZE_MARGIN_BYTES) )); \
+		percent=$$(( size * 100 / slot )); \
+		headroom=$$(( slot - size )); \
+		echo "$$image: $$size bytes, $$percent% of the $$slot-byte slot, $$headroom bytes headroom ($(OTA_SIZE_MARGIN_BYTES)-byte margin)"; \
+		test "$$size" -le "$$limit" || { echo "ota-size-check: image exceeds the slot budget ($$size > $$limit bytes)" >&2; exit 1; }
+
+# Boundary fixtures prove the gate: an image exactly at the budget passes and
+# one byte more fails.
+ota-size-self-test:
+	@set -eu; fixture="$$(mktemp -d)"; trap 'rm -rf "$$fixture"' EXIT INT TERM; \
+		slot=$$(( $$(awk -F', *' '$$1 == "ota_0" { print $$5 }' $(SRC)/partitions.csv) )); \
+		limit=$$(( slot - $(OTA_SIZE_MARGIN_BYTES) )); \
+		dd if=/dev/zero of="$$fixture/fits.bin" bs=1 count=0 seek=$$limit 2>/dev/null; \
+		dd if=/dev/zero of="$$fixture/overflows.bin" bs=1 count=0 seek=$$(( limit + 1 )) 2>/dev/null; \
+		$(MAKE) ota-size-check OTA_IMAGE="$$fixture/fits.bin"; \
+		if $(MAKE) ota-size-check OTA_IMAGE="$$fixture/overflows.bin" >/dev/null 2>&1; then \
+			echo "ota-size-self-test: an oversized image must fail the gate" >&2; exit 1; \
+		fi
 
 # Rebuilding one commit reproduces the packaged images byte-for-byte
 # (CONFIG_APP_REPRODUCIBLE_BUILD in sdkconfig.defaults); release retries and
@@ -158,3 +195,4 @@ qemu-artifacts: qemu-build
 	mkdir -p $(DIST_DIR)/firmware
 	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) espflash save-image --chip esp32 $(ELF) /dist/firmware/streamline-qemu-full.bin --merge --skip-padding --flash-size $(FLASH_SIZE) --bootloader target/$(TARGET)/release/bootloader.bin --partition-table partitions.csv
 	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); "$$(dirname "$$ESPTOOL")/python" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/streamline-qemu-ota.bin $(ELF)'
+	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin

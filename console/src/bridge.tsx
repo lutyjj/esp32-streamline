@@ -5,6 +5,12 @@ import { initializeThemePreference } from './state/theme';
 import './styles.css';
 import './bridge/styles.css';
 
+// Dev/e2e mock mode; the build replaces the flag, so bundles drop this branch.
+if (import.meta.env.VITE_MOCK) {
+  const { startBridgeMock } = await import('./mocks/browser');
+  await startBridgeMock();
+}
+
 initializeThemePreference();
 startBridgePolling();
 

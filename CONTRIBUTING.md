@@ -20,6 +20,12 @@ Working against a real device? Copy [.env.example](.env.example) to `.env`
 (gitignored) and set your device's address there — Makefiles and agents read
 it, so `make console-dev` proxies to your node without extra flags.
 
+No device? `make console-dev-mock` serves both consoles against in-memory
+fake backends: <http://localhost:5173/> is the device console
+(`?scenario=first-boot` starts at onboarding), `/bridge.html` the bridge
+console. The fake device unlocks with 48 `a`s as the admin key; the fake
+bridge with the token `mock-bridge-token`.
+
 ## Pull requests
 
 - Branch from `mainline`; do not push to it directly.

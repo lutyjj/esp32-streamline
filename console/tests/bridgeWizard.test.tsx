@@ -2,9 +2,9 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BridgeWizard } from '../src/components/BridgeWizard';
+import { deviceConfig, deviceStatus, transportStatus } from '../src/mocks/fixtures';
 import { config, packetsMoving, status } from '../src/state/device';
 import { setupWizardRequested } from '../src/state/transport';
-import { deviceConfig, deviceStatus, transportStatus } from './fixtures';
 
 function labels(host: HTMLElement): string[] {
   return [...host.querySelectorAll('button')].map((button) => button.textContent || '');

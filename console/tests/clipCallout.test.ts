@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { deviceStatus } from '../src/mocks/fixtures';
 import { clipCalloutVisible, clipDismissed, dismissClipCallout } from '../src/state/clipCallout';
 import { status } from '../src/state/device';
-import { deviceStatus } from './fixtures';
 
 function withClips(clips: number, mode: 'setup' | 'provisioned' = 'provisioned') {
   return deviceStatus({ mode, metrics: { clipped_samples_total: clips } });

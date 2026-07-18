@@ -3,9 +3,9 @@ import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ResetCard } from '../src/components/SystemTab';
 import { setTransport } from '../src/lib/api';
+import { deviceStatus } from '../src/mocks/fixtures';
 import { refresh, status, unreachable } from '../src/state/device';
 import { resetHandoff } from '../src/state/resetHandoff';
-import { deviceStatus } from './fixtures';
 
 let host: HTMLElement;
 

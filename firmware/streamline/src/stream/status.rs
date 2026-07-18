@@ -15,6 +15,7 @@ pub struct StreamStatus {
     read_errors: Counter64,
     short_reads: Counter64,
     queue_drops: Counter64,
+    stale_drops: Counter64,
     network_errors: Counter64,
     tls_handshake_failures: Counter64,
     reconnects: Counter64,
@@ -84,8 +85,20 @@ impl StreamStatus {
         self.sequence.fetch_add(1, Ordering::Relaxed)
     }
 
+    /// The sequence number the capture task will hand out next. The network
+    /// task compares it against an in-flight packet to bound retry age.
+    pub(crate) fn sequence(&self) -> u32 {
+        self.sequence.load(Ordering::Relaxed)
+    }
+
     pub(crate) fn record_queue_drop(&self) {
         self.queue_drops.add(1);
+    }
+
+    /// Account one packet discarded because retrying it outlived the queue's
+    /// latency bound.
+    pub(crate) fn record_stale_drop(&self) {
+        self.stale_drops.add(1);
     }
 
     pub(crate) fn set_queue_depth(&self, depth: usize) {
@@ -118,6 +131,7 @@ impl StreamStatus {
             read_errors: self.read_errors.load(),
             short_reads: self.short_reads.load(),
             queue_drops: self.queue_drops.load(),
+            stale_drops: self.stale_drops.load(),
             network_errors: self.network_errors.load(),
             tls_handshake_failures: self.tls_handshake_failures.load(),
             reconnects: self.reconnects.load(),
@@ -141,6 +155,7 @@ pub struct StreamSnapshot {
     pub read_errors: u64,
     pub short_reads: u64,
     pub queue_drops: u64,
+    pub stale_drops: u64,
     pub network_errors: u64,
     pub tls_handshake_failures: u64,
     pub reconnects: u64,

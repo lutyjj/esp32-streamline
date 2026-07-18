@@ -24,6 +24,11 @@ impl AudioPacket {
         &self.bytes
     }
 
+    /// The sequence number this packet carries on the wire.
+    pub fn sequence(&self) -> u32 {
+        u32::from_le_bytes(self.bytes[8..12].try_into().expect("header sequence"))
+    }
+
     pub const fn payload_bytes(&self) -> usize {
         PAYLOAD_BYTES
     }

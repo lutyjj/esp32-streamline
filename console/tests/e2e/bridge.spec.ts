@@ -1,12 +1,17 @@
 import { expect, test } from '@playwright/test';
-import { MOCK_BRIDGE_TOKEN } from '../../src/mocks/bridge';
+
+// The real bridge's API token, as `make console-e2e` configures it.
+const token = process.env.STREAMLINE_API_TOKEN;
+if (!token)
+  throw new Error('STREAMLINE_API_TOKEN is unset — run these specs via `make console-e2e`');
 
 // Bridge enrollment, per docs/user-journey.md stage 3: unlock with the API
 // token, enroll the device credential, then switch the listener to encrypted.
+// The bridge is the real one, so these specs prove its behavior, not a model.
 test('enroll a credential and switch the bridge to encrypted', async ({ page }) => {
   await page.goto('/bridge.html');
   await page.getByRole('button', { name: /^Locked/ }).click();
-  await page.getByPlaceholder('bridge API token').fill(MOCK_BRIDGE_TOKEN);
+  await page.getByPlaceholder('bridge API token').fill(token);
   await page.getByRole('button', { name: 'Unlock', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Unlocked/ })).toBeVisible();
 
@@ -26,9 +31,11 @@ test('enroll a credential and switch the bridge to encrypted', async ({ page }) 
 test('a rejected token keeps the bridge locked and names the failure', async ({ page }) => {
   await page.goto('/bridge.html');
   await page.getByRole('button', { name: /^Locked/ }).click();
-  await page.getByPlaceholder('bridge API token').fill('wrong-token');
+  await page.getByPlaceholder('bridge API token').fill('not-the-bridge-token');
   await page.getByRole('button', { name: 'Unlock', exact: true }).click();
 
-  await expect(page.getByText('invalid API token')).toBeVisible();
+  await expect(
+    page.getByText('Enter the bridge API token configured on this bridge.'),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: /^Locked/ })).toBeVisible();
 });

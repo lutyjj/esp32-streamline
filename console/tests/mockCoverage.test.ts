@@ -1,14 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FakeBridge } from '../src/mocks/bridge';
 import { FakeDevice } from '../src/mocks/device';
 
 /**
- * Every operation in a console's OpenAPI document must have a mock handler,
+ * Every operation in the device's OpenAPI document must have a mock handler,
  * and every handler must be a contract operation — the console-side mirror
  * of the firmware's `ENDPOINTS` drift test. A new endpoint without a mock
- * fails here.
+ * fails here. The bridge needs no coverage guard: dev and e2e run the real
+ * bridge, which implements its own contract.
  */
 
 interface ApiPaths {
@@ -44,12 +44,6 @@ describe('mock contract coverage', () => {
   it('handles every device operation, and nothing else', () => {
     expect(handlerOperations(new FakeDevice().handlers).sort()).toEqual(
       contractOperations('openapi.json').sort(),
-    );
-  });
-
-  it('handles every bridge operation, and nothing else', () => {
-    expect(handlerOperations(new FakeBridge().handlers).sort()).toEqual(
-      contractOperations('bridge-openapi.json').sort(),
     );
   });
 });

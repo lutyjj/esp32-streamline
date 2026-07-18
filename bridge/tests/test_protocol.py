@@ -13,7 +13,6 @@ from streamline_bridge.protocol import (
     HEADER,
     MAGIC,
     VERSION,
-    PcmFormat,
     parse_header,
     parse_packet,
 )
@@ -94,12 +93,11 @@ class ConformanceVectorTests(unittest.TestCase):
         self.assertEqual(constants["frames_per_packet"], DEFAULT_FRAMES)
         self.assertEqual(constants["payload_bytes"], DEFAULT_FORMAT.payload_bytes)
 
-    def test_encoder_frames_parse_to_their_declared_fields(self) -> None:
+    def test_encoder_frames_parse_with_the_deployed_format(self) -> None:
         for vector in self.vectors["valid"]:
             with self.subTest(vector=vector["name"]):
                 frame = bytes.fromhex(vector["frame_hex"])
-                fmt = PcmFormat(frames_per_packet=vector["frames"])
-                seq, rate, frames, payload = parse_packet(frame, fmt)
+                seq, rate, frames, payload = parse_packet(frame)
                 self.assertEqual(seq, vector["sequence"])
                 self.assertEqual(rate, DEFAULT_RATE)
                 self.assertEqual(frames, vector["frames"])

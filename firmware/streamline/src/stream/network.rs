@@ -86,7 +86,7 @@ mod tests {
     }
 
     fn packet() -> AudioPacket {
-        AudioPacket::from_pcm(0, &[0_u8; PAYLOAD_BYTES]).expect("valid packet")
+        AudioPacket::from_pcm(0, &[0_u8; PAYLOAD_BYTES])
     }
 
     fn io_error() -> Result<bool, SendFailed> {

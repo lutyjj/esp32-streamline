@@ -32,7 +32,7 @@ pub struct Constants {
 }
 
 /// A frame the encoder can emit. The parser must decode it to `sequence`,
-/// `frames`, and `payload_bytes` when told the frame's own format.
+/// `frames`, and `payload_bytes` with the deployed single-format contract.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ValidFrame {
     pub name: String,
@@ -42,15 +42,13 @@ pub struct ValidFrame {
     pub frame_hex: String,
 }
 
-/// A frame the deployed parser must reject. `encoder_rejects` names the payload
-/// size the encoder itself refuses, present only for the payload-size cases the
-/// encoder guards; a receiver alone detects the rest.
+/// A frame the deployed parser must reject. The encoder cannot build any of
+/// these: its packet type only represents full 256-frame packets, so every
+/// rejection is receiver-side.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct InvalidFrame {
     pub name: String,
     pub reason: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub encoder_rejects: Option<u32>,
     pub frame_hex: String,
 }
 
@@ -85,33 +83,29 @@ fn constants() -> Constants {
     }
 }
 
-/// Frames the encoder emits: full packets across the sequence range and short
-/// whole-frame reads. Each parses with its own format.
+/// Frames the encoder emits: full 256-frame packets across the sequence
+/// range. The capture engine coalesces short hardware reads before framing,
+/// so full packets are the encoder's entire output vocabulary.
 fn valid_frames() -> Vec<ValidFrame> {
     [
-        ("full_frame", 1, PAYLOAD_BYTES),
-        ("sequence_little_endian", 0x4433_2211, PAYLOAD_BYTES),
-        ("sequence_zero", 0, PAYLOAD_BYTES),
-        ("sequence_wrap_max", u32::MAX, PAYLOAD_BYTES),
-        ("short_single_frame", 7, BYTES_PER_FRAME),
-        ("short_three_frames", 8, 3 * BYTES_PER_FRAME),
+        ("full_frame", 1),
+        ("sequence_little_endian", 0x4433_2211),
+        ("sequence_zero", 0),
+        ("sequence_wrap_max", u32::MAX),
     ]
     .into_iter()
-    .map(|(name, sequence, payload_bytes)| valid_frame(name, sequence, payload_bytes))
+    .map(|(name, sequence)| valid_frame(name, sequence))
     .collect()
 }
 
-fn valid_frame(name: &str, sequence: u32, payload_bytes: usize) -> ValidFrame {
-    let header = PacketHeader::for_payload(sequence, payload_bytes)
-        .expect("valid payload size")
-        .encode();
-    let mut frame = header.to_vec();
-    frame.extend(payload(payload_bytes));
+fn valid_frame(name: &str, sequence: u32) -> ValidFrame {
+    let mut frame = PacketHeader::new(sequence).encode().to_vec();
+    frame.extend(payload(PAYLOAD_BYTES));
     ValidFrame {
         name: name.to_owned(),
         sequence,
-        frames: (payload_bytes / BYTES_PER_FRAME) as u32,
-        payload_bytes: payload_bytes as u32,
+        frames: FRAMES_PER_PACKET,
+        payload_bytes: PAYLOAD_BYTES as u32,
         frame_hex: hex(&frame),
     }
 }
@@ -138,6 +132,8 @@ fn invalid_frames() -> Vec<InvalidFrame> {
         corrupt("wrong_frame_count", "frame", |frame| {
             frame[16..20].copy_from_slice(&(FRAMES_PER_PACKET * 2).to_le_bytes())
         }),
+        short_frame("short_single_frame", 1),
+        short_frame("short_three_frames", 3),
         bad_payload_size("payload_zero", 0),
         bad_payload_size("payload_unaligned", PAYLOAD_BYTES - 1),
         bad_payload_size("payload_oversize", PAYLOAD_BYTES + BYTES_PER_FRAME),
@@ -145,6 +141,22 @@ fn invalid_frames() -> Vec<InvalidFrame> {
             frame.truncate(HEADER_LEN + PAYLOAD_BYTES - 1)
         }),
     ]
+}
+
+/// An internally consistent packet carrying fewer than 256 frames. The wire
+/// contract is fixed-size, so the parser rejects the frame count itself.
+fn short_frame(name: &str, frames: u32) -> InvalidFrame {
+    let payload_bytes = frames as usize * BYTES_PER_FRAME;
+    let mut frame = PacketHeader::new(2).encode().to_vec();
+    frame[16..20].copy_from_slice(&frames.to_le_bytes());
+    frame[20..24].copy_from_slice(&(payload_bytes as u32).to_le_bytes());
+    frame.truncate(HEADER_LEN);
+    frame.extend(payload(payload_bytes));
+    InvalidFrame {
+        name: name.to_owned(),
+        reason: "frame".to_owned(),
+        frame_hex: hex(&frame),
+    }
 }
 
 /// A valid full frame with one field corrupted to model a receiver-visible
@@ -156,14 +168,13 @@ fn corrupt(name: &str, reason: &str, edit: impl Fn(&mut Vec<u8>)) -> InvalidFram
     InvalidFrame {
         name: name.to_owned(),
         reason: reason.to_owned(),
-        encoder_rejects: None,
         frame_hex: hex(&frame),
     }
 }
 
-/// A frame declaring a payload size the encoder's `for_payload` refuses. The
+/// A frame declaring a payload size other than the fixed packet size. The
 /// actual payload matches the declared size, so the parser rejects the size
-/// itself, not a length mismatch — the one invalid category both sides guard.
+/// itself, not a length mismatch.
 fn bad_payload_size(name: &str, payload_bytes: usize) -> InvalidFrame {
     let mut frame = PacketHeader::new(2).encode().to_vec();
     frame.extend(payload(payload_bytes));
@@ -171,7 +182,6 @@ fn bad_payload_size(name: &str, payload_bytes: usize) -> InvalidFrame {
     InvalidFrame {
         name: name.to_owned(),
         reason: "payload".to_owned(),
-        encoder_rejects: Some(payload_bytes as u32),
         frame_hex: hex(&frame),
     }
 }
@@ -192,7 +202,7 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{vectors, Vectors};
-    use crate::protocol::PacketHeader;
+    use crate::protocol::{FRAMES_PER_PACKET, PAYLOAD_BYTES};
 
     #[test]
     fn committed_vectors_match_the_encoder() {
@@ -207,15 +217,10 @@ mod tests {
     }
 
     #[test]
-    fn encoder_rejects_every_shared_payload_violation() {
-        for frame in vectors().invalid {
-            if let Some(payload_bytes) = frame.encoder_rejects {
-                assert!(
-                    PacketHeader::for_payload(0, payload_bytes as usize).is_none(),
-                    "encoder must reject payload size {payload_bytes} ({})",
-                    frame.name,
-                );
-            }
+    fn every_valid_vector_carries_one_full_packet() {
+        for frame in vectors().valid {
+            assert_eq!(frame.frames, FRAMES_PER_PACKET, "{}", frame.name);
+            assert_eq!(frame.payload_bytes, PAYLOAD_BYTES as u32, "{}", frame.name);
         }
     }
 }

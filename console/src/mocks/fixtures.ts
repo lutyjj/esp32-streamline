@@ -1,15 +1,9 @@
 /**
- * Coherent base shapes for both consoles' APIs, typed against the generated
+ * Coherent base shapes for the device API, typed against the generated
  * client so a contract change fails `tsc` here. Unit tests and the fake
- * backends in this folder both build on them.
+ * device in this folder both build on them.
  */
 
-import type {
-  BridgeStatus,
-  RecordingCapabilities,
-  SourceSnapshot,
-  TransportSnapshot,
-} from '../generated/bridge';
 import type { DeviceConfig, DeviceStatus, TransportStatus } from '../lib/api';
 
 /** A cleartext transport status; override the fields a test cares about. */
@@ -184,113 +178,5 @@ export function deviceStatus(
       ...health,
     },
     ...top,
-  };
-}
-
-/** A cleartext bridge PCM listener with no enrolled credential. */
-export function transportSnapshot(overrides: Partial<TransportSnapshot> = {}): TransportSnapshot {
-  return {
-    contract_version: 1,
-    mode: 'cleartext',
-    port: 39000,
-    configurable: true,
-    key_ids: [],
-    auth_failures: 0,
-    auth_successes: 0,
-    ...overrides,
-  };
-}
-
-/** One device streaming cleanly to the bridge. */
-export function sourceSnapshot(overrides: Partial<SourceSnapshot> = {}): SourceSnapshot {
-  return {
-    started_at: 1_700_000_000,
-    uptime_seconds: 320,
-    rate: 44100,
-    packets: 56000,
-    frames: 2464000,
-    bytes: 9856000,
-    played_frames: 2463000,
-    buffered_packets: 24,
-    playout_buffer_packets: 32,
-    client_buffer_chunks: 64,
-    max_outage_silence_packets: 200,
-    buffer_ready_at: 1_700_000_001,
-    last_packet_at: 1_700_000_320,
-    last_playout_at: 1_700_000_320,
-    highest_seq: 56000,
-    last_seq: 56000,
-    playout_seq: 55976,
-    packet_frames: 441,
-    lost: 0,
-    late: 0,
-    duplicate: 0,
-    reordered: 0,
-    concealed: 0,
-    underruns: 0,
-    clients: 1,
-    client_streams: [],
-    client_queue_drops: 0,
-    slow_clients: 0,
-    tcp_connections: 1,
-    tcp_disconnects: 0,
-    tcp_errors: 0,
-    levels: { rms_left: 9800, rms_right: 9400, peak_left: 21000, peak_right: 20200 },
-    lifecycle: {
-      state: 'connected',
-      admission: 'open',
-      transport: 'cleartext',
-      dynamic: true,
-      peer_ip: '192.0.2.10',
-      http_clients: 1,
-      recording_sessions: 0,
-      idle_seconds: 0,
-      eviction_idle_seconds: null,
-    },
-    ...overrides,
-  };
-}
-
-/**
- * A reachable bridge with an API token configured; override the fields the
- * caller cares about. Nested `transport` overrides merge into the default.
- */
-export function bridgeStatus(
-  overrides: Partial<Omit<BridgeStatus, 'transport'>> & {
-    transport?: Partial<TransportSnapshot>;
-  } = {},
-): BridgeStatus {
-  const { transport, ...top } = overrides;
-  return {
-    bridge_version: '0.4.0',
-    api_token_configured: true,
-    sources: {},
-    transport: transportSnapshot(transport),
-    ...top,
-  };
-}
-
-/** WAV recording support as the bridge advertises it. */
-export function recordingCapabilities(
-  overrides: Partial<RecordingCapabilities> = {},
-): RecordingCapabilities {
-  return {
-    enabled: true,
-    format: {
-      container: 'wav',
-      codec: 'pcm_s16le',
-      sample_rate: 44100,
-      channels: 2,
-      bits_per_sample: 16,
-      bytes_per_second: 176400,
-    },
-    limits: {
-      max_duration_seconds: 7200,
-      max_gap_seconds: 300,
-      max_title_chars: 80,
-      min_free_bytes: 104857600,
-      queue_chunks: 256,
-    },
-    ...overrides,
   };
 }

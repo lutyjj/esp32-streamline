@@ -179,6 +179,17 @@ export class FakeDevice {
         auth_required: false,
         wifi: { ssid: '', status: 'setup', sta_ip: '', ap_ip: '192.168.71.1', rssi: 0 },
         target: { target_host: '' },
+        // The contract example streams; an unconfigured device is silent.
+        metrics: {
+          playing: false,
+          sequence: 0,
+          packets: 0,
+          bytes: 0,
+          peak_abs_left: 0,
+          peak_abs_right: 0,
+          rms_left: 0,
+          rms_right: 0,
+        },
       });
       this.config = deviceConfig({ ssid: '', target_host: '' });
       this.adminKey = null;

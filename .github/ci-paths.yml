@@ -18,6 +18,12 @@ repository:
   - '*.md'
   - '**/*.md'
   - 'docs/**'
+  # The dependency audit owns every committed lockfile and its allowlist.
+  - 'osv-scanner.toml'
+  - 'bridge/uv.lock'
+  - 'console/package-lock.json'
+  - 'firmware/streamline/Cargo.lock'
+  - 'tools/uv.lock'
 
 bridge:
   - *shared

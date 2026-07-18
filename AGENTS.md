@@ -27,6 +27,19 @@ no "previously X, now Y", "was/now", "changed from", or changelog narration in
 docs or code comments. Write as if the code was always this way. History
 lives in git.
 
+## Build for the present, carry no legacy
+
+Prefer a clean break to a compatibility layer: a shim, deprecated alias,
+path-preserving re-export, dual-format reader, or version fallback is a second
+definition that obscures which shape is current and tends to outlive its
+purpose. Change every caller and delete the old shape in one change, and
+convert stored state with a one-off migration rather than teaching the code to
+read both forms. This holds after release; the only thing that forces keeping
+an old shape is a consumer the change cannot reach, such as a released artifact
+or a separate repository, which gets an explicit versioned migration, not a
+silent layer. This is the code counterpart to "Write for the present, not the
+past".
+
 ## Keep logic testable; push hardware to the edges
 
 Application logic lives in host-testable crate-root modules. ESP-IDF, the

@@ -28,6 +28,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_urlencoded = "0.7"
 utoipa = { version = "5.5.0", optional = true }
+# 64-bit stream counters. The ESP32 Xtensa target has no native 64-bit atomics
+# (`target_has_atomic` tops out at 32), so `core::AtomicU64` does not exist
+# there; portable-atomic supplies it. The host build uses native atomics; the
+# device build routes the fallback through the `critical-section` backend
+# esp-idf-svc already provides (see the target dependency below).
+portable-atomic = "1"
 
 [features]
 api-spec = ["dep:utoipa"]
@@ -49,6 +55,10 @@ anyhow = "1"
 embedded-svc = "0.29"
 esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
 log = "0.4"
+# Route portable-atomic's 64-bit fallback through the critical-section
+# implementation esp-idf-svc registers, since the dual-core ESP32 cannot
+# provide lock-free 64-bit atomics natively.
+portable-atomic = { version = "1", features = ["critical-section"] }
 
 [build-dependencies]
 embuild = { version = "0.33", features = ["espidf"] }

@@ -16,8 +16,23 @@ pub const MIN_PORT: u16 = 1;
 /// Longest friendly device name, in characters. Fits an NVS string entry and
 /// a browser tab title.
 pub const MAX_DEVICE_NAME_CHARS: usize = 32;
-/// Minimum length for the admin key that guards the mutating HTTP API.
-pub const MIN_ADMIN_SECRET_LEN: usize = 8;
+/// Admin keys are generated, never composed by hand: exactly 24 random bytes
+/// rendered as lowercase hexadecimal. One exact shape keeps runtime
+/// validation, the OpenAPI schema, and every client in agreement.
+pub const ADMIN_SECRET_HEX_CHARS: usize = 48;
+/// The canonical admin-key shape as the OpenAPI schema declares it.
+pub const ADMIN_SECRET_PATTERN: &str = "^[0-9a-f]{48}$";
+/// A valid admin key for tests across modules, in the canonical form.
+#[cfg(test)]
+pub(crate) const TEST_ADMIN_SECRET: &str = "0123456789abcdef0123456789abcdef0123456789abcdef";
+
+/// Whether an admin secret is in the canonical generated form.
+pub fn is_canonical_admin_secret(secret: &str) -> bool {
+    secret.len() == ADMIN_SECRET_HEX_CHARS
+        && secret
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
 /// Version stamped into persisted configuration. An incompatible stored version is
 /// treated as unconfigured so the device re-commissions rather than booting without
 /// an admin key.
@@ -138,7 +153,7 @@ pub enum ConfigError {
     InvalidAdcAttenuation,
     UnsupportedAnalogPassthrough,
     UnknownLed,
-    WeakAdminSecret,
+    MalformedAdminSecret,
     DeviceNameTooLong,
     InvalidTransport(TransportError),
 }
@@ -189,8 +204,8 @@ impl RuntimeConfig {
             target_port: self.target_port,
         }
         .validate()?;
-        if self.admin_secret.chars().count() < MIN_ADMIN_SECRET_LEN {
-            return Err(ConfigError::WeakAdminSecret);
+        if !is_canonical_admin_secret(&self.admin_secret) {
+            return Err(ConfigError::MalformedAdminSecret);
         }
         if self.device_name.chars().count() > MAX_DEVICE_NAME_CHARS {
             return Err(ConfigError::DeviceNameTooLong);
@@ -367,7 +382,7 @@ mod tests {
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
             transport: Default::default(),
-            admin_secret: "console-secret".to_owned(),
+            admin_secret: super::TEST_ADMIN_SECRET.to_owned(),
             device_name: String::new(),
             auto_update_schedule: AutoUpdateSchedule::Daily,
             audio: AudioSettings {
@@ -431,19 +446,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_short_admin_secret() {
+    fn accepts_only_the_canonical_admin_secret_shape() {
         let mut config = sample_runtime_config();
-        config.admin_secret = "short".to_owned();
-        assert_eq!(
-            config.validate(&default_board()),
-            Err(ConfigError::WeakAdminSecret)
-        );
+        assert_eq!(config.validate(&default_board()), Ok(()));
 
-        config.admin_secret = String::new();
-        assert_eq!(
-            config.validate(&default_board()),
-            Err(ConfigError::WeakAdminSecret)
-        );
+        for invalid in [
+            String::new(),
+            "short".to_owned(),
+            super::TEST_ADMIN_SECRET.to_uppercase(),
+            super::TEST_ADMIN_SECRET[..47].to_owned(),
+            format!("{}0", super::TEST_ADMIN_SECRET),
+            format!("{}g", &super::TEST_ADMIN_SECRET[..47]),
+            format!("{}é", &super::TEST_ADMIN_SECRET[..47]),
+        ] {
+            config.admin_secret = invalid.clone();
+            assert_eq!(
+                config.validate(&default_board()),
+                Err(ConfigError::MalformedAdminSecret),
+                "must reject {invalid:?}",
+            );
+        }
     }
 
     #[test]

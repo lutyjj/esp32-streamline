@@ -1,10 +1,15 @@
 //! Capture policy: gate on signal, coalesce short reads into whole packets,
 //! and enqueue with bounded latency while the sequence keeps counting through
-//! idle gaps.
+//! idle gaps and sustained input stalls.
 
 use std::sync::Arc;
 
-use crate::{levels::LevelStats, packet::AudioPacket, play::PlayDetector, protocol::PAYLOAD_BYTES};
+use crate::{
+    levels::LevelStats,
+    packet::AudioPacket,
+    play::{PlayDetector, STOP_AFTER_PACKETS},
+    protocol::{BYTES_PER_FRAME, FRAMES_PER_PACKET, PAYLOAD_BYTES, SAMPLE_RATE_HZ},
+};
 
 use super::{
     effects::{Delay, PcmSource, ReadFailed},
@@ -12,9 +17,17 @@ use super::{
     status::StreamStatus,
 };
 
-/// Back off this long after an I2S read error before retrying, so a wedged
-/// input cannot spin the capture task.
-const READ_ERROR_BACKOFF_MS: u32 = 100;
+/// Back off this long after a stalled read — an I2S error or a zero-byte
+/// yield — so a wedged input cannot spin the capture task.
+const READ_STALL_BACKOFF_MS: u32 = 100;
+
+/// Samples the input clock produces per millisecond of wall time.
+const FRAMES_PER_MS: u32 = SAMPLE_RATE_HZ / 1000;
+
+/// A stall this long is real sample loss, not DMA-buffered jitter: the same
+/// two seconds after which sustained silence stops playback. Shorter stalls
+/// ride on the driver's buffering and leave the timeline untouched.
+const STALL_EXPIRY_MS: u32 = STOP_AFTER_PACKETS * FRAMES_PER_PACKET / FRAMES_PER_MS;
 
 /// Owns play detection across packets; the device runs it on the capture task.
 pub struct CaptureEngine {
@@ -24,6 +37,11 @@ pub struct CaptureEngine {
     /// analyzed, numbered, and enqueued only once the buffer is complete, so
     /// the wire only ever carries whole 256-frame packets.
     filled: usize,
+    /// Consecutive stalled-read time. Crossing [`STALL_EXPIRY_MS`] expires
+    /// playback freshness and starts charging the stall to the timeline.
+    stalled_ms: u32,
+    /// Lost input time not yet converted into sequence numbers, in frames.
+    lost_frames: u32,
 }
 
 impl CaptureEngine {
@@ -32,6 +50,8 @@ impl CaptureEngine {
             detector: PlayDetector::new(),
             pcm: [0; PAYLOAD_BYTES],
             filled: 0,
+            stalled_ms: 0,
+            lost_frames: 0,
         }
     }
 
@@ -63,13 +83,20 @@ impl CaptureEngine {
         }
         let requested = PAYLOAD_BYTES - self.filled;
         let bytes = match source.read(&mut self.pcm[self.filled..]) {
+            Ok(0) => {
+                status.record_short_read();
+                self.stall(status, delay);
+                return;
+            }
             Ok(bytes) => bytes,
             Err(ReadFailed) => {
                 status.record_read_error();
-                delay.delay_ms(READ_ERROR_BACKOFF_MS);
+                self.stall(status, delay);
                 return;
             }
         };
+        self.stalled_ms = 0;
+        self.lost_frames = 0;
         if bytes < requested {
             // Keep what arrived byte-exactly and wait for the rest of the
             // packet; the next read continues where this one stopped.
@@ -99,6 +126,31 @@ impl CaptureEngine {
         }
         status.set_queue_depth(depth);
     }
+
+    /// Back off after a stalled read. A stall past [`STALL_EXPIRY_MS`] is real
+    /// sample loss: playback freshness expires, the stale partial packet is
+    /// discarded, and the whole stall lands on the sequence timeline so the
+    /// receiver sees a truthful gap instead of compressed time.
+    fn stall(&mut self, status: &StreamStatus, delay: &impl Delay) {
+        delay.delay_ms(READ_STALL_BACKOFF_MS);
+        let already_expired = self.stalled_ms >= STALL_EXPIRY_MS;
+        self.stalled_ms = self.stalled_ms.saturating_add(READ_STALL_BACKOFF_MS);
+        if self.stalled_ms < STALL_EXPIRY_MS {
+            return;
+        }
+        if already_expired {
+            self.lost_frames += READ_STALL_BACKOFF_MS * FRAMES_PER_MS;
+        } else {
+            status.set_playing(false);
+            self.lost_frames +=
+                self.stalled_ms * FRAMES_PER_MS + (self.filled / BYTES_PER_FRAME) as u32;
+            self.filled = 0;
+        }
+        while self.lost_frames >= FRAMES_PER_PACKET {
+            status.next_sequence();
+            self.lost_frames -= FRAMES_PER_PACKET;
+        }
+    }
 }
 
 impl Default for CaptureEngine {
@@ -111,9 +163,10 @@ impl Default for CaptureEngine {
 mod tests {
     use std::{cell::RefCell, collections::VecDeque};
 
-    use super::{CaptureEngine, READ_ERROR_BACKOFF_MS};
+    use super::{CaptureEngine, READ_STALL_BACKOFF_MS, STALL_EXPIRY_MS};
     use crate::{
         packet::AudioPacket,
+        play::STOP_AFTER_PACKETS,
         protocol::{BYTES_PER_FRAME, PAYLOAD_BYTES},
         stream::{
             effects::{Delay, PcmSource, ReadFailed},
@@ -213,6 +266,26 @@ mod tests {
         )
     }
 
+    /// Drive a loud constant source until the detector reports playback, then
+    /// drain the queue so a test observes only its own packets.
+    fn warm_to_playing(
+        engine: &mut CaptureEngine,
+        queue: &PacketQueue<AudioPacket>,
+        status: &StreamStatus,
+    ) {
+        let mut warmup = ConstantSource { sample: LOUD };
+        for _ in 0..2_000 {
+            engine.step(&mut warmup, Some(queue), status, &RecordingDelay::default());
+            if status.snapshot().playing {
+                break;
+            }
+        }
+        assert!(status.snapshot().playing, "warm-up should start playback");
+        for _ in 0..status.snapshot().queue_depth {
+            queue.pop();
+        }
+    }
+
     #[test]
     fn idle_input_advances_the_sequence_without_enqueuing() {
         let status = StreamStatus::default();
@@ -287,24 +360,7 @@ mod tests {
         let status = StreamStatus::default();
         let queue = PacketQueue::new();
         let mut engine = CaptureEngine::new();
-
-        // Drive a loud constant source until the detector reports playback.
-        let mut warmup = ConstantSource { sample: LOUD };
-        for _ in 0..2_000 {
-            engine.step(
-                &mut warmup,
-                Some(&queue),
-                &status,
-                &RecordingDelay::default(),
-            );
-            if status.snapshot().playing {
-                break;
-            }
-        }
-        assert!(status.snapshot().playing, "warm-up should start playback");
-        for _ in 0..status.snapshot().queue_depth {
-            queue.pop();
-        }
+        warm_to_playing(&mut engine, &queue, &status);
         let sequence_before = status.snapshot().sequence;
         let short_reads_before = status.snapshot().short_reads;
 
@@ -337,21 +393,7 @@ mod tests {
         let status = StreamStatus::default();
         let queue = PacketQueue::new();
         let mut engine = CaptureEngine::new();
-        let mut warmup = ConstantSource { sample: LOUD };
-        for _ in 0..2_000 {
-            engine.step(
-                &mut warmup,
-                Some(&queue),
-                &status,
-                &RecordingDelay::default(),
-            );
-            if status.snapshot().playing {
-                break;
-            }
-        }
-        for _ in 0..status.snapshot().queue_depth {
-            queue.pop();
-        }
+        warm_to_playing(&mut engine, &queue, &status);
 
         let mut source = ScriptedSource::new([Ok(100), Ok(0), Ok(924)]);
         for _ in 0..3 {
@@ -370,18 +412,150 @@ mod tests {
     }
 
     #[test]
-    fn a_read_error_is_counted_and_backed_off_without_a_packet() {
+    fn stalled_reads_back_off_without_spinning_or_numbering() {
         let status = StreamStatus::default();
         let mut engine = CaptureEngine::new();
-        let mut source = ScriptedSource::new([Err(ReadFailed), Err(ReadFailed)]);
+        let mut source = ScriptedSource::new([Err(ReadFailed), Ok(0)]);
         let delay = RecordingDelay::default();
 
         engine.step(&mut source, None, &status, &delay);
         engine.step(&mut source, None, &status, &delay);
 
         let snapshot = status.snapshot();
-        assert_eq!(snapshot.read_errors, 2);
+        assert_eq!(snapshot.read_errors, 1);
+        assert_eq!(snapshot.short_reads, 1);
         assert_eq!(snapshot.sequence, 0);
-        assert_eq!(delay.waits.into_inner(), vec![READ_ERROR_BACKOFF_MS; 2]);
+        // Both stall shapes back off, so neither can spin the capture task.
+        assert_eq!(delay.waits.into_inner(), vec![READ_STALL_BACKOFF_MS; 2]);
+    }
+
+    #[test]
+    fn a_transient_stall_keeps_playing_and_the_timeline_continuous() {
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        let mut engine = CaptureEngine::new();
+        warm_to_playing(&mut engine, &queue, &status);
+        let sequence_before = status.snapshot().sequence;
+
+        let mut source = ScriptedSource::new(
+            (0..5)
+                .map(|_| Err(ReadFailed))
+                .collect::<VecDeque<Result<usize, ReadFailed>>>(),
+        );
+        for _ in 0..5 {
+            engine.step(
+                &mut source,
+                Some(&queue),
+                &status,
+                &RecordingDelay::default(),
+            );
+        }
+
+        let snapshot = status.snapshot();
+        // Half a second of stall rides on DMA buffering: playback stays
+        // reported and no false gap lands on the timeline.
+        assert!(snapshot.playing);
+        assert_eq!(snapshot.sequence, sequence_before);
+
+        let mut recovered = ConstantSource { sample: LOUD };
+        for _ in 0..3 {
+            engine.step(
+                &mut recovered,
+                Some(&queue),
+                &status,
+                &RecordingDelay::default(),
+            );
+        }
+        assert_eq!(status.snapshot().sequence, sequence_before + 3);
+    }
+
+    #[test]
+    fn a_sustained_stall_expires_playing_and_puts_the_gap_on_the_timeline() {
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        let mut engine = CaptureEngine::new();
+        warm_to_playing(&mut engine, &queue, &status);
+        let sequence_before = status.snapshot().sequence;
+
+        let stalls_to_expiry = (STALL_EXPIRY_MS / READ_STALL_BACKOFF_MS) as usize;
+        let mut source = ScriptedSource::new(
+            (0..stalls_to_expiry + 4)
+                .map(|_| Err(ReadFailed))
+                .collect::<VecDeque<Result<usize, ReadFailed>>>(),
+        );
+        for _ in 0..stalls_to_expiry - 1 {
+            engine.step(
+                &mut source,
+                Some(&queue),
+                &status,
+                &RecordingDelay::default(),
+            );
+        }
+        let snapshot = status.snapshot();
+        assert!(snapshot.playing, "playback must survive up to the budget");
+        assert_eq!(snapshot.sequence, sequence_before);
+
+        engine.step(
+            &mut source,
+            Some(&queue),
+            &status,
+            &RecordingDelay::default(),
+        );
+        let snapshot = status.snapshot();
+        // Crossing the budget expires playback and charges the whole stall:
+        // two seconds is exactly the detector's own silence stop budget.
+        assert!(!snapshot.playing);
+        assert_eq!(snapshot.sequence, sequence_before + STOP_AFTER_PACKETS);
+
+        // Every further stall keeps the timeline honest at 4,800 frames per
+        // backoff: four more backoffs are exactly 75 packets.
+        for _ in 0..4 {
+            engine.step(
+                &mut source,
+                Some(&queue),
+                &status,
+                &RecordingDelay::default(),
+            );
+        }
+        assert_eq!(
+            status.snapshot().sequence,
+            sequence_before + STOP_AFTER_PACKETS + 75
+        );
+    }
+
+    #[test]
+    fn expiry_discards_the_stale_partial_packet_and_counts_its_time() {
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        let mut engine = CaptureEngine::new();
+        warm_to_playing(&mut engine, &queue, &status);
+        let sequence_before = status.snapshot().sequence;
+
+        let stalls_to_expiry = (STALL_EXPIRY_MS / READ_STALL_BACKOFF_MS) as usize;
+        let mut reads: VecDeque<Result<usize, ReadFailed>> = VecDeque::from([Ok(100)]);
+        reads.extend((0..stalls_to_expiry).map(|_| Err(ReadFailed)));
+        reads.push_back(Ok(PAYLOAD_BYTES));
+        let mut source = ScriptedSource::new(reads);
+        for _ in 0..stalls_to_expiry + 2 {
+            engine.step(
+                &mut source,
+                Some(&queue),
+                &status,
+                &RecordingDelay::default(),
+            );
+        }
+
+        // The 100 pre-stall bytes were dropped as stale: the packet after
+        // recovery starts at stream offset 100 and the gap still covers the
+        // full stall.
+        let (packet, _) = queue.pop();
+        assert_eq!(
+            sequence_of(&packet),
+            sequence_before + STOP_AFTER_PACKETS,
+            "the recovered packet is numbered after the gap",
+        );
+        let payload = &packet.as_bytes()[24..];
+        let expected: Vec<u8> = (100..100 + PAYLOAD_BYTES).map(|i| i as u8).collect();
+        assert_eq!(payload, expected, "stale partial bytes must not be sent");
     }
 }

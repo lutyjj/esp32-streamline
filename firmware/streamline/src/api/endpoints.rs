@@ -597,6 +597,16 @@ mod spec {
             schemas["AudioProfileCatalog"]["properties"]["profiles"]["maxItems"],
             crate::profiles::MAX_AUDIO_PROFILES
         );
+        // The canonical example device rides the schemas so clients derive
+        // fixtures instead of hand-writing coherent state (see examples.rs).
+        assert_eq!(
+            schemas["StatusResponse"]["example"],
+            crate::api::examples::status()
+        );
+        assert_eq!(
+            schemas["ConfigResponse"]["example"],
+            crate::api::examples::config()
+        );
         document
     }
 }

@@ -102,8 +102,10 @@ can reach, put the API in first and the UI on top.
 When components share a wire format or API shape, define it once and derive
 every representation that tooling supports. The Rust `api` module generates
 `docs/openapi.json`; the firmware adapter uses its routes and DTOs, and the
-console generates its client types from the artifact. Run
-`make firmware-openapi` after a contract change. `docs/pcm-protocol.md` owns the
+console generates its client types from the artifact, which also carries the
+canonical example device (the `StatusResponse` and `ConfigResponse` schema
+examples) that client fixtures derive from instead of hand-writing device
+state. Run `make firmware-openapi` after a contract change. `docs/pcm-protocol.md` owns the
 PCM frame that `src/protocol.rs` and the bridge's `protocol.py` implement
 byte-exactly; its two implementations remain a deliberate exception until that
 protocol has generation tooling.

@@ -171,6 +171,11 @@ impl<W: Write> PrometheusWriter<W> {
             snapshot.stream.queue_drops_total,
         )?;
         self.counter(
+            "streamline_stale_drops_total",
+            "In-flight packets dropped because retrying them outlived the latency bound.",
+            snapshot.stream.stale_drops_total,
+        )?;
+        self.counter(
             "streamline_network_errors_total",
             "TCP send errors.",
             snapshot.stream.network_errors_total,
@@ -417,6 +422,9 @@ streamline_queue_depth 3\n\
 # HELP streamline_queue_drops_total Packets dropped from the queue to bound latency.\n\
 # TYPE streamline_queue_drops_total counter\n\
 streamline_queue_drops_total 4\n\
+# HELP streamline_stale_drops_total In-flight packets dropped because retrying them outlived the latency bound.\n\
+# TYPE streamline_stale_drops_total counter\n\
+streamline_stale_drops_total 5\n\
 # HELP streamline_network_errors_total TCP send errors.\n\
 # TYPE streamline_network_errors_total counter\n\
 streamline_network_errors_total 6\n\
@@ -520,6 +528,7 @@ streamline_ota_busy 0\n"
                 short_reads_total: 2,
                 queue_depth: 3,
                 queue_drops_total: 4,
+                stale_drops_total: 5,
                 network_errors_total: 6,
                 tls_handshake_failures_total: 8,
                 reconnects_total: 7,

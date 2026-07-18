@@ -1,5 +1,6 @@
-//! Network policy: drain the queue and retry each packet until it lands,
-//! accounting reconnects, errors, and TLS handshake failures.
+//! Network policy: drain the queue and retry each packet while it stays
+//! fresh, accounting reconnects, errors, TLS handshake failures, and stale
+//! drops.
 
 use std::sync::Arc;
 
@@ -7,12 +8,18 @@ use crate::packet::AudioPacket;
 
 use super::{
     effects::{Delay, PacketSink},
-    queue::PacketQueue,
+    queue::{PacketQueue, QUEUE_DEPTH},
     status::StreamStatus,
 };
 
 /// Back off this long after a send failure before retrying the same target.
 const SEND_ERROR_BACKOFF_MS: u32 = 250;
+
+/// Retry a packet only while it is at most this many packets behind the
+/// capture sequence: the same latency bound the drop-oldest queue enforces.
+/// Past it the packet is stale audio, and a reconnect must resume from
+/// current samples instead of replaying the outage.
+const MAX_IN_FLIGHT_AGE_PACKETS: u32 = QUEUE_DEPTH as u32;
 
 /// Drain the queue forever, sending each packet in order.
 pub fn run(
@@ -28,8 +35,10 @@ pub fn run(
     }
 }
 
-/// Retry one packet until it lands, so a brief network stall never drops audio
-/// the queue still holds.
+/// Retry one packet while it stays within the latency bound, so a brief
+/// network stall never drops audio but a long outage never replays it. The
+/// capture sequence keeps advancing through idle input and sustained stalls,
+/// so packet age tracks wall time even when nothing else is enqueued.
 fn send_packet(
     sink: &mut impl PacketSink,
     packet: &AudioPacket,
@@ -37,6 +46,10 @@ fn send_packet(
     delay: &impl Delay,
 ) {
     loop {
+        if status.sequence().wrapping_sub(packet.sequence()) > MAX_IN_FLIGHT_AGE_PACKETS {
+            status.record_stale_drop();
+            return;
+        }
         match sink.send(packet.as_bytes()) {
             Ok(reconnected) => {
                 status.record_sent(packet.payload_bytes(), reconnected);
@@ -54,7 +67,7 @@ fn send_packet(
 mod tests {
     use std::{cell::RefCell, collections::VecDeque};
 
-    use super::{send_packet, SEND_ERROR_BACKOFF_MS};
+    use super::{send_packet, MAX_IN_FLIGHT_AGE_PACKETS, SEND_ERROR_BACKOFF_MS};
     use crate::{
         packet::AudioPacket,
         protocol::PAYLOAD_BYTES,
@@ -139,6 +152,63 @@ mod tests {
         assert_eq!(snapshot.network_errors, 2);
         assert_eq!(snapshot.reconnects, 1);
         assert_eq!(snapshot.tls_handshake_failures, 0);
+        assert_eq!(delay.waits.into_inner(), vec![SEND_ERROR_BACKOFF_MS; 2]);
+    }
+
+    #[test]
+    fn a_stale_packet_is_dropped_without_a_send_attempt() {
+        let status = StreamStatus::default();
+        for _ in 0..MAX_IN_FLIGHT_AGE_PACKETS + 2 {
+            status.next_sequence();
+        }
+        // An empty script panics on any send, proving none was attempted.
+        let mut sink = FakeSink {
+            results: VecDeque::new(),
+        };
+
+        send_packet(&mut sink, &packet(), &status, &RecordingDelay::default());
+
+        let snapshot = status.snapshot();
+        assert_eq!(snapshot.stale_drops, 1);
+        assert_eq!(snapshot.packets, 0);
+        assert_eq!(snapshot.network_errors, 0);
+    }
+
+    /// Fails every send and advances the capture sequence as a side effect,
+    /// modeling wall time passing while the transport is down.
+    struct FailingAdvancingSink<'a> {
+        status: &'a StreamStatus,
+        advance_per_send: u32,
+    }
+
+    impl PacketSink for FailingAdvancingSink<'_> {
+        fn send(&mut self, _bytes: &[u8]) -> Result<bool, SendFailed> {
+            for _ in 0..self.advance_per_send {
+                self.status.next_sequence();
+            }
+            Err(SendFailed {
+                secure_handshake: false,
+            })
+        }
+    }
+
+    #[test]
+    fn a_packet_that_ages_past_the_bound_mid_retry_is_dropped() {
+        let status = StreamStatus::default();
+        let delay = RecordingDelay::default();
+        let mut sink = FailingAdvancingSink {
+            status: &status,
+            advance_per_send: 20,
+        };
+
+        send_packet(&mut sink, &packet(), &status, &delay);
+
+        let snapshot = status.snapshot();
+        // Ages 0 and 20 retried; at 40 the packet crossed the 32-packet
+        // bound and was dropped instead of replayed.
+        assert_eq!(snapshot.network_errors, 2);
+        assert_eq!(snapshot.stale_drops, 1);
+        assert_eq!(snapshot.packets, 0);
         assert_eq!(delay.waits.into_inner(), vec![SEND_ERROR_BACKOFF_MS; 2]);
     }
 

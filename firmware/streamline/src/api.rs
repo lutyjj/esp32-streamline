@@ -1031,6 +1031,7 @@ pub struct MetricsStatus {
     pub short_reads: u64,
     pub queue_depth: u32,
     pub queue_drops_total: u64,
+    pub stale_drops_total: u64,
     pub network_errors_total: u64,
     pub tls_handshake_failures_total: u64,
     pub reconnects_total: u64,

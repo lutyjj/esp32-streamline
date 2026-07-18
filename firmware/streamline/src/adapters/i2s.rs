@@ -11,7 +11,7 @@ use esp_idf_svc::hal::{
 
 use crate::{
     adapters::pins::I2sBusPins,
-    protocol::{PAYLOAD_BYTES, SAMPLE_RATE_HZ},
+    protocol::SAMPLE_RATE_HZ,
     stream::{PcmSource, ReadFailed},
 };
 
@@ -35,13 +35,10 @@ impl Capture {
 }
 
 impl PcmSource for Capture {
-    /// Read one whole packet, blocking on the DMA driver. A driver error is
+    /// Fill the requested tail, blocking on the DMA driver. A driver error is
     /// logged here at the device edge and surfaced as [`ReadFailed`] so the
     /// capture policy can back off without depending on ESP-IDF error types.
-    fn read(
-        &mut self,
-        samples: &mut [u8; PAYLOAD_BYTES],
-    ) -> std::result::Result<usize, ReadFailed> {
+    fn read(&mut self, samples: &mut [u8]) -> std::result::Result<usize, ReadFailed> {
         self.driver.read(samples, BLOCK).map_err(|error| {
             log::error!("I2S read failed: {error:#}");
             ReadFailed

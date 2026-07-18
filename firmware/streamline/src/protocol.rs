@@ -10,34 +10,17 @@ pub const FRAMES_PER_PACKET: u32 = 256;
 pub const BYTES_PER_FRAME: usize = 4;
 pub const PAYLOAD_BYTES: usize = FRAMES_PER_PACKET as usize * BYTES_PER_FRAME;
 
+/// The header of one wire packet. Every packet carries exactly
+/// [`FRAMES_PER_PACKET`] frames; the capture engine coalesces shorter hardware
+/// reads before framing, so a shorter packet is unrepresentable here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PacketHeader {
     pub sequence: u32,
-    pub frames: u32,
-    pub payload_bytes: u32,
 }
 
 impl PacketHeader {
     pub const fn new(sequence: u32) -> Self {
-        Self {
-            sequence,
-            frames: FRAMES_PER_PACKET,
-            payload_bytes: PAYLOAD_BYTES as u32,
-        }
-    }
-
-    pub const fn for_payload(sequence: u32, payload_bytes: usize) -> Option<Self> {
-        if payload_bytes == 0
-            || payload_bytes > PAYLOAD_BYTES
-            || payload_bytes % BYTES_PER_FRAME != 0
-        {
-            return None;
-        }
-        Some(Self {
-            sequence,
-            frames: (payload_bytes / BYTES_PER_FRAME) as u32,
-            payload_bytes: payload_bytes as u32,
-        })
+        Self { sequence }
     }
 
     pub fn encode(self) -> [u8; HEADER_LEN] {
@@ -49,8 +32,8 @@ impl PacketHeader {
         bytes[7] = BITS_PER_SAMPLE;
         bytes[8..12].copy_from_slice(&self.sequence.to_le_bytes());
         bytes[12..16].copy_from_slice(&SAMPLE_RATE_HZ.to_le_bytes());
-        bytes[16..20].copy_from_slice(&self.frames.to_le_bytes());
-        bytes[20..24].copy_from_slice(&self.payload_bytes.to_le_bytes());
+        bytes[16..20].copy_from_slice(&FRAMES_PER_PACKET.to_le_bytes());
+        bytes[20..24].copy_from_slice(&(PAYLOAD_BYTES as u32).to_le_bytes());
         bytes
     }
 }
@@ -74,14 +57,10 @@ mod tests {
     }
 
     #[test]
-    fn encodes_short_i2s_reads_without_lieing_about_the_payload() {
-        let header = PacketHeader::for_payload(7, 12)
-            .expect("whole stereo frames")
-            .encode();
+    fn every_header_declares_the_fixed_packet_geometry() {
+        let header = PacketHeader::new(7).encode();
         assert_eq!(&header[8..12], &7_u32.to_le_bytes());
-        assert_eq!(&header[16..20], &3_u32.to_le_bytes());
-        assert_eq!(&header[20..24], &12_u32.to_le_bytes());
-        assert!(PacketHeader::for_payload(0, 1).is_none());
-        assert!(PacketHeader::for_payload(0, 0).is_none());
+        assert_eq!(&header[16..20], &256_u32.to_le_bytes());
+        assert_eq!(&header[20..24], &1024_u32.to_le_bytes());
     }
 }

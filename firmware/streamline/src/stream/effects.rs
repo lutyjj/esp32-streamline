@@ -4,8 +4,6 @@
 //! FreeRTOS delays — and report their own failures. The engines decide policy
 //! only, so the same code runs against fakes in host tests.
 
-use crate::protocol::PAYLOAD_BYTES;
-
 /// A source read failed. The source has already reported the cause.
 pub struct ReadFailed;
 
@@ -15,11 +13,13 @@ pub struct SendFailed {
     pub secure_handshake: bool,
 }
 
-/// One captured PCM packet, filled from the I2S input.
+/// Captured PCM bytes, filled from the I2S input.
 pub trait PcmSource {
-    /// Read one packet and return the byte count. A short read returns fewer
-    /// than [`PAYLOAD_BYTES`]; a failure returns [`ReadFailed`].
-    fn read(&mut self, buffer: &mut [u8; PAYLOAD_BYTES]) -> Result<usize, ReadFailed>;
+    /// Fill the start of `buffer` and return the byte count. A read may return
+    /// fewer bytes than the buffer holds, including zero; the capture engine
+    /// owns coalescing them into whole packets. A failure returns
+    /// [`ReadFailed`].
+    fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ReadFailed>;
 }
 
 /// One framed packet sent over the transport selected at boot.

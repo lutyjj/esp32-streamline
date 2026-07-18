@@ -35,6 +35,10 @@ offset  size  field
 
 Payload starts immediately after the 24-byte header.
 
+Every packet carries exactly 256 frames. The firmware coalesces shorter
+hardware reads into whole packets before framing, so `frames` and
+`payload bytes` are constant on the wire.
+
 The deployed HTTP WAV bridge is intentionally a single-format endpoint: it accepts
 only the 48 kHz, stereo, 16-bit, 256-frame format above. A different source format
 must use a separate bridge instance or a future protocol version that also defines
@@ -50,8 +54,9 @@ timeline when a packet cannot be recovered before its playout deadline.
 [`pcm-frame-vectors.json`](pcm-frame-vectors.json) proves the Rust encoder
 (`firmware/streamline/src/protocol.rs`) and the Python parser
 (`bridge/src/streamline_bridge/protocol.py`) agree byte for byte. It lists valid
-frames the encoder emits — across the sequence range and short whole-frame reads
-— and malformed frames the parser must reject, one per failure category. Both
+full 256-frame packets across the sequence range, and malformed frames the
+parser must reject, one per failure category — including short packets, which
+the encoder cannot represent. Both
 component test suites consume it. Regenerate it with `make firmware-pcm-frame-vectors`
 after a protocol change: `firmware-test` fails until the file matches the
 encoder, and `bridge-test` fails until the parser matches the file.

@@ -1,6 +1,4 @@
-import { copyText } from '../lib/custody';
-import { toast } from '../state/toasts';
-import { Button } from './Button';
+import { CopyButton } from './CopyButton';
 import { RememberSwitch } from './RememberSwitch';
 
 /**
@@ -23,16 +21,9 @@ export function KeyReveal({
       <div class="keyblock">{secret}</div>
       <div class="inputrow inputrow-center">
         <RememberSwitch checked={remember} onChange={onRemember} />
-        <Button
-          onClick={() =>
-            copyText(secret).then(
-              () => toast(copiedToast, 'ok'),
-              (err) => toast(err.message, 'err'),
-            )
-          }
-        >
+        <CopyButton value={secret} copied={copiedToast}>
           Copy key
-        </Button>
+        </CopyButton>
       </div>
     </>
   );

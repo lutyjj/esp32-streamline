@@ -1,49 +1,34 @@
 /**
- * Coherent base shapes for the device API, typed against the generated
- * client so a contract change fails `tsc` here. Unit tests and the fake
- * device in this folder both build on them.
+ * Device fixtures derived from the contract's canonical example device: the
+ * artifact's `StatusResponse` and `ConfigResponse` schema examples (built by
+ * the firmware from its real DTOs), plus the deep-merge overrides unit tests
+ * and the fake device layer on top. The typed bindings below are the drift
+ * gate: an example that stops satisfying the generated types fails `tsc`.
  */
 
+import contract from '../../../docs/openapi.json';
 import type { DeviceConfig, DeviceStatus, TransportStatus } from '../lib/api';
 
-/** A cleartext transport status; override the fields a test cares about. */
+// A single narrowing cast, not `as unknown`: JSON imports widen enum values
+// to `string`, but the structures must still line up, so a missing or
+// mistyped example field fails `tsc` here.
+const STATUS_EXAMPLE = contract.components.schemas.StatusResponse.example as DeviceStatus;
+const CONFIG_EXAMPLE = contract.components.schemas.ConfigResponse.example as DeviceConfig;
+
+/** The example device's cleartext transport; override the fields a test cares about. */
 export function transportStatus(overrides: Partial<TransportStatus> = {}): TransportStatus {
-  return {
-    contract_version: 1,
-    mode: 'cleartext',
-    active_key_id: null,
-    pending_key_id: null,
-    pending_verified: false,
-    rollback_key_id: null,
-    ...overrides,
-  };
+  return { ...structuredClone(CONFIG_EXAMPLE.transport), ...overrides };
 }
 
-/**
- * A provisioned device's settings with a configured bridge target; override the
- * fields the test cares about.
- */
+/** The example device's stored settings; override the fields the test cares about. */
 export function deviceConfig(overrides: Partial<DeviceConfig> = {}): DeviceConfig {
-  return {
-    device_name: '',
-    ssid: 'home',
-    target_host: '192.0.2.20',
-    target_port: 39000,
-    transport: transportStatus(),
-    auto_update_schedule: 'daily',
-    input_line: 2,
-    input_gain: 0,
-    adc_attenuation_db: 9,
-    analog_passthrough_enabled: false,
-    led_roles: [],
-    config_source: 'nvs',
-    ...overrides,
-  };
+  return { ...structuredClone(CONFIG_EXAMPLE), ...overrides };
 }
 
 /**
- * A healthy provisioned device; override the fields the test cares about.
- * Nested `wifi`/`metrics`/… overrides merge into the defaults.
+ * The example device: healthy, provisioned, streaming. Override the fields
+ * the test cares about; nested `wifi`/`metrics`/… overrides merge into the
+ * example's values.
  */
 export function deviceStatus(
   overrides: Partial<
@@ -63,120 +48,17 @@ export function deviceStatus(
   } = {},
 ): DeviceStatus {
   const { wifi, target, audio, metrics, diagnostics, system, ota, health, ...top } = overrides;
+  const base = structuredClone(STATUS_EXAMPLE);
   return {
-    firmware_version: '0.4.0',
-    device_name: '',
-    mode: 'provisioned',
-    config_source: 'nvs',
-    web_server: true,
-    configuration_writable: true,
-    auth_required: true,
-    capabilities: {
-      board_id: 'ai-thinker-esp32-audio-kit-v2-2-es8388',
-      board: 'Ai-Thinker ESP32 Audio Kit v2.2 (ES8388)',
-      codec: { driver: 'es8388', i2c_address: 0x10 },
-      pins: {
-        i2c: { sda: 33, scl: 32 },
-        i2s: { mclk: 0, bclk: 27, ws: 25, din: 35 },
-      },
-      leds: [
-        {
-          id: 'status',
-          label: 'Status light (D4)',
-          gpio: 22,
-          active_low: false,
-          default_role: 'status',
-        },
-      ],
-      analog_passthrough: { output_line: 2, label: '3.5 mm output' },
-      input_lines: [
-        { line: 2, label: 'Line 2 — 3.5 mm jack' },
-        { line: 1, label: 'Line 1 — header pins' },
-      ],
-      input_gain_max: 100,
-      adc_atten_max_db: 48,
-    },
-    wifi: {
-      hostname: 'streamline-0000.local',
-      ssid: 'home',
-      status: 'connected',
-      sta_ip: '192.0.2.10',
-      ap_ip: '',
-      rssi: -55,
-      ...wifi,
-    },
-    target: { target_host: '192.0.2.20', target_port: 39000, transport: 'tcp', ...target },
-    audio: {
-      input_line: 2,
-      input_gain: 0,
-      adc_attenuation_db: 9,
-      sample_rate: 44100,
-      channels: 2,
-      bits_per_sample: 16,
-      ...audio,
-    },
-    analog_passthrough: { enabled: false, active: false, fault: null },
-    metrics: {
-      sequence: 1,
-      packets: 0,
-      bytes: 0,
-      read_errors: 0,
-      short_reads: 0,
-      queue_depth: 0,
-      queue_drops_total: 0,
-      stale_drops_total: 0,
-      network_errors_total: 0,
-      tls_handshake_failures_total: 0,
-      reconnects_total: 0,
-      clip_threshold_abs: 32760,
-      peak_abs_left: 0,
-      peak_abs_right: 0,
-      rms_left: 0,
-      rms_right: 0,
-      noise_floor: 0,
-      clipped_samples_total: 0,
-      playing: false,
-      ...metrics,
-    },
-    diagnostics: { reset_reason: 'power-on', last_fallback: '', last_ota: '', ...diagnostics },
-    system: {
-      uptime_seconds: 3600,
-      task_count: 14,
-      heap: {
-        free_bytes: 126000,
-        total_bytes: 323100,
-        minimum_free_bytes: 105000,
-        largest_free_block_bytes: 90000,
-      },
-      nvs: { used_entries: 275, available_entries: 355, total_entries: 756 },
-      ...system,
-    },
-    indicator: { available: true, state: 'ready' },
-    ota: {
-      phase: 'idle',
-      bytes_written: 0,
-      bytes_total: 0,
-      latest_version: '',
-      message: '',
-      busy: false,
-      rollback_available: false,
-      rollback_version: '',
-      ...ota,
-    },
-    health: {
-      status: 'ok',
-      checks: [
-        {
-          id: 'codec',
-          status: 'ok',
-          severity: 'ok',
-          detail: 'The codec answered and is streaming-ready.',
-          remedy: null,
-          fixable: false,
-        },
-      ],
-      ...health,
-    },
+    ...base,
+    wifi: { ...base.wifi, ...wifi },
+    target: { ...base.target, ...target },
+    audio: { ...base.audio, ...audio },
+    metrics: { ...base.metrics, ...metrics },
+    diagnostics: { ...base.diagnostics, ...diagnostics },
+    system: { ...base.system, ...system },
+    ota: { ...base.ota, ...ota },
+    health: { ...base.health, ...health },
     ...top,
   };
 }

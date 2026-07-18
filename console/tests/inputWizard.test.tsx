@@ -58,7 +58,20 @@ describe('InputWizard', () => {
     let finishRestore: (() => void) | undefined;
     setTransport(async (request) => {
       if (request.method === 'GET' && request.url.endsWith('/api/status')) {
-        return jsonResponse(deviceStatus({ auth_required: false, metrics: { rms_left: 20 } }));
+        // A near-silent input: the example device streams, so quiet every
+        // channel the calibration samples.
+        return jsonResponse(
+          deviceStatus({
+            auth_required: false,
+            metrics: {
+              playing: false,
+              rms_left: 20,
+              rms_right: 0,
+              peak_abs_left: 0,
+              peak_abs_right: 0,
+            },
+          }),
+        );
       }
       if (request.method === 'POST' && request.url.endsWith('/api/settings/audio')) {
         const form = await request.formData();

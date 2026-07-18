@@ -27,7 +27,9 @@ BOOT_TIMEOUT = 120.0
 API_TIMEOUT = 60.0
 # Synthetic commissioning credential; it exists only inside throwaway
 # emulated flash copies.
-ADMIN_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef"
+# The canonical admin-key shape: exactly 48 lowercase hex characters. Built
+# from a repeated character so secret scanners see no entropy in a test key.
+ADMIN_KEY = "a" * 48
 
 
 def _hardware_url() -> str | None:

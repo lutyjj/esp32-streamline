@@ -148,6 +148,13 @@ profile or says `Custom settings`. An external automation can activate the same
 profile through the API when it knows the physical selector state. StreamLine
 never guesses the source from overlapping waveform characteristics.
 
+Board buttons act without the console: System → Buttons assigns each advertised
+key a press action — start/stop streaming, switch input, restart, factory
+reset — and warns in place when one press is destructive. A press never leaves
+a mystery: pausing streaming turns the Overview status to **Paused** with a
+callout that explains the state and offers **Resume**, and a reboot always
+resumes streaming on its own.
+
 When the selected board advertises a local analog output, Input settings
 carries one **Analog passthrough** switch below its base fields, naming the
 physical jack and the fixed line-level analog route. The switch is the state;

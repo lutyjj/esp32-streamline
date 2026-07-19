@@ -278,6 +278,45 @@ one role variant and one render rule, not a matrix of every signal against every
 LED. The official ES8388 preset wires one status light on GPIO22; a custom
 descriptor can declare up to eight LEDs.
 
+## Buttons
+
+A board descriptor advertises the buttons it wires as `buttons`, each with a
+stable `id`, a console `label`, a `gpio`, an `active_low` polarity, and a
+`default_action`. The user assigns each button one press action, stored per
+board button id in `button_actions` on the runtime configuration. Every
+action is the press-driven twin of an API capability, so a button can never do
+what a client cannot:
+
+- **toggle_stream** pauses or resumes streaming to the bridge, the same flip
+  as `POST /api/stream`. Capture and the level meters keep running; paused
+  packets consume sequence numbers so the bridge sees an honest timeline gap.
+  The state is runtime-only — a reboot resumes streaming — and `/api/status`
+  reports it under `stream.enabled`.
+- **cycle_input** selects the next advertised input line through the same flow
+  as `POST /api/settings/audio`, returning to custom settings.
+- **restart** and **factory_reset** mirror `POST /api/restart` and
+  `POST /api/factory-reset`. Factory reset is assignable — a physical way back
+  to first-time setup when the device is unreachable — but never a descriptor
+  default, because a simple press has no confirmation step.
+- **none** ignores the press.
+
+A button with no assignment fires its descriptor `default_action`.
+`POST /api/settings/button` takes an `id` and an `action`; the poll task reads
+the live configuration, so a change applies without a reboot. `/api/status`
+reports each button under `capabilities.buttons` and the effective action under
+`button_actions` in `/api/settings`.
+
+A poll task debounces every button through an edge detector that fires exactly
+once per released-to-pressed transition and stays silent about the boot-time
+level, so a button held at power-on — or a line an emulator pins at a constant
+level — never fires. Internal pull resistors are enabled where the pin has
+them; input-only pins (GPIO 34–39) rely on the board's own resistor.
+
+The official ES8388 preset maps its six keys: KEY1 (GPIO36) toggles streaming,
+KEY2 (GPIO13) cycles the input line, KEY6 (GPIO5) restarts, and KEY3–KEY5 stay
+unassigned. A custom descriptor can declare up to eight buttons on any
+input-capable GPIO.
+
 The firmware exports read-only runtime state as JSON at `/api/status` and as
 Prometheus text at `/api/metrics`. Both endpoints read the same in-memory
 identity, network, and streaming counters, plus device-resource headroom —

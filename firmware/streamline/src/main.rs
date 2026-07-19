@@ -22,7 +22,7 @@ use streamline_firmware::adapters::{
 };
 use streamline_firmware::{
     adapters::{
-        codec,
+        buttons, codec,
         http::{self, ApiState, Mode},
         mdns::MdnsAdvertisement,
         nvs::ConfigStore,
@@ -178,6 +178,9 @@ fn main() -> Result<()> {
         state.stream.clone(),
     ) {
         log::warn!("status light unavailable: {error:#}");
+    }
+    if let Err(error) = buttons::start(Arc::clone(&state)) {
+        log::warn!("buttons unavailable: {error:#}");
     }
     let _server = http::start(Arc::clone(&state), captive_portal_address)?;
     #[cfg(not(feature = "qemu"))]

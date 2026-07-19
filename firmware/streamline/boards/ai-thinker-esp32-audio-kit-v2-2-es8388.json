@@ -26,6 +26,47 @@
       "default_role": "status"
     }
   ],
+  "buttons": [
+    {
+      "id": "key1",
+      "label": "Key 1",
+      "gpio": 36,
+      "active_low": true,
+      "default_action": "toggle_stream"
+    },
+    {
+      "id": "key2",
+      "label": "Key 2",
+      "gpio": 13,
+      "active_low": true,
+      "default_action": "cycle_input"
+    },
+    {
+      "id": "key3",
+      "label": "Key 3",
+      "gpio": 19,
+      "active_low": true
+    },
+    {
+      "id": "key4",
+      "label": "Key 4",
+      "gpio": 23,
+      "active_low": true
+    },
+    {
+      "id": "key5",
+      "label": "Key 5",
+      "gpio": 18,
+      "active_low": true
+    },
+    {
+      "id": "key6",
+      "label": "Key 6",
+      "gpio": 5,
+      "active_low": true,
+      "default_action": "restart"
+    }
+  ],
   "analog_passthrough": {
     "output_line": 2,
     "label": "3.5 mm output"

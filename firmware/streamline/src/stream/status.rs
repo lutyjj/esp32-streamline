@@ -32,9 +32,25 @@ pub struct StreamStatus {
     clipped_total: AtomicU64,
     playing: AtomicBool,
     relearn: AtomicBool,
+    /// Streaming pause: while set, captured packets are analyzed for the
+    /// meters but never enqueued. Runtime-only state — a reboot resumes
+    /// streaming — flipped by `POST /api/stream` and the `toggle_stream`
+    /// button action.
+    paused: AtomicBool,
 }
 
 impl StreamStatus {
+    /// Pause or resume enqueuing captured audio. Capture and level analysis
+    /// continue either way, so the meters stay live while paused.
+    pub fn set_streaming_enabled(&self, enabled: bool) {
+        self.paused.store(!enabled, Ordering::Relaxed);
+    }
+
+    /// Whether captured packets are currently allowed onto the wire.
+    pub fn streaming_enabled(&self) -> bool {
+        !self.paused.load(Ordering::Relaxed)
+    }
+
     /// Ask the capture task to restart play detection from scratch. Called
     /// after a live codec change: the idle estimate and thresholds belong to a
     /// different input scale and must be rebuilt before gating the signal.
@@ -149,6 +165,7 @@ impl StreamStatus {
             noise_floor: self.noise_floor.load(Ordering::Relaxed),
             clipped_total: self.clipped_total.load(Ordering::Relaxed),
             playing: self.playing.load(Ordering::Relaxed),
+            streaming_enabled: self.streaming_enabled(),
         }
     }
 }
@@ -173,4 +190,5 @@ pub struct StreamSnapshot {
     pub noise_floor: u32,
     pub clipped_total: u64,
     pub playing: bool,
+    pub streaming_enabled: bool,
 }

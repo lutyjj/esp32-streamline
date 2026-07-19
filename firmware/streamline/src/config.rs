@@ -7,7 +7,8 @@ use std::{collections::BTreeMap, time::Duration};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    board::{Board, Led},
+    board::{Board, Button, Led},
+    button::ButtonAction,
     led::LedRole,
     transport::{TransportError, TransportSettings},
 };
@@ -153,6 +154,7 @@ pub enum ConfigError {
     InvalidAdcAttenuation,
     UnsupportedAnalogPassthrough,
     UnknownLed,
+    UnknownButton,
     MalformedAdminSecret,
     DeviceNameTooLong,
     InvalidTransport(TransportError),
@@ -194,6 +196,11 @@ pub struct RuntimeConfig {
     /// LED control existed, so it defaults to empty.
     #[serde(default)]
     pub led_roles: BTreeMap<String, LedRole>,
+    /// Per-button action assignments keyed by board button id. A button absent
+    /// here fires its descriptor default action. Missing on installations
+    /// provisioned before button control existed, so it defaults to empty.
+    #[serde(default)]
+    pub button_actions: BTreeMap<String, ButtonAction>,
 }
 
 impl RuntimeConfig {
@@ -220,6 +227,9 @@ impl RuntimeConfig {
         if self.led_roles.keys().any(|id| !board.has_led(id)) {
             return Err(ConfigError::UnknownLed);
         }
+        if self.button_actions.keys().any(|id| !board.has_button(id)) {
+            return Err(ConfigError::UnknownButton);
+        }
         Ok(())
     }
 
@@ -229,6 +239,7 @@ impl RuntimeConfig {
             self.analog_passthrough_enabled = false;
         }
         self.led_roles.retain(|id, _| board.has_led(id));
+        self.button_actions.retain(|id, _| board.has_button(id));
         self
     }
 
@@ -239,6 +250,15 @@ impl RuntimeConfig {
             .get(&led.id)
             .copied()
             .unwrap_or(led.default_role)
+    }
+
+    /// The action a board button fires: the user's assignment if set, otherwise
+    /// the descriptor default.
+    pub fn button_action(&self, button: &Button) -> ButtonAction {
+        self.button_actions
+            .get(&button.id)
+            .copied()
+            .unwrap_or(button.default_action)
     }
 
     /// Whether any board LED currently renders the device status, so status has
@@ -256,7 +276,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{AudioSettings, AutoUpdateSchedule, ConfigError, NetworkSettings};
-    use crate::board::{self, Board, CodecSpec, I2cPins, I2sPins, InputOption, Led, PinMap};
+    use crate::board::{
+        self, Board, Button, CodecSpec, I2cPins, I2sPins, InputOption, Led, PinMap,
+    };
+    use crate::button::ButtonAction;
     use crate::led::LedRole;
 
     #[test]
@@ -351,6 +374,7 @@ mod tests {
                 },
             },
             leds: Vec::new(),
+            buttons: Vec::new(),
             analog_passthrough: None,
             input_lines: vec![InputOption {
                 line: 7,
@@ -392,6 +416,7 @@ mod tests {
             },
             analog_passthrough_enabled: false,
             led_roles: BTreeMap::new(),
+            button_actions: BTreeMap::new(),
         }
     }
 
@@ -537,6 +562,68 @@ mod tests {
         assert!(config.shows_status_indicator(&board));
         config.led_roles.insert("status".to_owned(), LedRole::Off);
         assert!(!config.shows_status_indicator(&board));
+    }
+
+    #[test]
+    fn rejects_an_action_for_a_button_the_board_does_not_have() {
+        let mut config = sample_runtime_config();
+        config
+            .button_actions
+            .insert("nonexistent".to_owned(), ButtonAction::Restart);
+        assert_eq!(
+            config.validate(&default_board()),
+            Err(ConfigError::UnknownButton)
+        );
+    }
+
+    #[test]
+    fn board_compatibility_drops_actions_for_absent_buttons() {
+        let mut config = sample_runtime_config();
+        config
+            .button_actions
+            .insert("key1".to_owned(), ButtonAction::Restart);
+        config
+            .button_actions
+            .insert("ghost".to_owned(), ButtonAction::Restart);
+
+        let compatible = config.with_board_compatible_with(&default_board());
+
+        assert_eq!(
+            compatible.button_actions.get("key1"),
+            Some(&ButtonAction::Restart)
+        );
+        assert!(!compatible.button_actions.contains_key("ghost"));
+    }
+
+    #[test]
+    fn effective_action_prefers_the_assignment_then_the_descriptor_default() {
+        let button = Button {
+            id: "key1".to_owned(),
+            label: "Key 1".to_owned(),
+            gpio: 36,
+            active_low: true,
+            default_action: ButtonAction::ToggleStream,
+        };
+        let mut config = sample_runtime_config();
+        assert_eq!(config.button_action(&button), ButtonAction::ToggleStream);
+        config
+            .button_actions
+            .insert("key1".to_owned(), ButtonAction::None);
+        assert_eq!(config.button_action(&button), ButtonAction::None);
+    }
+
+    #[test]
+    fn persisted_configuration_without_button_actions_defaults_empty() {
+        let mut value = serde_json::to_value(sample_runtime_config()).expect("serializable config");
+        value
+            .as_object_mut()
+            .expect("config object")
+            .remove("button_actions");
+
+        let decoded: super::RuntimeConfig =
+            serde_json::from_value(value).expect("compatible persisted config");
+
+        assert!(decoded.button_actions.is_empty());
     }
 
     #[test]

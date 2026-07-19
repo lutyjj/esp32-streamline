@@ -67,6 +67,9 @@ pub struct AnalogPassthroughTelemetry {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct StreamTelemetry {
+    /// Whether streaming is enabled (`POST /api/stream`); capture and the
+    /// meters continue while paused.
+    pub enabled: bool,
     pub sequence: u32,
     pub packets_total: u64,
     pub bytes_total: u64,

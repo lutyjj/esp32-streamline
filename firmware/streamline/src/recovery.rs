@@ -25,6 +25,7 @@ pub fn setup_baseline(board: &Board, persisted: Option<RuntimeConfig>) -> Runtim
         },
         analog_passthrough_enabled: false,
         led_roles: Default::default(),
+        button_actions: Default::default(),
     })
 }
 
@@ -58,6 +59,7 @@ pub fn replace_wifi(
         audio: current.audio,
         analog_passthrough_enabled: current.analog_passthrough_enabled,
         led_roles: current.led_roles,
+        button_actions: current.button_actions,
     }
 }
 
@@ -103,6 +105,10 @@ mod tests {
                 "status".to_owned(),
                 crate::led::LedRole::Off,
             )]),
+            button_actions: std::collections::BTreeMap::from([(
+                "key1".to_owned(),
+                crate::button::ButtonAction::Restart,
+            )]),
         }
     }
 
@@ -144,6 +150,7 @@ mod tests {
             before.analog_passthrough_enabled
         );
         assert_eq!(after.led_roles, before.led_roles);
+        assert_eq!(after.button_actions, before.button_actions);
     }
 
     #[test]

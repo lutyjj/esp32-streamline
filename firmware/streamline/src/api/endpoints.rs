@@ -329,6 +329,19 @@ endpoint!(
     )
 );
 endpoint!(
+    SET_BUTTON,
+    set_button,
+    Post,
+    post,
+    "/api/settings/button",
+    mutation(200, Ack),
+    summary = "Assign an action to a board button",
+    request_body(
+        content = ButtonSettingsRequest,
+        content_type = "application/x-www-form-urlencoded"
+    )
+);
+endpoint!(
     SET_AUDIO_PROFILES,
     set_audio_profiles,
     Post,
@@ -390,6 +403,19 @@ endpoint!(
     summary = "Set the automatic update schedule",
     request_body(
         content = FirmwareSettingsRequest,
+        content_type = "application/x-www-form-urlencoded"
+    )
+);
+endpoint!(
+    SET_STREAM,
+    set_stream,
+    Post,
+    post,
+    "/api/stream",
+    mutation(200, Ack),
+    summary = "Pause or resume streaming to the bridge",
+    request_body(
+        content = StreamRequest,
         content_type = "application/x-www-form-urlencoded"
     )
 );
@@ -487,11 +513,13 @@ pub const ENDPOINTS: &[Endpoint] = &[
     SET_AUDIO,
     SET_ANALOG_PASSTHROUGH,
     SET_LED,
+    SET_BUTTON,
     SET_AUDIO_PROFILES,
     SET_AUDIO_PROFILE,
     SET_NAME,
     SET_ADMIN_KEY,
     SET_FIRMWARE,
+    SET_STREAM,
     OTA_CHECK,
     OTA_UPDATE,
     OTA_ROLLBACK,
@@ -508,7 +536,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]

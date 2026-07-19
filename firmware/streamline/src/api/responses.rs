@@ -67,6 +67,8 @@ pub struct ConfigResponse<'a> {
     pub analog_passthrough_enabled: bool,
     /// The effective role of every board LED, in descriptor order.
     pub led_roles: Vec<LedRoleStatus<'a>>,
+    /// The effective action of every board button, in descriptor order.
+    pub button_actions: Vec<ButtonActionStatus<'a>>,
     pub auto_update_schedule: AutoUpdateScheduleRequest,
     pub config_source: &'a str,
 }
@@ -76,6 +78,13 @@ pub struct ConfigResponse<'a> {
 pub struct LedRoleStatus<'a> {
     pub id: &'a str,
     pub role: crate::led::LedRole,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct ButtonActionStatus<'a> {
+    pub id: &'a str,
+    pub action: crate::button::ButtonAction,
 }
 
 #[derive(Serialize)]
@@ -124,6 +133,7 @@ pub struct StatusResponse<'a> {
     pub target: TargetStatus<'a>,
     pub audio: AudioStatus,
     pub analog_passthrough: AnalogPassthroughStatus<'a>,
+    pub stream: StreamControlStatus,
     pub metrics: MetricsStatus,
     pub diagnostics: DiagnosticsStatus<'a>,
     pub system: SystemStatus,
@@ -140,6 +150,7 @@ pub struct CapabilitiesStatus<'a> {
     pub codec: CodecStatus<'a>,
     pub pins: PinMapStatus,
     pub leds: Vec<LedCapabilityStatus<'a>>,
+    pub buttons: Vec<ButtonCapabilityStatus<'a>>,
     pub analog_passthrough: Option<AnalogPassthroughCapabilityStatus<'a>>,
     pub input_lines: Vec<InputLineStatus<'a>>,
     pub input_gain_max: u8,
@@ -188,6 +199,16 @@ pub struct LedCapabilityStatus<'a> {
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct ButtonCapabilityStatus<'a> {
+    pub id: &'a str,
+    pub label: &'a str,
+    pub gpio: u8,
+    pub active_low: bool,
+    pub default_action: crate::button::ButtonAction,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct InputLineStatus<'a> {
     pub line: u8,
     pub label: &'a str,
@@ -230,6 +251,17 @@ impl<'a> CapabilitiesStatus<'a> {
                     gpio: led.gpio,
                     active_low: led.active_low,
                     default_role: led.default_role,
+                })
+                .collect(),
+            buttons: board
+                .buttons
+                .iter()
+                .map(|button| ButtonCapabilityStatus {
+                    id: button.id.as_str(),
+                    label: button.label.as_str(),
+                    gpio: button.gpio,
+                    active_low: button.active_low,
+                    default_action: button.default_action,
                 })
                 .collect(),
             analog_passthrough: board.analog_passthrough.as_ref().map(|capability| {
@@ -364,6 +396,14 @@ pub struct AnalogPassthroughStatus<'a> {
     pub fault: Option<&'a str>,
 }
 
+/// Runtime streaming control, flipped by `POST /api/stream` and the
+/// `toggle_stream` button action. Not persisted: a reboot resumes streaming.
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct StreamControlStatus {
+    pub enabled: bool,
+}
+
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct IndicatorStatus {
@@ -388,6 +428,12 @@ mod tests {
         ));
         assert!(json.contains(
             r#""leds":[{"id":"status","label":"Status light (D4)","gpio":22,"active_low":true,"default_role":"status"}]"#
+        ));
+        assert!(json.contains(
+            r#""buttons":[{"id":"key1","label":"Key 1","gpio":36,"active_low":true,"default_action":"toggle_stream"}"#
+        ));
+        assert!(json.contains(
+            r#"{"id":"key6","label":"Key 6","gpio":5,"active_low":true,"default_action":"restart"}]"#
         ));
         assert!(json.contains(r#""analog_passthrough":{"output_line":2,"label":"3.5 mm output"}"#));
     }

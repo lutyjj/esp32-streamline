@@ -6,6 +6,9 @@ mod persistence;
 mod requests;
 mod responses;
 
+/// The audio mutation flow, shared with the button adapter's `cycle_input`.
+pub(in crate::adapters) use handlers::audio::set_audio;
+
 use std::{
     fmt::Debug,
     net::Ipv4Addr,

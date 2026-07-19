@@ -49,24 +49,14 @@ pub(super) fn register_writes(
         // Ok(true) means the settings were applied live.
         let result = (|| -> Result<bool, MutationError> {
             let form: api::AudioSettingsRequest = form(&mut request)?;
-            let current = lock_config(&state_for_audio)?.clone();
-            let audio = AudioSettings {
-                input_line: form.input_line,
-                input_gain: form.input_gain,
-                adc_attenuation_db: form.adc_attenuation_db,
-            }
-            .validate(state_for_audio.board.as_ref())
-            .map_err(|error| {
-                MutationError::InvalidInput(format!("invalid audio settings: {error:?}"))
-            })?;
-            let mut catalog = lock_audio_profiles(&state_for_audio)?.clone();
-            catalog.active_profile_id = None;
-            save_configuration_and_profiles(
+            set_audio(
                 &state_for_audio,
-                RuntimeConfig { audio, ..current },
-                catalog,
-            )?;
-            apply_audio_live(&state_for_audio, audio)
+                AudioSettings {
+                    input_line: form.input_line,
+                    input_gain: form.input_gain,
+                    adc_attenuation_db: form.adc_attenuation_db,
+                },
+            )
         })();
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
@@ -142,6 +132,24 @@ pub(super) fn register_writes(
             Err(error) => mutation_error(request, error),
         }
     })
+}
+
+/// Validate, persist, and apply new audio settings, returning to custom
+/// settings (no active profile). `Ok(true)` means they were applied live;
+/// `Ok(false)` means the codec is down and a reboot applies them. Shared by
+/// the HTTP handler above and the `cycle_input` button action.
+pub(in crate::adapters) fn set_audio(
+    state: &ApiState,
+    audio: AudioSettings,
+) -> Result<bool, MutationError> {
+    let current = lock_config(state)?.clone();
+    let audio = audio.validate(state.board.as_ref()).map_err(|error| {
+        MutationError::InvalidInput(format!("invalid audio settings: {error:?}"))
+    })?;
+    let mut catalog = lock_audio_profiles(state)?.clone();
+    catalog.active_profile_id = None;
+    save_configuration_and_profiles(state, RuntimeConfig { audio, ..current }, catalog)?;
+    apply_audio_live(state, audio)
 }
 
 /// Apply already-persisted settings to the codec and reset play detection.

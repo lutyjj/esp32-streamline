@@ -8,7 +8,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::led::LedRole;
+use crate::{button::ButtonAction, led::LedRole};
 
 pub mod catalog;
 pub mod selection;
@@ -24,6 +24,11 @@ pub const MAX_DESCRIPTOR_BYTES: usize = 3_072;
 /// Most LEDs a single board descriptor may advertise. Bounds the descriptor and
 /// the per-LED role map that rides in the persisted configuration record.
 pub const MAX_LEDS: usize = 8;
+
+/// Most buttons a single board descriptor may advertise. Bounds the descriptor
+/// and the per-button action map that rides in the persisted configuration
+/// record.
+pub const MAX_BUTTONS: usize = 8;
 
 /// Codec hardware mounted on the board.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -82,6 +87,29 @@ pub struct Led {
     pub default_role: LedRole,
 }
 
+/// One board button wired to an ESP32 input GPIO, with the action it fires
+/// until the user assigns another.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct Button {
+    /// Stable id, unique within the board, used to address the button in
+    /// settings.
+    pub id: String,
+    /// Human-readable name the console shows for this button.
+    pub label: String,
+    pub gpio: u8,
+    /// `true` when the GPIO reads low while the button is held. The firmware
+    /// enables the matching internal pull where the pin has one; input-only
+    /// pins (GPIO 34–39) rely on the board's own resistor.
+    #[serde(default)]
+    pub active_low: bool,
+    /// Action fired until the user assigns another, so a board author can ship
+    /// useful presses while leaving spare buttons inert.
+    #[serde(default)]
+    pub default_action: ButtonAction,
+}
+
 /// One selectable input, with the label the console shows for it.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
@@ -120,6 +148,10 @@ pub struct Board {
     /// board wires none.
     #[serde(default)]
     pub leds: Vec<Led>,
+    /// Board buttons the user can assign actions to, in console order. Empty
+    /// when the board wires none.
+    #[serde(default)]
+    pub buttons: Vec<Button>,
     /// Local analog monitoring output, absent when the board has no supported
     /// route.
     #[serde(default)]
@@ -151,6 +183,10 @@ pub enum BoardError {
     MissingLedId,
     MissingLedLabel,
     DuplicateLedId,
+    TooManyButtons,
+    MissingButtonId,
+    MissingButtonLabel,
+    DuplicateButtonId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -222,6 +258,24 @@ impl Board {
                 return Err(BoardError::DuplicateLedId);
             }
         }
+        if self.buttons.len() > MAX_BUTTONS {
+            return Err(BoardError::TooManyButtons);
+        }
+        for (i, button) in self.buttons.iter().enumerate() {
+            if button.id.is_empty() {
+                return Err(BoardError::MissingButtonId);
+            }
+            if button.label.is_empty() {
+                return Err(BoardError::MissingButtonLabel);
+            }
+            validate_input_gpio(button.gpio)?;
+            if self.buttons[i + 1..]
+                .iter()
+                .any(|other| other.id == button.id)
+            {
+                return Err(BoardError::DuplicateButtonId);
+            }
+        }
         let gpios = self.gpios();
         for (i, a) in gpios.iter().enumerate() {
             if gpios[i + 1..].contains(a) {
@@ -274,7 +328,18 @@ impl Board {
         self.led(id).is_some()
     }
 
-    /// Every GPIO the descriptor claims: the six audio pins plus each LED.
+    /// The board button with this id, if the descriptor advertises one.
+    pub fn button(&self, id: &str) -> Option<&Button> {
+        self.buttons.iter().find(|button| button.id == id)
+    }
+
+    /// Whether `id` names one of this board's buttons.
+    pub fn has_button(&self, id: &str) -> bool {
+        self.button(id).is_some()
+    }
+
+    /// Every GPIO the descriptor claims: the six audio pins plus each LED and
+    /// button.
     fn gpios(&self) -> Vec<u8> {
         let mut gpios = vec![
             self.pins.i2c.sda,
@@ -285,6 +350,7 @@ impl Board {
             self.pins.i2s.din,
         ];
         gpios.extend(self.leds.iter().map(|led| led.gpio));
+        gpios.extend(self.buttons.iter().map(|button| button.gpio));
         gpios
     }
 }
@@ -341,7 +407,10 @@ fn validate_input_gpio(gpio: u8) -> Result<(), BoardError> {
     }
 }
 
-const fn is_output_gpio(gpio: u8) -> bool {
+/// Whether this GPIO has an output-capable pad. The same pads carry the
+/// ESP32's internal pull resistors, so this also tells an input user whether
+/// an internal pull is available; GPIO 34–39 are input-only and have none.
+pub const fn is_output_gpio(gpio: u8) -> bool {
     matches!(gpio, 0..=5 | 12..=23 | 25..=33)
 }
 
@@ -368,6 +437,10 @@ mod tests {
                     {"id":"status","label":"Status light","gpio":22,"default_role":"status"},
                     {"id":"aux","label":"Aux","gpio":21}
                 ],
+                "buttons":[
+                    {"id":"key1","label":"Key 1","gpio":36,"active_low":true,"default_action":"toggle_stream"},
+                    {"id":"key2","label":"Key 2","gpio":18,"active_low":true}
+                ],
                 "input_lines":[{"line":2,"label":"only input"}],
                 "input_gain_max":10,
                 "adc_atten_max_db":6
@@ -390,6 +463,17 @@ mod tests {
             Some(LedRole::Off)
         );
         assert!(!board.has_led("missing"));
+        assert!(board.has_button("key1"));
+        assert_eq!(
+            board.button("key1").map(|button| button.default_action),
+            Some(ButtonAction::ToggleStream)
+        );
+        // An omitted action defaults to None, so a spare button stays inert.
+        assert_eq!(
+            board.button("key2").map(|button| button.default_action),
+            Some(ButtonAction::None)
+        );
+        assert!(!board.has_button("missing"));
     }
 
     #[test]
@@ -459,6 +543,7 @@ mod tests {
                 },
             },
             leds: Vec::new(),
+            buttons: Vec::new(),
             analog_passthrough: None,
             input_lines: vec![
                 InputOption {
@@ -577,11 +662,77 @@ mod tests {
                     din: 34,
                 },
             },
-            ..duplicate_lines
+            ..duplicate_lines.clone()
         };
         assert_eq!(
             invalid_output.validate(),
             Err(BoardError::InvalidOutputGpio)
         );
+
+        let button = |id: &str, gpio: u8| Button {
+            id: id.to_owned(),
+            label: id.to_uppercase(),
+            gpio,
+            active_low: true,
+            default_action: ButtonAction::None,
+        };
+
+        // A button may sit on an input-only pin; an LED may not (asserted
+        // above), and a non-GPIO number is rejected for both.
+        let button_on_input_only_gpio = Board {
+            buttons: vec![button("key1", 36)],
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(
+            button_on_input_only_gpio.validate(),
+            Err(BoardError::DuplicateInputLine),
+            "GPIO 36 is a valid button pin; only the line duplication remains"
+        );
+        let button_on_non_gpio = Board {
+            buttons: vec![button("key1", 6)],
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(
+            button_on_non_gpio.validate(),
+            Err(BoardError::InvalidInputGpio)
+        );
+
+        let duplicate_button_gpio = Board {
+            buttons: vec![button("key1", 14)],
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(
+            duplicate_button_gpio.validate(),
+            Err(BoardError::DuplicateGpio)
+        );
+
+        let duplicate_button_id = Board {
+            buttons: vec![button("key1", 18), button("key1", 19)],
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(
+            duplicate_button_id.validate(),
+            Err(BoardError::DuplicateButtonId)
+        );
+
+        let blank_button_label = Board {
+            buttons: vec![Button {
+                label: String::new(),
+                ..button("key1", 18)
+            }],
+            ..duplicate_lines.clone()
+        };
+        assert_eq!(
+            blank_button_label.validate(),
+            Err(BoardError::MissingButtonLabel)
+        );
+
+        let too_many_buttons = Board {
+            buttons: (0..MAX_BUTTONS as u8 + 1)
+                .map(|i| button(&format!("key{i}"), 18))
+                .collect(),
+            ..duplicate_lines
+        };
+        assert_eq!(too_many_buttons.validate(), Err(BoardError::TooManyButtons));
     }
 }

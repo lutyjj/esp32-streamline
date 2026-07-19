@@ -113,7 +113,9 @@ impl CaptureEngine {
         status.set_playing(playing);
         status.set_noise_floor(self.detector.noise_floor());
         let sequence = status.next_sequence();
-        if !playing {
+        // A pause consumes sequence numbers exactly like silence, so the
+        // bridge sees an honest timeline gap when streaming resumes.
+        if !playing || !status.streaming_enabled() {
             return;
         }
         let Some(queue) = queue else {
@@ -337,6 +339,47 @@ mod tests {
         // packet is numbered past the silent gap, not from zero.
         let (packet, _) = queue.pop();
         assert!(sequence_of(&packet) >= 50);
+    }
+
+    #[test]
+    fn a_pause_gates_the_queue_while_meters_and_the_timeline_continue() {
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        let mut engine = CaptureEngine::new();
+        warm_to_playing(&mut engine, &queue, &status);
+        let sequence_before = status.snapshot().sequence;
+
+        status.set_streaming_enabled(false);
+        let mut source = ConstantSource { sample: LOUD };
+        for _ in 0..5 {
+            engine.step(
+                &mut source,
+                Some(&queue),
+                &status,
+                &RecordingDelay::default(),
+            );
+        }
+
+        let snapshot = status.snapshot();
+        // The input still plays and the meters still measure it; the pause
+        // consumes sequence numbers while keeping every packet off the queue.
+        assert!(snapshot.playing);
+        assert!(!snapshot.streaming_enabled);
+        assert_eq!(snapshot.peak_left, u32::from(LOUD as u16));
+        assert_eq!(snapshot.sequence, sequence_before + 5);
+
+        // Resuming streams again. The first packet on the queue is numbered
+        // after the honest pause gap — proof the paused packets never reached
+        // the wire and the timeline stayed truthful.
+        status.set_streaming_enabled(true);
+        engine.step(
+            &mut source,
+            Some(&queue),
+            &status,
+            &RecordingDelay::default(),
+        );
+        let (packet, _) = queue.pop();
+        assert_eq!(sequence_of(&packet), sequence_before + 5);
     }
 
     #[test]

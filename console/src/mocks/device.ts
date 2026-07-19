@@ -9,7 +9,12 @@
 
 import { type HttpHandler, HttpResponse, http, type JsonBodyType } from 'msw';
 import contract from '../../../docs/openapi.json';
-import type { AutoUpdateScheduleRequest, LedRole, TransportMode } from '../generated/api';
+import type {
+  AutoUpdateScheduleRequest,
+  ButtonAction,
+  LedRole,
+  TransportMode,
+} from '../generated/api';
 import type {
   AudioProfileCatalog,
   BoardCatalog,
@@ -98,6 +103,16 @@ export class FakeDevice {
         const led = this.config.led_roles.find((role) => role.id === body.id);
         if (!led) return reject(400, `unknown LED "${body.id}"`);
         led.role = (body.role ?? 'off') as LedRole;
+        return { ok: true };
+      }),
+      this.write('/api/settings/button', (body) => {
+        const button = this.config.button_actions.find((entry) => entry.id === body.id);
+        if (!button) return reject(400, `unknown button "${body.id}"`);
+        button.action = (body.action ?? 'none') as ButtonAction;
+        return { ok: true };
+      }),
+      this.write('/api/stream', (body) => {
+        this.status.stream.enabled = body.enabled === 'true';
         return { ok: true };
       }),
       this.write('/api/settings/board', (body) => this.selectBoard(body)),
@@ -233,8 +248,12 @@ export class FakeDevice {
     if (metrics.playing) {
       const peak = PEAK_STEPS[this.poll % PEAK_STEPS.length];
       metrics.sequence += 1;
-      metrics.packets += 100;
-      metrics.bytes += 176400;
+      // A pause keeps capture and the meters running but nothing on the wire,
+      // exactly like the firmware's capture gate.
+      if (this.status.stream.enabled) {
+        metrics.packets += 100;
+        metrics.bytes += 176400;
+      }
       metrics.peak_abs_left = peak;
       metrics.peak_abs_right = peak - 900;
       metrics.rms_left = Math.round(peak * 0.55);

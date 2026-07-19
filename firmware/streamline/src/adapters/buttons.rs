@@ -60,7 +60,9 @@ pub fn start(state: Arc<ApiState>) -> Result<()> {
     }
     std::thread::Builder::new()
         .name("buttons".to_owned())
-        .stack_size(8_192)
+        // cycle_input serializes a complete state generation, the same work
+        // the HTTP server sizes its stack for.
+        .stack_size(16_384)
         .spawn(move || loop {
             for polled in &mut buttons {
                 let pressed = polled.input.is_low() == polled.active_low;

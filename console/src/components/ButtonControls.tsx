@@ -39,7 +39,7 @@ export function ButtonControls({
       title="Buttons"
       lead="Choose what a press of each button does. Changes apply immediately."
     >
-      <div class="btnlist">
+      <div class="buttonlist">
         {rows.map((row) => (
           <ButtonField key={row.id} row={row} disabled={!writable || !provisioned} />
         ))}
@@ -70,15 +70,15 @@ function ButtonField({ row, disabled }: { row: ButtonRow; disabled: boolean }) {
 
   const destructive = DESTRUCTIVE_ACTIONS.has(action);
   return (
-    <div class="btnrow">
-      <div class="btnrow-label">
-        <span class="btnrow-name">{row.label}</span>
-        <span class={destructive ? 'btnrow-sub warn' : 'btnrow-sub'}>
+    <div class="buttonrow">
+      <div class="buttonrow-label">
+        <span class="buttonrow-name">{row.label}</span>
+        <span class={destructive ? 'buttonrow-sub warn' : 'buttonrow-sub'}>
           {BUTTON_ACTION_SUMMARY[action]}
           {destructive && ' — one press, no confirmation'}
         </span>
       </div>
-      <div class="btnrow-control">
+      <div class="buttonrow-control">
         <ActionState state={transact.state} />
         <select
           aria-label={`${row.label} action`}

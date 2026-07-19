@@ -11,7 +11,7 @@ const key1: ButtonCapabilityStatus = {
   default_action: 'toggle_stream',
 };
 
-const select = (host: HTMLElement) => host.querySelector<HTMLSelectElement>('.btnrow select');
+const select = (host: HTMLElement) => host.querySelector<HTMLSelectElement>('.buttonrow select');
 
 describe('ButtonControls', () => {
   it('is absent when the board wires no buttons', () => {
@@ -49,7 +49,7 @@ describe('ButtonControls', () => {
       />,
       host,
     );
-    expect(host.querySelector('.btnrow-sub.warn')?.textContent).toContain(
+    expect(host.querySelector('.buttonrow-sub.warn')?.textContent).toContain(
       'one press, no confirmation',
     );
   });

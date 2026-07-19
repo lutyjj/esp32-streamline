@@ -52,6 +52,14 @@ def _led_role(device: EmulatedDevice, led_id: str) -> str:
     return str(roles[led_id])
 
 
+def _button_action(device: EmulatedDevice, button_id: str) -> str:
+    code, body = device.api.fetch("/api/settings")
+    assert code == 200, f"GET /api/settings returned HTTP {code}"
+    actions = {entry["id"]: entry["action"] for entry in json.loads(body)["button_actions"]}
+    assert button_id in actions, f"settings did not report button {button_id!r}: {actions}"
+    return str(actions[button_id])
+
+
 def _wait_for_ota_phase(device: EmulatedDevice, phase: str, timeout: float) -> dict[str, Any]:
     """Poll `/api/status` until the OTA worker reports `phase`.
 
@@ -177,6 +185,53 @@ def test_led_role_assignment_persists_and_is_reversible(
     assert _led_role(rebooted, led_id) == "status"
     code, body = rebooted.api.fetch("/api/status")
     assert json.loads(body)["indicator"]["available"] is True
+
+
+def test_button_action_assignment_persists_and_is_reversible(
+    provisioned_device: EmulatedDevice, boot_device: Callable[..., EmulatedDevice]
+) -> None:
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    buttons = json.loads(body)["capabilities"]["buttons"]
+    spare = next((button for button in buttons if button["default_action"] == "none"), None)
+    if spare is None:
+        pytest.skip("the emulated board advertises no unassigned button")
+    button_id = spare["id"]
+
+    # An unknown button id is a bad request, not a silent no-op.
+    code, body = provisioned_device.api.post_form("/api/settings/button", {"id": "no-such-button", "action": "restart"})
+    assert code == 400, f"unknown button id was answered with HTTP {code}: {body[:200]!r}"
+
+    code, body = provisioned_device.api.post_form("/api/settings/button", {"id": button_id, "action": "toggle_stream"})
+    assert code == 200, f"button assignment was answered with HTTP {code}: {body[:200]!r}"
+    assert _button_action(provisioned_device, button_id) == "toggle_stream"
+
+    # The assignment lives in NVS, not just memory: it survives a reboot.
+    code, _ = provisioned_device.api.post_form("/api/restart", {})
+    assert code == 200
+    provisioned_device.dut.qemu.wait(timeout=60)
+    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
+    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    _expect_api_up(rebooted)
+    assert _button_action(rebooted, button_id) == "toggle_stream"
+
+    # Restore the descriptor default.
+    code, body = rebooted.api.post_form("/api/settings/button", {"id": button_id, "action": "none"})
+    assert code == 200, f"button restore was answered with HTTP {code}: {body[:200]!r}"
+    assert _button_action(rebooted, button_id) == "none"
+
+
+def test_stream_pause_is_unavailable_without_audio_capture(
+    provisioned_device: EmulatedDevice,
+) -> None:
+    # Emulation runs no capture task, so there is nothing to pause; the
+    # endpoint must fail closed instead of acknowledging a pause it cannot
+    # perform, and status keeps reporting streaming as enabled.
+    code, body = provisioned_device.api.post_form("/api/stream", {"enabled": "false"})
+    assert code == 503, f"stream pause was answered with HTTP {code}: {body[:200]!r}"
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    assert json.loads(body)["stream"]["enabled"] is True
 
 
 def test_factory_reset_returns_to_setup(

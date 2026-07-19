@@ -17,6 +17,7 @@ from streamline_tools.device.api import DeviceApi, api_checks
 
 _MODES = ("setup", "recovery", "provisioned")
 _LED_ROLES = ("off", "on", "status")
+_BUTTON_ACTIONS = ("none", "toggle_stream", "cycle_input", "restart", "factory_reset")
 
 
 def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:
@@ -95,6 +96,34 @@ def test_led_capabilities_and_roles_are_coherent(device_api: DeviceApi) -> None:
     indicator = status["indicator"]
     assert isinstance(indicator["available"], bool)
     assert indicator["available"] == any(role == "status" for role in effective.values())
+
+
+def test_button_capabilities_and_actions_are_coherent(device_api: DeviceApi) -> None:
+    # The board advertises its buttons; settings reports an effective action
+    # for each, and streaming control state rides status for every client.
+    code, body = device_api.fetch("/api/status")
+    assert code == 200
+    status = json.loads(body)
+    buttons = status["capabilities"]["buttons"]
+    assert isinstance(buttons, list)
+
+    ids = []
+    for button in buttons:
+        assert isinstance(button["id"], str) and button["id"]
+        assert isinstance(button["label"], str) and button["label"]
+        assert isinstance(button["gpio"], int)
+        assert isinstance(button["active_low"], bool)
+        assert button["default_action"] in _BUTTON_ACTIONS
+        ids.append(button["id"])
+    assert len(ids) == len(set(ids)), f"duplicate button ids: {ids}"
+    assert isinstance(status["stream"]["enabled"], bool)
+
+    code, body = device_api.fetch("/api/settings")
+    assert code == 200
+    actions = json.loads(body)["button_actions"]
+    assert [entry["id"] for entry in actions] == ids, "button_actions must cover every capability button in order"
+    effective = {entry["id"]: entry["action"] for entry in actions}
+    assert all(action in _BUTTON_ACTIONS for action in effective.values()), effective
 
 
 def test_metrics_are_scriptable(device_api: DeviceApi) -> None:

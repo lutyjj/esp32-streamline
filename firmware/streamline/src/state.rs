@@ -373,6 +373,10 @@ mod tests {
                     "status".to_owned(),
                     crate::led::LedRole::On,
                 )]),
+                button_actions: std::collections::BTreeMap::from([(
+                    "key1".to_owned(),
+                    crate::button::ButtonAction::FactoryReset,
+                )]),
             }),
             board_id: Some(board.id.clone()),
             board_descriptor: None,

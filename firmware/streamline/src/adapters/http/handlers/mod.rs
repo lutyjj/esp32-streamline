@@ -1,12 +1,14 @@
 //! Endpoint registration grouped by API resource.
 
 mod analog_passthrough;
-mod audio;
+pub(in crate::adapters) mod audio;
 mod board;
+mod buttons;
 mod leds;
 mod ota;
 mod settings;
 mod status;
+mod stream;
 mod system;
 mod transport;
 
@@ -28,6 +30,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     audio::register_writes(server, state)?;
     analog_passthrough::register(server, state)?;
     leds::register(server, state)?;
+    buttons::register(server, state)?;
+    stream::register(server, state)?;
     settings::register_identity_writes(server, state)?;
     settings::register_firmware_write(server, state)?;
     ota::register(server, state)?;

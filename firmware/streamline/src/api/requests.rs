@@ -87,6 +87,24 @@ pub struct LedSettingsRequest {
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
+/// Assign one board button, named by its capabilities id, a new action.
+pub struct ButtonSettingsRequest {
+    pub id: String,
+    pub action: crate::button::ButtonAction,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+/// Runtime streaming control; the choice is not persisted and a reboot
+/// resumes streaming.
+pub struct StreamRequest {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
 pub struct AudioProfilesSettingsRequest {
     /// JSON-encoded `AudioProfileCatalog`.
     pub catalog: String,

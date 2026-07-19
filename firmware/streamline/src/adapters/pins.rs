@@ -36,7 +36,7 @@ impl AudioPins<'static> {
                 mclk: output_pin(map.i2s.mclk),
                 bclk: output_pin(map.i2s.bclk),
                 ws: output_pin(map.i2s.ws),
-                din: any_input_pin(map.i2s.din),
+                din: input_pin(map.i2s.din),
             },
         }
     }
@@ -50,7 +50,8 @@ pub fn output_pin(gpio: u8) -> AnyIOPin<'static> {
     unsafe { AnyIOPin::steal(gpio) }
 }
 
-fn any_input_pin(gpio: u8) -> AnyInputPin<'static> {
-    // Safety: see `any_io_pin`.
+/// Turn a validated descriptor GPIO into an erased input-capable HAL pin.
+pub fn input_pin(gpio: u8) -> AnyInputPin<'static> {
+    // Safety: see `output_pin`.
     unsafe { AnyInputPin::steal(gpio) }
 }

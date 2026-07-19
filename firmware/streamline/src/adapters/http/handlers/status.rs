@@ -144,6 +144,9 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             fault: passthrough.fault,
         },
         stream: StreamTelemetry {
+            // Without a capture task there is nothing to pause; report the
+            // boot state so a setup-mode console never claims a pause.
+            enabled: state.stream.is_none() || metrics.streaming_enabled,
             sequence: metrics.sequence,
             packets_total: metrics.packets,
             bytes_total: metrics.bytes,
@@ -240,6 +243,9 @@ impl<'a> api::StatusResponse<'a> {
                 enabled: snapshot.analog_passthrough.enabled,
                 active: snapshot.analog_passthrough.active,
                 fault: snapshot.analog_passthrough.fault.as_deref(),
+            },
+            stream: api::StreamControlStatus {
+                enabled: snapshot.stream.enabled,
             },
             metrics: api::MetricsStatus {
                 sequence: snapshot.stream.sequence,

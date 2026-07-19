@@ -203,6 +203,15 @@ fn config_json(state: &ApiState) -> String {
                 role: config.led_role(led),
             })
             .collect(),
+        button_actions: state
+            .board
+            .buttons
+            .iter()
+            .map(|button| api::ButtonActionStatus {
+                id: &button.id,
+                action: config.button_action(button),
+            })
+            .collect(),
         auto_update_schedule: config.auto_update_schedule.into(),
         config_source: "nvs",
     })

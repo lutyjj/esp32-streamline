@@ -136,6 +136,11 @@ impl<W: Write> PrometheusWriter<W> {
             snapshot.audio.bits_per_sample,
         )?;
         self.gauge(
+            "streamline_stream_enabled",
+            "Whether streaming to the bridge is enabled.",
+            u8::from(snapshot.stream.enabled),
+        )?;
+        self.gauge(
             "streamline_stream_sequence",
             "Latest capture sequence number.",
             snapshot.stream.sequence,
@@ -401,6 +406,9 @@ streamline_audio_channels 2\n\
 # HELP streamline_audio_bits_per_sample Captured PCM bits per sample.\n\
 # TYPE streamline_audio_bits_per_sample gauge\n\
 streamline_audio_bits_per_sample 16\n\
+# HELP streamline_stream_enabled Whether streaming to the bridge is enabled.\n\
+# TYPE streamline_stream_enabled gauge\n\
+streamline_stream_enabled 1\n\
 # HELP streamline_stream_sequence Latest capture sequence number.\n\
 # TYPE streamline_stream_sequence gauge\n\
 streamline_stream_sequence 15\n\
@@ -521,6 +529,7 @@ streamline_ota_busy 0\n"
             },
             analog_passthrough: AnalogPassthroughTelemetry::default(),
             stream: StreamTelemetry {
+                enabled: true,
                 sequence: 15,
                 packets_total: 12,
                 bytes_total: 4_294_967_301,

@@ -66,6 +66,7 @@ pub fn status() -> Value {
             active: false,
             fault: None,
         },
+        stream: StreamControlStatus { enabled: true },
         metrics: MetricsStatus {
             sequence: 1,
             packets: 56000,
@@ -153,6 +154,14 @@ pub fn config() -> Value {
             .map(|led| LedRoleStatus {
                 id: led.id.as_str(),
                 role: led.default_role,
+            })
+            .collect(),
+        button_actions: board
+            .buttons
+            .iter()
+            .map(|button| ButtonActionStatus {
+                id: button.id.as_str(),
+                action: button.default_action,
             })
             .collect(),
         auto_update_schedule: AutoUpdateScheduleRequest::Daily,

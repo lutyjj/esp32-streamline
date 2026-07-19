@@ -17,7 +17,17 @@ from streamline_tools.device.api import DeviceApi, api_checks
 
 _MODES = ("setup", "recovery", "provisioned")
 _LED_ROLES = ("off", "on", "status")
-_BUTTON_ACTIONS = ("none", "toggle_stream", "cycle_input", "restart", "factory_reset")
+_BUTTON_ACTIONS = (
+    "none",
+    "toggle_stream",
+    "cycle_input",
+    "gain_up",
+    "gain_down",
+    "attenuation_up",
+    "attenuation_down",
+    "restart",
+    "factory_reset",
+)
 
 
 def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:

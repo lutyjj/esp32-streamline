@@ -42,6 +42,10 @@ describe('buttonRows', () => {
       'none',
       'toggle_stream',
       'cycle_input',
+      'gain_up',
+      'gain_down',
+      'attenuation_up',
+      'attenuation_down',
       'restart',
       'factory_reset',
     ]);

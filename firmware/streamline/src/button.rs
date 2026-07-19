@@ -27,6 +27,15 @@ pub enum ButtonAction {
     ToggleStream,
     /// Select the next advertised input line, wrapping at the end.
     CycleInput,
+    /// Raise the input gain one step, up to the board's advertised maximum.
+    GainUp,
+    /// Lower the input gain one step, down to zero.
+    GainDown,
+    /// Attenuate the input [`ATTENUATION_STEP_DB`] more (quieter), up to the
+    /// board's advertised maximum.
+    AttenuationUp,
+    /// Attenuate the input [`ATTENUATION_STEP_DB`] less (louder), down to zero.
+    AttenuationDown,
     /// Reboot with settings intact.
     Restart,
     /// Erase every setting and reboot into first-time setup.
@@ -40,6 +49,10 @@ impl ButtonAction {
             Self::None => "none",
             Self::ToggleStream => "toggle_stream",
             Self::CycleInput => "cycle_input",
+            Self::GainUp => "gain_up",
+            Self::GainDown => "gain_down",
+            Self::AttenuationUp => "attenuation_up",
+            Self::AttenuationDown => "attenuation_down",
             Self::Restart => "restart",
             Self::FactoryReset => "factory_reset",
         }
@@ -51,6 +64,10 @@ impl ButtonAction {
             "none" => Some(Self::None),
             "toggle_stream" => Some(Self::ToggleStream),
             "cycle_input" => Some(Self::CycleInput),
+            "gain_up" => Some(Self::GainUp),
+            "gain_down" => Some(Self::GainDown),
+            "attenuation_up" => Some(Self::AttenuationUp),
+            "attenuation_down" => Some(Self::AttenuationDown),
             "restart" => Some(Self::Restart),
             "factory_reset" => Some(Self::FactoryReset),
             _ => None,
@@ -66,6 +83,34 @@ pub fn next_input_line(board: &Board, current: u8) -> u8 {
     match position {
         Some(index) => lines[(index + 1) % lines.len()].line,
         None => lines[0].line,
+    }
+}
+
+/// Steps a gain button walks across the board's advertised range. Eight steps
+/// keep each press audible, and on the official codec's nine-notch 3 dB PGA
+/// map every press moves at least one notch instead of dying in quantization.
+pub const GAIN_STEPS: u8 = 8;
+
+/// How much one attenuation press changes the ADC attenuation, in dB.
+pub const ATTENUATION_STEP_DB: u8 = 3;
+
+/// The input gain one press away from `current`, clamped to the board's range.
+pub fn stepped_gain(board: &Board, current: u8, up: bool) -> u8 {
+    let step = board.input_gain_max.div_ceil(GAIN_STEPS).max(1);
+    step_within(current, step, up, board.input_gain_max)
+}
+
+/// The ADC attenuation one press away from `current`, clamped to the board's
+/// range. More attenuation is quieter.
+pub fn stepped_attenuation(board: &Board, current: u8, up: bool) -> u8 {
+    step_within(current, ATTENUATION_STEP_DB, up, board.adc_atten_max_db)
+}
+
+fn step_within(current: u8, step: u8, up: bool, max: u8) -> u8 {
+    if up {
+        current.saturating_add(step).min(max)
+    } else {
+        current.saturating_sub(step)
     }
 }
 
@@ -123,7 +168,10 @@ impl Default for PressDetector {
 
 #[cfg(test)]
 mod tests {
-    use super::{next_input_line, ButtonAction, PressDetector, DEBOUNCE_POLLS};
+    use super::{
+        next_input_line, stepped_attenuation, stepped_gain, ButtonAction, PressDetector,
+        ATTENUATION_STEP_DB, DEBOUNCE_POLLS,
+    };
     use crate::board;
 
     #[test]
@@ -132,6 +180,10 @@ mod tests {
             ("none", ButtonAction::None),
             ("toggle_stream", ButtonAction::ToggleStream),
             ("cycle_input", ButtonAction::CycleInput),
+            ("gain_up", ButtonAction::GainUp),
+            ("gain_down", ButtonAction::GainDown),
+            ("attenuation_up", ButtonAction::AttenuationUp),
+            ("attenuation_down", ButtonAction::AttenuationDown),
             ("restart", ButtonAction::Restart),
             ("factory_reset", ButtonAction::FactoryReset),
         ] {
@@ -157,6 +209,47 @@ mod tests {
         assert_eq!(next_input_line(&board, lines[lines.len() - 1]), lines[0]);
         // A line the board does not advertise restarts at the first.
         assert_eq!(next_input_line(&board, 200), lines[0]);
+    }
+
+    #[test]
+    fn gain_steps_span_the_range_and_clamp_at_both_ends() {
+        let board = default_board();
+        // The official board advertises 0..=100: the eight-step walk is 13 per
+        // press, past the 12.5 quantization boundary of the codec's nine-notch
+        // PGA map, so every press lands on a different notch.
+        assert_eq!(stepped_gain(&board, 0, true), 13);
+        assert_eq!(stepped_gain(&board, 13, true), 26);
+        assert_eq!(stepped_gain(&board, 95, true), 100);
+        assert_eq!(stepped_gain(&board, 100, true), 100);
+        assert_eq!(stepped_gain(&board, 13, false), 0);
+        assert_eq!(stepped_gain(&board, 5, false), 0);
+        assert_eq!(stepped_gain(&board, 0, false), 0);
+
+        // A board with a narrower range still walks it in eight steps.
+        let mut narrow = default_board();
+        narrow.input_gain_max = 20;
+        assert_eq!(stepped_gain(&narrow, 0, true), 3);
+        assert_eq!(stepped_gain(&narrow, 18, true), 20);
+    }
+
+    #[test]
+    fn attenuation_steps_in_db_and_clamps_at_both_ends() {
+        let board = default_board();
+        assert_eq!(stepped_attenuation(&board, 0, true), ATTENUATION_STEP_DB);
+        assert_eq!(
+            stepped_attenuation(&board, board.adc_atten_max_db - 1, true),
+            board.adc_atten_max_db
+        );
+        assert_eq!(
+            stepped_attenuation(&board, board.adc_atten_max_db, true),
+            board.adc_atten_max_db
+        );
+        assert_eq!(
+            stepped_attenuation(&board, 9, false),
+            9 - ATTENUATION_STEP_DB
+        );
+        assert_eq!(stepped_attenuation(&board, 1, false), 0);
+        assert_eq!(stepped_attenuation(&board, 0, false), 0);
     }
 
     #[test]

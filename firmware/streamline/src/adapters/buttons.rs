@@ -100,23 +100,31 @@ fn execute(state: &Arc<ApiState>, action: ButtonAction) {
             }
             None => log::warn!("toggle_stream ignored: audio capture is not running"),
         },
-        ButtonAction::CycleInput => {
-            let current = match state.config.lock() {
-                Ok(config) => config.audio,
-                Err(_) => {
-                    log::error!("cycle_input failed: configuration lock poisoned");
-                    return;
-                }
-            };
-            let next = button::next_input_line(state.board.as_ref(), current.input_line);
-            let audio = AudioSettings {
-                input_line: next,
-                ..current
-            };
-            match http::set_audio(state, audio) {
-                Ok(_) => log::info!("input line switched to {next}"),
-                Err(error) => log::warn!("cycle_input failed: {}", error.message()),
-            }
+        ButtonAction::CycleInput => change_audio(state, action, |board, audio| AudioSettings {
+            input_line: button::next_input_line(board, audio.input_line),
+            ..audio
+        }),
+        ButtonAction::GainUp => change_audio(state, action, |board, audio| AudioSettings {
+            input_gain: button::stepped_gain(board, audio.input_gain, true),
+            ..audio
+        }),
+        ButtonAction::GainDown => change_audio(state, action, |board, audio| AudioSettings {
+            input_gain: button::stepped_gain(board, audio.input_gain, false),
+            ..audio
+        }),
+        ButtonAction::AttenuationUp => change_audio(state, action, |board, audio| AudioSettings {
+            adc_attenuation_db: button::stepped_attenuation(board, audio.adc_attenuation_db, true),
+            ..audio
+        }),
+        ButtonAction::AttenuationDown => {
+            change_audio(state, action, |board, audio| AudioSettings {
+                adc_attenuation_db: button::stepped_attenuation(
+                    board,
+                    audio.adc_attenuation_db,
+                    false,
+                ),
+                ..audio
+            })
         }
         ButtonAction::Restart => {
             log::info!("restarting on button press");
@@ -138,6 +146,39 @@ fn execute(state: &Arc<ApiState>, action: ButtonAction) {
             log::info!("settings erased on button press; rebooting into setup");
             restart();
         }
+    }
+}
+
+/// Apply an audio-mutating action through the same validate-persist-apply
+/// flow as `POST /api/settings/audio`. A press that would not change anything
+/// — a step already at its limit — writes nothing, so a held button at the
+/// end of a range cannot wear flash.
+fn change_audio(
+    state: &Arc<ApiState>,
+    action: ButtonAction,
+    next: impl FnOnce(&crate::board::Board, AudioSettings) -> AudioSettings,
+) {
+    let current = match state.config.lock() {
+        Ok(config) => config.audio,
+        Err(_) => {
+            log::error!("{} failed: configuration lock poisoned", action.as_str());
+            return;
+        }
+    };
+    let audio = next(state.board.as_ref(), current);
+    if audio == current {
+        log::info!("{}: already at the limit", action.as_str());
+        return;
+    }
+    match http::set_audio(state, audio) {
+        Ok(_) => log::info!(
+            "{}: audio now line {} gain {} attenuation {} dB",
+            action.as_str(),
+            audio.input_line,
+            audio.input_gain,
+            audio.adc_attenuation_db
+        ),
+        Err(error) => log::warn!("{} failed: {}", action.as_str(), error.message()),
     }
 }
 

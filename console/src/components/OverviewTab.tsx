@@ -1,4 +1,6 @@
+import { setStream } from '../lib/api';
 import { dbfs, duration } from '../lib/format';
+import { useTransact, useWritable } from '../lib/hooks';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import { bridgeConnection, noBridge, setupMode, status } from '../state/device';
 import { blockingHealth } from '../state/health';
@@ -7,6 +9,7 @@ import { Card } from './Card';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
 import { Meter } from './Meter';
+import { ActionState, TransactButton } from './Transact';
 
 const BRIDGE_TILE: Record<string, { dot: string; label: string }> = {
   setup: { dot: '', label: '—' },
@@ -27,6 +30,9 @@ export function OverviewTab({
   if (!s) return <section class="view active" />;
 
   const playing = s.metrics.playing;
+  // Streaming can be paused from a device button, so the console must name
+  // the state and offer the way out.
+  const paused = !s.stream.enabled;
   const setup = setupMode.value;
   const bridgeless = noBridge.value;
   const bridge = bridgeConnection.value;
@@ -66,6 +72,8 @@ export function OverviewTab({
         </div>
       )}
 
+      {paused && !setup && <PausedCallout />}
+
       {bridgeless && (
         <div class="card callout">
           <div>
@@ -100,17 +108,23 @@ export function OverviewTab({
         <div class="health">
           <span class="eyebrow">Status</span>
           <span class="val">
-            <span class={`statusdot ${fault ? 'bad' : setup ? 'warn' : playing ? 'good' : ''}`} />
+            <span
+              class={`statusdot ${
+                fault ? 'bad' : setup ? 'warn' : paused ? 'warn' : playing ? 'good' : ''
+              }`}
+            />
             <span>
               {fault
                 ? 'Fault'
                 : setup
                   ? 'Setup'
-                  : playing
-                    ? bridgeless
-                      ? 'Signal'
-                      : 'Streaming'
-                    : 'Idle'}
+                  : paused
+                    ? 'Paused'
+                    : playing
+                      ? bridgeless
+                        ? 'Signal'
+                        : 'Streaming'
+                      : 'Idle'}
             </span>
           </span>
           <span class="sub">
@@ -118,9 +132,11 @@ export function OverviewTab({
               ? 'audio hardware needs attention'
               : setup
                 ? 'waiting for first-time setup'
-                : playing
-                  ? 'input carries signal'
-                  : 'input is quiet'}
+                : paused
+                  ? 'streaming is paused'
+                  : playing
+                    ? 'input carries signal'
+                    : 'input is quiet'}
           </span>
         </div>
         <div class="health">
@@ -167,5 +183,41 @@ export function OverviewTab({
         </Disclosure>
       </Card>
     </>
+  );
+}
+
+/**
+ * Streaming was paused — usually by a device button assigned "Start/stop
+ * streaming". The device keeps capturing so the meter stays live; this
+ * callout names the state and resumes it. A reboot also resumes streaming.
+ */
+function PausedCallout() {
+  const writable = useWritable();
+  const transact = useTransact();
+  return (
+    <div class="card callout">
+      <div>
+        <strong>Streaming is paused.</strong>
+        <span class="sub">
+          {' The device keeps measuring its input but sends nothing to the bridge — a device' +
+            ' button or an API client paused it.'}
+        </span>
+      </div>
+      <div class="actions">
+        <TransactButton
+          transact={transact}
+          disabled={!writable}
+          onClick={() =>
+            transact.run(() => setStream({ enabled: true }), {
+              busyText: 'Resuming…',
+              okText: 'Streaming resumed',
+            })
+          }
+        >
+          Resume
+        </TransactButton>
+        <ActionState state={transact.state} />
+      </div>
+    </div>
   );
 }

@@ -24,6 +24,7 @@ import {
 } from '../state/ota';
 import { beginResetHandoff, resetHandoff, resetHandoffMessage } from '../state/resetHandoff';
 import { Button } from './Button';
+import { ButtonControls } from './ButtonControls';
 import { Card, CardFooter } from './Card';
 import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
@@ -43,6 +44,7 @@ export function SystemTab() {
       <FirmwareCard />
       <NameCard />
       <LedCard />
+      <ButtonsCard />
       <AccessCard />
       <ResetCard />
       <RawStatusCard />
@@ -59,6 +61,21 @@ function LedCard() {
     <LedControls
       leds={s.capabilities.leds}
       roles={c.led_roles}
+      writable={writable}
+      provisioned={s.mode !== 'setup'}
+    />
+  );
+}
+
+function ButtonsCard() {
+  const writable = useWritable();
+  const s = status.value;
+  const c = config.value;
+  if (!s || !c) return null;
+  return (
+    <ButtonControls
+      buttons={s.capabilities.buttons}
+      actions={c.button_actions}
       writable={writable}
       provisioned={s.mode !== 'setup'}
     />

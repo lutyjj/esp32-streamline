@@ -1248,14 +1248,15 @@ select:disabled {
   }
 }
 
-/* ---------- LED role controls ---------- */
-.ledlist {
+/* ---------- LED role and button action controls ---------- */
+.ledlist,
+.btnlist {
   display: grid;
   gap: 10px;
 }
-.ledrow {
+.ledrow,
+.btnrow {
   display: grid;
-  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 8px 14px;
   padding: 12px 14px;
@@ -1263,20 +1264,33 @@ select:disabled {
   border-radius: 9px;
   background: var(--inset);
 }
-.ledrow-label {
+.ledrow {
+  grid-template-columns: auto 1fr auto;
+}
+.btnrow {
+  grid-template-columns: 1fr auto;
+}
+.ledrow-label,
+.btnrow-label {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
-.ledrow-name {
+.ledrow-name,
+.btnrow-name {
   font-size: 13.5px;
   font-weight: 600;
 }
-.ledrow-sub {
+.ledrow-sub,
+.btnrow-sub {
   font-size: 11.5px;
   color: var(--faint);
 }
-.ledrow-control {
+.btnrow-sub.warn {
+  color: var(--bad);
+}
+.ledrow-control,
+.btnrow-control {
   display: flex;
   align-items: center;
   gap: 10px;

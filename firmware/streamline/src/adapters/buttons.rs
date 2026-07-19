@@ -26,6 +26,16 @@ use crate::{
 
 const POLL_MS: u32 = 20;
 
+/// The resident poll task only reads GPIOs and debounces; it matches the
+/// status-light task's budget. Keeping this small matters: thread stacks are
+/// heap allocations, and the OTA check's TLS peak needs most of the free heap.
+const POLL_STACK_BYTES: usize = 4_096;
+
+/// Executing an action can serialize a complete state generation, the same
+/// work the HTTP server sizes its stack for — so each press runs on a
+/// transient worker that returns its stack to the heap when the action ends.
+const ACTION_STACK_BYTES: usize = 16_384;
+
 /// A board button bound to its GPIO for the process lifetime, so no runtime
 /// path shares a pin.
 struct PolledButton {
@@ -60,21 +70,39 @@ pub fn start(state: Arc<ApiState>) -> Result<()> {
     }
     std::thread::Builder::new()
         .name("buttons".to_owned())
-        // cycle_input serializes a complete state generation, the same work
-        // the HTTP server sizes its stack for.
-        .stack_size(16_384)
+        .stack_size(POLL_STACK_BYTES)
         .spawn(move || loop {
             for polled in &mut buttons {
                 let pressed = polled.input.is_low() == polled.active_low;
                 if polled.detector.update(pressed) {
                     let action = effective_action(&state, &polled.id);
                     log::info!("button '{}' pressed: {}", polled.id, action.as_str());
-                    execute(&state, action);
+                    spawn_action(&state, action);
                 }
             }
             FreeRtos::delay_ms(POLL_MS);
         })?;
     Ok(())
+}
+
+/// Run one press's action on a transient worker and return. Spawn failure —
+/// for example no heap for the stack while an OTA runs — drops the press with
+/// a log line instead of taking the poll task down.
+fn spawn_action(state: &Arc<ApiState>, action: ButtonAction) {
+    if action == ButtonAction::None {
+        return;
+    }
+    let state = Arc::clone(state);
+    let spawned = std::thread::Builder::new()
+        .name("button-action".to_owned())
+        .stack_size(ACTION_STACK_BYTES)
+        .spawn(move || execute(&state, action));
+    if let Err(error) = spawned {
+        log::warn!(
+            "button action '{}' could not start: {error}",
+            action.as_str()
+        );
+    }
 }
 
 /// The pressed button's action from the live configuration, falling back to

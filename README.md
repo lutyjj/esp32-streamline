@@ -46,7 +46,8 @@ The device speaks plain HTTP on a trusted LAN. Read the
 - **Flash**: 4 MB or larger
 
 Board support is descriptor-driven: presets define the codec, I2C/I2S pin map,
-input labels, audio limits, assignable LEDs, and optional local analog output.
+input labels, audio limits, assignable LEDs and buttons, and optional local
+analog output.
 Official presets and BYOD descriptors use the same JSON contract when the codec
 driver is compiled into the firmware. The release firmware is a generic ESP32
 app image with an embedded official descriptor catalog. See
@@ -63,6 +64,21 @@ or dark. Assignments apply without a reboot.
 LEDs under `capabilities.leds`; `POST /api/settings/led` assigns a role by LED
 id. The official preset wires one status light; a
 [custom descriptor](docs/design.md#leds) can declare more.
+
+### Buttons
+
+A board advertises the buttons it wires, and you assign each one a press
+action: **start/stop streaming**, **switch input line**, **restart**, or
+**factory reset** — a physical way back to setup when the device is
+unreachable. Every action is the press-driven twin of an API capability, and
+assignments apply without a reboot.
+
+`GET /api/status` reports the board's buttons under `capabilities.buttons`;
+`POST /api/settings/button` assigns an action by button id, and
+`POST /api/stream` is the same pause/resume a streaming button fires. The
+official preset maps its six keys — streaming on KEY1, input switch on KEY2,
+restart on KEY6 — and a [custom descriptor](docs/design.md#buttons) can remap
+or extend them.
 
 ## Quick start
 

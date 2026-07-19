@@ -41,6 +41,21 @@ export function OverviewTab({
   const fault = blockingHealth.value;
   const rms = Math.max(s.metrics.rms_left, s.metrics.rms_right);
 
+  // One verdict in priority order; each state names itself and its cause.
+  const statusTile = fault
+    ? { dot: 'bad', label: 'Fault', sub: 'audio hardware needs attention' }
+    : setup
+      ? { dot: 'warn', label: 'Setup', sub: 'waiting for first-time setup' }
+      : paused
+        ? { dot: 'warn', label: 'Paused', sub: 'streaming is paused' }
+        : playing
+          ? {
+              dot: 'good',
+              label: bridgeless ? 'Signal' : 'Streaming',
+              sub: 'input carries signal',
+            }
+          : { dot: '', label: 'Idle', sub: 'input is quiet' };
+
   const diagRows: [string, string][] = [
     ['Last boot', s.diagnostics?.reset_reason || '—'],
     ...(s.system ? [['Uptime', duration(s.system.uptime_seconds)] as [string, string]] : []),
@@ -108,36 +123,10 @@ export function OverviewTab({
         <div class="health">
           <span class="eyebrow">Status</span>
           <span class="val">
-            <span
-              class={`statusdot ${
-                fault ? 'bad' : setup ? 'warn' : paused ? 'warn' : playing ? 'good' : ''
-              }`}
-            />
-            <span>
-              {fault
-                ? 'Fault'
-                : setup
-                  ? 'Setup'
-                  : paused
-                    ? 'Paused'
-                    : playing
-                      ? bridgeless
-                        ? 'Signal'
-                        : 'Streaming'
-                      : 'Idle'}
-            </span>
+            <span class={`statusdot ${statusTile.dot}`} />
+            <span>{statusTile.label}</span>
           </span>
-          <span class="sub">
-            {fault
-              ? 'audio hardware needs attention'
-              : setup
-                ? 'waiting for first-time setup'
-                : paused
-                  ? 'streaming is paused'
-                  : playing
-                    ? 'input carries signal'
-                    : 'input is quiet'}
-          </span>
+          <span class="sub">{statusTile.sub}</span>
         </div>
         <div class="health">
           <span class="eyebrow">Signal</span>

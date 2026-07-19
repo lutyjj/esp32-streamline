@@ -294,6 +294,12 @@ what a client cannot:
   reports it under `stream.enabled`.
 - **cycle_input** selects the next advertised input line through the same flow
   as `POST /api/settings/audio`, returning to custom settings.
+- **gain_up** and **gain_down** walk the input gain across the board's
+  advertised range in eight steps — on the official codec's nine-notch 3 dB
+  PGA map, one notch per press. **attenuation_up** and **attenuation_down**
+  step the ADC attenuation 3 dB per press; more attenuation is quieter. All
+  four clamp at the range ends, write nothing when already at a limit, and go
+  through the same `POST /api/settings/audio` flow.
 - **restart** and **factory_reset** mirror `POST /api/restart` and
   `POST /api/factory-reset`. Factory reset is assignable — a physical way back
   to first-time setup when the device is unreachable — but never a descriptor

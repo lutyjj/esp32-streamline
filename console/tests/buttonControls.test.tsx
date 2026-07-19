@@ -35,7 +35,17 @@ describe('ButtonControls', () => {
     expect(host.textContent).toContain('Selects the next input line');
     expect(select(host)?.value).toBe('cycle_input');
     const options = [...(select(host)?.options ?? [])].map((option) => option.value);
-    expect(options).toEqual(['none', 'toggle_stream', 'cycle_input', 'restart', 'factory_reset']);
+    expect(options).toEqual([
+      'none',
+      'toggle_stream',
+      'cycle_input',
+      'gain_up',
+      'gain_down',
+      'attenuation_up',
+      'attenuation_down',
+      'restart',
+      'factory_reset',
+    ]);
   });
 
   it('warns that a destructive action fires on one press', () => {

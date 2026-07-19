@@ -68,10 +68,10 @@ id. The official preset wires one status light; a
 ### Buttons
 
 A board advertises the buttons it wires, and you assign each one a press
-action: **start/stop streaming**, **switch input line**, **restart**, or
-**factory reset** — a physical way back to setup when the device is
-unreachable. Every action is the press-driven twin of an API capability, and
-assignments apply without a reboot.
+action: **start/stop streaming**, **switch input line**, **input gain** or
+**attenuation** stepping, **restart**, or **factory reset** — a physical way
+back to setup when the device is unreachable. Every action is the press-driven
+twin of an API capability, and assignments apply without a reboot.
 
 `GET /api/status` reports the board's buttons under `capabilities.buttons`;
 `POST /api/settings/button` assigns an action by button id, and

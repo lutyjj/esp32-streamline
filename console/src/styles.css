@@ -938,6 +938,42 @@ body.locked .gated :is(form, .cardfoot) {
   color: var(--faint);
   font-size: 11.5px;
 }
+/* A live control's status marker, sitting inline in its label: a warn-toned
+   "Unsaved" while an edit is pending, or a brief "Updated" that fades after the
+   device moved the value under the user. */
+.fieldflag {
+  margin-left: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}
+.fieldflag.warn {
+  color: var(--warn);
+}
+.fieldflag.live {
+  color: var(--accent);
+  animation: fieldflag-fade 1.8s var(--motion-ease) forwards;
+}
+@keyframes fieldflag-fade {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fieldflag.live {
+    animation: none;
+  }
+}
 /* An additional setting split from a card's base form by one divider. */
 .card-subsection {
   display: grid;

@@ -1,17 +1,10 @@
-import { useEffect, useState } from 'preact/hooks';
 import { setAudio } from '../lib/api';
-import { useTransact, useWritable } from '../lib/hooks';
-import {
-  audioProfilesResource,
-  config,
-  configResource,
-  contractResource,
-  loadDeviceSettings,
-  status,
-} from '../state/device';
+import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
+import { audioProfilesResource, contractResource, status } from '../state/device';
 import { AnalogPassthrough } from './AnalogPassthrough';
 import { AudioProfiles } from './AudioProfiles';
 import { Card, CardFooter } from './Card';
+import { FieldFlag } from './FieldFlag';
 import { GuidePrompt } from './GuidePrompt';
 import { ResourceNotice } from './ResourceNotice';
 import { ActionState, TransactButton } from './Transact';
@@ -19,32 +12,35 @@ import { ActionState, TransactButton } from './Transact';
 export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
   const writable = useWritable();
   const transact = useTransact();
-  // Board facts come from the device; the console hardcodes none of them.
-  const caps = status.value?.capabilities;
-  const [line, setLine] = useState('2');
-  const [gain, setGain] = useState('0');
-  const [atten, setAtten] = useState('0');
-
-  // Seed the form whenever a fresh settings snapshot arrives (initial load
-  // and after every expected reboot).
-  const c = config.value;
-  useEffect(() => {
-    if (!c) return;
-    setLine(String(c.input_line));
-    setGain(String(c.input_gain));
-    setAtten(String(c.adc_attenuation_db));
-  }, [c]);
+  const s = status.value;
+  // Board facts and the applied levels come from the device; the console
+  // hardcodes none of them. Sourcing the controls from the live status poll —
+  // not the once-read settings snapshot — is what lets a board button or
+  // another client move them under the user within a poll.
+  const caps = s?.capabilities;
+  const audio = s?.audio ?? null;
+  const line = useDeviceField(audio ? String(audio.input_line) : null);
+  const gain = useDeviceField(audio ? String(audio.input_gain) : null);
+  const atten = useDeviceField(audio ? String(audio.adc_attenuation_db) : null);
+  const dirty = line.dirty || gain.dirty || atten.dirty;
 
   function save(e: SubmitEvent) {
     e.preventDefault();
     transact.run(
       async () => {
         const ack = await setAudio({
-          input_line: Number(line),
-          input_gain: Number(gain),
-          adc_attenuation_db: Number(atten),
+          input_line: Number(line.value),
+          input_gain: Number(gain.value),
+          adc_attenuation_db: Number(atten.value),
         });
-        if (!ack.rebooting) await loadDeviceSettings();
+        // A live save applies at once: mark the fields clean so the confirming
+        // poll reads as steady, not a fresh device change. A reboot re-seeds
+        // them on recovery instead.
+        if (!ack.rebooting) {
+          line.commit();
+          gain.commit();
+          atten.commit();
+        }
         return ack;
       },
       {
@@ -58,7 +54,6 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
 
   return (
     <>
-      <ResourceNotice of={configResource} />
       <ResourceNotice of={audioProfilesResource} />
       <ResourceNotice of={contractResource} />
       <AudioProfiles />
@@ -76,12 +71,15 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
         <form onSubmit={save}>
           <div class="formgrid">
             <div class="field">
-              <label for="input_line">Source line</label>
+              <label for="input_line">
+                Source line
+                <FieldFlag field={line} />
+              </label>
               <select
                 id="input_line"
                 disabled={!writable}
-                value={line}
-                onChange={(e) => setLine(e.currentTarget.value)}
+                value={line.value}
+                onChange={(e) => line.set(e.currentTarget.value)}
               >
                 {(caps?.input_lines ?? []).map((option) => (
                   <option key={option.line} value={String(option.line)}>
@@ -91,7 +89,10 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
               </select>
             </div>
             <div class="field">
-              <label for="input_gain">Input gain</label>
+              <label for="input_gain">
+                Input gain
+                <FieldFlag field={gain} />
+              </label>
               <div class="unit">
                 <input
                   id="input_gain"
@@ -99,15 +100,18 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
                   min="0"
                   max={caps?.input_gain_max}
                   disabled={!writable}
-                  value={gain}
-                  onInput={(e) => setGain(e.currentTarget.value)}
+                  value={gain.value}
+                  onInput={(e) => gain.set(e.currentTarget.value)}
                 />
                 <span class="u">/ {caps?.input_gain_max ?? '—'}</span>
               </div>
               <span class="help">Leave at 0 for line-level sources.</span>
             </div>
             <div class="field">
-              <label for="adc_atten_db">ADC attenuation</label>
+              <label for="adc_atten_db">
+                ADC attenuation
+                <FieldFlag field={atten} />
+              </label>
               <div class="unit">
                 <input
                   id="adc_atten_db"
@@ -115,8 +119,8 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
                   min="0"
                   max={caps?.adc_atten_max_db}
                   disabled={!writable}
-                  value={atten}
-                  onInput={(e) => setAtten(e.currentTarget.value)}
+                  value={atten.value}
+                  onInput={(e) => atten.set(e.currentTarget.value)}
                 />
                 <span class="u">dB</span>
               </div>
@@ -124,18 +128,18 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
             </div>
           </div>
           <CardFooter>
-            <TransactButton transact={transact} type="submit" disabled={!writable || !c}>
+            <TransactButton transact={transact} type="submit" disabled={!writable || !dirty}>
               Save
             </TransactButton>
             <ActionState state={transact.state} />
           </CardFooter>
         </form>
-        {status.value && (
+        {s && (
           <AnalogPassthrough
             capability={caps?.analog_passthrough}
-            status={status.value.analog_passthrough}
+            status={s.analog_passthrough}
             writable={writable}
-            provisioned={status.value.mode === 'provisioned'}
+            provisioned={s.mode === 'provisioned'}
           />
         )}
       </Card>

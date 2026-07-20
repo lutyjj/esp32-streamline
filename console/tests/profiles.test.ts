@@ -6,7 +6,7 @@ import {
   exportAudioProfileCatalog,
   nextProfileId,
   parseAudioProfileCatalog,
-  profileFromConfig,
+  profileFromAudio,
   removeProfile,
   updateProfile,
 } from '../src/lib/profiles';
@@ -85,7 +85,7 @@ describe('audio profile model', () => {
   });
 
   it('snapshots the applied device settings', () => {
-    expect(profileFromConfig('vinyl', 'Vinyl', config)).toEqual({
+    expect(profileFromAudio('vinyl', 'Vinyl', config)).toEqual({
       id: 'vinyl',
       name: 'Vinyl',
       audio: { input_line: 2, input_gain: 7, adc_attenuation_db: 12 },
@@ -97,7 +97,7 @@ describe('audio profile model', () => {
       schema_version: 1,
       board_id: 'board-a',
       active_profile_id: 'vinyl',
-      profiles: [profileFromConfig('vinyl', 'Vinyl', config)],
+      profiles: [profileFromAudio('vinyl', 'Vinyl', config)],
     });
 
     expect(catalog.active_profile_id).toBeNull();
@@ -109,7 +109,7 @@ describe('audio profile model', () => {
       schema_version: 1,
       board_id: 'board-a',
       active_profile_id: null,
-      profiles: [profileFromConfig('vinyl', 'Vinyl', config)],
+      profiles: [profileFromAudio('vinyl', 'Vinyl', config)],
     };
     expect(() => parse({ ...base, board_id: 'board-b' })).toThrow(/different board/);
     expect(() => parse({ ...base, profiles: [...base.profiles, ...base.profiles] })).toThrow(
@@ -128,13 +128,13 @@ describe('audio profile model', () => {
       schema_version: limits.schemaVersion,
       board_id: 'board-a',
       active_profile_id: null,
-      profiles: [profileFromConfig('vinyl', 'Vinyl', config)],
+      profiles: [profileFromAudio('vinyl', 'Vinyl', config)],
     };
     expect(() => parse({ ...base, schema_version: limits.schemaVersion + 1 })).toThrow(
       /schema_version/,
     );
     const tooMany = Array.from({ length: limits.maxProfiles + 1 }, (_, i) =>
-      profileFromConfig(`profile-${i}`, 'Source', config),
+      profileFromAudio(`profile-${i}`, 'Source', config),
     );
     expect(() => parse({ ...base, profiles: tooMany })).toThrow(/at most/);
     expect(() => parse({ ...base, profiles: [{ ...base.profiles[0], id: 'Bad_Id' }] })).toThrow(
@@ -168,7 +168,7 @@ describe('audio profile model', () => {
       schema_version: 1,
       board_id: 'board-a',
       active_profile_id: 'vinyl',
-      profiles: [profileFromConfig('vinyl', 'Vinyl', config)],
+      profiles: [profileFromAudio('vinyl', 'Vinyl', config)],
     };
     expect(JSON.parse(exportAudioProfileCatalog(catalog)).active_profile_id).toBeNull();
   });
@@ -207,7 +207,7 @@ describe('audio profile edits', () => {
     const full: AudioProfileCatalog = {
       ...empty,
       profiles: Array.from({ length: limits.maxProfiles }, (_, i) =>
-        profileFromConfig(`p-${i}`, 'Source', config),
+        profileFromAudio(`p-${i}`, 'Source', config),
       ),
     };
     expect(() => addProfile(full, 'One more', config, limits)).toThrow(/up to 8 profiles/);
@@ -233,10 +233,7 @@ describe('audio profile edits', () => {
     const two: AudioProfileCatalog = {
       ...empty,
       active_profile_id: 'vinyl',
-      profiles: [
-        profileFromConfig('vinyl', 'Vinyl', config),
-        profileFromConfig('cd', 'CD', config),
-      ],
+      profiles: [profileFromAudio('vinyl', 'Vinyl', config), profileFromAudio('cd', 'CD', config)],
     };
     const afterActive = removeProfile(two, 'vinyl');
     expect(afterActive.profiles.map((p) => p.id)).toEqual(['cd']);

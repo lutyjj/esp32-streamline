@@ -1,4 +1,9 @@
-import type { AudioProfile, AudioProfileCatalog, BoardCapabilities, DeviceConfig } from './api';
+import type {
+  AudioProfile,
+  AudioProfileCatalog,
+  AudioProfileSettings,
+  BoardCapabilities,
+} from './api';
 import type { AudioProfileConstraints } from './contract';
 
 /**
@@ -10,14 +15,18 @@ export interface AudioProfileImportLimits extends AudioProfileConstraints {
   schemaVersion: number;
 }
 
-export function profileFromConfig(id: string, name: string, config: DeviceConfig): AudioProfile {
+export function profileFromAudio(
+  id: string,
+  name: string,
+  audio: AudioProfileSettings,
+): AudioProfile {
   return {
     id,
     name,
     audio: {
-      input_line: config.input_line,
-      input_gain: config.input_gain,
-      adc_attenuation_db: config.adc_attenuation_db,
+      input_line: audio.input_line,
+      input_gain: audio.input_gain,
+      adc_attenuation_db: audio.adc_attenuation_db,
     },
   };
 }
@@ -40,7 +49,7 @@ function validProfileName(name: string, limits: AudioProfileConstraints): string
 export function addProfile(
   catalog: AudioProfileCatalog,
   name: string,
-  config: DeviceConfig,
+  audio: AudioProfileSettings,
   limits: AudioProfileConstraints,
 ): { catalog: AudioProfileCatalog; id: string } {
   const trimmed = validProfileName(name, limits);
@@ -55,7 +64,7 @@ export function addProfile(
   return {
     catalog: {
       ...catalog,
-      profiles: [...catalog.profiles, profileFromConfig(id, trimmed, config)],
+      profiles: [...catalog.profiles, profileFromAudio(id, trimmed, audio)],
     },
     id,
   };
@@ -66,14 +75,14 @@ export function updateProfile(
   catalog: AudioProfileCatalog,
   id: string,
   name: string,
-  config: DeviceConfig,
+  audio: AudioProfileSettings,
   limits: AudioProfileConstraints,
 ): AudioProfileCatalog {
   const trimmed = validProfileName(name, limits);
   return {
     ...catalog,
     profiles: catalog.profiles.map((profile) =>
-      profile.id === id ? profileFromConfig(id, trimmed, config) : profile,
+      profile.id === id ? profileFromAudio(id, trimmed, audio) : profile,
     ),
   };
 }

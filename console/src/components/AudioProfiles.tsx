@@ -9,13 +9,7 @@ import {
   removeProfile,
   updateProfile,
 } from '../lib/profiles';
-import {
-  audioProfileLimits,
-  audioProfiles,
-  config,
-  loadDeviceSettings,
-  status,
-} from '../state/device';
+import { audioProfileLimits, audioProfiles, loadDeviceSettings, status } from '../state/device';
 import { Button } from './Button';
 import { Card } from './Card';
 import { ConfirmButton } from './ConfirmButton';
@@ -26,7 +20,9 @@ export function AudioProfiles() {
   const writable = useWritable();
   const transact = useTransact();
   const catalog = audioProfiles.value;
-  const applied = config.value;
+  // Snapshot the live applied levels, so a profile saved right after a board
+  // button moved them captures the new values, not a stale settings read.
+  const applied = status.value?.audio;
   const capabilities = status.value?.capabilities;
   const limits = audioProfileLimits.value;
   const [selectedId, setSelectedId] = useState('');
@@ -44,7 +40,7 @@ export function AudioProfiles() {
   if (!catalog || !applied || !capabilities || !limits) return null;
 
   const currentCatalog = catalog;
-  const currentConfig = applied;
+  const currentAudio = applied;
   const currentCapabilities = capabilities;
   const currentLimits = limits;
 
@@ -86,7 +82,7 @@ export function AudioProfiles() {
   function saveNew() {
     commitCatalog(
       () => {
-        const edit = addProfile(currentCatalog, name, currentConfig, currentLimits);
+        const edit = addProfile(currentCatalog, name, currentAudio, currentLimits);
         setSelectedId(edit.id);
         return edit.catalog;
       },
@@ -98,7 +94,7 @@ export function AudioProfiles() {
     if (!selected) return;
     const target = selected;
     commitCatalog(
-      () => updateProfile(currentCatalog, target.id, name, currentConfig, currentLimits),
+      () => updateProfile(currentCatalog, target.id, name, currentAudio, currentLimits),
       () => `Updated ${name.trim()} from the current applied settings`,
     );
   }

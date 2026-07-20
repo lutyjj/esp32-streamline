@@ -1,6 +1,43 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.8.0](https://github.com/lutyjj/esp32-streamline/compare/v0.7.2...v0.8.0) (2026-07-20)
+
+
+### Features
+
+* **console:** button action assignment and paused-streaming recovery ([e7aaa10](https://github.com/lutyjj/esp32-streamline/commit/e7aaa1014a312afcebef12d5238884aba96f08f8))
+* **console:** Playwright journey specs against the mock backends ([89fead1](https://github.com/lutyjj/esp32-streamline/commit/89fead11f2c054a2138a78b96694da3c77f2bcc0))
+* **console:** stateful mock backends for both consoles ([97754e4](https://github.com/lutyjj/esp32-streamline/commit/97754e4584a09ca796ba7365863b4acb2d63ba1e))
+* **firmware:** assignable button actions and streaming pause ([9db8ba2](https://github.com/lutyjj/esp32-streamline/commit/9db8ba29e57e462bb1bf3990fd72ac783d981e89))
+* **firmware:** carry the canonical example device in the contract ([952057d](https://github.com/lutyjj/esp32-streamline/commit/952057de135220fb89decdc370ba89fd2b9a1c2a))
+* **firmware:** gain and attenuation step actions ([cb62faf](https://github.com/lutyjj/esp32-streamline/commit/cb62faf44b1c9b6866989481e93f1f6a49186d7f))
+
+
+### Bug Fixes
+
+* **api:** declare the complete mutation outcome taxonomy per endpoint ([1ab19e7](https://github.com/lutyjj/esp32-streamline/commit/1ab19e7da8f26d9db4f098c300e0ec99e71a482e)), closes [#231](https://github.com/lutyjj/esp32-streamline/issues/231)
+* **console:** carry modal, announcement, and control semantics in the primitives ([d2ce3f0](https://github.com/lutyjj/esp32-streamline/commit/d2ce3f0ce89d4b3dfb7302c725fd03f8fffb3d69))
+* **console:** centralize bridge authorization at the contract boundary ([b97cb8f](https://github.com/lutyjj/esp32-streamline/commit/b97cb8f7cb4c20a4e44a611c2f37509d553d8f59))
+* **console:** end open disclosures at intrinsic height ([d4d6f3f](https://github.com/lutyjj/esp32-streamline/commit/d4d6f3f0b518d8f2bb8debf0d0f004c85116ea92))
+* **console:** follow live device audio in the Audio tab controls ([8d22893](https://github.com/lutyjj/esp32-streamline/commit/8d2289346d70551d07e3a9dbcd7e4cce2533b72a))
+* **console:** generate curl examples that authenticate and stay contract-true ([c022baa](https://github.com/lutyjj/esp32-streamline/commit/c022baadc5e83c1736340e0a2e99eb14cc940a44))
+* **console:** keep local actions usable when locked and confirm destruction ([b1c37ec](https://github.com/lutyjj/esp32-streamline/commit/b1c37ec5fc9ed85116a556068a48a8be307f1d5b))
+* **console:** make custom OTA a validated source-aware transaction ([f561118](https://github.com/lutyjj/esp32-streamline/commit/f5611182325d32bb497e00d540943175c12b0c03))
+* **console:** make log text readable in the default theme ([4f01cd6](https://github.com/lutyjj/esp32-streamline/commit/4f01cd65a50159ef5c084f814fe574856ccb6664))
+* **console:** model device settings as a failure-aware resource ([5aa1285](https://github.com/lutyjj/esp32-streamline/commit/5aa1285d8869326c82045553c9a74485753233c7))
+* **console:** put storage and clipboard behind failure-aware custody ([1feb7d0](https://github.com/lutyjj/esp32-streamline/commit/1feb7d08a2568f51b2856d952c27fa35888a9e70))
+* **console:** register the stale-drop counter in the metrics fixture ([f0cf115](https://github.com/lutyjj/esp32-streamline/commit/f0cf1153ea3d1af979460076530a44ff1d824c55))
+* **console:** render the recording contract with explicit resource states ([fb978e4](https://github.com/lutyjj/esp32-streamline/commit/fb978e41138cd756d4c17247da8ab12bda9086f7))
+* **console:** snapshot audio profiles from live status, not stale settings ([4d76248](https://github.com/lutyjj/esp32-streamline/commit/4d76248c21998d1b288231bcaf19234206597d9a))
+* **console:** treat factory reset as a setup-network handoff ([6805859](https://github.com/lutyjj/esp32-streamline/commit/6805859d444463c230c31b07a328abae2e7da709))
+* **firmware:** bound in-flight packet retry to the queue's latency budget ([b79cebb](https://github.com/lutyjj/esp32-streamline/commit/b79cebb0c6d99c0987f4a0948a6441b6257eef96)), closes [#224](https://github.com/lutyjj/esp32-streamline/issues/224)
+* **firmware:** expire playback and account the timeline through capture stalls ([8e5edee](https://github.com/lutyjj/esp32-streamline/commit/8e5edeedc6567f3b7b818d3ae162bf18c6677a97)), closes [#225](https://github.com/lutyjj/esp32-streamline/issues/225)
+* **firmware:** keep button-press stacks off the OTA check's heap margin ([6a4693e](https://github.com/lutyjj/esp32-streamline/commit/6a4693ebe9483561aa6b78f0415647e048386cb3))
+* **firmware:** validate admin keys against one exact generated shape ([21106ff](https://github.com/lutyjj/esp32-streamline/commit/21106ffcef054891dcf99ee403ed57778de45146)), closes [#229](https://github.com/lutyjj/esp32-streamline/issues/229)
+* **protocol:** coalesce short capture reads into fixed 256-frame packets ([392acc8](https://github.com/lutyjj/esp32-streamline/commit/392acc802c0596caaff1c8c72ce1d955863c0b1d)), closes [#223](https://github.com/lutyjj/esp32-streamline/issues/223)
+* **tools:** build the smoke admin key without scanner-visible entropy ([00e24dd](https://github.com/lutyjj/esp32-streamline/commit/00e24dd5201f0dcc565ebcc29c4bca9e66b74d5b))
+
 ## [0.7.2](https://github.com/lutyjj/esp32-streamline/compare/v0.7.1...v0.7.2) (2026-07-17)
 
 

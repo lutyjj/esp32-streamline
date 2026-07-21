@@ -22,6 +22,7 @@ from pytest_embedded.dut_factory import DutFactory
 
 from streamline_tools.device.api import DeviceApi, wait_for_api
 from streamline_tools.device.flash_image import pad_flash_image
+from streamline_tools.secret_input import read_secret_fd
 
 BOOT_TIMEOUT = 120.0
 API_TIMEOUT = 60.0
@@ -156,24 +157,33 @@ def device_api(request: pytest.FixtureRequest) -> DeviceApi:
 
 
 @pytest.fixture
-def authed_device_api(request: pytest.FixtureRequest) -> DeviceApi:
+def authed_device_api(request: pytest.FixtureRequest, hardware_admin_key: str) -> DeviceApi:
     """The device under test as an authenticated client, on either target.
 
-    Hardware target: the configured base URL carrying `STREAMLINE_ADMIN_KEY`
-    (skips when that key is unset). QEMU target: a commissioned emulated device
+    Hardware target: the configured base URL plus the one-shot credential pipe
+    (skips when that pipe is empty). QEMU target: a commissioned emulated device
     whose API already carries the throwaway `ADMIN_KEY`. Tests using this fixture
     drive the authenticated surface identically on both, so keep them
     non-destructive — reject paths and stateless checks, not persistent writes.
     """
     url = _hardware_url()
     if url is not None:
-        key = os.environ.get("STREAMLINE_ADMIN_KEY", "")
-        if not key:
-            pytest.skip("STREAMLINE_ADMIN_KEY unset; cannot drive the authenticated API on hardware")
-        api = DeviceApi(base_url=url, admin_key=key)
+        if not hardware_admin_key:
+            pytest.skip("hardware admin key is unavailable; cannot drive the authenticated API")
+        api = DeviceApi(base_url=url, admin_key=hardware_admin_key)
     else:
         device: EmulatedDevice = request.getfixturevalue("provisioned_device")
         api = device.api
     ready = wait_for_api(api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
     return api
+
+
+@pytest.fixture(scope="session")
+def hardware_admin_key() -> str:
+    """Read the optional hardware credential once from the container pipe."""
+
+    try:
+        return read_secret_fd(os.environ, "STREAMLINE_ADMIN_KEY_FD")
+    except ValueError as error:
+        pytest.fail(str(error), pytrace=False)

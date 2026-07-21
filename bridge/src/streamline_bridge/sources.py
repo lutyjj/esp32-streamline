@@ -13,12 +13,13 @@ from typing import TYPE_CHECKING, Literal, Protocol
 from streamline_bridge.source_identity import parse_source_identity
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
 
 class AudioPipeline(Protocol):
     def reset_source_session(self) -> None: ...
-    def ingest(self, seq: int, payload: bytes) -> None: ...
+    def ingest(self, seq: int, payload: bytes) -> bool: ...
+    def close(self) -> None: ...
     def snapshot(self) -> dict[str, object]: ...
     def register_packet_tap(self, sink: Callable[[int, bytes], None]) -> int: ...
     def unregister_packet_tap(self, sink_id: int) -> None: ...
@@ -51,8 +52,7 @@ class TcpSourceGate[H: AudioPipeline]:
         with self._lock:
             if generation != self._generation:
                 return False
-            self._hub.ingest(seq, payload)
-            return True
+            return self._hub.ingest(seq, payload)
 
     def is_active(self, generation: int) -> bool:
         with self._lock:
@@ -202,10 +202,13 @@ class SourceRegistry[H: AudioPipeline]:
         """Atomically admit an identity and connect its producer socket."""
         peer = peer_ip or key
         with self._lock:
+            evicted = self._evict_expired_locked()
             source = self._acquire_locked(key, peer, transport)
             generation = source.gate.replace(conn)
             source.connected = True
-            return SourceLease(self, source, "producer", conn, generation)
+            lease = SourceLease(self, source, "producer", conn, generation)
+        self._close_hubs(evicted)
+        return lease
 
     def lease_http(self, requested: str | None) -> SourceLease[H]:
         return self._lease_consumer(requested, "http")
@@ -213,14 +216,24 @@ class SourceRegistry[H: AudioPipeline]:
     def lease_recording(self, requested: str | None) -> SourceLease[H]:
         return self._lease_consumer(requested, "recording")
 
+    def close(self) -> None:
+        """Retire every source and stop its pipeline for process shutdown."""
+        with self._lock:
+            retired = tuple(self._sources.values())
+            self._sources.clear()
+        self._close_hubs(retired)
+
     def _lease_consumer(self, requested: str | None, kind: Literal["http", "recording"]) -> SourceLease[H]:
         with self._lock:
+            evicted = self._evict_expired_locked()
             source = self._select_locked(requested)
             if kind == "http":
                 source.http_clients += 1
             else:
                 source.recording_sessions += 1
-            return SourceLease(self, source, kind)
+            lease = SourceLease(self, source, kind)
+        self._close_hubs(evicted)
+        return lease
 
     def _release(self, lease: SourceLease[H]) -> None:
         with self._lock:
@@ -245,10 +258,12 @@ class SourceRegistry[H: AudioPipeline]:
 
     def snapshot(self) -> dict[str, dict[str, object]]:
         with self._lock:
-            self._evict_expired_locked()
+            evicted = self._evict_expired_locked()
             sources = tuple(sorted(self._sources.items()))
             now = self._now()
-            return {key: self._snapshot_source(source, now) for key, source in sources}
+            data = {key: self._snapshot_source(source, now) for key, source in sources}
+        self._close_hubs(evicted)
+        return data
 
     def _acquire_locked(self, key: str, peer: str, transport: str) -> Source[H]:
         if self._allowed and peer not in self._allowed:
@@ -257,7 +272,6 @@ class SourceRegistry[H: AudioPipeline]:
             canonical_key = parse_source_identity(key)
         except ValueError as exc:
             raise SourceAdmissionError(str(exc)) from exc
-        self._evict_expired_locked()
         existing = self._sources.get(canonical_key)
         if existing is not None:
             existing.peer_ip = peer
@@ -306,7 +320,6 @@ class SourceRegistry[H: AudioPipeline]:
         return None
 
     def _select_locked(self, requested: str | None) -> Source[H]:
-        self._evict_expired_locked()
         if requested is not None:
             return self._select_explicit_locked(requested)
         if not self._sources:
@@ -333,13 +346,22 @@ class SourceRegistry[H: AudioPipeline]:
             )
         return source
 
-    def _evict_expired_locked(self) -> None:
+    def _evict_expired_locked(self) -> list[Source[H]]:
+        """Drop expired sources; the caller closes their hubs outside the lock."""
         now = self._now()
+        evicted: list[Source[H]] = []
         for key, source in tuple(self._sources.items()):
             if source.permanent or source.connected or source.http_clients or source.recording_sessions:
                 continue
             if now - source.disconnected_at >= self._eviction_idle_seconds:
                 del self._sources[key]
+                evicted.append(source)
+        return evicted
+
+    @staticmethod
+    def _close_hubs(sources: Iterable[Source[H]]) -> None:
+        for source in sources:
+            source.hub.close()
 
     def _snapshot_source(self, source: Source[H], now: float) -> dict[str, object]:
         data = source.hub.snapshot()

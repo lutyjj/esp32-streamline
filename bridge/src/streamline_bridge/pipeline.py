@@ -35,17 +35,34 @@ class AudioPipeline:
         self.clients = ClientFanout(max_client_chunks, now=now) if now is not None else ClientFanout(max_client_chunks)
         self.packet_taps = PacketTapFanout()
         self.levels = AudioLevels()
+        self._worker: threading.Thread | None = None
         if start_worker:
-            threading.Thread(target=PlayoutWorker(self.playout, self.clients.publish, clock).run, daemon=True).start()
+            self._worker = threading.Thread(
+                target=PlayoutWorker(self.playout, self.clients.publish, clock).run,
+                name="playout-worker",
+                daemon=True,
+            )
+            self._worker.start()
+
+    def close(self) -> None:
+        """Stop the playout worker and end every client stream."""
+        self.playout.close()
+        if self._worker is not None:
+            self._worker.join()
+            self._worker = None
+        self.clients.close()
 
     def reset_source_session(self) -> None:
         self.playout.reset_source_session()
         self.levels.reset()
 
-    def ingest(self, seq: int, payload: bytes) -> None:
-        self.playout.ingest(seq, payload)
+    def ingest(self, seq: int, payload: bytes) -> bool:
+        """Admit one packet; ``False`` demands the producer's disconnect."""
+        if not self.playout.ingest(seq, payload):
+            return False
         self.levels.update(payload)
         self.packet_taps.publish(seq, payload)
+        return True
 
     def note_tcp_connect(self) -> None:
         self.playout.note_tcp_connect()

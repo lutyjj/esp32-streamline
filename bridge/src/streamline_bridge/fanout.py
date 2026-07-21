@@ -59,6 +59,15 @@ class ClientFanout:
         with self._lock:
             self._clients.pop(client_id, None)
 
+    def close(self) -> None:
+        """End every client stream without counting it as a slow-client drop."""
+        with self._lock:
+            clients = tuple(self._clients.values())
+            self._clients.clear()
+        for stream in clients:
+            _drain(stream.queue)
+            stream.queue.put_nowait(None)
+
     def publish(self, payload: bytes) -> None:
         with self._lock:
             clients = tuple(self._clients.values())
@@ -98,9 +107,13 @@ class ClientFanout:
             stream.stats.queue_depth = stream.queue.qsize()
             self._queue_drops += 1
             self._slow_clients += 1
-        while True:
-            try:
-                stream.queue.get_nowait()
-            except queue.Empty:
-                break
+        _drain(stream.queue)
         stream.queue.put_nowait(None)
+
+
+def _drain(client_queue: queue.Queue[bytes | None]) -> None:
+    while True:
+        try:
+            client_queue.get_nowait()
+        except queue.Empty:
+            break

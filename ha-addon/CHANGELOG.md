@@ -1,6 +1,19 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.8.1](https://github.com/lutyjj/esp32-streamline/compare/v0.8.0...v0.8.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **bridge:** bound HTTP ingress bodies and stalled progress ([#327](https://github.com/lutyjj/esp32-streamline/issues/327)) ([bc4a113](https://github.com/lutyjj/esp32-streamline/commit/bc4a113972a7aed401c8e75e4302d6a20134f1bc))
+* **bridge:** close evicted pipelines and bound playout admission ([#326](https://github.com/lutyjj/esp32-streamline/issues/326)) ([3cd0434](https://github.com/lutyjj/esp32-streamline/commit/3cd0434dfd7747c5ad7055525b2d8ec243f6d8d0))
+* **bridge:** reject exposed transport state files ([#322](https://github.com/lutyjj/esp32-streamline/issues/322)) ([7c18517](https://github.com/lutyjj/esp32-streamline/commit/7c1851747cbac7956e4a4f69179e9b91e26b5064))
+* **bridge:** revoke live TLS sessions on transport key mutation ([#328](https://github.com/lutyjj/esp32-streamline/issues/328)) ([b4f9aaa](https://github.com/lutyjj/esp32-streamline/commit/b4f9aaa21ea14235300b326fd7cb0f148673a409))
+* **ci:** publish releases only for promoted mainline commits ([#329](https://github.com/lutyjj/esp32-streamline/issues/329)) ([3a92050](https://github.com/lutyjj/esp32-streamline/commit/3a92050568933591be300da422887a7c871f881e))
+* **ota:** keep custom image URLs out of diagnostics ([#325](https://github.com/lutyjj/esp32-streamline/issues/325)) ([958348b](https://github.com/lutyjj/esp32-streamline/commit/958348b526ec11bad98a0ef7f83ddf57b1dc9906))
+* **tools:** keep device credentials off process metadata ([#323](https://github.com/lutyjj/esp32-streamline/issues/323)) ([ef409bd](https://github.com/lutyjj/esp32-streamline/commit/ef409bdfbc3f5302c0808a764eae8f0202aae435))
+
 ## [0.8.0](https://github.com/lutyjj/esp32-streamline/compare/v0.7.2...v0.8.0) (2026-07-20)
 
 

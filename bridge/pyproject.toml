@@ -10,6 +10,9 @@ requires-python = ">=3.13"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
   "fastapi>=0.139.2,<1",
+  # The ingress guard drives h11 connection state directly; uvicorn already
+  # resolves it, so this pin only names the contract we depend on.
+  "h11>=0.16,<1",
   "uvicorn>=0.35,<1",
 ]
 

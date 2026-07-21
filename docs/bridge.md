@@ -76,7 +76,7 @@ that artifact to generate a typed client; do not edit generated client files.
 | `--source-allow` | empty | IPv4 addresses | Repeat or comma-separate allowed producer addresses. |
 | `--max-sources` | 8 | integer 1..32 | Maximum retained source pipelines. |
 | `--max-http-connections` | 32 | integer 1..128 | Maximum simultaneous HTTP workers. Excess connections are rejected. |
-| `--http-request-timeout-seconds` | 10.0 | finite number 0.001..3600 | Socket inactivity before an HTTP client is disconnected. |
+| `--http-request-timeout-seconds` | 10.0 | finite number 0.001..3600 | Progress deadline for every HTTP phase: header reads, body reads, response writes, and keep-alive idling. A client stalled past it is disconnected; healthy streams are unaffected. |
 | `--client-buffer-chunks` | 2048 | integer 1..4096 | Per-client output queue depth in 1 KiB chunks. Full queues evict the client. |
 | `--playout-buffer-seconds` | 1.0 | finite number 0.001..60 | Packets buffered before playout begins or resumes. |
 | `--max-repeat-conceal-packets` | 3 | integer 0..256 | Loss packets that repeat attenuated PCM before silence. |

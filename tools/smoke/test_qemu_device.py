@@ -29,6 +29,17 @@ _SLIRP_HOST_ALIAS = "10.0.2.2"
 # The two-slot layout from firmware/streamline/partitions.csv: a fresh image
 # boots ota_0, and a successful OTA must land in and boot from ota_1.
 _OTA_1_OFFSET = "0x210000"
+_OTA_URL_CANARY = "ota-url-private-canary"
+
+
+@dataclasses.dataclass(frozen=True)
+class ServedOtaImage:
+    download_url: str
+    unavailable_url: str
+    stalled_url: str
+    sha256: str
+    stall_started: threading.Event
+    release_stall: threading.Event
 
 
 def _expect_api_up(device: EmulatedDevice) -> None:
@@ -83,6 +94,19 @@ def _wait_for_ota_phase(device: EmulatedDevice, phase: str, timeout: float) -> d
                 last = f"phase={ota['phase']}"
         time.sleep(2.0)
     raise AssertionError(f"OTA did not reach phase {phase!r} within {timeout:.0f}s: {last}")
+
+
+def _assert_ota_url_private(device: EmulatedDevice) -> dict[str, Any]:
+    code, body = device.api.fetch("/api/status")
+    assert code == 200, f"GET /api/status returned HTTP {code}"
+    assert _OTA_URL_CANARY.encode() not in body, "custom OTA query leaked through device status or diagnostics"
+    status: dict[str, Any] = json.loads(body)
+    return status
+
+
+def _assert_ota_url_absent_from_serial(device: EmulatedDevice) -> None:
+    output = Path(device.dut.logfile).read_text(encoding="utf-8", errors="replace")
+    assert _OTA_URL_CANARY not in output, "custom OTA query leaked through serial output"
 
 
 def test_fresh_boot_reaches_setup_console(boot_device: Callable[..., EmulatedDevice]) -> None:
@@ -249,7 +273,7 @@ def test_factory_reset_returns_to_setup(
 
 
 @pytest.fixture
-def served_ota_image() -> Iterator[tuple[str, str]]:
+def served_ota_image() -> Iterator[ServedOtaImage]:
     """The OTA application image served over HTTP as the guest reaches it:
     a (URL, sha256) pair. Skips when the image was not built."""
     source = os.environ.get("STREAMLINE_QEMU_OTA_IMAGE", "")
@@ -258,11 +282,28 @@ def served_ota_image() -> Iterator[tuple[str, str]]:
     payload = Path(source).read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
 
+    stall_started = threading.Event()
+    release_stall = threading.Event()
+
     class OtaImageHandler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            path = self.path.partition("?")[0]
+            if path == "/unavailable.bin":
+                self.send_error(503)
+                return
             self.send_response(200)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
+            if path == "/stalled.bin":
+                try:
+                    self.wfile.write(payload[:4096])
+                    self.wfile.flush()
+                    stall_started.set()
+                    release_stall.wait(timeout=60)
+                    self.wfile.write(payload[4096:])
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
             self.wfile.write(payload)
 
         def log_message(self, format: str, *args: object) -> None:
@@ -270,41 +311,58 @@ def served_ota_image() -> Iterator[tuple[str, str]]:
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), OtaImageHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://{_SLIRP_HOST_ALIAS}:{server.server_address[1]}"
+    query = f"?token={_OTA_URL_CANARY}"
     try:
-        yield f"http://{_SLIRP_HOST_ALIAS}:{server.server_address[1]}/streamline-qemu-ota.bin", digest
+        yield ServedOtaImage(
+            download_url=f"{base}/streamline-qemu-ota.bin{query}",
+            unavailable_url=f"{base}/unavailable.bin{query}",
+            stalled_url=f"{base}/stalled.bin{query}",
+            sha256=digest,
+            stall_started=stall_started,
+            release_stall=release_stall,
+        )
     finally:
+        release_stall.set()
         server.shutdown()
 
 
 def test_ota_install_boots_from_the_other_slot(
     provisioned_device: EmulatedDevice,
     boot_device: Callable[..., EmulatedDevice],
-    served_ota_image: tuple[str, str],
+    served_ota_image: ServedOtaImage,
 ) -> None:
-    url, sha256 = served_ota_image
-    code, body = provisioned_device.api.post_form("/api/ota/update", {"url": url, "sha256": sha256})
+    code, body = provisioned_device.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.download_url, "sha256": served_ota_image.sha256},
+    )
     assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
 
     # The device downloads through the emulated network, writes the inactive
     # slot, and reboots — which under -no-reboot ends the QEMU process.
     provisioned_device.dut.qemu.wait(timeout=180)
+    _assert_ota_url_absent_from_serial(provisioned_device)
 
     updated = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
     updated.dut.expect_exact(f"Loaded app from partition at offset {_OTA_1_OFFSET}", timeout=BOOT_TIMEOUT)
     updated.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
     _expect_api_up(updated)
     assert _mode(updated) == "provisioned"
+    status = _assert_ota_url_private(updated)
+    assert "installed custom image" in status["diagnostics"]["last_ota"]
 
 
 def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(
     provisioned_device: EmulatedDevice,
-    served_ota_image: tuple[str, str],
+    served_ota_image: ServedOtaImage,
 ) -> None:
     # Pin the real image to a digest it cannot match. The device accepts the
     # trigger, downloads, hashes, and must reject the payload the checksum does
     # not vouch for — the guarantee that makes an unverified image unbootable.
-    url, _correct_sha = served_ota_image
-    code, body = provisioned_device.api.post_form("/api/ota/update", {"url": url, "sha256": "0" * 64})
+    code, body = provisioned_device.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.download_url, "sha256": "0" * 64},
+    )
     assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
 
     ota = _wait_for_ota_phase(provisioned_device, "failed", timeout=180)
@@ -313,6 +371,49 @@ def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(
     # A rejected install never switches slots, so the device stays on the image
     # it booted, still serving its API rather than rebooting into a bad slot.
     assert _mode(provisioned_device) == "provisioned"
+    _assert_ota_url_private(provisioned_device)
+    _assert_ota_url_absent_from_serial(provisioned_device)
+
+
+def test_ota_http_failure_keeps_the_custom_url_private(
+    provisioned_device: EmulatedDevice,
+    served_ota_image: ServedOtaImage,
+) -> None:
+    code, body = provisioned_device.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.unavailable_url, "sha256": served_ota_image.sha256},
+    )
+    assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
+
+    ota = _wait_for_ota_phase(provisioned_device, "failed", timeout=60)
+    assert "HTTP 503" in ota["message"], ota
+    _assert_ota_url_private(provisioned_device)
+    _assert_ota_url_absent_from_serial(provisioned_device)
+
+
+def test_ota_interruption_persists_only_a_redacted_recovery_note(
+    provisioned_device: EmulatedDevice,
+    boot_device: Callable[..., EmulatedDevice],
+    served_ota_image: ServedOtaImage,
+) -> None:
+    code, body = provisioned_device.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.stalled_url, "sha256": served_ota_image.sha256},
+    )
+    assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
+    assert served_ota_image.stall_started.wait(timeout=30), "device did not start the stalled download"
+    _wait_for_ota_phase(provisioned_device, "downloading", timeout=30)
+    _assert_ota_url_private(provisioned_device)
+
+    provisioned_device.dut.qemu.terminate()
+    served_ota_image.release_stall.set()
+    _assert_ota_url_absent_from_serial(provisioned_device)
+
+    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
+    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    _expect_api_up(rebooted)
+    status = _assert_ota_url_private(rebooted)
+    assert "installing custom image (did not finish)" in status["diagnostics"]["last_ota"]
 
 
 def test_provisioned_device_reports_the_unemulated_codec_as_a_blocking_fault(

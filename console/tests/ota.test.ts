@@ -31,6 +31,8 @@ describe('custom image validation', () => {
     ['', sha, 'enter both'],
     ['not a url', sha, 'http(s) address'],
     ['ftp://host/image.bin', sha, 'http or https'],
+    ['http://user:secret@host/image.bin', sha, 'username or password'],
+    ['https://host/image.bin#fragment', sha, '#fragment'],
     ['http://host/image.bin', 'abc123', '64 hex'],
   ])('rejects %j / %j before any request', (url, digest, problem) => {
     expect(customImageProblem(url, digest)).toContain(problem);
@@ -39,6 +41,8 @@ describe('custom image validation', () => {
   it('accepts a full http(s) source pinned by a 64-hex digest', () => {
     expect(customImageProblem('http://192.0.2.10:8000/streamline-ota.bin', sha)).toBeNull();
     expect(customImageProblem('https://host/image.bin', sha.toUpperCase())).toBeNull();
+    // A signed query is the point of a custom URL; it must stay accepted.
+    expect(customImageProblem('https://host/image.bin?token=abc&part=1', sha)).toBeNull();
   });
 });
 

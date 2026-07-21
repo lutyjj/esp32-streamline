@@ -341,8 +341,13 @@ fn run(progress: &OtaProgress, action: Action, store: Option<&Mutex<ConfigStore>
                 return progress.fail(error);
             }
         }
-        let what = format!("custom image {}", image.url);
-        return install_and_reboot(&image.url, &image.sha256, &what, progress, store);
+        return install_and_reboot(
+            &image.url,
+            &image.sha256,
+            image.display_name(),
+            progress,
+            store,
+        );
     }
 
     let current = env!("CARGO_PKG_VERSION");
@@ -382,8 +387,8 @@ fn sync_clock(progress: &OtaProgress) -> Result<(), String> {
     time::wait_for_sync().map_err(|error| format!("time synchronization failed: {error:#}"))
 }
 
-/// Download, verify, and boot into the image at `url`; `what` names it in
-/// progress messages and persisted notes ("0.3.3", "custom image http://…").
+/// Download, verify, and boot into the image at `url`; `what` is a non-sensitive
+/// name for progress messages and persisted notes ("0.3.3", "custom image").
 fn install_and_reboot(
     url: &str,
     sha256: &str,
@@ -489,7 +494,7 @@ fn install(url: &str, sha256: &str, progress: &OtaProgress) -> Result<()> {
     let mut response = client
         .get(url)
         .and_then(|request| request.submit())
-        .map_err(|error| anyhow!("{error:?}"))?;
+        .map_err(|_| anyhow!("download request failed"))?;
     let status = response.status();
     if status != 200 {
         bail!("download returned HTTP {status}");

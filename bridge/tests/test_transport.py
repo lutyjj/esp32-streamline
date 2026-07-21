@@ -131,6 +131,30 @@ class TransportStateStoreTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 TransportStateStore(link)
 
+    def test_existing_state_requires_private_permissions_before_parsing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "transport.json"
+            path.write_text("not valid JSON", encoding="utf-8")
+
+            for mode in (0o640, 0o644, 0o666):
+                with self.subTest(mode=oct(mode)):
+                    path.chmod(mode)
+                    with self.assertRaisesRegex(TransportStateError, "permissions must be 0600"):
+                        TransportStateStore(path)
+
+    def test_existing_state_must_belong_to_the_bridge_user(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "transport.json"
+            store = TransportStateStore(path)
+            store.put(self.key_id, self.psk)
+            owner = path.stat().st_uid
+
+            with (
+                patch("streamline_bridge.transport.os.geteuid", return_value=owner + 1),
+                self.assertRaisesRegex(TransportStateError, "owned by the bridge user"),
+            ):
+                TransportStateStore(path)
+
     def test_listener_mode_persists_with_the_keys_and_partial_shapes_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "transport.json"

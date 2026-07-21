@@ -15,7 +15,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.security import APIKeyQuery, HTTPAuthorizationCredentials, HTTPBearer
 from starlette.background import BackgroundTask
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from streamline_bridge.api_models import (
     BridgeStatus,
@@ -35,6 +34,7 @@ from streamline_bridge.api_models import (
     TransportSnapshot,
     UnlockResult,
 )
+from streamline_bridge.http_ingress import HttpIngressGuard
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
 from streamline_bridge.recording import RecordingError
 from streamline_bridge.recording_http import RecordingHttpService
@@ -85,20 +85,6 @@ class BridgeApi(FastAPI):
                     },
                 )
         return schema
-
-
-class BodyLimitMiddleware(BaseHTTPMiddleware):
-    """Reject declared request bodies above the bridge resource bound."""
-
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        raw_length = request.headers.get("content-length")
-        try:
-            length = int(raw_length) if raw_length is not None else 0
-        except ValueError:
-            length = HTTP_MAX_JSON_BODY_BYTES + 1
-        if length > HTTP_MAX_JSON_BODY_BYTES:
-            return error_response(413, "request-too-large", "Request bodies must not exceed 4096 bytes.")
-        return await call_next(request)
 
 
 def wav_header(pcm_format: PcmFormat = DEFAULT_FORMAT) -> bytes:
@@ -186,6 +172,7 @@ def make_app(
     api_token: str | None = None,
     transport: TransportControl | None = None,
     healthy: Callable[[], bool] | None = None,
+    progress_deadline_seconds: float = DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
 ) -> FastAPI:
     """Build the runtime app whose routes and models own the OpenAPI contract."""
     app = BridgeApi(
@@ -195,7 +182,11 @@ def make_app(
         redoc_url=None,
         openapi_url="/api/openapi.json",
     )
-    app.add_middleware(BodyLimitMiddleware)
+    app.add_middleware(
+        HttpIngressGuard,
+        max_body_bytes=HTTP_MAX_JSON_BODY_BYTES,
+        progress_deadline_seconds=progress_deadline_seconds,
+    )
     recording_api = RecordingHttpService(recordings)
     is_healthy = healthy or (lambda: True)
     if transport is None:
@@ -291,7 +282,7 @@ def make_app(
     @app.put(
         "/api/transport/mode",
         response_model=TransportSnapshot,
-        responses=error_responses(400, 401, 503),
+        responses=error_responses(400, 401, 413, 503),
         dependencies=authenticated,
         operation_id="setTransportMode",
         summary="Select the PCM listener mode, dropping live producers on a change",
@@ -305,17 +296,17 @@ def make_app(
     @app.put(
         "/api/transport/keys/{key_id}",
         response_model=TransportKeyResult,
-        responses=error_responses(400, 401, 409, 503),
+        responses=error_responses(400, 401, 409, 413, 503),
         status_code=201,
         dependencies=authenticated,
         operation_id="putTransportKey",
-        summary="Provision or replace one device PCM transport key",
+        summary="Provision or replace one device PCM transport key, closing a replaced key's live sessions",
     )
     def put_transport_key(key_id: TransportKeyId, body: TransportKeyRequest) -> Response | TransportKeyResult:
         if transport.store is None:
             return error_response(503, "transport-unavailable", transport_disabled_message)
         try:
-            transport.store.put(key_id, body.psk)
+            transport.put_key(key_id, body.psk)
         except ValueError as exc:
             return error_response(409, "transport-key-rejected", str(exc))
         return TransportKeyResult(key_id=key_id)
@@ -326,13 +317,13 @@ def make_app(
         responses=error_responses(400, 401, 404, 503),
         dependencies=authenticated,
         operation_id="deleteTransportKey",
-        summary="Remove one device PCM transport key",
+        summary="Remove one device PCM transport key and close its live sessions",
     )
     def delete_transport_key(key_id: TransportKeyId) -> Response | TransportKeyDeleteResult:
         if transport.store is None:
             return error_response(503, "transport-unavailable", transport_disabled_message)
         try:
-            transport.store.delete(key_id)
+            transport.delete_key(key_id)
         except ValueError as exc:
             return error_response(404, "transport-key-not-found", str(exc))
         return TransportKeyDeleteResult(deleted=key_id)
@@ -388,7 +379,7 @@ def make_app(
     @app.post(
         "/api/recordings",
         response_model=RecordingResult,
-        responses=error_responses(400, 401, 409, 503, 507),
+        responses=error_responses(400, 401, 409, 413, 503, 507),
         status_code=201,
         dependencies=authenticated,
         operation_id="startRecording",

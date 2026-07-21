@@ -62,7 +62,9 @@ The admin-supplied SHA-256 — not the transport — is the root of trust: the
 device rejects any payload whose digest differs, so a plain-HTTP LAN URL is
 acceptable (and skips the clock sync that only TLS needs, so an offline bench
 works). Custom installs skip the version comparison — a `dev` build can replace
-any release — and keep the rollback net below.
+any release — and keep the rollback net below. Signed query parameters remain
+part of the download request, but status, diagnostics, and logs identify the
+source only as a custom image. URLs with userinfo or fragments are rejected.
 
 ## Safety: rollback
 

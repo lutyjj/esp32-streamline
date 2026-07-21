@@ -49,22 +49,40 @@ jobs:
     outputs:
       latest: ${{ steps.release-state.outputs.latest }}
     steps:
-      # A draft release holds only the intended tag name — GitHub creates the
-      # tag ref when the release is published. The release record stores the
-      # exact commit in both states, so read it from there and require a full
-      # SHA rather than risking a branch-name checkout.
-      - name: Resolve the release commit
+      # Provenance anchor for every privileged step below. The dispatch input
+      # is untrusted, so it must name an exact vX.Y.Z release whose recorded
+      # commit already lives on the protected mainline: that rejects branch
+      # refs, arbitrary tag names, and any commit that never passed mainline
+      # review before a registry login or write token is used. A draft release
+      # holds only the intended tag name — GitHub creates the tag ref when the
+      # release is published — and the release record stores the exact commit
+      # in both states, so read it from there and require a full SHA rather
+      # than risking a branch-name checkout. Mainline history comes first so
+      # the ancestry test has the graph; the release commit is reachable
+      # from it.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: mainline
+          fetch-depth: 0
+
+      - name: Verify the release commit is a promoted mainline commit
         id: commit
         env:
           GH_REPO: ${{ github.repository }}
         run: |
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "release tag must be an exact vX.Y.Z: $TAG" >&2; exit 1; }
           sha="$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)"
-          echo "$sha" | grep -Eq '^[0-9a-f]{40}$'
+          echo "$sha" | grep -Eq '^[0-9a-f]{40}$' \
+            || { echo "release target is not a full commit SHA: $sha" >&2; exit 1; }
+          git merge-base --is-ancestor "$sha" origin/mainline \
+            || { echo "release commit $sha is not on the protected mainline" >&2; exit 1; }
           printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          ref: ${{ steps.commit.outputs.sha }}
+      - name: Check out the verified release commit
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: git switch --detach "$SHA"
 
       - name: Verify the tagged tree carries the tag's version
         id: version

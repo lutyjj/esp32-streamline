@@ -227,9 +227,10 @@ class TransportControl:
     """Transport policy boundary between the PCM listener and the HTTP adapter.
 
     The PCM listener asks it for the authenticator matching the current mode;
-    the HTTP adapter drives mode and key mutations through it. A mode change
-    persists first, then disconnects live producers so exactly one protocol is
-    ever admitted.
+    the HTTP adapter drives mode and key mutations through it. Every mutation
+    persists first, then disconnects the producers it invalidates: a mode
+    change drops all of them so exactly one protocol is ever admitted, and a
+    key replacement or deletion drops only that key's live TLS sessions.
     """
 
     def __init__(
@@ -243,7 +244,7 @@ class TransportControl:
         self.authenticator = authenticator
         self._cleartext = CleartextAuthenticator()
         self._port = port
-        self._disconnect_producers: Callable[[], None] = lambda: None
+        self._disconnect_producers: Callable[[str | None], None] = lambda _source_key: None
 
     @property
     def configurable(self) -> bool:
@@ -259,7 +260,7 @@ class TransportControl:
             return authenticator
         return self._cleartext
 
-    def bind_producer_disconnect(self, disconnect: Callable[[], None]) -> None:
+    def bind_producer_disconnect(self, disconnect: Callable[[str | None], None]) -> None:
         self._disconnect_producers = disconnect
 
     def set_tls_enabled(self, enabled: bool) -> None:
@@ -268,7 +269,23 @@ class TransportControl:
         if self.store.tls_enabled == enabled:
             return
         self.store.set_tls_enabled(enabled)
-        self._disconnect_producers()
+        self._disconnect_producers(None)
+
+    def put_key(self, key_id: str, psk: str) -> None:
+        """Provision or replace one key; a replacement revokes its sessions."""
+        if self.store is None:
+            raise TransportStateError("transport state storage is not configured")
+        replacing = self.store.get(key_id) is not None
+        self.store.put(key_id, psk)
+        if replacing:
+            self._disconnect_producers(key_id)
+
+    def delete_key(self, key_id: str) -> None:
+        """Remove one key, then close every session it authenticated."""
+        if self.store is None:
+            raise TransportStateError("transport state storage is not configured")
+        self.store.delete(key_id)
+        self._disconnect_producers(key_id)
 
     def snapshot(self) -> dict[str, object]:
         successes, failures = self.authenticator.snapshot() if self.authenticator is not None else (0, 0)

@@ -51,28 +51,42 @@ class _FixedAuthenticatorSource:
 
 
 class _LiveConnections:
-    """Track live producer sockets so a mode switch can drop them all."""
+    """Track live producer sockets and their authenticated identities.
+
+    A mode switch drops every socket; a key mutation drops only the sockets
+    that authenticated with that key.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._sockets: set[socket.socket] = set()
+        self._sockets: dict[socket.socket, AuthenticatedConnection | None] = {}
 
     def add(self, sock: socket.socket) -> None:
         with self._lock:
-            self._sockets.add(sock)
+            self._sockets[sock] = None
 
-    def replace(self, old: socket.socket, new: socket.socket) -> None:
+    def replace(self, old: socket.socket, authenticated: AuthenticatedConnection) -> None:
         with self._lock:
-            self._sockets.discard(old)
-            self._sockets.add(new)
+            self._sockets.pop(old, None)
+            self._sockets[authenticated.socket] = authenticated
 
     def discard(self, sock: socket.socket) -> None:
         with self._lock:
-            self._sockets.discard(sock)
+            self._sockets.pop(sock, None)
 
-    def shutdown_all(self) -> None:
+    def shutdown_matching(self, source_key: str | None) -> None:
+        """Shut down every socket, or only TLS sockets holding ``source_key``."""
         with self._lock:
-            live = tuple(self._sockets)
+            live = tuple(
+                sock
+                for sock, authenticated in self._sockets.items()
+                if source_key is None
+                or (
+                    authenticated is not None
+                    and authenticated.transport == "tls-psk"
+                    and authenticated.source_key == source_key
+                )
+            )
         for sock in live:
             with contextlib.suppress(OSError):
                 sock.shutdown(socket.SHUT_RDWR)
@@ -276,9 +290,9 @@ class TcpIngestServer:
             with self._state_lock:
                 self._workers.discard(threading.current_thread())
 
-    def close_producers(self) -> None:
-        """Drop every live producer so the next connect renegotiates the mode."""
-        self._live.shutdown_all()
+    def close_producers(self, source_key: str | None = None) -> None:
+        """Drop live producers: all of them, or only one key's TLS sessions."""
+        self._live.shutdown_matching(source_key)
 
     def close(self) -> None:
         """Close the listener and producers, then join every owned worker."""
@@ -310,7 +324,7 @@ class TcpIngestServer:
             conn.settimeout(self._idle_timeout_seconds)
             authenticated = self._authenticators.producer_authenticator().authenticate(conn, addr)
             stream = authenticated.socket
-            self._live.replace(conn, stream)
+            self._live.replace(conn, authenticated)
             stream.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             stream.settimeout(self._idle_timeout_seconds)
             try:

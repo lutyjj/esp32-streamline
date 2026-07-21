@@ -125,7 +125,12 @@ check: it validates the image against the `sha256` the caller supplies from
   retained sources, client queues, recording queues, recording duration,
   sequence gaps, download tickets, manifest sizes, directory scans, and list
   results all have finite limits. A client that exceeds a connection or socket
-  limit is disconnected without allocating another worker.
+  limit is disconnected without allocating another worker. The 4096-byte body
+  ceiling counts every received chunk, so a chunked or length-lying request
+  meets the same 413 before authentication or parsing. The request-timeout
+  option is a progress deadline at every phase — header read, body read, and
+  response write — so a stalled client releases its connection slot instead of
+  holding it open.
 - The recording page uses a per-response Content Security Policy nonce. It has
   no cross-origin permissions, cookies, third-party scripts, or persistent
   token storage. The bearer header keeps cross-origin form and image requests

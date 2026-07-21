@@ -10,6 +10,7 @@ from pathlib import Path
 import uvicorn
 
 from streamline_bridge.http import make_app
+from streamline_bridge.http_ingress import ProgressDeadlineH11Protocol
 from streamline_bridge.options import parse_args, validate_args
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.recording import RecordingService, RecordingStore
@@ -71,14 +72,26 @@ def main() -> int:
     transport.bind_producer_disconnect(pcm_server.close_producers)
     server = uvicorn.Server(
         uvicorn.Config(
-            make_app(sources, bridge_version(), recordings, api_token, transport, healthy=lambda: pcm_server.healthy),
+            make_app(
+                sources,
+                bridge_version(),
+                recordings,
+                api_token,
+                transport,
+                healthy=lambda: pcm_server.healthy,
+                progress_deadline_seconds=args.http_request_timeout_seconds,
+            ),
             host=args.http_bind,
             port=args.http_port,
             log_config=None,
             # Uvicorn counts the current connection before applying its >= limit.
             limit_concurrency=args.max_http_connections + 1,
+            # One knob, applied as a progress deadline at every phase: header
+            # reads and body reads through the protocol, response writes
+            # through the ingress guard, and keep-alive idling by uvicorn.
             timeout_keep_alive=args.http_request_timeout_seconds,
             timeout_graceful_shutdown=HTTP_GRACEFUL_SHUTDOWN_SECONDS,
+            http=ProgressDeadlineH11Protocol,
         )
     )
     result = 0

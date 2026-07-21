@@ -1625,7 +1625,7 @@
             "bearer_auth": []
           }
         ],
-        "summary": "Remove one device PCM transport key"
+        "summary": "Remove one device PCM transport key and close its live sessions"
       },
       "put": {
         "operationId": "putTransportKey",
@@ -1718,7 +1718,7 @@
             "bearer_auth": []
           }
         ],
-        "summary": "Provision or replace one device PCM transport key"
+        "summary": "Provision or replace one device PCM transport key, closing a replaced key's live sessions"
       }
     },
     "/api/transport/mode": {

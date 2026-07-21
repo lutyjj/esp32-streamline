@@ -300,13 +300,13 @@ def make_app(
         status_code=201,
         dependencies=authenticated,
         operation_id="putTransportKey",
-        summary="Provision or replace one device PCM transport key",
+        summary="Provision or replace one device PCM transport key, closing a replaced key's live sessions",
     )
     def put_transport_key(key_id: TransportKeyId, body: TransportKeyRequest) -> Response | TransportKeyResult:
         if transport.store is None:
             return error_response(503, "transport-unavailable", transport_disabled_message)
         try:
-            transport.store.put(key_id, body.psk)
+            transport.put_key(key_id, body.psk)
         except ValueError as exc:
             return error_response(409, "transport-key-rejected", str(exc))
         return TransportKeyResult(key_id=key_id)
@@ -317,13 +317,13 @@ def make_app(
         responses=error_responses(400, 401, 404, 503),
         dependencies=authenticated,
         operation_id="deleteTransportKey",
-        summary="Remove one device PCM transport key",
+        summary="Remove one device PCM transport key and close its live sessions",
     )
     def delete_transport_key(key_id: TransportKeyId) -> Response | TransportKeyDeleteResult:
         if transport.store is None:
             return error_response(503, "transport-unavailable", transport_disabled_message)
         try:
-            transport.store.delete(key_id)
+            transport.delete_key(key_id)
         except ValueError as exc:
             return error_response(404, "transport-key-not-found", str(exc))
         return TransportKeyDeleteResult(deleted=key_id)

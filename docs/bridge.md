@@ -47,9 +47,16 @@ producer adopts.
 The bridge retains an inactive dynamic source for
 `--source-eviction-idle-seconds` (300 seconds by default). A reconnect during
 that interval reuses its playout pipeline. An active TCP producer or HTTP
-client or recording session prevents eviction. The `/status` lifecycle block
-reports the state, admission policy, consumer counts, current idle duration,
-and eviction interval.
+client or recording session prevents eviction. Eviction and bridge shutdown
+stop and join the source's playout worker, so churned sources never accumulate
+threads. The `/status` lifecycle block reports the state, admission policy,
+consumer counts, current idle duration, and eviction interval.
+
+Each playout buffer admits at most one second of audio beyond
+`--playout-buffer-seconds`. A producer that sends faster than real time past
+that ceiling is disconnected, and the source's `overflows` counter records it;
+the buffer also drops its stored packets whenever an outage forces a
+re-buffer, so a stalled stream cannot strand memory.
 
 Each source snapshot also includes `levels`, the peak and RMS absolute sample
 values for the latest accepted 16-bit stereo PCM packet. Each channel ranges
@@ -69,7 +76,7 @@ that artifact to generate a typed client; do not edit generated client files.
 | `--source-allow` | empty | IPv4 addresses | Repeat or comma-separate allowed producer addresses. |
 | `--max-sources` | 8 | integer 1..32 | Maximum retained source pipelines. |
 | `--max-http-connections` | 32 | integer 1..128 | Maximum simultaneous HTTP workers. Excess connections are rejected. |
-| `--http-request-timeout-seconds` | 10.0 | finite number 0.001..3600 | Socket inactivity before an HTTP client is disconnected. |
+| `--http-request-timeout-seconds` | 10.0 | finite number 0.001..3600 | Progress deadline for every HTTP phase: header reads, body reads, response writes, and keep-alive idling. A client stalled past it is disconnected; healthy streams are unaffected. |
 | `--client-buffer-chunks` | 2048 | integer 1..4096 | Per-client output queue depth in 1 KiB chunks. Full queues evict the client. |
 | `--playout-buffer-seconds` | 1.0 | finite number 0.001..60 | Packets buffered before playout begins or resumes. |
 | `--max-repeat-conceal-packets` | 3 | integer 0..256 | Loss packets that repeat attenuated PCM before silence. |

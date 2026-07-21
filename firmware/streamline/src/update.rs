@@ -132,7 +132,7 @@ fn is_sha256_hex(digest: &str) -> bool {
 /// pins its content. Used for development installs without USB access. The
 /// digest — not the transport — is the root of trust, so a plain-HTTP LAN URL
 /// is acceptable; the device refuses any payload whose hash differs.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CustomImage {
     pub url: String,
     pub sha256: String,
@@ -143,6 +143,21 @@ impl CustomImage {
     /// for certificate validation).
     pub fn needs_tls(&self) -> bool {
         self.url.starts_with("https://")
+    }
+
+    /// Non-sensitive name for status, diagnostics, and logs.
+    pub const fn display_name(&self) -> &'static str {
+        "custom image"
+    }
+}
+
+impl std::fmt::Debug for CustomImage {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CustomImage")
+            .field("url", &"[redacted]")
+            .field("sha256", &self.sha256)
+            .finish()
     }
 }
 
@@ -165,9 +180,7 @@ pub fn custom_image_from_form(
 }
 
 fn custom_image(url: &str, sha256: &str) -> Result<CustomImage, String> {
-    if !url.starts_with("http://") && !url.starts_with("https://") {
-        return Err("url must start with http:// or https://".to_owned());
-    }
+    validate_custom_image_url(url)?;
     if !is_sha256_hex(sha256) {
         return Err("sha256 must be 64 hex characters".to_owned());
     }
@@ -175,6 +188,33 @@ fn custom_image(url: &str, sha256: &str) -> Result<CustomImage, String> {
         url: url.to_owned(),
         sha256: sha256.to_ascii_lowercase(),
     })
+}
+
+/// Validate the URL shape without normalizing or dropping its signed query.
+fn validate_custom_image_url(url: &str) -> Result<(), String> {
+    let authority_and_path = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+        .ok_or_else(|| "url must start with http:// or https://".to_owned())?;
+    if url
+        .bytes()
+        .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+    {
+        return Err("url must not contain whitespace or control characters".to_owned());
+    }
+    if url.contains('#') {
+        return Err("url fragments are not supported".to_owned());
+    }
+    let authority = authority_and_path
+        .split_once(['/', '?'])
+        .map_or(authority_and_path, |(authority, _)| authority);
+    if authority.is_empty() {
+        return Err("url must include a host".to_owned());
+    }
+    if authority.contains('@') {
+        return Err("url userinfo is not supported".to_owned());
+    }
+    Ok(())
 }
 
 /// Bytes pulled in one read; large enough to keep flash writes efficient without
@@ -454,6 +494,19 @@ mod tests {
     }
 
     #[test]
+    fn signed_query_stays_downloadable_but_never_appears_in_debug_output() {
+        let canary = "private-query-canary";
+        let url = format!("https://bench.local/a.bin?token={canary}&part=1");
+        let image = custom_image_from_form(Some(&url), Some(HELLO_SHA256))
+            .expect("signed URL is valid")
+            .expect("custom image is selected");
+
+        assert_eq!(image.url, url);
+        assert_eq!(image.display_name(), "custom image");
+        assert!(!format!("{image:?}").contains(canary));
+    }
+
+    #[test]
     fn a_url_without_a_digest_is_rejected_and_vice_versa() {
         assert!(custom_image_from_form(Some("http://bench.local/a.bin"), None).is_err());
         assert!(custom_image_from_form(None, Some(HELLO_SHA256)).is_err());
@@ -467,6 +520,21 @@ mod tests {
             "bench.local/a.bin",
         ] {
             assert!(custom_image_from_form(Some(url), Some(HELLO_SHA256)).is_err());
+        }
+    }
+
+    #[test]
+    fn custom_urls_reject_ambiguous_or_disclosive_components() {
+        for url in [
+            "http:///a.bin",
+            "http://user:secret@bench.local/a.bin",
+            "https://bench.local/a.bin#private-fragment",
+            "https://bench.local/a bin",
+        ] {
+            let error = custom_image_from_form(Some(url), Some(HELLO_SHA256))
+                .expect_err("unsafe URL shape is rejected");
+            assert!(!error.contains("secret"));
+            assert!(!error.contains("private-fragment"));
         }
     }
 

@@ -166,12 +166,17 @@ impl From<crate::config::AutoUpdateSchedule> for AutoUpdateScheduleRequest {
     }
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Default, Deserialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 /// Empty installs the latest release. A custom install requires both fields.
 pub struct OtaUpdateRequest {
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^https?://"))]
+    /// HTTP(S) download URL. Query parameters are preserved; userinfo and
+    /// fragments are rejected.
+    #[cfg_attr(
+        feature = "api-spec",
+        schema(pattern = r"^https?://[^/?#@\s]+(?:[/?][^#\s]*)?$")
+    )]
     pub url: Option<String>,
     #[cfg_attr(feature = "api-spec", schema(pattern = r"^[0-9A-Fa-f]{64}$"))]
     pub sha256: Option<String>,

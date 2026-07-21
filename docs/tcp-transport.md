@@ -69,7 +69,10 @@ The bridge persists its listener mode and a bounded versioned key map together
 in a private `0600` state file. Updates use a durable atomic replacement. The
 API lists only key ids. Mode and key mutations require the bridge API token
 ([bridge reference](bridge.md)), and key enrollment works in either mode, so a
-credential can be in place before the switch.
+credential can be in place before the switch. A mutation persists first and
+then closes the sessions it invalidates: replacing or deleting a key drops
+that key's live TLS producers while unrelated sessions stay connected, so a
+retired credential cannot keep source control by holding its connection open.
 
 ## Enable encryption
 

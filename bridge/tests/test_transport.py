@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -155,8 +156,8 @@ class TransportControlTests(unittest.TestCase):
             store = TransportStateStore(path)
             authenticator = TlsPskAuthenticator(store)
             control = TransportControl(store, authenticator, port=39000)
-            drops: list[bool] = []
-            control.bind_producer_disconnect(lambda: drops.append(True))
+            drops: list[str | None] = []
+            control.bind_producer_disconnect(drops.append)
 
             self.assertIsInstance(control.producer_authenticator(), CleartextAuthenticator)
             self.assertEqual(control.snapshot()["mode"], "cleartext")
@@ -164,15 +165,65 @@ class TransportControlTests(unittest.TestCase):
             control.set_tls_enabled(True)
             self.assertIs(control.producer_authenticator(), authenticator)
             self.assertEqual(control.snapshot()["mode"], "tls-psk")
-            self.assertEqual(len(drops), 1)
+            self.assertEqual(drops, [None], "a mode switch drops every producer")
             self.assertTrue(TransportStateStore(path).tls_enabled)
 
             control.set_tls_enabled(True)
-            self.assertEqual(len(drops), 1)
+            self.assertEqual(drops, [None])
 
             control.set_tls_enabled(False)
             self.assertIsInstance(control.producer_authenticator(), CleartextAuthenticator)
-            self.assertEqual(len(drops), 2)
+            self.assertEqual(drops, [None, None])
+
+    def test_key_mutations_persist_first_and_revoke_only_that_key(self) -> None:
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "state.json"
+            store = TransportStateStore(path)
+            control = TransportControl(store, TlsPskAuthenticator(store), port=39000)
+            drops: list[str | None] = []
+            control.bind_producer_disconnect(drops.append)
+
+            control.put_key(key_id, "ab" * 32)
+            self.assertEqual(drops, [], "a first provisioning has no session to revoke")
+            self.assertEqual(TransportStateStore(path).ids(), (key_id,))
+
+            control.put_key(key_id, "cd" * 32)
+            self.assertEqual(drops, [key_id], "a replacement revokes exactly that key's sessions")
+
+            control.delete_key(key_id)
+            self.assertEqual(drops, [key_id, key_id])
+            self.assertEqual(TransportStateStore(path).ids(), ())
+
+            with self.assertRaises(TransportStateError):
+                control.delete_key(key_id)
+            self.assertEqual(drops, [key_id, key_id], "a failed mutation revokes nothing")
+
+    def test_a_failed_persist_leaves_keys_and_sessions_unchanged(self) -> None:
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "state.json"
+            store = TransportStateStore(path)
+            store.put(key_id, "ab" * 32)
+            control = TransportControl(store, TlsPskAuthenticator(store), port=39000)
+            drops: list[str | None] = []
+            control.bind_producer_disconnect(drops.append)
+
+            with (
+                patch.object(TransportStateStore, "_write", side_effect=OSError("disk full")),
+                self.assertRaises(OSError),
+            ):
+                control.put_key(key_id, "cd" * 32)
+            self.assertEqual(drops, [], "an unpersisted replacement must not drop sessions")
+            self.assertEqual(store.get(key_id), bytes.fromhex("ab" * 32))
+
+            with (
+                patch.object(TransportStateStore, "_write", side_effect=OSError("disk full")),
+                self.assertRaises(OSError),
+            ):
+                control.delete_key(key_id)
+            self.assertEqual(drops, [])
+            self.assertEqual(store.ids(), (key_id,))
 
     def test_unconfigured_control_stays_cleartext_and_refuses_mode_changes(self) -> None:
         control = TransportControl(None, None, port=39000)
@@ -183,6 +234,10 @@ class TransportControlTests(unittest.TestCase):
         self.assertIsInstance(control.producer_authenticator(), CleartextAuthenticator)
         with self.assertRaises(TransportStateError):
             control.set_tls_enabled(True)
+        with self.assertRaises(TransportStateError):
+            control.put_key("eli1-00112233445566778899aabbccddeeff", "ab" * 32)
+        with self.assertRaises(TransportStateError):
+            control.delete_key("eli1-00112233445566778899aabbccddeeff")
 
 
 class TransportAuthenticationTests(unittest.TestCase):

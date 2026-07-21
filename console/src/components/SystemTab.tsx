@@ -288,7 +288,8 @@ function FirmwareCard() {
               customTransact.setState({ text: problem, cls: 'err' });
               return;
             }
-            beginOtaSession(`Installing custom image from ${url.trim()}…`, 'custom');
+            // The URL may carry a signed query; keep it out of UI output.
+            beginOtaSession('Installing custom image…', 'custom');
             customTransact.run(() => otaUpdate({ url: url.trim(), sha256: sha256.trim() }), {
               busyText: 'Installing…',
               okText: 'Install started — progress below',

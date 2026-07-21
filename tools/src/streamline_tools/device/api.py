@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from streamline_tools.device.checks import CheckResult
 
@@ -28,7 +28,7 @@ class DeviceApi:
     """One device's HTTP surface, addressed by its base URL."""
 
     base_url: str
-    admin_key: str | None = None
+    admin_key: str | None = field(default=None, repr=False)
 
     def fetch(self, path: str) -> tuple[int, bytes]:
         return self._exchange(urllib.request.Request(self.base_url + path))

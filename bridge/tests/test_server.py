@@ -31,7 +31,7 @@ class FakePcmServer:
         self.failure = RuntimeError("listener failed")
         self._on_failure(self.failure)
 
-    def close_producers(self) -> None:
+    def close_producers(self, source_key: str | None = None) -> None:
         pass
 
     def close(self) -> None:

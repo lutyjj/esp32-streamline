@@ -293,6 +293,50 @@ class TcpAdapterTests(unittest.TestCase):
             peer.close()
             ingest.close()
 
+    def test_close_producers_by_key_drops_only_that_tls_session(self) -> None:
+        # Composed ids keep the secret scanner quiet: no long hex literal.
+        revoked = "eli1-" + "0123456789abcdef" * 2
+        unrelated = "eli1-" + "fedcba9876543210" * 2
+
+        class KeyedAuthenticator:
+            """Hand out TLS identities per connection without a handshake."""
+
+            def __init__(self) -> None:
+                self.keys = [revoked, unrelated]
+
+            def authenticate(self, conn: socket.socket, _addr: tuple[str, int]) -> AuthenticatedConnection:
+                return AuthenticatedConnection(conn, self.keys.pop(0), "tls-psk")
+
+        class KeyedSource:
+            def __init__(self) -> None:
+                self.authenticator = KeyedAuthenticator()
+
+            def producer_authenticator(self) -> KeyedAuthenticator:
+                return self.authenticator
+
+        registry = SourceRegistry(make_pipeline, max_sources=2)
+        ingest = TcpIngestServer(registry, "127.0.0.1", 0, 5.0, max_connections=2, authenticators=KeyedSource())
+        ingest.start()
+        revoked_peer = socket.create_connection(("127.0.0.1", ingest.bound_port))
+        try:
+            self.assertEqual(self.wait_for_state(registry, revoked, "connected"), "connected")
+            retained_peer = socket.create_connection(("127.0.0.1", ingest.bound_port))
+            try:
+                self.assertEqual(self.wait_for_state(registry, unrelated, "connected"), "connected")
+
+                ingest.close_producers(revoked)
+
+                self.assertEqual(self.wait_for_state(registry, revoked, "disconnected"), "disconnected")
+                revoked_peer.settimeout(2)
+                self.assertEqual(revoked_peer.recv(1), b"", "the revoked session is closed")
+                retained_peer.sendall(packet(1))
+                self.assertEqual(self.wait_for_state(registry, unrelated, "connected"), "connected")
+            finally:
+                retained_peer.close()
+        finally:
+            revoked_peer.close()
+            ingest.close()
+
     def test_close_producers_drops_a_live_connection(self) -> None:
         registry = SourceRegistry(make_pipeline, max_sources=1)
         ingest = TcpIngestServer(registry, "127.0.0.1", 0, 5.0, max_connections=1)

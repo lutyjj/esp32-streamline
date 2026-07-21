@@ -718,9 +718,19 @@
             "title": "Lost",
             "type": "integer"
           },
+          "max_buffered_packets": {
+            "minimum": 1.0,
+            "title": "Max Buffered Packets",
+            "type": "integer"
+          },
           "max_outage_silence_packets": {
             "minimum": 1.0,
             "title": "Max Outage Silence Packets",
+            "type": "integer"
+          },
+          "overflows": {
+            "minimum": 0.0,
+            "title": "Overflows",
             "type": "integer"
           },
           "packet_frames": {
@@ -815,8 +825,10 @@
           "reordered",
           "duplicate",
           "underruns",
+          "overflows",
           "buffered_packets",
           "playout_buffer_packets",
+          "max_buffered_packets",
           "max_outage_silence_packets",
           "bytes",
           "frames",

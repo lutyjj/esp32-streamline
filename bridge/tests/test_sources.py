@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import socket
+import threading
 import unittest
 from http import HTTPStatus
 from typing import cast
@@ -291,3 +292,62 @@ class SourceRegistryTests(unittest.TestCase):
         finally:
             server.close()
             peer.close()
+
+
+def live_playout_workers() -> int:
+    return sum(1 for thread in threading.enumerate() if thread.name == "playout-worker" and thread.is_alive())
+
+
+class SourceLifecycleTests(unittest.TestCase):
+    """Eviction and shutdown close pipelines instead of leaking their workers."""
+
+    def setUp(self) -> None:
+        self.time = FakeTime()
+        self.registry: SourceRegistry[AudioPipeline] = SourceRegistry(
+            lambda: AudioPipeline(4, 0.001, 1, 1.0),
+            max_sources=2,
+            eviction_idle_seconds=10.0,
+            now=self.time,
+        )
+        self.addCleanup(self.registry.close)
+
+    def churn_one_source(self, address: str) -> AudioPipeline:
+        server, peer = socket.socketpair()
+        try:
+            lease = self.registry.lease_producer(address, server)
+            hub = lease.hub
+            lease.close()
+            return hub
+        finally:
+            peer.close()
+            server.close()
+
+    def test_worker_count_stays_constant_under_source_churn(self) -> None:
+        baseline = live_playout_workers()
+        hubs = []
+        for round_number in range(5):
+            hubs.append(self.churn_one_source(f"192.0.2.{10 + round_number}"))
+            self.time.advance(11.0)
+            self.registry.snapshot()  # triggers eviction of the idle source
+        for hub in hubs:
+            self.assertTrue(hub.playout.closed, "eviction closes the evicted pipeline")
+        self.assertEqual(live_playout_workers(), baseline, "no playout worker outlives its source")
+
+    def test_registry_close_joins_every_pipeline_worker(self) -> None:
+        baseline = live_playout_workers()
+        self.churn_one_source("192.0.2.10")
+        self.churn_one_source("192.0.2.11")
+        self.registry.close()
+        self.assertEqual(live_playout_workers(), baseline)
+        self.assertEqual(self.registry.snapshot(), {}, "a closed registry holds no sources")
+
+    def test_a_closed_pipeline_disconnects_its_producer_stream(self) -> None:
+        server, peer = socket.socketpair()
+        try:
+            lease = self.registry.lease_producer("192.0.2.10", server)
+            lease.hub.close()
+            self.assertFalse(lease.ingest(0, b"\x00\x00"), "ingest into a closed pipeline demands disconnect")
+        finally:
+            lease.close()
+            peer.close()
+            server.close()

@@ -47,9 +47,16 @@ producer adopts.
 The bridge retains an inactive dynamic source for
 `--source-eviction-idle-seconds` (300 seconds by default). A reconnect during
 that interval reuses its playout pipeline. An active TCP producer or HTTP
-client or recording session prevents eviction. The `/status` lifecycle block
-reports the state, admission policy, consumer counts, current idle duration,
-and eviction interval.
+client or recording session prevents eviction. Eviction and bridge shutdown
+stop and join the source's playout worker, so churned sources never accumulate
+threads. The `/status` lifecycle block reports the state, admission policy,
+consumer counts, current idle duration, and eviction interval.
+
+Each playout buffer admits at most one second of audio beyond
+`--playout-buffer-seconds`. A producer that sends faster than real time past
+that ceiling is disconnected, and the source's `overflows` counter records it;
+the buffer also drops its stored packets whenever an outage forces a
+re-buffer, so a stalled stream cannot strand memory.
 
 Each source snapshot also includes `levels`, the peak and RMS absolute sample
 values for the latest accepted 16-bit stereo PCM packet. Each channel ranges

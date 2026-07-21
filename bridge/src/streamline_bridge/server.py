@@ -110,6 +110,7 @@ def main() -> int:
         pcm_server.close()
         if recordings is not None:
             recordings.shutdown()
+        sources.close()
     return result
 
 

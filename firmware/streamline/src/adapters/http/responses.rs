@@ -117,6 +117,54 @@ where
     error_response(request, 503, message)
 }
 
+/// Bytes buffered per response body. Bodies stream through this fixed window
+/// instead of materializing in one heap block: several concurrent status
+/// scrapes arriving while the packet queue is full must not multiply peak
+/// heap into allocation failure.
+const BODY_BUFFER_BYTES: usize = 1_024;
+
+/// Adapt the connection's writer to `std::io::Write` so `serde_json` and
+/// other std writers can stream a body straight into the response.
+pub(super) struct StdWriter<W>(W);
+
+impl<W: embedded_svc::io::Write> std::io::Write for StdWriter<W> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .write(buffer)
+            .map_err(|error| std::io::Error::other(format!("{error:?}")))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0
+            .flush()
+            .map_err(|error| std::io::Error::other(format!("{error:?}")))
+    }
+}
+
+/// Open a streaming response body with the standard headers.
+pub(super) fn body_writer<C>(
+    request: embedded_svc::http::server::Request<C>,
+    code: u16,
+    content_type: &str,
+) -> Result<std::io::BufWriter<StdWriter<embedded_svc::http::server::Response<C>>>>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    let response = request.into_response(
+        code,
+        None,
+        &[
+            ("Content-Type", content_type),
+            ("Cache-Control", "no-store"),
+        ],
+    )?;
+    Ok(std::io::BufWriter::with_capacity(
+        BODY_BUFFER_BYTES,
+        StdWriter(response),
+    ))
+}
+
 pub(super) fn json_response<C, T>(
     request: embedded_svc::http::server::Request<C>,
     code: u16,
@@ -127,7 +175,10 @@ where
     C::Error: std::error::Error + Send + Sync + 'static,
     T: Serialize,
 {
-    respond(request, code, "application/json", &serialize(value))
+    let mut writer = body_writer(request, code, "application/json")?;
+    serde_json::to_writer(&mut writer, value)?;
+    std::io::Write::flush(&mut writer)?;
+    Ok(())
 }
 
 fn error_response<C>(
@@ -140,10 +191,4 @@ where
     C::Error: std::error::Error + Send + Sync + 'static,
 {
     json_response(request, code, &api::ErrorResponse { error: message })
-}
-
-/// Serialize an owned response built entirely from primitives and `&str`, which
-/// `serde_json` never fails to encode.
-pub(super) fn serialize<T: Serialize>(value: &T) -> String {
-    serde_json::to_string(value).expect("response is always serializable")
 }

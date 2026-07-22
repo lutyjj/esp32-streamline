@@ -15,8 +15,12 @@ use crate::{
 };
 
 const TASK_STACK_BYTES: usize = 8_192;
-const CAPTURE_PRIORITY: u8 = 3;
-const NETWORK_PRIORITY: u8 = 2;
+/// The audio pipeline outranks every request-serving task: ESP-IDF httpd runs
+/// at priority 5, and a burst of status scrapes must never starve capture or
+/// the sender into dropping audio. Both engines block on I2S, the queue, or
+/// the socket, so the elevated priority cannot monopolize the core.
+const CAPTURE_PRIORITY: u8 = 7;
+const NETWORK_PRIORITY: u8 = 6;
 
 /// The FreeRTOS delay the engines back off with after a failure.
 struct FreeRtosDelay;

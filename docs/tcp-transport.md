@@ -39,8 +39,10 @@ source admission.
 
 ## Runtime boundaries
 
-- capture: I2S RX on core 1, FreeRTOS priority 3
-- transport: TCP sender on core 1, FreeRTOS priority 2
+- capture: I2S RX on core 1, FreeRTOS priority 7
+- transport: TCP sender on core 1, FreeRTOS priority 6
+- both audio tasks outrank httpd (priority 5), so HTTP load cannot starve the
+  stream into dropping packets
 - radio: Wi-Fi power save off, so round-trip time stays low enough that the
   send window sustains the capture bitrate
 - queue: 32 fixed-capacity packets; on pressure, discard the oldest packet

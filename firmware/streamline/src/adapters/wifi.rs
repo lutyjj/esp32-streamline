@@ -16,8 +16,8 @@ use esp_idf_svc::{
         esp_netif_dhcp_option_mode_t_ESP_NETIF_OP_SET, esp_netif_dhcps_option,
         esp_netif_dhcps_start, esp_netif_dhcps_stop, esp_netif_dns_info_t,
         esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN, esp_netif_get_handle_from_ifkey,
-        esp_netif_get_ip_info, esp_netif_ip_info_t, esp_netif_set_dns_info,
-        esp_wifi_sta_get_ap_info, wifi_ap_record_t, EspError,
+        esp_netif_get_ip_info, esp_netif_ip_info_t, esp_netif_set_dns_info, esp_wifi_set_ps,
+        esp_wifi_sta_get_ap_info, wifi_ap_record_t, wifi_ps_type_t_WIFI_PS_NONE, EspError,
         ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED,
         ESP_IPADDR_TYPE_V4, ESP_OK,
     },
@@ -69,9 +69,25 @@ fn station_config(config: &RuntimeConfig) -> Result<ClientConfiguration> {
     })
 }
 
+/// Start the radio with modem sleep off.
+///
+/// ESP-IDF defaults a station to `WIFI_PS_MIN_MODEM`, which parks the radio
+/// between DTIM beacons. That trades round-trip time for power: latency rises
+/// into the tens of milliseconds and TCP throughput, bounded by the send window
+/// over the round trip, falls below the bitrate a 48 kHz stereo capture
+/// produces — so the packet queue overflows and the stream loses audio. This
+/// device is mains-powered and streams continuously, so it keeps the radio
+/// awake. `esp_wifi_set_ps` applies to the station and is inert in AP-only
+/// setup, so every start path can share one call.
+fn start_radio(wifi: &mut WifiController<'_>) -> Result<()> {
+    wifi.start()?;
+    esp_error(unsafe { esp_wifi_set_ps(wifi_ps_type_t_WIFI_PS_NONE) })
+        .context("disable Wi-Fi power save")
+}
+
 pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) -> Result<()> {
     wifi.set_configuration(&Configuration::Client(station_config(config)?))?;
-    wifi.start()?;
+    start_radio(wifi)?;
 
     let mut attempt = 1;
     loop {
@@ -132,7 +148,7 @@ fn start_ap(
     };
 
     wifi.set_configuration(&configuration)?;
-    wifi.start()?;
+    start_radio(wifi)?;
     wait_access_point_ready(wifi, station.is_none())?;
     if let Err(error) = advertise_setup_dns() {
         log::warn!("setup DHCP DNS advertisement unavailable: {error:#}");

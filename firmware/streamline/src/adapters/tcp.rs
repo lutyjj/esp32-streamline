@@ -207,7 +207,7 @@ impl TlsConnection {
             unsafe { sys::esp_tls_conn_destroy(handle) };
             return Err(anyhow!("{}", failure.describe(&target)));
         }
-        if let Err(error) = validate_tls_profile(handle) {
+        if let Err(error) = validate_tls_profile(handle).and_then(|()| disable_nagle(handle)) {
             unsafe { sys::esp_tls_conn_destroy(handle) };
             return Err(error);
         }
@@ -286,6 +286,36 @@ fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
         };
     }
     crate::transport_diagnostics::classify_tls_failure(last_error, captured_stack)
+}
+
+/// Disable Nagle on the socket ESP-TLS opened, matching the cleartext stream's
+/// `set_nodelay`.
+///
+/// Every packet is one record well under the MSS, produced on the capture
+/// clock. Nagle holds each such write until the previous one is acknowledged,
+/// so the stream advances a packet per round trip instead of per capture
+/// interval and the queue drops the difference. ESP-TLS exposes no
+/// configuration for this, so reach the socket it owns and clear the option
+/// there.
+fn disable_nagle(handle: *mut sys::esp_tls_t) -> Result<()> {
+    let mut socket: core::ffi::c_int = -1;
+    if unsafe { sys::esp_tls_get_conn_sockfd(handle, &mut socket) } != sys::ESP_OK {
+        return Err(anyhow!("TLS connection exposes no socket"));
+    }
+    let enabled: core::ffi::c_int = 1;
+    let result = unsafe {
+        sys::lwip_setsockopt(
+            socket,
+            sys::IPPROTO_TCP as core::ffi::c_int,
+            sys::TCP_NODELAY as core::ffi::c_int,
+            (&enabled as *const core::ffi::c_int).cast(),
+            core::mem::size_of_val(&enabled) as sys::socklen_t,
+        )
+    };
+    if result != 0 {
+        return Err(anyhow!("cannot disable Nagle on the TLS socket"));
+    }
+    Ok(())
 }
 
 fn validate_tls_profile(handle: *mut sys::esp_tls_t) -> Result<()> {

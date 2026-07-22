@@ -41,10 +41,19 @@ source admission.
 
 - capture: I2S RX on core 1, FreeRTOS priority 3
 - transport: TCP sender on core 1, FreeRTOS priority 2
+- radio: Wi-Fi power save off, so round-trip time stays low enough that the
+  send window sustains the capture bitrate
 - queue: 32 fixed-capacity packets; on pressure, discard the oldest packet
 - packet: 24-byte header plus up to 1,024 PCM bytes, coalesced into one write
-- cleartext connect/write deadline: 250 ms with `TCP_NODELAY`
+- `TCP_NODELAY` on both transports: each packet is one sub-MSS write on the
+  capture clock, and Nagle would hold every write for the previous one's
+  acknowledgement — a packet per round trip instead of per capture interval,
+  which the queue drops as the difference
+- cleartext connect/write deadline: 250 ms
 - TLS handshake and socket deadline: 2 seconds through ESP-TLS
+- a successful send slower than 100 ms counts as a send stall
+  (`send_stalls_total` and `longest_send_stall_ms` in `/api/status` metrics)
+  and logs a warning — the early signature of a stalling radio link
 
 The firmware chooses the transport once while composing the network task.
 Cleartext uses Rust `std::net` over lwIP. TLS uses ESP-TLS only in the adapter;

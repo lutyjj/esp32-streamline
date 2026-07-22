@@ -4,6 +4,7 @@ import { useTransact, useWritable } from '../lib/hooks';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import { bridgeConnection, noBridge, setupMode, status } from '../state/device';
 import { blockingHealth } from '../state/health';
+import { episodeDrops, lossCalloutVisible } from '../state/streamLoss';
 import { Button } from './Button';
 import { Card } from './Card';
 import { Disclosure } from './Disclosure';
@@ -65,6 +66,10 @@ export function OverviewTab({
       'Network',
       `${s.metrics.network_errors_total} send errors · ${s.metrics.reconnects_total} reconnects`,
     ],
+    [
+      'Send stalls',
+      `${s.metrics.send_stalls_total} over 100 ms · longest ${s.metrics.longest_send_stall_ms} ms`,
+    ],
     ['Capture', `${s.metrics.read_errors} read errors · ${s.metrics.short_reads} short reads`],
     ['Sequence', String(s.metrics.sequence)],
     ['Detector floor', `${s.metrics.noise_floor} RMS`],
@@ -83,6 +88,17 @@ export function OverviewTab({
           <div>
             <strong>{fault.detail}</strong>
             {fault.remedy && <span class="sub"> {fault.remedy}</span>}
+          </div>
+        </div>
+      )}
+
+      {lossCalloutVisible.value && (
+        <div class="card callout bad">
+          <div>
+            <strong>Audio is being dropped.</strong>
+            <span class="sub">
+              {` ${episodeDrops.value} packets were lost in the current episode — listeners hear gaps. The usual causes are a stalling Wi-Fi link or a bridge that cannot keep up; Diagnostics below shows send stalls and drop totals.`}
+            </span>
           </div>
         </div>
       )}

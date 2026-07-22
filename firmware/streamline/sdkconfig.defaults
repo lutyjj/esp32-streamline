@@ -1,3 +1,12 @@
+# A 48 kHz stereo capture puts 192 KB of PCM per second on the wire, and the
+# sender blocks whenever the socket's send buffer is full. Sixteen segments of
+# send buffer let the sender keep queuing through a few hundred milliseconds of
+# radio stall instead of blocking until the packet queue overflows; the matching
+# receive window keeps large HTTP bodies (an OTA download) off the same floor.
+# lwIP grows these buffers on demand, so the larger bound costs nothing idle.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=23040
+CONFIG_LWIP_TCP_WND_DEFAULT=23040
+
 # Boot composes the complete persisted state, including both transport-key
 # slots, before it moves long-running work onto dedicated tasks.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384

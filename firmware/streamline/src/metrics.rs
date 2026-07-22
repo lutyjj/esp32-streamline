@@ -4,12 +4,18 @@ use core::fmt::{self, Write};
 
 use crate::telemetry::TelemetrySnapshot;
 
+/// Render the exposition text into any writer, so the HTTP adapter can stream
+/// it without materializing the whole body.
+pub fn render_prometheus_to(
+    output: &mut impl fmt::Write,
+    snapshot: &TelemetrySnapshot,
+) -> fmt::Result {
+    PrometheusWriter::new(output).snapshot(snapshot)
+}
+
 pub fn render_prometheus(snapshot: &TelemetrySnapshot) -> String {
     let mut output = String::with_capacity(4_096);
-    let mut writer = PrometheusWriter::new(&mut output);
-    writer
-        .snapshot(snapshot)
-        .expect("writing to String cannot fail");
+    render_prometheus_to(&mut output, snapshot).expect("writing to String cannot fail");
     output
 }
 

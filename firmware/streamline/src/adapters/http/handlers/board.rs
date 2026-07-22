@@ -10,18 +10,26 @@ use super::super::{
     auth::authorized_for,
     persistence::{lock_audio_profiles, lock_config, lock_store},
     requests::form,
-    responses::{mutation_error, reboot_response, respond, serialize, unauthorized},
+    responses::{json_response, mutation_error, reboot_response, unauthorized},
     ApiState, ContractServer,
 };
 
 pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler(api::BOARDS, move |request| {
-        respond(
+        let boards = state
+            .board_catalog
+            .iter()
+            .map(api::CapabilitiesStatus::from_board)
+            .collect();
+        json_response(
             request,
             200,
-            "application/json",
-            &board_catalog_json(&state),
+            &api::BoardCatalogResponse {
+                selected_board_id: state.board.id.as_str(),
+                selected_board: api::CapabilitiesStatus::from_board(state.board.as_ref()),
+                boards,
+            },
         )
     })
 }
@@ -66,18 +74,5 @@ pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiSta
             Ok(()) => reboot_response(request),
             Err(error) => mutation_error(request, error),
         }
-    })
-}
-
-fn board_catalog_json(state: &ApiState) -> String {
-    let boards = state
-        .board_catalog
-        .iter()
-        .map(api::CapabilitiesStatus::from_board)
-        .collect();
-    serialize(&api::BoardCatalogResponse {
-        selected_board_id: state.board.id.as_str(),
-        selected_board: api::CapabilitiesStatus::from_board(state.board.as_ref()),
-        boards,
     })
 }

@@ -15,14 +15,14 @@ use super::super::{
     auth::authorized_for,
     persistence::{lock_config, save_configuration},
     requests::form,
-    responses::{json_response, mutation_error, reboot_response, respond, serialize, unauthorized},
+    responses::{json_response, mutation_error, reboot_response, unauthorized},
     ApiState, ContractServer,
 };
 
 pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler(api::SETTINGS, move |request| {
-        respond(request, 200, "application/json", &config_json(&state))
+        respond_config(request, &state)
     })
 }
 
@@ -175,46 +175,57 @@ pub(super) fn register_firmware_write(
     })
 }
 
-fn config_json(state: &ApiState) -> String {
+fn respond_config<C>(
+    request: embedded_svc::http::server::Request<C>,
+    state: &ApiState,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
     let config = state.config.lock().expect("configuration lock poisoned");
-    serialize(&api::ConfigResponse {
-        device_name: &config.device_name,
-        ssid: &config.ssid,
-        target_host: &config.target_host,
-        target_port: config.target_port,
-        transport: api::TransportStatus {
-            contract_version: config.transport.contract_version,
-            mode: config.transport.mode,
-            active_key_id: config.transport.keys.active().map(|key| key.id()),
-            pending_key_id: config.transport.keys.pending().map(|key| key.id()),
-            pending_verified: config.transport.keys.pending_verified(),
-            rollback_key_id: config.transport.keys.rollback().map(|key| key.id()),
+    json_response(
+        request,
+        200,
+        &api::ConfigResponse {
+            device_name: &config.device_name,
+            ssid: &config.ssid,
+            target_host: &config.target_host,
+            target_port: config.target_port,
+            transport: api::TransportStatus {
+                contract_version: config.transport.contract_version,
+                mode: config.transport.mode,
+                active_key_id: config.transport.keys.active().map(|key| key.id()),
+                pending_key_id: config.transport.keys.pending().map(|key| key.id()),
+                pending_verified: config.transport.keys.pending_verified(),
+                rollback_key_id: config.transport.keys.rollback().map(|key| key.id()),
+            },
+            input_line: config.audio.input_line,
+            input_gain: config.audio.input_gain,
+            adc_attenuation_db: config.audio.adc_attenuation_db,
+            analog_passthrough_enabled: config.analog_passthrough_enabled,
+            led_roles: state
+                .board
+                .leds
+                .iter()
+                .map(|led| api::LedRoleStatus {
+                    id: &led.id,
+                    role: config.led_role(led),
+                })
+                .collect(),
+            button_actions: state
+                .board
+                .buttons
+                .iter()
+                .map(|button| api::ButtonActionStatus {
+                    id: &button.id,
+                    action: config.button_action(button),
+                })
+                .collect(),
+            auto_update_schedule: config.auto_update_schedule.into(),
+            config_source: "nvs",
         },
-        input_line: config.audio.input_line,
-        input_gain: config.audio.input_gain,
-        adc_attenuation_db: config.audio.adc_attenuation_db,
-        analog_passthrough_enabled: config.analog_passthrough_enabled,
-        led_roles: state
-            .board
-            .leds
-            .iter()
-            .map(|led| api::LedRoleStatus {
-                id: &led.id,
-                role: config.led_role(led),
-            })
-            .collect(),
-        button_actions: state
-            .board
-            .buttons
-            .iter()
-            .map(|button| api::ButtonActionStatus {
-                id: &button.id,
-                action: config.button_action(button),
-            })
-            .collect(),
-        auto_update_schedule: config.auto_update_schedule.into(),
-        config_source: "nvs",
-    })
+    )
 }
 
 fn refresh_mdns_name(state: &ApiState, config: &RuntimeConfig) {

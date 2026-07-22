@@ -10,7 +10,7 @@ use crate::{
     health::{HealthReport, Severity},
     indicator,
     levels::CLIP_THRESHOLD_ABS,
-    metrics::render_prometheus,
+    metrics,
     telemetry::{
         AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
         StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
@@ -18,7 +18,7 @@ use crate::{
 };
 
 use super::super::{
-    responses::{respond, serialize},
+    responses::{body_writer, json_response},
     ApiState, ContractServer, Mode,
 };
 
@@ -27,11 +27,15 @@ const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8"
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state_for_status = Arc::clone(state);
     server.handler(api::STATUS, move |request| {
-        respond(
+        let snapshot = telemetry_snapshot(&state_for_status);
+        json_response(
             request,
             200,
-            "application/json",
-            &status_json(&state_for_status),
+            &api::StatusResponse::from_snapshot(
+                &snapshot,
+                state_for_status.board.as_ref(),
+                state_for_status.health.as_ref(),
+            ),
         )
     })?;
 
@@ -47,36 +51,29 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
         } else {
             200
         };
-        respond(
-            request,
-            code,
-            "application/json",
-            &serialize(health.as_ref()),
-        )
+        json_response(request, code, health.as_ref())
     })?;
 
     let state_for_metrics = Arc::clone(state);
     server.handler(api::METRICS, move |request| {
-        respond(
-            request,
-            200,
-            PROMETHEUS_CONTENT_TYPE,
-            &metrics_text(&state_for_metrics),
-        )
+        let snapshot = telemetry_snapshot(&state_for_metrics);
+        let mut writer = body_writer(request, 200, PROMETHEUS_CONTENT_TYPE)?;
+        metrics::render_prometheus_to(&mut FmtToIo(&mut writer), &snapshot)
+            .map_err(|_| anyhow::anyhow!("prometheus exposition write failed"))?;
+        std::io::Write::flush(&mut writer)?;
+        anyhow::Ok(())
     })
 }
 
-fn status_json(state: &ApiState) -> String {
-    let snapshot = telemetry_snapshot(state);
-    serialize(&api::StatusResponse::from_snapshot(
-        &snapshot,
-        state.board.as_ref(),
-        state.health.as_ref(),
-    ))
-}
+/// Adapt a `std::io` writer to `core::fmt::Write` for the exposition renderer.
+struct FmtToIo<'a, W: std::io::Write>(&'a mut W);
 
-fn metrics_text(state: &ApiState) -> String {
-    render_prometheus(&telemetry_snapshot(state))
+impl<W: std::io::Write> core::fmt::Write for FmtToIo<'_, W> {
+    fn write_str(&mut self, text: &str) -> core::fmt::Result {
+        self.0
+            .write_all(text.as_bytes())
+            .map_err(|_| core::fmt::Error)
+    }
 }
 
 fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {

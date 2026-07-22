@@ -17,19 +17,18 @@ use super::super::{
         lock_audio_profiles, lock_config, save_audio_profiles, save_configuration_and_profiles,
     },
     requests::form,
-    responses::{json_response, mutation_error, reboot_response, respond, serialize, unauthorized},
+    responses::{json_response, mutation_error, reboot_response, unauthorized},
     ApiState, ContractServer,
 };
 
 pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler(api::AUDIO_PROFILES, move |request| {
-        respond(
-            request,
-            200,
-            "application/json",
-            &audio_profiles_json(&state),
-        )
+        let catalog = state
+            .audio_profiles
+            .lock()
+            .expect("audio profile lock poisoned");
+        json_response(request, 200, &*catalog)
     })
 }
 
@@ -177,12 +176,4 @@ fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool, Muta
         stream.request_relearn();
     }
     Ok(true)
-}
-
-fn audio_profiles_json(state: &ApiState) -> String {
-    let catalog = state
-        .audio_profiles
-        .lock()
-        .expect("audio profile lock poisoned");
-    serialize(&*catalog)
 }

@@ -33,3 +33,8 @@ pub trait PacketSink {
 pub trait Delay {
     fn delay_ms(&self, millis: u32);
 }
+
+/// Monotonic time used to measure how long a send held the pipeline.
+pub trait Clock {
+    fn monotonic_millis(&self) -> u64;
+}

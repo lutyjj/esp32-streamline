@@ -158,6 +158,8 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             network_errors_total: metrics.network_errors,
             tls_handshake_failures_total: metrics.tls_handshake_failures,
             reconnects_total: metrics.reconnects,
+            send_stalls_total: metrics.send_stalls,
+            longest_send_stall_ms: metrics.longest_send_stall_ms,
         },
         diagnostics: DiagnosticsTelemetry {
             reset_reason: reset_reason(),
@@ -259,6 +261,8 @@ impl<'a> api::StatusResponse<'a> {
                 network_errors_total: snapshot.stream.network_errors_total,
                 tls_handshake_failures_total: snapshot.stream.tls_handshake_failures_total,
                 reconnects_total: snapshot.stream.reconnects_total,
+                send_stalls_total: snapshot.stream.send_stalls_total,
+                longest_send_stall_ms: snapshot.stream.longest_send_stall_ms,
                 clip_threshold_abs: snapshot.audio.clip_threshold_abs,
                 peak_abs_left: snapshot.audio.peak_abs_left,
                 peak_abs_right: snapshot.audio.peak_abs_right,

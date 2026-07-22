@@ -195,6 +195,16 @@ impl<W: Write> PrometheusWriter<W> {
             "TCP reconnects after successful streaming began.",
             snapshot.stream.reconnects_total,
         )?;
+        self.counter(
+            "streamline_send_stalls_total",
+            "Successful sends that held the pipeline 100 ms or longer.",
+            snapshot.stream.send_stalls_total,
+        )?;
+        self.gauge(
+            "streamline_longest_send_stall_ms",
+            "Longest single send stall observed since boot.",
+            snapshot.stream.longest_send_stall_ms,
+        )?;
         self.gauge(
             "streamline_audio_clip_threshold_abs",
             "Absolute sample value treated as clipping.",
@@ -442,6 +452,12 @@ streamline_tls_handshake_failures_total 8\n\
 # HELP streamline_network_reconnects_total TCP reconnects after successful streaming began.\n\
 # TYPE streamline_network_reconnects_total counter\n\
 streamline_network_reconnects_total 7\n\
+# HELP streamline_send_stalls_total Successful sends that held the pipeline 100 ms or longer.\n\
+# TYPE streamline_send_stalls_total counter\n\
+streamline_send_stalls_total 9\n\
+# HELP streamline_longest_send_stall_ms Longest single send stall observed since boot.\n\
+# TYPE streamline_longest_send_stall_ms gauge\n\
+streamline_longest_send_stall_ms 240\n\
 # HELP streamline_audio_clip_threshold_abs Absolute sample value treated as clipping.\n\
 # TYPE streamline_audio_clip_threshold_abs gauge\n\
 streamline_audio_clip_threshold_abs 32000\n\
@@ -541,6 +557,8 @@ streamline_ota_busy 0\n"
                 network_errors_total: 6,
                 tls_handshake_failures_total: 8,
                 reconnects_total: 7,
+                send_stalls_total: 9,
+                longest_send_stall_ms: 240,
             },
             diagnostics: DiagnosticsTelemetry {
                 reset_reason: "software",

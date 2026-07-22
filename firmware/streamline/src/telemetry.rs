@@ -81,6 +81,8 @@ pub struct StreamTelemetry {
     pub network_errors_total: u64,
     pub tls_handshake_failures_total: u64,
     pub reconnects_total: u64,
+    pub send_stalls_total: u64,
+    pub longest_send_stall_ms: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

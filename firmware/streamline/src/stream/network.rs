@@ -7,13 +7,20 @@ use std::sync::Arc;
 use crate::packet::AudioPacket;
 
 use super::{
-    effects::{Delay, PacketSink},
+    effects::{Clock, Delay, PacketSink},
     queue::{PacketQueue, QUEUE_DEPTH},
     status::StreamStatus,
 };
 
 /// Back off this long after a send failure before retrying the same target.
 const SEND_ERROR_BACKOFF_MS: u32 = 250;
+
+/// A successful send at least this slow is a stall worth accounting: the queue
+/// absorbs roughly 170 ms of backlog before dropping audio, so stalls surface
+/// in the counters and the log while they are still absorbable — naming the
+/// culprit (a stalling link) before loss starts, and distinguishing it from
+/// throughput or transport failures after.
+const SEND_STALL_MS: u64 = 100;
 
 /// Retry a packet only while it is at most this many packets behind the
 /// capture sequence: the same latency bound the drop-oldest queue enforces.
@@ -27,11 +34,12 @@ pub fn run(
     queue: Arc<PacketQueue<AudioPacket>>,
     status: Arc<StreamStatus>,
     delay: impl Delay,
+    clock: impl Clock,
 ) -> ! {
     loop {
         let (packet, depth) = queue.pop();
         status.set_queue_depth(depth);
-        send_packet(&mut sink, &packet, &status, &delay);
+        send_packet(&mut sink, &packet, &status, &delay, &clock);
     }
 }
 
@@ -44,14 +52,21 @@ fn send_packet(
     packet: &AudioPacket,
     status: &StreamStatus,
     delay: &impl Delay,
+    clock: &impl Clock,
 ) {
     loop {
         if status.sequence().wrapping_sub(packet.sequence()) > MAX_IN_FLIGHT_AGE_PACKETS {
             status.record_stale_drop();
             return;
         }
+        let started = clock.monotonic_millis();
         match sink.send(packet.as_bytes()) {
             Ok(reconnected) => {
+                let elapsed = clock.monotonic_millis().saturating_sub(started);
+                if elapsed >= SEND_STALL_MS {
+                    status.record_send_stall(elapsed);
+                    log::warn!("PCM send stalled for {elapsed} ms");
+                }
                 status.record_sent(packet.payload_bytes(), reconnected);
                 return;
             }
@@ -67,12 +82,12 @@ fn send_packet(
 mod tests {
     use std::{cell::RefCell, collections::VecDeque};
 
-    use super::{send_packet, MAX_IN_FLIGHT_AGE_PACKETS, SEND_ERROR_BACKOFF_MS};
+    use super::{send_packet, MAX_IN_FLIGHT_AGE_PACKETS, SEND_ERROR_BACKOFF_MS, SEND_STALL_MS};
     use crate::{
         packet::AudioPacket,
         protocol::PAYLOAD_BYTES,
         stream::{
-            effects::{Delay, PacketSink, SendFailed},
+            effects::{Clock, Delay, PacketSink, SendFailed},
             status::StreamStatus,
         },
     };
@@ -98,6 +113,31 @@ mod tests {
         }
     }
 
+    /// Advances a scripted number of milliseconds every time it is read, so a
+    /// test controls exactly how long each send appears to take.
+    #[derive(Default)]
+    struct SteppingClock {
+        now: RefCell<u64>,
+        step: u64,
+    }
+
+    impl SteppingClock {
+        fn stepping(step: u64) -> Self {
+            Self {
+                now: RefCell::new(0),
+                step,
+            }
+        }
+    }
+
+    impl Clock for SteppingClock {
+        fn monotonic_millis(&self) -> u64 {
+            let mut now = self.now.borrow_mut();
+            *now += self.step;
+            *now
+        }
+    }
+
     fn packet() -> AudioPacket {
         AudioPacket::from_pcm(0, &[0_u8; PAYLOAD_BYTES])
     }
@@ -115,7 +155,13 @@ mod tests {
             results: VecDeque::from([Ok(true)]),
         };
 
-        send_packet(&mut sink, &packet(), &status, &RecordingDelay::default());
+        send_packet(
+            &mut sink,
+            &packet(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::default(),
+        );
 
         let snapshot = status.snapshot();
         assert_eq!(snapshot.packets, 1);
@@ -136,6 +182,7 @@ mod tests {
             &packet(),
             &status,
             &delay,
+            &SteppingClock::default(),
         );
         // The second fails twice, backs off after each, then reconnects.
         send_packet(
@@ -145,6 +192,7 @@ mod tests {
             &packet(),
             &status,
             &delay,
+            &SteppingClock::default(),
         );
 
         let snapshot = status.snapshot();
@@ -166,7 +214,13 @@ mod tests {
             results: VecDeque::new(),
         };
 
-        send_packet(&mut sink, &packet(), &status, &RecordingDelay::default());
+        send_packet(
+            &mut sink,
+            &packet(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::default(),
+        );
 
         let snapshot = status.snapshot();
         assert_eq!(snapshot.stale_drops, 1);
@@ -201,7 +255,13 @@ mod tests {
             advance_per_send: 20,
         };
 
-        send_packet(&mut sink, &packet(), &status, &delay);
+        send_packet(
+            &mut sink,
+            &packet(),
+            &status,
+            &delay,
+            &SteppingClock::default(),
+        );
 
         let snapshot = status.snapshot();
         // Ages 0 and 20 retried; at 40 the packet crossed the 32-packet
@@ -224,12 +284,60 @@ mod tests {
             ]),
         };
 
-        send_packet(&mut sink, &packet(), &status, &RecordingDelay::default());
+        send_packet(
+            &mut sink,
+            &packet(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::default(),
+        );
 
         let snapshot = status.snapshot();
         assert_eq!(snapshot.network_errors, 1);
         assert_eq!(snapshot.tls_handshake_failures, 1);
         assert_eq!(snapshot.packets, 1);
         assert_eq!(snapshot.reconnects, 0);
+    }
+
+    #[test]
+    fn a_slow_successful_send_is_accounted_as_a_stall() {
+        let status = StreamStatus::default();
+        let mut sink = FakeSink {
+            results: VecDeque::from([Ok(false)]),
+        };
+
+        send_packet(
+            &mut sink,
+            &packet(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::stepping(SEND_STALL_MS),
+        );
+
+        let snapshot = status.snapshot();
+        assert_eq!(snapshot.packets, 1);
+        assert_eq!(snapshot.send_stalls, 1);
+        assert_eq!(snapshot.longest_send_stall_ms, SEND_STALL_MS);
+    }
+
+    #[test]
+    fn a_send_faster_than_the_stall_bound_is_not_a_stall() {
+        let status = StreamStatus::default();
+        let mut sink = FakeSink {
+            results: VecDeque::from([Ok(false)]),
+        };
+
+        send_packet(
+            &mut sink,
+            &packet(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::stepping(SEND_STALL_MS / 2),
+        );
+
+        let snapshot = status.snapshot();
+        assert_eq!(snapshot.packets, 1);
+        assert_eq!(snapshot.send_stalls, 0);
+        assert_eq!(snapshot.longest_send_stall_ms, 0);
     }
 }

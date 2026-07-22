@@ -79,6 +79,8 @@ pub fn status() -> Value {
             network_errors_total: 0,
             tls_handshake_failures_total: 0,
             reconnects_total: 0,
+            send_stalls_total: 0,
+            longest_send_stall_ms: 0,
             clip_threshold_abs: 32760,
             peak_abs_left: 21000,
             peak_abs_right: 20200,

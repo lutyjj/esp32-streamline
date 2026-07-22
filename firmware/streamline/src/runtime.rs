@@ -11,7 +11,7 @@ use crate::{
         i2s::Capture,
         tcp::{TargetAddress, TcpClient},
     },
-    stream::{self, CaptureEngine, Delay, PacketQueue, StreamStatus},
+    stream::{self, CaptureEngine, Clock, Delay, PacketQueue, StreamStatus},
 };
 
 const TASK_STACK_BYTES: usize = 8_192;
@@ -24,6 +24,15 @@ struct FreeRtosDelay;
 impl Delay for FreeRtosDelay {
     fn delay_ms(&self, millis: u32) {
         FreeRtos::delay_ms(millis);
+    }
+}
+
+/// Monotonic milliseconds for the network engine's send-stall accounting.
+struct MonotonicClock(std::time::Instant);
+
+impl Clock for MonotonicClock {
+    fn monotonic_millis(&self) -> u64 {
+        self.0.elapsed().as_millis() as u64
     }
 }
 
@@ -44,7 +53,13 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
     if let (Some(target), Some(queue)) = (target, queue) {
         let network_status = Arc::clone(&status);
         spawn_pinned(c"network", NETWORK_PRIORITY, move || {
-            stream::run_network(TcpClient::new(target), queue, network_status, FreeRtosDelay)
+            stream::run_network(
+                TcpClient::new(target),
+                queue,
+                network_status,
+                FreeRtosDelay,
+                MonotonicClock(std::time::Instant::now()),
+            )
         })?;
     }
     Ok(status)

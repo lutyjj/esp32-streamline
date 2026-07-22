@@ -365,6 +365,8 @@ pub struct MetricsStatus {
     pub network_errors_total: u64,
     pub tls_handshake_failures_total: u64,
     pub reconnects_total: u64,
+    pub send_stalls_total: u64,
+    pub longest_send_stall_ms: u64,
     pub clip_threshold_abs: u16,
     pub peak_abs_left: u32,
     pub peak_abs_right: u32,

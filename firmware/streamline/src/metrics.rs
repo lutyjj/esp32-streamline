@@ -13,12 +13,6 @@ pub fn render_prometheus_to(
     PrometheusWriter::new(output).snapshot(snapshot)
 }
 
-pub fn render_prometheus(snapshot: &TelemetrySnapshot) -> String {
-    let mut output = String::with_capacity(4_096);
-    render_prometheus_to(&mut output, snapshot).expect("writing to String cannot fail");
-    output
-}
-
 struct PrometheusWriter<W> {
     output: W,
 }
@@ -352,12 +346,18 @@ impl MetricKind {
 
 #[cfg(test)]
 mod tests {
-    use super::render_prometheus;
+    use super::render_prometheus_to;
     use crate::telemetry::{
         AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, HeapTelemetry,
         NvsTelemetry, OtaTelemetry, StreamTelemetry, SystemTelemetry, TargetTelemetry,
         TelemetrySnapshot, WifiTelemetry,
     };
+
+    fn render_prometheus(snapshot: &TelemetrySnapshot) -> String {
+        let mut output = String::new();
+        render_prometheus_to(&mut output, snapshot).expect("writing to String cannot fail");
+        output
+    }
 
     #[test]
     fn renders_prometheus_metrics_from_snapshot() {

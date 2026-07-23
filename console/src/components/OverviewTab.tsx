@@ -68,7 +68,7 @@ export function OverviewTab({
     ],
     [
       'Send stalls',
-      `${s.metrics.send_stalls_total} over 100 ms · longest ${s.metrics.longest_send_stall_ms} ms`,
+      `${s.metrics.send_stalls_total} · longest ${s.metrics.longest_send_stall_ms} ms`,
     ],
     ['Capture', `${s.metrics.read_errors} read errors · ${s.metrics.short_reads} short reads`],
     ['Sequence', String(s.metrics.sequence)],

@@ -141,10 +141,12 @@ clean: image
 #   2. espsecure.py appends the RSA signature block, signed with $(SIGNING_KEY)
 #      (the committed dev key by default; release CI overrides it). Building
 #      unsigned then signing keeps the private key off the build machine.
-#   3. merge_bin lays the bootloader, partition table, and the SIGNED app into
-#      the offset-0 serial-flash image, so a USB/WebFlasher install boots too.
+#   3. merge_bin lays the bootloader, the two-slot partition table, and the
+#      SIGNED app into the offset-0 serial-flash image, so a USB/WebFlasher
+#      install boots too. The table comes from partitions.csv (the layout applied
+#      at flash time), not the ESP-IDF build's default single-app table.
 define sign_and_package
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; export PATH="$(CONTAINER_WORKSPACE)/firmware/$(SRC)/.embuild/espressif/python_env/idf5.5_py3.11_env/bin:$$PATH"; ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); PY="$$(dirname "$$ESPTOOL")/python"; REL=target/$(TARGET)/release; "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 $$REL/partition-table.bin 0x20000 /dist/firmware/$(1)-ota.bin'
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; export PATH="$(CONTAINER_WORKSPACE)/firmware/$(SRC)/.embuild/espressif/python_env/idf5.5_py3.11_env/bin:$$PATH"; ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); PY="$$(dirname "$$ESPTOOL")/python"; GENPART=$$(find .embuild -name gen_esp32part.py | head -1); REL=target/$(TARGET)/release; "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
 endef
 
 # `-full.bin` is the serial-flash image: it bundles the OTA-capable partition

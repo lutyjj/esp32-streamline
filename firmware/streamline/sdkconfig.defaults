@@ -26,6 +26,29 @@ CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 # itself valid, so a bad over-the-air image cannot brick the device.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
+# Signed firmware: verify a vendor RSA-3072 signature on every over-the-air
+# image before esp_ota commits it, without hardware Secure Boot (no eFuse is
+# burned, so it stays reversible by a serial reflash). The running app's
+# embedded public key verifies the next OTA image, so an image the vendor did
+# not sign is rejected at commit and a device cannot be downgraded to an
+# unsigned image over the air. Trust is the signing key, not just TLS-to-GitHub
+# plus a SHA-256. This guards the network/OTA path; it is not boot-time or
+# physical-flash verification (that needs Secure Boot, roadmap #340), because
+# SECURE_SIGNED_ON_BOOT is unavailable for the RSA scheme without Secure Boot.
+# The image is built secure-padded but unsigned; the signature block is appended
+# after the build (firmware/Makefile), so the private key never touches the
+# build. The RSA (Secure Boot v2) scheme requires ESP32 chip revision 3.0
+# (ECO3); revisions 0-2 lack the v2 signature support and are not supported.
+CONFIG_ESP32_REV_MIN_3=y
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+# Build the image unsigned so the private key never reaches the build machine;
+# firmware/Makefile appends the RSA signature block afterward with espsecure.py
+# (dev key for dev/QEMU builds, the maintainer key in release CI). Left on, the
+# build would sign in-tree and demand the private key here.
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n
+
 # Rebuilding one commit yields byte-identical images: the app and bootloader
 # descriptors carry no compile time/date, and debug paths are remapped to
 # fixed prefixes. Release retries and provenance checks rely on this; the

@@ -44,6 +44,9 @@ The device speaks plain HTTP on a trusted LAN. Read the
 - **Official preset**: Ai-Thinker ESP32 Audio Kit v2.2 (ES8388)
 - **Codec**: ES8388 (I2C address `0x10`)
 - **Flash**: 4 MB or larger
+- **Chip revision**: ESP32 rev 3.0 or later (ECO3). On-device firmware signing
+  ([firmware signing](docs/ota.md#firmware-signing)) uses the RSA scheme, which
+  earlier revisions do not support.
 
 Board support is descriptor-driven: presets define the codec, I2C/I2S pin map,
 input labels, audio limits, assignable LEDs and buttons, and optional local

@@ -1,6 +1,22 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.9.0](https://github.com/lutyjj/esp32-streamline/compare/v0.8.1...v0.9.0) (2026-07-23)
+
+
+### Features
+
+* **console:** raise a critical callout while audio is dropping ([9497752](https://github.com/lutyjj/esp32-streamline/commit/94977525412624749ef051ed0d9d030ecfcac8c8))
+* **firmware:** count and log send stalls ([e058ec4](https://github.com/lutyjj/esp32-streamline/commit/e058ec405fa0dcad3ef9903eb2039274308da97a))
+
+
+### Bug Fixes
+
+* **firmware:** disable Nagle on the TLS PCM socket and keep the radio awake ([069f0b9](https://github.com/lutyjj/esp32-streamline/commit/069f0b96d80f10286cd8eb3e039fb834bcd1658f))
+* **firmware:** keep the audio pipeline above httpd in task priority ([cb76274](https://github.com/lutyjj/esp32-streamline/commit/cb76274b69a4d9ad5c87f381dfecd811840c381c))
+* **firmware:** stop status reads from spinning the stream counters ([006bc51](https://github.com/lutyjj/esp32-streamline/commit/006bc515dce8d9b2ee70e261de69e2707baf77b3))
+* **firmware:** stream HTTP bodies instead of materializing them ([3e83359](https://github.com/lutyjj/esp32-streamline/commit/3e83359bbc96c4e0f3ec304ad10a43c53556ddf7))
+
 ## [0.8.1](https://github.com/lutyjj/esp32-streamline/compare/v0.8.0...v0.8.1) (2026-07-21)
 
 

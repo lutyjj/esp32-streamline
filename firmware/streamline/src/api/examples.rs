@@ -119,6 +119,7 @@ pub fn status() -> Value {
             busy: false,
             rollback_available: false,
             rollback_version: "",
+            signed_updates: true,
         },
         indicator: IndicatorStatus {
             available: true,

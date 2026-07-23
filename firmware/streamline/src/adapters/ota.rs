@@ -46,6 +46,16 @@ const READ_CHUNK_BYTES: usize = 4_096;
 /// Guard against a malformed or hostile checksum listing exhausting the heap.
 const MAX_SUMS_BYTES: usize = 8_192;
 
+/// Whether this firmware enforces vendor RSA-3072 signatures on over-the-air
+/// images (`CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT`). `esp_ota` verifies
+/// the signature against the running app's embedded public key before it commits
+/// a slot, so an image the vendor did not sign is never committed by OTA. This
+/// guards the network path, not boot-time or physical-flash tampering (that
+/// needs Secure Boot). Read from the sdkconfig option esp-idf-sys propagates as
+/// a cfg, so status stays honest on an unsigned self-build (which reports
+/// `false`).
+pub const SIGNED_UPDATES: bool = cfg!(esp_idf_secure_signed_on_update_no_secure_boot);
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Phase {
@@ -512,7 +522,18 @@ fn install(url: &str, sha256: &str, progress: &OtaProgress) -> Result<()> {
         update::install_verified(&mut source, &mut sink, sha256, &mut reporter)
     };
     match outcome {
-        Ok(()) => slot.complete().context("cannot finalize OTA image"),
+        // `complete()` runs esp_ota_end, which verifies the appended RSA
+        // signature against the running app's public key when signed updates are
+        // enforced. A forged or unsigned image fails here with
+        // ESP_ERR_OTA_VALIDATE_FAILED; name that so the failure is legible in
+        // status and diagnostics rather than a bare error code.
+        Ok(()) => slot.complete().map_err(|error| {
+            if error.code() == sys::ESP_ERR_OTA_VALIDATE_FAILED {
+                anyhow!("image signature verification failed: not signed by this device's key")
+            } else {
+                anyhow!("cannot finalize OTA image: {error}")
+            }
+        }),
         Err(error) => {
             let _ = slot.abort();
             Err(anyhow!("{error}"))

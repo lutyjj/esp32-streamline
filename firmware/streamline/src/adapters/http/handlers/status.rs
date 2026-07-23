@@ -173,6 +173,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             busy: ota.busy,
             rollback_available: rollback.is_some(),
             rollback_version: rollback.clone().unwrap_or_default(),
+            signed_updates: crate::adapters::ota::SIGNED_UPDATES,
         },
         status_indicator_visible: config.shows_status_indicator(state.board.as_ref()),
     }
@@ -298,6 +299,7 @@ impl<'a> api::StatusResponse<'a> {
                 busy: snapshot.ota.busy,
                 rollback_available: snapshot.ota.rollback_available,
                 rollback_version: &snapshot.ota.rollback_version,
+                signed_updates: snapshot.ota.signed_updates,
             },
             indicator: api::IndicatorStatus {
                 available: snapshot.status_indicator_visible,

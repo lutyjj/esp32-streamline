@@ -15,8 +15,8 @@ place, and the standing items we track or have accepted.
 | HTTP writes (`:80`) | Admin-key gated once provisioned | No key, no control (config, target, reset) |
 | HTTP reads (`:80`) | Open; never returns secrets | Status and metrics readable, no control |
 | Setup AP | Open; writes open only until an admin key is set | Brief window at first commissioning |
-| OTA update (`/api/ota/update`) | Admin-key gated; HTTPS to GitHub, SHA-256 verified, auto-rollback | Owner-only; authenticity rests on TLS to GitHub, not a signing key |
-| Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; image pinned by the admin-supplied SHA-256 | Owner-only; the digest is the root of trust, so the URL may be plain HTTP |
+| OTA update (`/api/ota/update`) | Admin-key gated; vendor RSA-3072 signature verified before commit, plus SHA-256 and auto-rollback | Owner-only; only firmware signed by the trusted key installs |
+| Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; pinned by the admin SHA-256 and verified against the trusted signing key | Owner-only; a forged image is rejected even when its digest matches, so the URL may be plain HTTP |
 | PCM stream (`:39000`) | Explicit cleartext TCP or TLS 1.3 PSK mode | Cleartext permits LAN capture and impersonation; TLS authenticates the source and protects audio |
 | Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access |
 | PCM device PSK | Plaintext in NVS, write-only and independently random | Recoverable with physical flash access; never returned by a read API |
@@ -46,6 +46,20 @@ place, and the standing items we track or have accepted.
 - The web UI keeps the key in session storage by default, with explicit opt-in
   browser storage. Unlocking settings lasts 15 minutes. A lost key means
   reflashing to recover — there is no remote reset without the key.
+
+## Firmware signing
+
+The device verifies a vendor RSA-3072 signature on every over-the-air image
+before it commits, so only firmware signed by the trusted key installs. This
+makes the OTA path authenticity-against-forgery, not only
+integrity-against-corruption: a swapped release asset, a redirected
+custom-install URL, or a man-in-the-middle past TLS is rejected even when its
+SHA-256 matches. Release images are signed with the maintainer's key, held only
+in a CI secret; developer builds use a committed throwaway key that provides
+integrity, not authenticity. Without hardware Secure Boot the guarantee covers
+the network path, not boot-time or physical-flash tampering; Secure Boot v2 is
+the roadmap step that closes that gap. [docs/ota.md](ota.md#firmware-signing)
+owns the mechanism and the key model.
 
 ## PCM transport
 

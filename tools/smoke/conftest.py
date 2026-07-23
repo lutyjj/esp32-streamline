@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 from pytest_embedded.dut_factory import DutFactory
+from pytest_embedded_qemu.qemu import QEMU_TARGETS
 
 from streamline_tools.device.api import DeviceApi, wait_for_api
 from streamline_tools.device.flash_image import pad_flash_image
@@ -97,11 +98,24 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
             flash = tmp_path / f"flash-{len(list(tmp_path.glob('flash-*.bin')))}.bin"
             shutil.copy(padded_image, flash)
         port = _free_port()
+        # The signed firmware targets ESP32 chip revision 3.0 (ECO3), required by
+        # the RSA signature scheme, so its bootloader refuses a lower revision.
+        # QEMU's built-in eFuse default reports v0.0; pytest-embedded ships an
+        # ECO3 (v3.0) default eFuse. Its qemu_efuse_path option would install that
+        # eFuse but derefs `app.target`, which this raw-image harness has no App
+        # for, so write the same eFuse and pass the drive directly. A fresh copy
+        # per boot keeps the emulated hardware identity out of the flash under test.
+        efuse = tmp_path / f"efuse-{len(list(tmp_path.glob('efuse-*.bin')))}.bin"
+        efuse.write_bytes(QEMU_TARGETS["esp32"].default_efuse)
         dut = DutFactory.create(
             embedded_services="qemu",
             qemu_image_path=str(flash),
             skip_regenerate_image=True,
-            qemu_extra_args=f"-no-reboot -nic user,model=open_eth,hostfwd=tcp:127.0.0.1:{port}-:80",
+            qemu_extra_args=(
+                f"-no-reboot -nic user,model=open_eth,hostfwd=tcp:127.0.0.1:{port}-:80"
+                f" -drive file={efuse},if=none,format=raw,id=efuse"
+                " -global driver=nvram.esp32.efuse,property=drive,value=efuse"
+            ),
         )
         api = DeviceApi(base_url=f"http://127.0.0.1:{port}", admin_key=admin_key)
         device = EmulatedDevice(dut=dut, api=api, flash=flash)

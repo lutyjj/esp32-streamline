@@ -37,9 +37,26 @@ class ServedOtaImage:
     download_url: str
     unavailable_url: str
     stalled_url: str
+    forged_url: str
     sha256: str
+    forged_sha256: str
     stall_started: threading.Event
     release_stall: threading.Event
+
+
+# The application image ends with a 4 KB Secure Boot v2 signature sector; the
+# signature block sits at its start. Corrupting a byte well inside that block
+# leaves the image the digest covers untouched but makes the RSA signature fail
+# to verify, standing in for firmware the device's key did not sign.
+_SIGNATURE_SECTOR_BYTES = 4096
+_SIGNATURE_BLOCK_OFFSET = 600
+
+
+def _forge_signature(image: bytes) -> bytes:
+    forged = bytearray(image)
+    target = len(forged) - _SIGNATURE_SECTOR_BYTES + _SIGNATURE_BLOCK_OFFSET
+    forged[target] ^= 0xFF
+    return bytes(forged)
 
 
 def _expect_api_up(device: EmulatedDevice) -> None:
@@ -281,6 +298,8 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
         pytest.skip("STREAMLINE_QEMU_OTA_IMAGE not set; build it with: make -C firmware qemu-artifacts")
     payload = Path(source).read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
+    forged = _forge_signature(payload)
+    forged_digest = hashlib.sha256(forged).hexdigest()
 
     stall_started = threading.Event()
     release_stall = threading.Event()
@@ -291,8 +310,9 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
             if path == "/unavailable.bin":
                 self.send_error(503)
                 return
+            body = forged if path == "/forged.bin" else payload
             self.send_response(200)
-            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             if path == "/stalled.bin":
                 try:
@@ -304,7 +324,7 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
                 except (BrokenPipeError, ConnectionResetError):
                     pass
                 return
-            self.wfile.write(payload)
+            self.wfile.write(body)
 
         def log_message(self, format: str, *args: object) -> None:
             pass
@@ -318,7 +338,9 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
             download_url=f"{base}/streamline-qemu-ota.bin{query}",
             unavailable_url=f"{base}/unavailable.bin{query}",
             stalled_url=f"{base}/stalled.bin{query}",
+            forged_url=f"{base}/forged.bin{query}",
             sha256=digest,
+            forged_sha256=forged_digest,
             stall_started=stall_started,
             release_stall=release_stall,
         )
@@ -370,6 +392,30 @@ def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(
 
     # A rejected install never switches slots, so the device stays on the image
     # it booted, still serving its API rather than rebooting into a bad slot.
+    assert _mode(provisioned_device) == "provisioned"
+    _assert_ota_url_private(provisioned_device)
+    _assert_ota_url_absent_from_serial(provisioned_device)
+
+
+def test_ota_rejects_a_forged_signature_and_keeps_the_running_slot(
+    provisioned_device: EmulatedDevice,
+    served_ota_image: ServedOtaImage,
+) -> None:
+    # The forged image's SHA-256 matches the caller's digest, so it clears the
+    # integrity check, but a byte inside its RSA signature block is corrupted.
+    # esp_ota must verify the vendor signature and refuse firmware the device's
+    # key did not sign — the authenticity guarantee, distinct from the checksum.
+    code, body = provisioned_device.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.forged_url, "sha256": served_ota_image.forged_sha256},
+    )
+    assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
+
+    ota = _wait_for_ota_phase(provisioned_device, "failed", timeout=180)
+    assert "signature" in ota["message"].lower(), f"failed for the wrong reason: {ota['message']!r}"
+
+    # A rejected install never switches slots, so the device stays on the signed
+    # image it booted, still serving its API rather than rebooting into a bad one.
     assert _mode(provisioned_device) == "provisioned"
     _assert_ota_url_private(provisioned_device)
     _assert_ota_url_absent_from_serial(provisioned_device)

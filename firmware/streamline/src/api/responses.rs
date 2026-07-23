@@ -388,6 +388,10 @@ pub struct OtaStatus<'a> {
     pub busy: bool,
     pub rollback_available: bool,
     pub rollback_version: &'a str,
+    /// Whether this firmware rejects an over-the-air image that is not signed by
+    /// the vendor key it trusts. Always true on a signed release build; false on
+    /// an unsigned self-build.
+    pub signed_updates: bool,
 }
 
 #[derive(Serialize)]

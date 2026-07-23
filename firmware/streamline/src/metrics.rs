@@ -595,6 +595,7 @@ streamline_ota_busy 0\n"
                 busy: false,
                 rollback_available: false,
                 rollback_version: String::new(),
+                signed_updates: true,
             },
             status_indicator_visible: true,
         }

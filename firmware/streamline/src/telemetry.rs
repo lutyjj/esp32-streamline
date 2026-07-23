@@ -140,4 +140,7 @@ pub struct OtaTelemetry {
     /// The version that a rollback would return to; empty when unavailable or
     /// unreadable.
     pub rollback_version: String,
+    /// This firmware rejects an over-the-air image that is not signed by the
+    /// vendor key it trusts. Always true on a signed release build.
+    pub signed_updates: bool,
 }

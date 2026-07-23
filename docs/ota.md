@@ -58,10 +58,14 @@ image instead of the latest release — no USB access needed to test a build:
    `http://<your-host>:8000/streamline-dev-ota.bin` and the digest from
    `SHA256SUMS`, then **Install custom image**.
 
-The admin-supplied SHA-256 — not the transport — is the root of trust: the
-device rejects any payload whose digest differs, so a plain-HTTP LAN URL is
-acceptable (and skips the clock sync that only TLS needs, so an offline bench
-works). Custom installs skip the version comparison — a `dev` build can replace
+A custom image passes the same two checks as a release: its bytes must match the
+admin-supplied SHA-256, and it must carry a valid vendor signature (see
+[firmware signing](#firmware-signing)). Build and sign a developer image with
+`make firmware-artifacts`, which signs with the committed dev key; a device
+running a dev-key image accepts it, and any device rejects an image its trusted
+key did not sign. Because both checks are on the content, a plain-HTTP LAN URL
+is acceptable and skips the clock sync that only TLS needs, so an offline bench
+works. Custom installs skip the version comparison — a `dev` build can replace
 any release — and keep the rollback net below. Signed query parameters remain
 part of the download request, but status, diagnostics, and logs identify the
 source only as a custom image. URLs with userinfo or fragments are rejected.
@@ -125,25 +129,80 @@ System tab.
 
 | Control | Effect |
 |---|---|
+| Vendor RSA-3072 signature verified before commit | `esp_ota` rejects any image the trusted key did not sign, so only vendor firmware installs |
 | Admin-key bearer token on `/api/ota/update` | Only the owner can trigger an update |
-| TLS via the mbedTLS certificate bundle | Authenticates `github.com`; the image cannot be swapped in transit |
-| Published SHA-256 verified before commit | Detects truncated or corrupted downloads |
+| Published SHA-256 verified before commit | Detects a truncated or corrupted download before the signature check |
+| TLS via the mbedTLS certificate bundle | Authenticates `github.com` for the release download |
 | Bootloader image checksum + rollback | A malformed or non-booting image reverts automatically |
 
-This matches the appliance's threat model (a single owner on a trusted LAN,
-pulling signed GitHub releases). Image *authenticity* rests on HTTPS to GitHub
-rather than a burned signing key; signed-image verification
-(`CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT`) is the next step if a hardware
-root of trust is ever required.
+Image authenticity rests on the signing key, not on HTTPS to GitHub. The
+firmware carries the vendor's RSA-3072 public key and verifies the appended
+signature before it commits a slot, so a forged image that matches the caller's
+SHA-256 — a compromised release asset, a swapped custom-install URL, or a
+man-in-the-middle past TLS — is still rejected. See
+[firmware signing](#firmware-signing).
+
+The signature guards the over-the-air path. It is not boot-time or
+physical-flash verification: without hardware Secure Boot the bootloader does
+not check the signature, so someone with physical flash access can still write
+an unsigned image. Secure Boot v2 with a burned key closes that gap and is the
+next step on the security roadmap.
+
+## Firmware signing
+
+The firmware verifies a vendor RSA-3072 signature on every over-the-air image
+using ESP-IDF signed-app verification without hardware Secure Boot
+(`CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT`, RSA scheme). No eFuse is
+burned, so signing stays reversible: a serial reflash of an unsigned build
+returns the device to trusting nothing.
+
+How the trust chain works without a hardware anchor:
+
+- The running application embeds the public key in an appended signature block.
+  When it installs an update, `esp_ota` verifies the new image's signature
+  against that embedded key and refuses to commit a slot on a mismatch. A device
+  therefore accepts only images signed by the key its current firmware already
+  trusts.
+- The image is built secure-padded but unsigned; CI appends the signature block
+  after the build (`espsecure.py sign_data --version 2`), so the private key
+  never reaches the build machine.
+- The RSA scheme requires an ESP32 of chip revision 3.0 (ECO3). Revisions 0 to 2
+  lack the v2 signature support and cannot run this firmware.
+
+Two key domains ship from one source tree:
+
+- **Release units** run images signed by the maintainer's key, held only in the
+  `FIRMWARE_SIGNING_KEY` release secret. They accept only release-signed
+  over-the-air updates.
+- **Developer and QEMU builds** are signed with the throwaway
+  `firmware/streamline/dev_signing_key.pem`, committed on purpose. Its private
+  half is public, so it provides integrity, not authenticity: it exists so a
+  developer build is signed like a release unit, both to install over the air and
+  to carry the key that verifies its next update. A device flashed or updated
+  with a dev-key image accepts other dev-key images.
+
+To build with your own key, generate one with
+`espsecure.py generate_signing_key --version 2 --scheme rsa3072 my_key.pem`,
+then run `make firmware-artifacts SIGNING_KEY=my_key.pem`. Serial-flash the
+resulting `-full.bin` once to enroll your key; the device then accepts only
+over-the-air images you sign with it.
+
+Because the over-the-air path enforces signatures, a device cannot be moved to a
+different key over the air. Adopting signing on an existing unsigned device is a
+normal update: the unsigned firmware installs the first signed image, and every
+update after that is verified. Moving between key domains, or back to an
+unsigned build, needs a one-time serial reflash.
 
 ## Build artifacts
 
-`make artifacts` produces both images, listed by basename in `SHA256SUMS`:
+`make artifacts` produces both images, listed by basename in `SHA256SUMS`. Both
+carry the appended vendor signature (see [firmware signing](#firmware-signing)),
+so the application in each is the signed one:
 
 - `streamline-<ver>-full.bin` — serial-flash image bundling the OTA partition
-  table and the rollback-enabled bootloader. Flash it once over USB to move a
-  device onto the OTA layout.
-- `streamline-<ver>-ota.bin` — bare application image the device pulls for
+  table, the rollback-enabled bootloader, and the signed application. Flash it
+  once over USB to move a device onto the OTA layout and enroll its signing key.
+- `streamline-<ver>-ota.bin` — signed application image the device pulls for
   over-the-air updates.
 
 ## Migrating existing devices

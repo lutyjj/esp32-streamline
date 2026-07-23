@@ -46,3 +46,12 @@ CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y
 # adapter rejects certificate-authenticated sessions after the handshake.
 CONFIG_MBEDTLS_SSL_TLS1_3_KEXM_EPHEMERAL=y
 CONFIG_MBEDTLS_SSL_TLS1_3_KEXM_PSK_EPHEMERAL=y
+
+# Dynamic mbedTLS record buffers keep the update check working while the device
+# streams. The check's certificate-verified HTTPS handshake needs tens of KB of
+# record buffers; mbedTLS otherwise holds them for the whole session, so while
+# the PCM transport occupies the heap the handshake cannot allocate them and
+# fails at connect. Dynamic buffers allocate each buffer on demand and free it
+# after use. This selects MBEDTLS_ASYMMETRIC_CONTENT_LEN and is safe for the
+# persistent PSK stream, whose sessions only move record buffers.
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y

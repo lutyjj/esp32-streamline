@@ -115,14 +115,34 @@ jobs:
           cargo-cache-path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
+      # The maintainer's RSA-3072 key signs the release images so the firmware
+      # accepts them over the air (issue #337); the device rejects any image the
+      # key did not sign. The private key exists only in the FIRMWARE_SIGNING_KEY
+      # secret — written to a gitignored file for the containerized signer and
+      # shredded right after, so it never lands in target/, dist/, or a layer.
+      - name: Materialize the firmware signing key
+        env:
+          FIRMWARE_SIGNING_KEY: ${{ secrets.FIRMWARE_SIGNING_KEY }}
+        run: |
+          test -n "$FIRMWARE_SIGNING_KEY" || { echo "FIRMWARE_SIGNING_KEY secret is not set" >&2; exit 1; }
+          printf '%s\n' "$FIRMWARE_SIGNING_KEY" > firmware/streamline/.release_signing_key.pem
+
+      # Reproducibility is proven on the unsigned compiled outputs; the signed
+      # images differ by the RSA-PSS signature block alone. repro-check rebuilds
+      # from a clean target and never touches the signed artifacts in dist.
       - name: Build firmware artifacts and prove reproducibility
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           make firmware-artifacts VERSION="$VERSION" \
+            SIGNING_KEY=.release_signing_key.pem \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
           make firmware-repro-check VERSION="$VERSION" \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
+
+      - name: Shred the firmware signing key
+        if: always()
+        run: shred -u firmware/streamline/.release_signing_key.pem 2>/dev/null || rm -f firmware/streamline/.release_signing_key.pem
 
       - name: Reclaim firmware caches
         if: always()

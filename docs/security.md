@@ -56,8 +56,8 @@ integrity-against-corruption: a swapped release asset, a redirected
 custom-install URL, or a man-in-the-middle past TLS is rejected even when its
 SHA-256 matches. Release images are signed with the maintainer's key, held only
 in a CI secret; developer builds use a key generated on demand into a gitignored
-file, so no signing key lives in the repository. Without hardware Secure Boot the
-guarantee covers the network path, not boot-time or physical-flash tampering;
+file, so no signing key lives in the repository. Without hardware Secure Boot
+the guarantee covers the network path, not boot-time or physical-flash tampering;
 Secure Boot v2 is the roadmap step that closes that gap.
 [docs/ota.md](ota.md#firmware-signing) owns the mechanism and the key model.
 

@@ -61,9 +61,9 @@ image instead of the latest release — no USB access needed to test a build:
 A custom image passes the same two checks as a release: its bytes must match the
 admin-supplied SHA-256, and it must carry a valid vendor signature (see
 [firmware signing](#firmware-signing)). Build and sign a developer image with
-`make firmware-artifacts`, which signs with the committed dev key; a device
-running a dev-key image accepts it, and any device rejects an image its trusted
-key did not sign. Because both checks are on the content, a plain-HTTP LAN URL
+`make firmware-artifacts`, which signs with this machine's generated development
+key; a device enrolled with that key accepts it, and any device rejects an image
+its trusted key did not sign. Because both checks are on the content, a plain-HTTP LAN URL
 is acceptable and skips the clock sync that only TLS needs, so an offline bench
 works. Custom installs skip the version comparison — a `dev` build can replace
 any release — and keep the rollback net below. Signed query parameters remain
@@ -169,23 +169,28 @@ How the trust chain works without a hardware anchor:
 - The RSA scheme requires an ESP32 of chip revision 3.0 (ECO3). Revisions 0 to 2
   lack the v2 signature support and cannot run this firmware.
 
-Two key domains ship from one source tree:
+No signing key lives in the repository. Two key domains grow from one source
+tree:
 
 - **Release units** run images signed by the maintainer's key, held only in the
-  `FIRMWARE_SIGNING_KEY` release secret. They accept only release-signed
-  over-the-air updates.
-- **Developer and QEMU builds** are signed with the throwaway
-  `firmware/streamline/dev_signing_key.pem`, committed on purpose. Its private
-  half is public, so it provides integrity, not authenticity: it exists so a
-  developer build is signed like a release unit, both to install over the air and
-  to carry the key that verifies its next update. A device flashed or updated
-  with a dev-key image accepts other dev-key images.
+  `FIRMWARE_SIGNING_KEY` release secret and shredded after each signing run.
+  They accept only release-signed over-the-air updates.
+- **Developer and QEMU builds** are signed with a key `make firmware-artifacts`
+  generates on first use into the gitignored
+  `firmware/streamline/.dev_signing_key.pem`, the way the kernel generates its
+  module-signing key. A fresh checkout therefore produces a bootable,
+  installable image with no setup, and each machine signs with its own key. That
+  key is a development credential, not a vendor identity: keep it off product
+  units. A device enrolled with one machine's key rejects images signed on
+  another, which is the same rule release units follow.
 
-To build with your own key, generate one with
+To sign with a key you manage instead, generate one with
 `espsecure.py generate_signing_key --version 2 --scheme rsa3072 my_key.pem`,
 then run `make firmware-artifacts SIGNING_KEY=my_key.pem`. Serial-flash the
-resulting `-full.bin` once to enroll your key; the device then accepts only
-over-the-air images you sign with it.
+resulting `-full.bin` once to enroll that key; the device then accepts only
+over-the-air images you sign with it. A `SIGNING_KEY` that names a missing file
+fails the build rather than generating a substitute, so a release can never ship
+signed by a throwaway.
 
 Because the over-the-air path enforces signatures, a device cannot be moved to a
 different key over the air. Adopting signing on an existing unsigned device is a

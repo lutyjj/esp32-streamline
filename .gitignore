@@ -6,9 +6,10 @@ __pycache__/
 firmware/streamline/.embuild/
 firmware/streamline/.cargo-home/
 firmware/streamline/target/
-# Release firmware signing key, materialized by CI from the FIRMWARE_SIGNING_KEY
-# secret. The dev key (dev_signing_key.pem) is committed on purpose; the real
-# maintainer key never touches the repo.
+# Firmware signing keys never enter the repository. `make firmware-artifacts`
+# generates the development key on demand; CI materializes the maintainer key
+# from the FIRMWARE_SIGNING_KEY secret and shreds it after signing.
+firmware/streamline/.dev_signing_key.pem
 firmware/streamline/.release_signing_key.pem
 captures/
 analysis-data/

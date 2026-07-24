@@ -44,9 +44,9 @@ CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
 CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
 CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
 # Build the image unsigned so the private key never reaches the build machine;
-# firmware/Makefile appends the RSA signature block afterward with espsecure.py
-# (dev key for dev/QEMU builds, the maintainer key in release CI). Left on, the
-# build would sign in-tree and demand the private key here.
+# firmware/Makefile appends the RSA signature block afterward with espsecure.py,
+# using a generated development key for dev/QEMU builds and the maintainer key in
+# release CI. Left on, the build would sign in-tree and demand a private key here.
 CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n
 
 # Rebuilding one commit yields byte-identical images: the app and bootloader

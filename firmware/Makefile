@@ -13,10 +13,14 @@ FLASH_SIZE ?= 4mb
 FLASH_SIZE_UPPER := $(shell echo $(FLASH_SIZE) | tr a-z A-Z)
 # RSA-3072 key that signs the application image so the device accepts it (the
 # firmware enforces vendor signatures — CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT).
-# Dev and QEMU builds use the committed public throwaway key, which gives
-# integrity, not authenticity; release CI overrides this with the maintainer's
-# secret key. Evaluated inside the container, whose workdir is firmware/streamline.
-SIGNING_KEY ?= dev_signing_key.pem
+# No signing key lives in the repository. `signing-key` generates the development
+# key on demand into a gitignored file, so every checkout signs with its own, the
+# way the kernel generates its module-signing key. Release CI overrides
+# SIGNING_KEY with the maintainer key it materializes from the
+# FIRMWARE_SIGNING_KEY secret. Paths are evaluated inside the container, whose
+# workdir is firmware/streamline.
+DEV_SIGNING_KEY := .dev_signing_key.pem
+SIGNING_KEY ?= $(DEV_SIGNING_KEY)
 DIST_DIR ?= $(abspath ../dist)
 # macOS ships shasum, minimal Linux hosts only sha256sum; both print the same
 # "hash  filename" lines SHA256SUMS consumers expect.
@@ -44,6 +48,14 @@ CONTAINER_FLAGS := --rm --user "$(CONTAINER_USER)" -e HOME="$(CONTAINER_HOME)" \
 	-v "$(ROOT_DIR):$(CONTAINER_WORKSPACE)" -w $(CONTAINER_WORKSPACE)/firmware/$(SRC)
 CONTAINER_RUN := $(CONTAINER) run $(CONTAINER_FLAGS) $(IMAGE)
 
+# The toolchain's Python environment directory embeds the ESP-IDF and Python
+# versions (`.embuild/.../python_env/idf5.5_py3.11_env/bin`), so an ESP-IDF or
+# Python bump would invalidate any hardcoded path. Locate the environment
+# through a tool that lives in it instead, and put it on PATH so espsecure.py
+# and its siblings resolve. Sets ESPTOOL and PY for callers that need them.
+# Requires a completed build: esp-idf-sys populates .embuild.
+IDF_PYTHON_ENV := ESPTOOL="$$(find .embuild -name esptool.py -path "*python_env*" | head -1)"; test -n "$$ESPTOOL" || { echo "ESP-IDF python env not found; run: make -C firmware build" >&2; exit 1; }; PY="$$(dirname "$$ESPTOOL")/python"; export PATH="$$(dirname "$$ESPTOOL"):$$PATH"
+
 CAPTURE_SECS ?= 20
 
 # Bounded serial capture helper; lives with the other dev tools and is
@@ -51,7 +63,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test sign-self-test
+.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test sign-self-test signing-key
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -132,6 +144,24 @@ capture:
 clean: image
 	$(CONTAINER_RUN) cargo clean
 
+# Provide the key that signs this build. A missing development key is generated
+# here, so a fresh checkout produces a bootable, over-the-air-installable image
+# with no setup and no private key in the repository; the key stays local, so
+# images signed on one machine are not installable on a device enrolled with
+# another's. Any other key must already exist: silently generating one would let
+# a release ship signed by a throwaway the fleet does not trust.
+signing-key: image
+	@set -e; \
+		if [ -f "$(SRC)/$(SIGNING_KEY)" ]; then exit 0; fi; \
+		if [ "$(SIGNING_KEY)" != "$(DEV_SIGNING_KEY)" ]; then \
+			echo "signing key $(SIGNING_KEY) not found" >&2; exit 1; \
+		fi; \
+		echo "generating a development signing key ($(SIGNING_KEY)); it stays out of git"; \
+		$(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" \
+			-v "$(ROOT_DIR):$(CONTAINER_WORKSPACE)" -w $(CONTAINER_WORKSPACE)/firmware/$(SRC) $(IMAGE) \
+			bash -ec '$(IDF_PYTHON_ENV); espsecure.py generate_signing_key --version 2 --scheme rsa3072 $(DEV_SIGNING_KEY) >/dev/null'; \
+		chmod 600 "$(SRC)/$(SIGNING_KEY)"
+
 # Package the signed images for basename prefix $(1) (e.g. `streamline-0.9.0` or
 # `streamline-qemu`). The firmware verifies vendor RSA-3072 signatures on
 # over-the-air updates, so the application image must be signed to install, and
@@ -139,14 +169,14 @@ clean: image
 # device carries the key that verifies its next update:
 #   1. elf2image with `--secure-pad-v2` reserves the signature sector.
 #   2. espsecure.py appends the RSA signature block, signed with $(SIGNING_KEY)
-#      (the committed dev key by default; release CI overrides it). Building
+#      (the generated development key by default; release CI overrides it). Building
 #      unsigned then signing keeps the private key off the build machine.
 #   3. merge_bin lays the bootloader, the two-slot partition table, and the
 #      SIGNED app into the offset-0 serial-flash image, so a USB/WebFlasher
 #      install boots too. The table comes from partitions.csv (the layout applied
 #      at flash time), not the ESP-IDF build's default single-app table.
 define sign_and_package
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; export PATH="$(CONTAINER_WORKSPACE)/firmware/$(SRC)/.embuild/espressif/python_env/idf5.5_py3.11_env/bin:$$PATH"; ESPTOOL=$$(find .embuild -name esptool.py -path "*python_env*" | head -1); PY="$$(dirname "$$ESPTOOL")/python"; GENPART=$$(find .embuild -name gen_esp32part.py | head -1); REL=target/$(TARGET)/release; "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); GENPART=$$(find .embuild -name gen_esp32part.py | head -1); REL=target/$(TARGET)/release; "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
 endef
 
 # `-full.bin` is the serial-flash image: it bundles the OTA-capable partition
@@ -156,7 +186,7 @@ endef
 # the inactive slot. Both carry the RSA signature block (see sign_and_package).
 # SHA256SUMS stores basenames so the device can match the `-ota.bin` entry by
 # filename, and hashes the signed bytes it actually serves.
-artifacts: build
+artifacts: build signing-key
 	mkdir -p $(DIST_DIR)/firmware
 	$(call sign_and_package,streamline-$(VERSION))
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-$(VERSION)-ota.bin
@@ -203,7 +233,7 @@ ota-size-self-test:
 # part of `artifacts` so a mis-signed build never ships.
 sign-self-test:
 	@test -f "$(OTA_IMAGE)" || { echo "sign-self-test: $(OTA_IMAGE) not found; build it with: make artifacts VERSION=$(VERSION)" >&2; exit 2; }
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; export PATH="$(CONTAINER_WORKSPACE)/firmware/$(SRC)/.embuild/espressif/python_env/idf5.5_py3.11_env/bin:$$PATH"; image=/dist/firmware/$(notdir $(OTA_IMAGE)); espsecure.py verify_signature --version 2 --keyfile $(SIGNING_KEY) "$$image" >/dev/null; other=$$(mktemp -u); espsecure.py generate_signing_key --version 2 --scheme rsa3072 "$$other" >/dev/null 2>&1; if espsecure.py verify_signature --version 2 --keyfile "$$other" "$$image" >/dev/null 2>&1; then echo "sign-self-test: a foreign key must not verify the image" >&2; exit 1; fi; echo "sign-self-test: $(notdir $(OTA_IMAGE)) is signed by $(SIGNING_KEY) and rejects a foreign key"'
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); image=/dist/firmware/$(notdir $(OTA_IMAGE)); espsecure.py verify_signature --version 2 --keyfile $(SIGNING_KEY) "$$image" >/dev/null; other=$$(mktemp -u); espsecure.py generate_signing_key --version 2 --scheme rsa3072 "$$other" >/dev/null 2>&1; if espsecure.py verify_signature --version 2 --keyfile "$$other" "$$image" >/dev/null 2>&1; then echo "sign-self-test: a foreign key must not verify the image" >&2; exit 1; fi; echo "sign-self-test: $(notdir $(OTA_IMAGE)) is signed by $(SIGNING_KEY) and rejects a foreign key"'
 
 # Rebuilding one commit reproduces the compiled firmware byte-for-byte
 # (CONFIG_APP_REPRODUCIBLE_BUILD in sdkconfig.defaults): the ELF, bootloader,
@@ -228,7 +258,7 @@ repro-check:
 # inactive slot. Runs the build and the packaging in one invocation because
 # both variants share the ELF path — an interleaved `build` would package
 # the wrong binary.
-qemu-artifacts: qemu-build
+qemu-artifacts: qemu-build signing-key
 	mkdir -p $(DIST_DIR)/firmware
 	$(call sign_and_package,streamline-qemu)
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin

@@ -34,6 +34,7 @@ CONTAINER_GIT_SAFE_DIR ?= $(CONTAINER_WORKSPACE)
 CONTAINER_CARGO_HOME ?=
 CONTAINER_EXTRA_FLAGS ?=
 CONTAINER_CARGO_ENV := $(if $(CONTAINER_CARGO_HOME),-e CARGO_HOME="$(CONTAINER_CARGO_HOME)")
+CONTAINER_MOUNT := -v "$(ROOT_DIR):$(CONTAINER_WORKSPACE)" -w $(CONTAINER_WORKSPACE)/firmware/$(SRC)
 
 # Firmware uses Espressif's pinned toolchain image as delivered. Its ESP/Rust
 # environment is rooted under /home/esp, while the project is a bind-mounted
@@ -45,8 +46,12 @@ CONTAINER_FLAGS := --rm --user "$(CONTAINER_USER)" -e HOME="$(CONTAINER_HOME)" \
 	-e GIT_CONFIG_KEY_0=safe.directory \
 	-e GIT_CONFIG_VALUE_0="$(CONTAINER_GIT_SAFE_DIR)" \
 	$(CONTAINER_EXTRA_FLAGS) \
-	-v "$(ROOT_DIR):$(CONTAINER_WORKSPACE)" -w $(CONTAINER_WORKSPACE)/firmware/$(SRC)
+	$(CONTAINER_MOUNT)
 CONTAINER_RUN := $(CONTAINER) run $(CONTAINER_FLAGS) $(IMAGE)
+# The same workspace run as the invoking user, so files the container creates
+# stay host-owned. The development signing key needs that: rotating it is
+# deleting the file, which a root-owned key would refuse.
+CONTAINER_RUN_HOST_USER := $(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" $(CONTAINER_MOUNT) $(IMAGE)
 
 # The toolchain's Python environment directory embeds the ESP-IDF and Python
 # versions (`.embuild/.../python_env/idf5.5_py3.11_env/bin`), so an ESP-IDF or
@@ -63,7 +68,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test sign-self-test signing-key
+.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test signature-check signing-key
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -157,9 +162,7 @@ signing-key: image
 			echo "signing key $(SIGNING_KEY) not found" >&2; exit 1; \
 		fi; \
 		echo "generating a development signing key ($(SIGNING_KEY)); it stays out of git"; \
-		$(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" \
-			-v "$(ROOT_DIR):$(CONTAINER_WORKSPACE)" -w $(CONTAINER_WORKSPACE)/firmware/$(SRC) $(IMAGE) \
-			bash -ec '$(IDF_PYTHON_ENV); espsecure.py generate_signing_key --version 2 --scheme rsa3072 $(DEV_SIGNING_KEY) >/dev/null'; \
+		$(CONTAINER_RUN_HOST_USER) bash -ec '$(IDF_PYTHON_ENV); espsecure.py generate_signing_key --version 2 --scheme rsa3072 $(DEV_SIGNING_KEY) >/dev/null'; \
 		chmod 600 "$(SRC)/$(SIGNING_KEY)"
 
 # Package the signed images for basename prefix $(1) (e.g. `streamline-0.9.0` or
@@ -190,7 +193,7 @@ artifacts: build signing-key
 	mkdir -p $(DIST_DIR)/firmware
 	$(call sign_and_package,streamline-$(VERSION))
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-$(VERSION)-ota.bin
-	$(MAKE) sign-self-test OTA_IMAGE=$(DIST_DIR)/firmware/streamline-$(VERSION)-ota.bin
+	$(MAKE) signature-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-$(VERSION)-ota.bin
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-$(VERSION).elf
 	cd $(DIST_DIR)/firmware && $(SHA256) streamline-$(VERSION)-full.bin streamline-$(VERSION)-ota.bin streamline-$(VERSION).elf > SHA256SUMS
 
@@ -231,9 +234,9 @@ ota-size-self-test:
 # must verify it and a freshly generated foreign key must not. Guards the
 # signing pipeline the way ota-size-self-test guards the size gate, and runs as
 # part of `artifacts` so a mis-signed build never ships.
-sign-self-test:
-	@test -f "$(OTA_IMAGE)" || { echo "sign-self-test: $(OTA_IMAGE) not found; build it with: make artifacts VERSION=$(VERSION)" >&2; exit 2; }
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); image=/dist/firmware/$(notdir $(OTA_IMAGE)); espsecure.py verify_signature --version 2 --keyfile $(SIGNING_KEY) "$$image" >/dev/null; other=$$(mktemp -u); espsecure.py generate_signing_key --version 2 --scheme rsa3072 "$$other" >/dev/null 2>&1; if espsecure.py verify_signature --version 2 --keyfile "$$other" "$$image" >/dev/null 2>&1; then echo "sign-self-test: a foreign key must not verify the image" >&2; exit 1; fi; echo "sign-self-test: $(notdir $(OTA_IMAGE)) is signed by $(SIGNING_KEY) and rejects a foreign key"'
+signature-check:
+	@test -f "$(OTA_IMAGE)" || { echo "signature-check: $(OTA_IMAGE) not found; build it with: make artifacts VERSION=$(VERSION)" >&2; exit 2; }
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); image=/dist/firmware/$(notdir $(OTA_IMAGE)); espsecure.py verify_signature --version 2 --keyfile $(SIGNING_KEY) "$$image" >/dev/null; other=$$(mktemp -u); espsecure.py generate_signing_key --version 2 --scheme rsa3072 "$$other" >/dev/null 2>&1; if espsecure.py verify_signature --version 2 --keyfile "$$other" "$$image" >/dev/null 2>&1; then echo "signature-check: a foreign key must not verify the image" >&2; exit 1; fi; echo "signature-check: $(notdir $(OTA_IMAGE)) is signed by $(SIGNING_KEY) and rejects a foreign key"'
 
 # Rebuilding one commit reproduces the compiled firmware byte-for-byte
 # (CONFIG_APP_REPRODUCIBLE_BUILD in sdkconfig.defaults): the ELF, bootloader,
@@ -262,4 +265,4 @@ qemu-artifacts: qemu-build signing-key
 	mkdir -p $(DIST_DIR)/firmware
 	$(call sign_and_package,streamline-qemu)
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin
-	$(MAKE) sign-self-test OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin
+	$(MAKE) signature-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin

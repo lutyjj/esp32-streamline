@@ -135,6 +135,20 @@ endpoint!(
     responses((status = 200, content_type = "text/plain", body = String))
 );
 endpoint!(
+    LOGS,
+    get_logs,
+    Get,
+    get,
+    "/api/logs",
+    authenticated,
+    summary = "Read the device log this boot and the one before it",
+    responses(
+        (status = 200, body = LogsResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 503, body = ErrorResponse)
+    )
+);
+endpoint!(
     SETTINGS,
     get_settings,
     Get,
@@ -495,6 +509,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     STATUS,
     HEALTH,
     METRICS,
+    LOGS,
     SETTINGS,
     AUDIO_PROFILES,
     BOARDS,
@@ -536,7 +551,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_status, get_health, get_metrics, get_logs, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]

@@ -21,6 +21,7 @@ pub mod identity;
 pub mod indicator;
 pub mod led;
 pub mod levels;
+pub mod logs;
 pub mod metrics;
 pub mod mutation;
 pub mod packet;

@@ -27,7 +27,6 @@ export type {
   LedCapabilityStatus,
   LedRole,
   LedRoleStatus,
-  LoggedLine,
   LogsResponse,
   OtaStatus as OtaSnapshot,
   Severity as HealthSeverity,

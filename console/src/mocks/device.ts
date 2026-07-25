@@ -21,10 +21,16 @@ import type {
   BootLog,
   DeviceConfig,
   DeviceStatus,
-  LoggedLine,
   LogsResponse,
   TransportKeyResponse,
 } from '../lib/api';
+
+/** One captured line as the fake device holds it before rendering to text. */
+interface MockLogLine {
+  sequence: number;
+  text: string;
+}
+
 import { deviceConfig, deviceStatus } from './fixtures';
 
 /**
@@ -79,7 +85,7 @@ export class FakeDevice {
   private poll = 0;
   private keySerial = 0;
   /** This boot's captured log, and the one the last restart left behind. */
-  private logLines: LoggedLine[] = [];
+  private logLines: MockLogLine[] = [];
   private logSequence = 0;
   private logDropped = 0;
   private logBoot = 0;
@@ -468,14 +474,13 @@ export class FakeDevice {
       scenario === 'steady'
         ? {
             boot: this.logBoot - 1,
-            lines: [...this.logLines, ...PREVIOUS_BOOT_TAIL.map(this.numbered, this)],
+            first_sequence: 12,
             dropped: 12,
+            text: [...this.logLines.map((line) => line.text), ...PREVIOUS_BOOT_TAIL]
+              .map((line) => `${line}\n`)
+              .join(''),
           }
         : null;
-  }
-
-  private numbered(text: string, offset: number): LoggedLine {
-    return { sequence: BOOT_LOG.length + offset, text };
   }
 
   private appendLog(text: string): void {
@@ -501,7 +506,12 @@ export class FakeDevice {
         : 'capture: input silent, stream paused',
     );
     return {
-      current: { boot: this.logBoot, lines: [...this.logLines], dropped: this.logDropped },
+      current: {
+        boot: this.logBoot,
+        first_sequence: this.logSequence - this.logLines.length,
+        dropped: this.logDropped,
+        text: this.logLines.map((line) => `${line.text}\n`).join(''),
+      },
       previous: this.previousBootLog,
     };
   }

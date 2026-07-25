@@ -418,7 +418,7 @@ pub struct IndicatorStatus {
 }
 
 /// The device's captured log, as `GET /api/logs` returns it.
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct LogsResponse {
     pub current: BootLog,
@@ -429,34 +429,35 @@ pub struct LogsResponse {
 }
 
 /// The lines one boot produced, as much of them as the buffer holds.
-#[derive(Debug, Serialize)]
+///
+/// The lines arrive as one block rather than an object each. A log is text,
+/// the device keeps it as text, and a structure per line costs flash the image
+/// does not have to spare; `first_sequence` still names every line for a
+/// reader that wants to track them individually.
+#[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct BootLog {
     /// Identifies the run of the firmware these lines came from. A poller
     /// compares it to tell more lines from a restart that began counting
     /// again, which sequence numbers alone cannot express.
     pub boot: u32,
-    /// Oldest first.
-    pub lines: Vec<LoggedLine>,
+    /// Position of the first line within the boot, counted from zero. Each
+    /// following line is one higher.
+    pub first_sequence: u64,
     /// Lines this boot produced that the buffer has already discarded. A
-    /// non-zero count means `lines` starts later than the boot did.
+    /// non-zero count means `text` starts later than the boot did.
     pub dropped: u64,
-}
-
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-pub struct LoggedLine {
-    /// Position within the boot, counted from zero, so a poller can tell new
-    /// lines from lines it already read.
-    pub sequence: u64,
+    /// The held lines, oldest first, separated by newlines.
     pub text: String,
 }
 
 impl LogsResponse {
-    /// Copy both buffers into an owned response.
+    /// Copy both buffers into a response.
     ///
-    /// Owned rather than borrowed on purpose: the caller holds the capture
-    /// lock, and every logging task waits behind it until this returns.
+    /// Owned rather than borrowed because the caller holds the capture lock
+    /// while this runs and every task that logs waits behind it: one copy of
+    /// the stored block per boot, then the lock is free before the response
+    /// reaches the socket.
     pub fn from_buffers<const CURRENT: usize, const PREVIOUS: usize>(
         current: &crate::logs::LogBuffer<CURRENT>,
         previous: Option<&crate::logs::LogBuffer<PREVIOUS>>,
@@ -472,14 +473,9 @@ impl BootLog {
     fn from_buffer<const N: usize>(buffer: &crate::logs::LogBuffer<N>) -> Self {
         Self {
             boot: buffer.boot(),
-            lines: buffer
-                .lines()
-                .map(|line| LoggedLine {
-                    sequence: line.sequence,
-                    text: line.text().into_owned(),
-                })
-                .collect(),
+            first_sequence: buffer.first_sequence(),
             dropped: buffer.dropped(),
+            text: buffer.text().into_owned(),
         }
     }
 }

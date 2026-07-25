@@ -9,8 +9,14 @@
  */
 
 import { signal } from '@preact/signals';
-import { type BootLog, getLogs, type LoggedLine } from '../lib/api';
+import { type BootLog, getLogs } from '../lib/api';
 import { errorMessage } from '../lib/errors';
+
+/** One line, numbered within its boot. */
+export interface LogLine {
+  sequence: number;
+  text: string;
+}
 
 /** Lines kept per boot. Beyond this the oldest are trimmed and counted. */
 export const RETAINED_LINES = 1_000;
@@ -22,7 +28,7 @@ export const FOLLOW_MS = 3_000;
 export interface BootLogView {
   /** Which run of the firmware these lines came from. */
   boot: number;
-  lines: LoggedLine[];
+  lines: LogLine[];
   /** Lines the device's buffer discarded before this console read them. */
   droppedByDevice: number;
   /** Lines this console discarded to stay within [`RETAINED_LINES`]. */
@@ -34,6 +40,18 @@ export const EMPTY_BOOT_LOG: BootLogView = { boot: 0, lines: [], droppedByDevice
 /** Lines that existed and can no longer be shown, whoever discarded them. */
 export function hiddenLines(view: BootLogView): number {
   return view.droppedByDevice + view.trimmed;
+}
+
+/**
+ * Split one boot's block into numbered lines. The device sends the log as
+ * text, which is what it holds; `first_sequence` names the first line and each
+ * one after it counts up, so every line keeps an identity across reads.
+ */
+export function numberedLines(boot: BootLog): LogLine[] {
+  return boot.text
+    .split('\n')
+    .filter((text) => text.length > 0)
+    .map((text, offset) => ({ sequence: boot.first_sequence + offset, text }));
 }
 
 /**
@@ -50,7 +68,7 @@ export function mergeBootLog(held: BootLogView, incoming: BootLog): BootLogView 
   const base = incoming.boot === held.boot ? held : EMPTY_BOOT_LOG;
 
   const since = base.lines.at(-1)?.sequence ?? -1;
-  const lines = [...base.lines, ...incoming.lines.filter((line) => line.sequence > since)];
+  const lines = [...base.lines, ...numberedLines(incoming).filter((line) => line.sequence > since)];
   const excess = Math.max(0, lines.length - RETAINED_LINES);
 
   return {
@@ -84,7 +102,7 @@ export async function loadLogs(): Promise<void> {
     previousLog.value = response.previous
       ? {
           boot: response.previous.boot,
-          lines: response.previous.lines,
+          lines: numberedLines(response.previous),
           droppedByDevice: response.previous.dropped,
           trimmed: 0,
         }

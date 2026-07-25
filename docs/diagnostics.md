@@ -15,13 +15,14 @@ curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
 ```json
 {
   "current": {
+    "boot": 2751483904,
     "lines": [
       { "sequence": 0, "text": "I (312) wifi: joined, rssi -54" },
       { "sequence": 1, "text": "I (901) httpd: console listening on :80" }
     ],
     "dropped": 0
   },
-  "previous": { "lines": [], "dropped": 0 }
+  "previous": { "boot": 2751483903, "lines": [], "dropped": 0 }
 }
 ```
 
@@ -30,6 +31,7 @@ there is none to report. Both carry:
 
 | Field | Meaning |
 |---|---|
+| `boot` | Identifies the run of the firmware the lines came from. Sequence numbers only mean anything within one boot, so a poller compares this to tell more lines from a restart that began counting again. |
 | `lines[].sequence` | Position within that boot, counted from zero. A poller compares it to tell new lines from lines it already read. |
 | `lines[].text` | The rendered line, terminal colour codes removed, truncated at 240 bytes. |
 | `dropped` | Lines that boot produced and the buffer has already discarded. Non-zero means `lines` starts later than the boot did. |

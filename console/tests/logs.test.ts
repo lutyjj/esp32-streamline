@@ -13,8 +13,11 @@ import {
   RETAINED_LINES,
 } from '../src/state/logs';
 
-function bootLog(from: number, count: number, dropped = 0): BootLog {
+const BOOT = 4242;
+
+function bootLog(from: number, count: number, dropped = 0, boot = BOOT): BootLog {
   return {
+    boot,
     lines: Array.from({ length: count }, (_, offset) => ({
       sequence: from + offset,
       text: `line ${from + offset}`,
@@ -60,9 +63,18 @@ describe('merging device log reads', () => {
 
   it('starts over when the device restarts', () => {
     const held = mergeBootLog(EMPTY_BOOT_LOG, bootLog(90, 4, 90));
-    const afterRestart = mergeBootLog(held, bootLog(0, 2));
+    const afterRestart = mergeBootLog(held, bootLog(0, 2, 0, BOOT + 1));
     expect(texts(afterRestart)).toEqual(['line 0', 'line 1']);
     expect(hiddenLines(afterRestart)).toBe(0);
+  });
+
+  it('does not splice a later boot onto an earlier one when reads do not overlap', () => {
+    // Read early in one boot, then not again until the next boot had logged
+    // past that point: the sequence numbers alone would look like progress.
+    const held = mergeBootLog(EMPTY_BOOT_LOG, bootLog(0, 3));
+    const afterRestart = mergeBootLog(held, bootLog(20, 2, 20, BOOT + 1));
+    expect(texts(afterRestart)).toEqual(['line 20', 'line 21']);
+    expect(afterRestart.boot).toBe(BOOT + 1);
   });
 
   it('trims its own history and counts what it trimmed', () => {

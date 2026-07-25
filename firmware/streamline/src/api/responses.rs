@@ -432,6 +432,10 @@ pub struct LogsResponse {
 #[derive(Debug, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct BootLog {
+    /// Identifies the run of the firmware these lines came from. A poller
+    /// compares it to tell more lines from a restart that began counting
+    /// again, which sequence numbers alone cannot express.
+    pub boot: u32,
     /// Oldest first.
     pub lines: Vec<LoggedLine>,
     /// Lines this boot produced that the buffer has already discarded. A
@@ -467,6 +471,7 @@ impl LogsResponse {
 impl BootLog {
     fn from_buffer<const N: usize>(buffer: &crate::logs::LogRing<N>) -> Self {
         Self {
+            boot: buffer.boot(),
             lines: buffer
                 .lines()
                 .map(|line| LoggedLine {

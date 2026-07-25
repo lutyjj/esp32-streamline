@@ -24,8 +24,8 @@ use core::{
 use std::sync::{Mutex, Once, OnceLock};
 
 use esp_idf_svc::sys::{
-    esp_get_free_heap_size, esp_log_set_vprintf, esp_rom_printf, heap_caps_get_largest_free_block,
-    heap_caps_register_failed_alloc_callback, va_list, ESP_OK,
+    esp_get_free_heap_size, esp_log_set_vprintf, esp_random, esp_rom_printf,
+    heap_caps_get_largest_free_block, heap_caps_register_failed_alloc_callback, va_list, ESP_OK,
 };
 
 use crate::logs::{LogRing, MAX_LINE_BYTES};
@@ -71,10 +71,18 @@ pub fn install() {
         // in the crate names these statics.
         let current = unsafe { &mut *addr_of_mut!(CURRENT) };
         let previous = unsafe { &mut *addr_of_mut!(PREVIOUS) };
-        if current.is_intact() {
+        // Counting on from the retained buffer guarantees this boot's id differs
+        // from the one a reader may still be holding lines for. A cold boot has
+        // nothing to count from, so it starts somewhere unlikely to repeat what
+        // an earlier power-on chose.
+        let boot = if current.is_intact() {
+            let carried = current.boot().wrapping_add(1);
             current.copy_into(previous);
-        }
-        current.reset();
+            carried
+        } else {
+            unsafe { esp_random() }
+        };
+        current.reset(boot);
         let _ = BUFFERS.set(Mutex::new(Buffers { current, previous }));
 
         // Installed after the snapshot so the previous boot's lines are safe

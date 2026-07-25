@@ -1,7 +1,8 @@
 # Security Notes
 
 StreamLine is a single-owner appliance for a trusted home LAN. Mutating HTTP
-endpoints require a per-device **admin key** (bearer token); reads are open.
+endpoints require a per-device **admin key** (bearer token); reads are open
+except the device log.
 Traffic is plain HTTP, so the key is only as private as the LAN. Keep the device
 on a trusted segment; do not expose its HTTP port or setup AP to untrusted networks.
 

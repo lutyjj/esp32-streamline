@@ -458,8 +458,8 @@ impl LogsResponse {
     /// Owned rather than borrowed on purpose: the caller holds the capture
     /// lock, and every logging task waits behind it until this returns.
     pub fn from_buffers<const CURRENT: usize, const PREVIOUS: usize>(
-        current: &crate::logs::LogRing<CURRENT>,
-        previous: Option<&crate::logs::LogRing<PREVIOUS>>,
+        current: &crate::logs::LogBuffer<CURRENT>,
+        previous: Option<&crate::logs::LogBuffer<PREVIOUS>>,
     ) -> Self {
         Self {
             current: BootLog::from_buffer(current),
@@ -469,7 +469,7 @@ impl LogsResponse {
 }
 
 impl BootLog {
-    fn from_buffer<const N: usize>(buffer: &crate::logs::LogRing<N>) -> Self {
+    fn from_buffer<const N: usize>(buffer: &crate::logs::LogBuffer<N>) -> Self {
         Self {
             boot: buffer.boot(),
             lines: buffer

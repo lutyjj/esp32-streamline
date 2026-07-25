@@ -8,8 +8,8 @@
 //!
 //! Sequence numbers count lines within one boot. A reader that polls compares
 //! them to tell new lines from lines it already has, and a gap against
-//! [`LogRing::dropped`] tells it how much the buffer discarded in between.
-//! They only mean anything within one [`LogRing::boot`]: two reads that
+//! [`LogBuffer::dropped`] tells it how much the buffer discarded in between.
+//! They only mean anything within one [`LogBuffer::boot`]: two reads that
 //! straddle a restart share no numbering, and the boot id is what says so.
 
 /// Bytes kept for one line. Longer lines are truncated rather than dropped: a
@@ -43,7 +43,7 @@ impl LogLine<'_> {
 /// because an instance can outlive the image that wrote it, so field order must
 /// not move between builds; [`LAYOUT_TAG`] covers the rest.
 #[repr(C)]
-pub struct LogRing<const N: usize> {
+pub struct LogBuffer<const N: usize> {
     layout: u32,
     boot: u32,
     filled: u32,
@@ -52,13 +52,13 @@ pub struct LogRing<const N: usize> {
     bytes: [u8; N],
 }
 
-impl<const N: usize> Default for LogRing<N> {
+impl<const N: usize> Default for LogBuffer<N> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const N: usize> LogRing<N> {
+impl<const N: usize> LogBuffer<N> {
     /// Eviction frees this many bytes at once so it runs about once per
     /// quarter-buffer instead of on nearly every line.
     const EVICTION_BYTES: usize = N / 4;
@@ -67,7 +67,7 @@ impl<const N: usize> LogRing<N> {
     /// meaningful operation rather than a buffer-clearing one.
     const CAPACITY_IS_SUFFICIENT: () = assert!(N > MAX_LINE_BYTES * 4);
 
-    /// An empty buffer that reads as absent until [`LogRing::reset`] stamps it.
+    /// An empty buffer that reads as absent until [`LogBuffer::reset`] stamps it.
     /// Every field is zero so a static costs no image bytes, and a region that
     /// was never written reads as absent rather than as an empty log.
     pub const fn new() -> Self {
@@ -141,7 +141,7 @@ impl<const N: usize> LogRing<N> {
     /// Copy the contents into `destination`, which need not have the same
     /// capacity: the boot snapshot keeps the previous boot's lines without a
     /// second buffer of live size.
-    pub fn copy_into<const M: usize>(&self, destination: &mut LogRing<M>) {
+    pub fn copy_into<const M: usize>(&self, destination: &mut LogBuffer<M>) {
         destination.reset(self.boot);
         for line in self.lines() {
             destination.append_line(line.bytes);
@@ -247,102 +247,105 @@ mod tests {
     /// Enough short lines to overflow [`CAPACITY`] several times over.
     const OVERFLOWING_LINES: u64 = 400;
 
-    fn texts<const N: usize>(ring: &LogRing<N>) -> Vec<String> {
-        ring.lines().map(|line| line.text().into_owned()).collect()
+    fn texts<const N: usize>(buffer: &LogBuffer<N>) -> Vec<String> {
+        buffer
+            .lines()
+            .map(|line| line.text().into_owned())
+            .collect()
     }
 
-    fn sequences<const N: usize>(ring: &LogRing<N>) -> Vec<u64> {
-        ring.lines().map(|line| line.sequence).collect()
+    fn sequences<const N: usize>(buffer: &LogBuffer<N>) -> Vec<u64> {
+        buffer.lines().map(|line| line.sequence).collect()
     }
 
     const BOOT: u32 = 0xA1B2_C3D4;
 
-    fn started() -> LogRing<CAPACITY> {
-        let mut ring = LogRing::new();
-        ring.reset(BOOT);
-        ring
+    fn started() -> LogBuffer<CAPACITY> {
+        let mut buffer = LogBuffer::new();
+        buffer.reset(BOOT);
+        buffer
     }
 
     #[test]
     fn a_fresh_buffer_reads_as_absent() {
-        let ring: LogRing<CAPACITY> = LogRing::new();
-        assert!(!ring.is_intact());
-        assert_eq!(texts(&ring), Vec::<String>::new());
+        let buffer: LogBuffer<CAPACITY> = LogBuffer::new();
+        assert!(!buffer.is_intact());
+        assert_eq!(texts(&buffer), Vec::<String>::new());
     }
 
     #[test]
     fn reset_claims_the_buffer() {
-        let ring = started();
-        assert!(ring.is_intact());
-        assert_eq!(ring.dropped(), 0);
+        let buffer = started();
+        assert!(buffer.is_intact());
+        assert_eq!(buffer.dropped(), 0);
     }
 
     #[test]
     fn appended_lines_come_back_in_order_with_sequences_from_zero() {
-        let mut ring = started();
-        ring.append(b"first\n");
-        ring.append(b"second\n");
-        assert_eq!(texts(&ring), vec!["first", "second"]);
-        assert_eq!(sequences(&ring), vec![0, 1]);
+        let mut buffer = started();
+        buffer.append(b"first\n");
+        buffer.append(b"second\n");
+        assert_eq!(texts(&buffer), vec!["first", "second"]);
+        assert_eq!(sequences(&buffer), vec![0, 1]);
     }
 
     #[test]
     fn one_chunk_carrying_several_lines_becomes_several_lines() {
-        let mut ring = started();
-        ring.append(b"first\nsecond\nthird\n");
-        assert_eq!(texts(&ring), vec!["first", "second", "third"]);
-        assert_eq!(sequences(&ring), vec![0, 1, 2]);
+        let mut buffer = started();
+        buffer.append(b"first\nsecond\nthird\n");
+        assert_eq!(texts(&buffer), vec!["first", "second", "third"]);
+        assert_eq!(sequences(&buffer), vec![0, 1, 2]);
     }
 
     #[test]
     fn a_chunk_without_a_terminator_is_still_one_line() {
-        let mut ring = started();
-        ring.append(b"unterminated");
-        assert_eq!(texts(&ring), vec!["unterminated"]);
+        let mut buffer = started();
+        buffer.append(b"unterminated");
+        assert_eq!(texts(&buffer), vec!["unterminated"]);
     }
 
     #[test]
     fn blank_lines_are_not_stored() {
-        let mut ring = started();
-        ring.append(b"\n\n   \nreal\n");
-        assert_eq!(texts(&ring), vec!["real"]);
-        assert_eq!(sequences(&ring), vec![0]);
+        let mut buffer = started();
+        buffer.append(b"\n\n   \nreal\n");
+        assert_eq!(texts(&buffer), vec!["real"]);
+        assert_eq!(sequences(&buffer), vec![0]);
     }
 
     #[test]
     fn terminal_color_escapes_are_stripped() {
-        let mut ring = started();
-        ring.append(b"\x1b[0;32mI (123) wifi: connected\x1b[0m\n");
-        assert_eq!(texts(&ring), vec!["I (123) wifi: connected"]);
+        let mut buffer = started();
+        buffer.append(b"\x1b[0;32mI (123) wifi: connected\x1b[0m\n");
+        assert_eq!(texts(&buffer), vec!["I (123) wifi: connected"]);
     }
 
     #[test]
     fn an_unterminated_escape_does_not_leak_into_the_line() {
-        let mut ring = started();
-        ring.append(b"before\x1b[0;32");
-        assert_eq!(texts(&ring), vec!["before"]);
+        let mut buffer = started();
+        buffer.append(b"before\x1b[0;32");
+        assert_eq!(texts(&buffer), vec!["before"]);
     }
 
     #[test]
     fn a_long_line_is_truncated_not_dropped() {
-        let mut ring = started();
+        let mut buffer = started();
         let long = "x".repeat(MAX_LINE_BYTES * 2);
-        ring.append(long.as_bytes());
-        assert_eq!(texts(&ring), vec!["x".repeat(MAX_LINE_BYTES)]);
+        buffer.append(long.as_bytes());
+        assert_eq!(texts(&buffer), vec!["x".repeat(MAX_LINE_BYTES)]);
     }
 
     #[test]
     fn eviction_drops_whole_lines_and_counts_them() {
-        let mut ring = started();
+        let mut buffer = started();
         for index in 0..OVERFLOWING_LINES {
-            ring.append(format!("line {index}\n").as_bytes());
+            buffer.append(format!("line {index}\n").as_bytes());
         }
-        let stored = texts(&ring);
+        let stored = texts(&buffer);
         assert!(
             (stored.len() as u64) < OVERFLOWING_LINES,
             "the buffer should have evicted"
         );
-        assert_eq!(ring.dropped(), OVERFLOWING_LINES - stored.len() as u64);
+        assert_eq!(buffer.dropped(), OVERFLOWING_LINES - stored.len() as u64);
         assert_eq!(stored.last().unwrap(), "line 399");
         for line in &stored {
             assert!(line.starts_with("line "), "partial line stored: {line}");
@@ -351,11 +354,11 @@ mod tests {
 
     #[test]
     fn sequences_survive_eviction_so_a_reader_sees_the_gap() {
-        let mut ring = started();
+        let mut buffer = started();
         for index in 0..OVERFLOWING_LINES {
-            ring.append(format!("line {index}\n").as_bytes());
+            buffer.append(format!("line {index}\n").as_bytes());
         }
-        let sequences = sequences(&ring);
+        let sequences = sequences(&buffer);
         assert_eq!(*sequences.last().unwrap(), OVERFLOWING_LINES - 1);
         assert_eq!(sequences[0], OVERFLOWING_LINES - sequences.len() as u64);
         assert!(sequences.windows(2).all(|pair| pair[1] == pair[0] + 1));
@@ -371,7 +374,7 @@ mod tests {
         }
         assert_eq!(live.dropped(), 0, "the live buffer should still hold them");
 
-        let mut snapshot: LogRing<{ MAX_LINE_BYTES * 5 }> = LogRing::new();
+        let mut snapshot: LogBuffer<{ MAX_LINE_BYTES * 5 }> = LogBuffer::new();
         live.copy_into(&mut snapshot);
 
         assert!(snapshot.is_intact());
@@ -388,7 +391,7 @@ mod tests {
         for index in 0..10 {
             live.append(format!("line {index}\n").as_bytes());
         }
-        let mut snapshot: LogRing<CAPACITY> = LogRing::new();
+        let mut snapshot: LogBuffer<CAPACITY> = LogBuffer::new();
         live.copy_into(&mut snapshot);
 
         assert_eq!(texts(&snapshot), texts(&live));
@@ -398,35 +401,35 @@ mod tests {
 
     #[test]
     fn a_buffer_from_another_layout_reads_as_absent() {
-        let mut ring = started();
-        ring.append(b"line\n");
-        ring.layout = LAYOUT_TAG ^ 0xFFFF;
-        assert!(!ring.is_intact());
+        let mut buffer = started();
+        buffer.append(b"line\n");
+        buffer.layout = LAYOUT_TAG ^ 0xFFFF;
+        assert!(!buffer.is_intact());
     }
 
     #[test]
     fn an_impossible_length_reads_as_absent() {
-        let mut ring = started();
-        ring.filled = CAPACITY as u32 + 1;
-        assert!(!ring.is_intact());
+        let mut buffer = started();
+        buffer.filled = CAPACITY as u32 + 1;
+        assert!(!buffer.is_intact());
     }
 
     #[test]
     fn a_snapshot_keeps_the_boot_it_came_from() {
-        let mut ring = started();
-        ring.append(b"line\n");
-        let mut snapshot: LogRing<{ MAX_LINE_BYTES * 5 }> = LogRing::new();
-        ring.copy_into(&mut snapshot);
+        let mut buffer = started();
+        buffer.append(b"line\n");
+        let mut snapshot: LogBuffer<{ MAX_LINE_BYTES * 5 }> = LogBuffer::new();
+        buffer.copy_into(&mut snapshot);
         assert_eq!(snapshot.boot(), BOOT);
     }
 
     #[test]
     fn a_second_boot_starts_its_sequences_again() {
-        let mut ring = started();
-        ring.append(b"old\n");
-        ring.reset(BOOT + 1);
-        ring.append(b"new\n");
-        assert_eq!(texts(&ring), vec!["new"]);
-        assert_eq!(sequences(&ring), vec![0]);
+        let mut buffer = started();
+        buffer.append(b"old\n");
+        buffer.reset(BOOT + 1);
+        buffer.append(b"new\n");
+        assert_eq!(texts(&buffer), vec!["new"]);
+        assert_eq!(sequences(&buffer), vec![0]);
     }
 }

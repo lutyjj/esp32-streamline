@@ -14,7 +14,8 @@ HTTP consumer can read it too.
   buffering, and syncing live on the bridge. See [design notes](docs/design.md).
 - **Zero-config commissioning** — an unconfigured device opens a setup AP. A
   small web console joins Wi-Fi, then handles the stream target and audio
-  levels. A per-device admin key gates every write; reads stay open.
+  levels. A per-device admin key gates every write; reads stay open, apart
+  from the device log.
 - **Signal-gated streaming** — the device streams while the input plays and
   pauses on sustained silence, so an idle input costs no bandwidth.
 - **Local analog output** — supported boards can send the selected input

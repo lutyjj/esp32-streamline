@@ -24,7 +24,8 @@ start](../README.md#quick-start); this document owns only the experience.
   PCM PSK appear exactly once, with copy affordances, and never through a read
   API.
 - **Reads are open, writes are locked.** Anyone on the LAN can watch status;
-  every change requires the unlock window. Locked controls look locked and
+  every change requires the unlock window. The device log is the one read
+  behind the same lock, because it repeats whatever the firmware said. Locked controls look locked and
   say how to unlock. [security.md](security.md) owns the trust model.
 
 ## Stage 1: flash

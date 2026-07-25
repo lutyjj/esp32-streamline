@@ -2,7 +2,7 @@
 //!
 //! ESP-IDF routes every log line — the firmware's and the Wi-Fi, esp-tls, and
 //! OTA components' — through one `vprintf`-shaped hook. Installing that hook
-//! puts each rendered line into a [`LogRing`] before it reaches the UART, so a
+//! puts each rendered line into a [`LogBuffer`] before it reaches the UART, so a
 //! device with no serial cable attached can still be read.
 //!
 //! The current buffer sits in `.noinit`, which the linker excludes from startup
@@ -28,7 +28,7 @@ use esp_idf_svc::sys::{
     heap_caps_get_largest_free_block, heap_caps_register_failed_alloc_callback, va_list, ESP_OK,
 };
 
-use crate::logs::{LogRing, MAX_LINE_BYTES};
+use crate::logs::{LogBuffer, MAX_LINE_BYTES};
 
 /// Capture size for the running boot. Holds a few minutes of ordinary boot and
 /// streaming chatter, which is the window an operator polls; it is static, so
@@ -47,17 +47,17 @@ const RENDER_BYTES: usize = MAX_LINE_BYTES + 16;
 
 /// Survives a software reset: the linker places `.noinit` outside both the
 /// startup zeroing and the heap. Contents from a previous boot are validated,
-/// never trusted — see [`LogRing::is_intact`].
+/// never trusted — see [`LogBuffer::is_intact`].
 #[link_section = ".noinit"]
-static mut CURRENT: LogRing<CURRENT_BYTES> = LogRing::new();
+static mut CURRENT: LogBuffer<CURRENT_BYTES> = LogBuffer::new();
 
 /// The previous boot's lines, copied out of `CURRENT` before this boot reuses it.
 /// Ordinary zero-initialized memory: it reads as absent until a boot fills it.
-static mut PREVIOUS: LogRing<PREVIOUS_BYTES> = LogRing::new();
+static mut PREVIOUS: LogBuffer<PREVIOUS_BYTES> = LogBuffer::new();
 
 struct Buffers {
-    current: &'static mut LogRing<CURRENT_BYTES>,
-    previous: &'static mut LogRing<PREVIOUS_BYTES>,
+    current: &'static mut LogBuffer<CURRENT_BYTES>,
+    previous: &'static mut LogBuffer<PREVIOUS_BYTES>,
 }
 
 static BUFFERS: OnceLock<Mutex<Buffers>> = OnceLock::new();
@@ -102,7 +102,7 @@ pub fn install() {
 /// do anything slow: copy what is needed and get out. Serializing a response
 /// inside it would hold every logging task behind a socket write.
 pub fn with_buffers<T>(
-    action: impl FnOnce(&LogRing<CURRENT_BYTES>, Option<&LogRing<PREVIOUS_BYTES>>) -> T,
+    action: impl FnOnce(&LogBuffer<CURRENT_BYTES>, Option<&LogBuffer<PREVIOUS_BYTES>>) -> T,
 ) -> Option<T> {
     let buffers = BUFFERS.get()?;
     // A poisoned lock still guards readable bytes, and losing the device log

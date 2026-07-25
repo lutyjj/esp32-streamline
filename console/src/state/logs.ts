@@ -20,6 +20,8 @@ export const RETAINED_LINES = 1_000;
 export const FOLLOW_MS = 3_000;
 
 export interface BootLogView {
+  /** Which run of the firmware these lines came from. */
+  boot: number;
   lines: LoggedLine[];
   /** Lines the device's buffer discarded before this console read them. */
   droppedByDevice: number;
@@ -27,7 +29,7 @@ export interface BootLogView {
   trimmed: number;
 }
 
-export const EMPTY_BOOT_LOG: BootLogView = { lines: [], droppedByDevice: 0, trimmed: 0 };
+export const EMPTY_BOOT_LOG: BootLogView = { boot: 0, lines: [], droppedByDevice: 0, trimmed: 0 };
 
 /** Lines that existed and can no longer be shown, whoever discarded them. */
 export function hiddenLines(view: BootLogView): number {
@@ -37,21 +39,22 @@ export function hiddenLines(view: BootLogView): number {
 /**
  * Fold one response into what is already held.
  *
- * A restart resets the device's sequence numbers to zero, which shows up as an
- * incoming log that ends earlier than the one held. That is a different boot,
- * not lines going backwards, so the held view is replaced rather than merged.
+ * Sequence numbers only mean something within one boot, and a restart starts
+ * them again from zero. Comparing them across boots cannot detect that: two
+ * reads that straddle a restart may not overlap at all, and the second one's
+ * numbers can be higher than the first's. The device's boot id is what
+ * distinguishes the two, so a change in it replaces the held view instead of
+ * appending a different device run to it.
  */
 export function mergeBootLog(held: BootLogView, incoming: BootLog): BootLogView {
-  const lastHeld = held.lines.at(-1)?.sequence ?? -1;
-  const lastIncoming = incoming.lines.at(-1)?.sequence ?? -1;
-  const restarted = lastIncoming < lastHeld || incoming.dropped < held.droppedByDevice;
-  const base = restarted ? EMPTY_BOOT_LOG : held;
+  const base = incoming.boot === held.boot ? held : EMPTY_BOOT_LOG;
 
   const since = base.lines.at(-1)?.sequence ?? -1;
   const lines = [...base.lines, ...incoming.lines.filter((line) => line.sequence > since)];
   const excess = Math.max(0, lines.length - RETAINED_LINES);
 
   return {
+    boot: incoming.boot,
     lines: excess ? lines.slice(excess) : lines,
     droppedByDevice: incoming.dropped,
     trimmed: base.trimmed + excess,
@@ -80,6 +83,7 @@ export async function loadLogs(): Promise<void> {
     currentLog.value = mergeBootLog(currentLog.value, response.current);
     previousLog.value = response.previous
       ? {
+          boot: response.previous.boot,
           lines: response.previous.lines,
           droppedByDevice: response.previous.dropped,
           trimmed: 0,

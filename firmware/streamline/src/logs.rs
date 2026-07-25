@@ -9,6 +9,8 @@
 //! Sequence numbers count lines within one boot. A reader that polls compares
 //! them to tell new lines from lines it already has, and a gap against
 //! [`LogRing::dropped`] tells it how much the buffer discarded in between.
+//! They only mean anything within one [`LogRing::boot`]: two reads that
+//! straddle a restart share no numbering, and the boot id is what says so.
 
 /// Bytes kept for one line. Longer lines are truncated rather than dropped: a
 /// long line is usually a formatted error whose beginning carries the fact.
@@ -43,6 +45,7 @@ impl LogLine<'_> {
 #[repr(C)]
 pub struct LogRing<const N: usize> {
     layout: u32,
+    boot: u32,
     filled: u32,
     next_sequence: u64,
     dropped: u64,
@@ -70,6 +73,7 @@ impl<const N: usize> LogRing<N> {
     pub const fn new() -> Self {
         Self {
             layout: 0,
+            boot: 0,
             filled: 0,
             next_sequence: 0,
             dropped: 0,
@@ -77,13 +81,24 @@ impl<const N: usize> LogRing<N> {
         }
     }
 
-    /// Claim the buffer for this boot: stamp the layout and start empty.
-    pub fn reset(&mut self) {
+    /// Claim the buffer for `boot`: stamp the layout and start empty.
+    ///
+    /// `boot` identifies which run of the firmware produced the lines. A reader
+    /// that polls needs it to tell "more lines arrived" from "the device
+    /// restarted and started counting again", which sequence numbers alone
+    /// cannot express once no read overlaps the restart.
+    pub fn reset(&mut self, boot: u32) {
         let () = Self::CAPACITY_IS_SUFFICIENT;
         self.layout = LAYOUT_TAG;
+        self.boot = boot;
         self.filled = 0;
         self.next_sequence = 0;
         self.dropped = 0;
+    }
+
+    /// Which run of the firmware produced these lines.
+    pub const fn boot(&self) -> u32 {
+        self.boot
     }
 
     /// Whether the buffer holds lines this build wrote and can trust. Memory
@@ -127,7 +142,7 @@ impl<const N: usize> LogRing<N> {
     /// capacity: the boot snapshot keeps the previous boot's lines without a
     /// second buffer of live size.
     pub fn copy_into<const M: usize>(&self, destination: &mut LogRing<M>) {
-        destination.reset();
+        destination.reset(self.boot);
         for line in self.lines() {
             destination.append_line(line.bytes);
         }
@@ -240,9 +255,11 @@ mod tests {
         ring.lines().map(|line| line.sequence).collect()
     }
 
+    const BOOT: u32 = 0xA1B2_C3D4;
+
     fn started() -> LogRing<CAPACITY> {
         let mut ring = LogRing::new();
-        ring.reset();
+        ring.reset(BOOT);
         ring
     }
 
@@ -395,10 +412,19 @@ mod tests {
     }
 
     #[test]
+    fn a_snapshot_keeps_the_boot_it_came_from() {
+        let mut ring = started();
+        ring.append(b"line\n");
+        let mut snapshot: LogRing<{ MAX_LINE_BYTES * 5 }> = LogRing::new();
+        ring.copy_into(&mut snapshot);
+        assert_eq!(snapshot.boot(), BOOT);
+    }
+
+    #[test]
     fn a_second_boot_starts_its_sequences_again() {
         let mut ring = started();
         ring.append(b"old\n");
-        ring.reset();
+        ring.reset(BOOT + 1);
         ring.append(b"new\n");
         assert_eq!(texts(&ring), vec!["new"]);
         assert_eq!(sequences(&ring), vec![0]);

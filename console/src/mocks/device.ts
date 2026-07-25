@@ -82,6 +82,7 @@ export class FakeDevice {
   private logLines: LoggedLine[] = [];
   private logSequence = 0;
   private logDropped = 0;
+  private logBoot = 0;
   private previousBootLog: BootLog | null = null;
   /** OTA phases still to play out, one per status poll. */
   private otaSteps: Array<() => void> = [];
@@ -459,10 +460,17 @@ export class FakeDevice {
     this.logLines = [];
     this.logSequence = 0;
     this.logDropped = 0;
+    // Each run of the fake device counts on from the last, exactly as the
+    // firmware carries its boot id across a restart.
+    this.logBoot += 1;
     for (const text of BOOT_LOG) this.appendLog(text);
     this.previousBootLog =
       scenario === 'steady'
-        ? { lines: [...this.logLines, ...PREVIOUS_BOOT_TAIL.map(this.numbered, this)], dropped: 12 }
+        ? {
+            boot: this.logBoot - 1,
+            lines: [...this.logLines, ...PREVIOUS_BOOT_TAIL.map(this.numbered, this)],
+            dropped: 12,
+          }
         : null;
   }
 
@@ -493,7 +501,7 @@ export class FakeDevice {
         : 'capture: input silent, stream paused',
     );
     return {
-      current: { lines: [...this.logLines], dropped: this.logDropped },
+      current: { boot: this.logBoot, lines: [...this.logLines], dropped: this.logDropped },
       previous: this.previousBootLog,
     };
   }

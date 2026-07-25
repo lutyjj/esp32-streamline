@@ -21,22 +21,6 @@ pub const MAX_LINE_BYTES: usize = 240;
 /// what it finds as absent rather than misreading it.
 const LAYOUT_TAG: u32 = 0x4C4F_4731;
 
-/// A line held in the buffer, with the sequence number it was given.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct LogLine<'a> {
-    pub sequence: u64,
-    pub bytes: &'a [u8],
-}
-
-impl LogLine<'_> {
-    /// The line as text. Sanitizing keeps printable ASCII and any byte a
-    /// UTF-8 sequence could use, so replacement only appears for a line the
-    /// buffer received already malformed.
-    pub fn text(&self) -> std::borrow::Cow<'_, str> {
-        String::from_utf8_lossy(self.bytes)
-    }
-}
-
 /// A fixed-capacity buffer of whole log lines, oldest evicted first.
 ///
 /// `N` is the byte capacity of the line storage. The representation is `repr(C)`
@@ -109,26 +93,23 @@ impl<const N: usize> LogBuffer<N> {
             && self.next_sequence >= self.stored_line_count() as u64
     }
 
-    /// Add one chunk of log output. A chunk carrying several newline-separated
-    /// lines becomes several lines, and a chunk with no newline becomes one, so
-    /// the buffer holds whole lines whatever the caller's framing.
+    /// Add one chunk of log output.
+    ///
+    /// The source is a byte stream, not a sequence of lines: ESP-IDF's own
+    /// components write one message in several calls, so `"I (1001) wifi:"`
+    /// and `"wifi driver task: …\n"` arrive separately and belong to the same
+    /// line. A newline ends a line and nothing else does, so a chunk that
+    /// stops mid-line leaves that line open for the next chunk to continue.
     pub fn append(&mut self, chunk: &[u8]) {
-        for line in chunk.split(|byte| *byte == b'\n') {
-            self.append_line(line);
+        let mut segments = chunk.split(|byte| *byte == b'\n');
+        let Some(first) = segments.next() else {
+            return;
+        };
+        self.extend(first);
+        for segment in segments {
+            self.terminate();
+            self.extend(segment);
         }
-    }
-
-    /// Lines held now, oldest first.
-    pub fn lines(&self) -> impl Iterator<Item = LogLine<'_>> {
-        let first = self.first_sequence();
-        self.stored()
-            .split(|byte| *byte == b'\n')
-            .filter(|line| !line.is_empty())
-            .enumerate()
-            .map(move |(offset, bytes)| LogLine {
-                sequence: first + offset as u64,
-                bytes,
-            })
     }
 
     /// Lines discarded to make room since this boot claimed the buffer.
@@ -157,30 +138,80 @@ impl<const N: usize> LogBuffer<N> {
     /// second buffer of live size.
     pub fn copy_into<const M: usize>(&self, destination: &mut LogBuffer<M>) {
         destination.reset(self.boot);
-        for line in self.lines() {
-            destination.append_line(line.bytes);
-        }
-        // Appending re-derived the sequence numbers from zero and counted what
-        // a smaller destination could not hold; restore the source's numbering
-        // and carry the losses from both buffers.
+        let stored = self.stored();
+        // Keep the newest bytes that fit, starting after a terminator so the
+        // first line kept is a whole one.
+        let start = match stored.len().checked_sub(M) {
+            None => 0,
+            Some(overflow) => match stored[overflow..].iter().position(|byte| *byte == b'\n') {
+                Some(offset) => overflow + offset + 1,
+                // No terminator in what would fit: nothing whole to keep.
+                None => stored.len(),
+            },
+        };
+        let kept = &stored[start..];
+        destination.bytes[..kept.len()].copy_from_slice(kept);
+        destination.filled = kept.len() as u32;
         destination.next_sequence = self.next_sequence;
-        destination.dropped += self.dropped;
+        destination.dropped = self.dropped
+            + stored[..start]
+                .iter()
+                .filter(|byte| **byte == b'\n')
+                .count() as u64;
     }
 
-    fn append_line(&mut self, raw: &[u8]) {
-        let mut line = [0u8; MAX_LINE_BYTES];
-        let length = sanitize(raw, &mut line);
+    /// Continue the open line, or start one when none is open.
+    fn extend(&mut self, raw: &[u8]) {
+        let mut segment = [0u8; MAX_LINE_BYTES];
+        let sanitized = sanitize(raw, &mut segment);
+        if sanitized == 0 {
+            return;
+        }
+        // The budget belongs to the line, not to the chunk that carried it, so
+        // a line assembled from several calls truncates at the same length as
+        // one that arrived whole.
+        let length = sanitized.min(MAX_LINE_BYTES.saturating_sub(self.open_length()));
         if length == 0 {
             return;
         }
+        // Reserve the terminator this line will eventually take, so closing it
+        // can never be the write that does not fit.
         while self.filled as usize + length + 1 > N {
             self.evict();
         }
+        let open = self.is_open();
         let start = self.filled as usize;
-        self.bytes[start..start + length].copy_from_slice(&line[..length]);
-        self.bytes[start + length] = b'\n';
-        self.filled += length as u32 + 1;
-        self.next_sequence += 1;
+        self.bytes[start..start + length].copy_from_slice(&segment[..length]);
+        self.filled += length as u32;
+        if !open {
+            self.next_sequence += 1;
+        }
+    }
+
+    /// End the open line. Does nothing when none is open, so repeated
+    /// newlines never store blank lines.
+    fn terminate(&mut self) {
+        if !self.is_open() {
+            return;
+        }
+        let end = self.filled as usize;
+        self.bytes[end] = b'\n';
+        self.filled += 1;
+    }
+
+    /// Whether the last stored line is still waiting for its newline.
+    fn is_open(&self) -> bool {
+        let filled = (self.filled as usize).min(N);
+        filled > 0 && self.bytes[filled - 1] != b'\n'
+    }
+
+    /// Bytes already written into the open line, zero when none is open.
+    fn open_length(&self) -> usize {
+        let stored = self.stored();
+        match stored.iter().rposition(|byte| *byte == b'\n') {
+            Some(index) => stored.len() - index - 1,
+            None => stored.len(),
+        }
     }
 
     /// Drop whole lines from the front until [`Self::EVICTION_BYTES`] are free.
@@ -209,7 +240,7 @@ impl<const N: usize> LogBuffer<N> {
     }
 
     fn stored_line_count(&self) -> usize {
-        self.stored().iter().filter(|byte| **byte == b'\n').count()
+        self.stored().iter().filter(|byte| **byte == b'\n').count() + usize::from(self.is_open())
     }
 }
 
@@ -261,15 +292,22 @@ mod tests {
     /// Enough short lines to overflow [`CAPACITY`] several times over.
     const OVERFLOWING_LINES: u64 = 400;
 
+    /// Read the buffer the way the API does: its text, split back into lines.
     fn texts<const N: usize>(buffer: &LogBuffer<N>) -> Vec<String> {
         buffer
+            .text()
             .lines()
-            .map(|line| line.text().into_owned())
+            .filter(|line| !line.is_empty())
+            .map(String::from)
             .collect()
     }
 
+    /// The sequence each stored line carries, derived as a reader derives it.
     fn sequences<const N: usize>(buffer: &LogBuffer<N>) -> Vec<u64> {
-        buffer.lines().map(|line| line.sequence).collect()
+        let first = buffer.first_sequence();
+        (0..texts(buffer).len() as u64)
+            .map(|offset| first + offset)
+            .collect()
     }
 
     const BOOT: u32 = 0xA1B2_C3D4;
@@ -316,6 +354,50 @@ mod tests {
         let mut buffer = started();
         buffer.append(b"unterminated");
         assert_eq!(texts(&buffer), vec!["unterminated"]);
+    }
+
+    #[test]
+    fn chunks_that_stop_mid_line_join_into_one_line() {
+        // ESP-IDF's wifi component writes a message in two calls, the prefix
+        // and then the body. They are one line.
+        let mut buffer = started();
+        buffer.append(b"I (1001) wifi:");
+        buffer.append(b"wifi driver task: 3ffc8a74, prio:23\n");
+        assert_eq!(
+            texts(&buffer),
+            vec!["I (1001) wifi:wifi driver task: 3ffc8a74, prio:23"]
+        );
+        assert_eq!(sequences(&buffer), vec![0]);
+    }
+
+    #[test]
+    fn a_line_built_from_several_chunks_still_ends_where_the_next_begins() {
+        let mut buffer = started();
+        buffer.append(b"one");
+        buffer.append(b" more\ntwo\n");
+        assert_eq!(texts(&buffer), vec!["one more", "two"]);
+        assert_eq!(sequences(&buffer), vec![0, 1]);
+    }
+
+    #[test]
+    fn a_line_assembled_from_chunks_truncates_at_the_same_budget() {
+        let mut buffer = started();
+        for _ in 0..4 {
+            buffer.append(&b"x".repeat(MAX_LINE_BYTES / 2));
+        }
+        buffer.append(b"\n");
+        assert_eq!(texts(&buffer), vec!["x".repeat(MAX_LINE_BYTES)]);
+    }
+
+    #[test]
+    fn an_open_line_is_readable_before_it_is_terminated() {
+        // A panic can land between the two calls that build one line; the part
+        // already captured is what explains it.
+        let mut buffer = started();
+        buffer.append(b"done\n");
+        buffer.append(b"E (99) abort: heap");
+        assert_eq!(texts(&buffer), vec!["done", "E (99) abort: heap"]);
+        assert_eq!(sequences(&buffer), vec![0, 1]);
     }
 
     #[test]

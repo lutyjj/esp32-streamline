@@ -14,6 +14,7 @@ place, and the standing items we track or have accepted.
 |---|---|---|
 | HTTP writes (`:80`) | Admin-key gated once provisioned | No key, no control (config, target, reset) |
 | HTTP reads (`:80`) | Open; never returns secrets | Status and metrics readable, no control |
+| Device log (`/api/logs`) | Admin-key gated | Owner-only; returns the network name, bridge host, and addresses the firmware logged, so it is the one read that is not open. Never contains keys — see [diagnostics](diagnostics.md) |
 | Setup AP | Open; writes open only until an admin key is set | Brief window at first commissioning |
 | OTA update (`/api/ota/update`) | Admin-key gated; vendor RSA-3072 signature verified before commit, plus SHA-256 and auto-rollback | Owner-only; only firmware signed by the trusted key installs |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; pinned by the admin SHA-256 and verified against the trusted signing key | Owner-only; a forged image is rejected even when its digest matches, so the URL may be plain HTTP |
@@ -36,7 +37,10 @@ place, and the standing items we track or have accepted.
   `/api/ota/rollback`, `/api/settings/transport`, and `/api/transport/*`) and the no-op key
   check (`/api/unlock`) require the
   admin key as a bearer token, checked with a constant-time compare. Reads are
-  open and never return secrets.
+  open and never return secrets, with one exception: `/api/logs` returns what
+  the firmware logged, which names the joined network and the hosts the device
+  reached, so it requires the same bearer token. No log line carries a key,
+  password, or PSK.
 - The key rides in a custom `Authorization` header, not a cookie or Basic Auth, so
   the API is CSRF-safe: a cross-origin request triggers a CORS preflight the device
   never approves. Cookies/Basic Auth would be sent by the browser automatically.

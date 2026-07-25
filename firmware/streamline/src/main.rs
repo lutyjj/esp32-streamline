@@ -24,6 +24,7 @@ use streamline_firmware::{
     adapters::{
         buttons, codec,
         http::{self, ApiState, Mode},
+        logs,
         mdns::MdnsAdvertisement,
         nvs::ConfigStore,
         ota, status_light, time, wifi,
@@ -46,6 +47,10 @@ fn main() -> Result<()> {
     // Required by esp-idf-sys to link runtime patches on an ESP-IDF target.
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
+    // Before anything else logs: this both starts the capture and rescues the
+    // previous boot's lines, which a reset leaves in place only until they are
+    // written over.
+    logs::install();
 
     let peripherals = Peripherals::take()?;
     let event_loop = EspSystemEventLoop::take()?;

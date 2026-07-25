@@ -417,6 +417,68 @@ pub struct IndicatorStatus {
     pub state: &'static str,
 }
 
+/// The device's captured log, as `GET /api/logs` returns it.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct LogsResponse {
+    pub current: BootLog,
+    /// The boot before this one. `null` after a power cycle, which clears the
+    /// memory the lines were held in, and on a device that has not restarted
+    /// since it started capturing.
+    pub previous: Option<BootLog>,
+}
+
+/// The lines one boot produced, as much of them as the buffer holds.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct BootLog {
+    /// Oldest first.
+    pub lines: Vec<LoggedLine>,
+    /// Lines this boot produced that the buffer has already discarded. A
+    /// non-zero count means `lines` starts later than the boot did.
+    pub dropped: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct LoggedLine {
+    /// Position within the boot, counted from zero, so a poller can tell new
+    /// lines from lines it already read.
+    pub sequence: u64,
+    pub text: String,
+}
+
+impl LogsResponse {
+    /// Copy both buffers into an owned response.
+    ///
+    /// Owned rather than borrowed on purpose: the caller holds the capture
+    /// lock, and every logging task waits behind it until this returns.
+    pub fn from_buffers<const CURRENT: usize, const PREVIOUS: usize>(
+        current: &crate::logs::LogRing<CURRENT>,
+        previous: Option<&crate::logs::LogRing<PREVIOUS>>,
+    ) -> Self {
+        Self {
+            current: BootLog::from_buffer(current),
+            previous: previous.map(BootLog::from_buffer),
+        }
+    }
+}
+
+impl BootLog {
+    fn from_buffer<const N: usize>(buffer: &crate::logs::LogRing<N>) -> Self {
+        Self {
+            lines: buffer
+                .lines()
+                .map(|line| LoggedLine {
+                    sequence: line.sequence,
+                    text: line.text().into_owned(),
+                })
+                .collect(),
+            dropped: buffer.dropped(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -8,6 +8,7 @@ pub mod captive_portal;
 pub mod codec;
 pub mod http;
 pub mod i2s;
+pub mod logs;
 pub mod mdns;
 pub mod nvs;
 #[cfg(feature = "qemu")]

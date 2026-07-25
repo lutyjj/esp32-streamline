@@ -16,13 +16,11 @@ curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
 {
   "current": {
     "boot": 2751483904,
-    "lines": [
-      { "sequence": 0, "text": "I (312) wifi: joined, rssi -54" },
-      { "sequence": 1, "text": "I (901) httpd: console listening on :80" }
-    ],
-    "dropped": 0
+    "first_sequence": 0,
+    "dropped": 0,
+    "text": "I (312) wifi: joined, rssi -54\nI (901) httpd: console listening on :80\n"
   },
-  "previous": { "boot": 2751483903, "lines": [], "dropped": 0 }
+  "previous": { "boot": 2751483903, "first_sequence": 0, "dropped": 0, "text": "" }
 }
 ```
 
@@ -32,9 +30,18 @@ there is none to report. Both carry:
 | Field | Meaning |
 |---|---|
 | `boot` | Identifies the run of the firmware the lines came from. Sequence numbers only mean anything within one boot, so a poller compares this to tell more lines from a restart that began counting again. |
-| `lines[].sequence` | Position within that boot, counted from zero. A poller compares it to tell new lines from lines it already read. |
-| `lines[].text` | The rendered line, terminal colour codes removed, truncated at 240 bytes. |
-| `dropped` | Lines that boot produced and the buffer has already discarded. Non-zero means `lines` starts later than the boot did. |
+| `text` | The held lines, oldest first, separated by newlines. A log is text and the device stores it as text, so it is served that way. |
+| `first_sequence` | Position of the first line in `text` within the boot, counted from zero; each following line is one higher. A poller names the lines it already read from this. |
+| `dropped` | Lines that boot produced and the buffer has already discarded. Non-zero means `text` starts later than the boot did. |
+
+Lines are truncated at 240 bytes and carry no terminal colour codes.
+
+Print one boot's log:
+
+```sh
+curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
+  http://192.0.2.10/api/logs | jq -r .current.text
+```
 
 The endpoint requires the admin key. Log lines name the network the device
 joined, the bridge it talks to, and the addresses it reached, so unlike the

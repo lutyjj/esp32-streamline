@@ -9,6 +9,7 @@ import {
   loadLogs,
   logText,
   mergeBootLog,
+  numberedLines,
   previousLog,
   RETAINED_LINES,
 } from '../src/state/logs';
@@ -16,19 +17,32 @@ import {
 const BOOT = 4242;
 
 function bootLog(from: number, count: number, dropped = 0, boot = BOOT): BootLog {
-  return {
-    boot,
-    lines: Array.from({ length: count }, (_, offset) => ({
-      sequence: from + offset,
-      text: `line ${from + offset}`,
-    })),
-    dropped,
-  };
+  const lines = Array.from({ length: count }, (_, offset) => `line ${from + offset}`);
+  return { boot, first_sequence: from, dropped, text: `${lines.join('\n')}\n` };
 }
 
 function texts(view: { lines: { text: string }[] }): string[] {
   return view.lines.map((line) => line.text);
 }
+
+describe('numbering the lines in a boot', () => {
+  it('names each line from the boot first sequence', () => {
+    expect(numberedLines({ boot: BOOT, first_sequence: 7, dropped: 7, text: 'a\nb\n' })).toEqual([
+      { sequence: 7, text: 'a' },
+      { sequence: 8, text: 'b' },
+    ]);
+  });
+
+  it('ignores the trailing terminator and any blank line', () => {
+    expect(numberedLines({ boot: BOOT, first_sequence: 0, dropped: 0, text: 'only\n\n' })).toEqual([
+      { sequence: 0, text: 'only' },
+    ]);
+  });
+
+  it('reads an empty boot as no lines', () => {
+    expect(numberedLines({ boot: BOOT, first_sequence: 0, dropped: 0, text: '' })).toEqual([]);
+  });
+});
 
 describe('merging device log reads', () => {
   it('keeps the first read as it arrived', () => {

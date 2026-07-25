@@ -120,9 +120,7 @@ impl<const N: usize> LogBuffer<N> {
 
     /// Lines held now, oldest first.
     pub fn lines(&self) -> impl Iterator<Item = LogLine<'_>> {
-        let first = self
-            .next_sequence
-            .saturating_sub(self.stored_line_count() as u64);
+        let first = self.first_sequence();
         self.stored()
             .split(|byte| *byte == b'\n')
             .filter(|line| !line.is_empty())
@@ -136,6 +134,22 @@ impl<const N: usize> LogBuffer<N> {
     /// Lines discarded to make room since this boot claimed the buffer.
     pub const fn dropped(&self) -> u64 {
         self.dropped
+    }
+
+    /// Every held line as one newline-separated block, oldest first.
+    ///
+    /// This is the stored representation itself, so serving it copies once
+    /// instead of building a structure per line. The device is short of both
+    /// flash and heap, and a log is text.
+    pub fn text(&self) -> std::borrow::Cow<'_, str> {
+        String::from_utf8_lossy(self.stored())
+    }
+
+    /// The sequence number of the first line [`Self::text`] returns. Each
+    /// following line is one higher.
+    pub fn first_sequence(&self) -> u64 {
+        self.next_sequence
+            .saturating_sub(self.stored_line_count() as u64)
     }
 
     /// Copy the contents into `destination`, which need not have the same

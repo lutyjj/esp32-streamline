@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, isUnlocked, unlockSettings } from '../src/lib/adminKey';
-import { getStatus, restart, setTransport, setWifi } from '../src/lib/api';
+import { getLogs, getStatus, restart, setTransport, setWifi } from '../src/lib/api';
+import { AUTHENTICATED_READS } from '../src/lib/http';
 
 function respond(status: number, body: string): Response {
   return new Response(body, { status });
@@ -34,6 +37,30 @@ describe('api transport', () => {
 
     await getStatus();
     expect(seen?.headers.has('Authorization')).toBe(false);
+  });
+
+  it('attaches the bearer key to a read the contract gates', async () => {
+    unlockSettings('secret-key', false);
+    let seen: Request | undefined;
+    setTransport(async (request) => {
+      seen = request;
+      return respond(200, '{"current":{"lines":[],"dropped":0},"previous":null}');
+    });
+
+    await getLogs();
+    expect(seen?.headers.get('Authorization')).toBe('Bearer secret-key');
+  });
+
+  it('gates exactly the reads the contract marks as authenticated', () => {
+    // vitest runs with the console package as its working directory.
+    const contract = JSON.parse(readFileSync(resolve('..', 'docs', 'openapi.json'), 'utf8')) as {
+      paths: Record<string, Record<string, { security?: unknown[] }>>;
+    };
+    const gated = Object.entries(contract.paths)
+      .filter(([, operations]) => operations.get?.security?.length)
+      .map(([path]) => path);
+
+    expect([...AUTHENTICATED_READS].sort()).toEqual(gated.sort());
   });
 
   it('serializes form bodies and returns response data directly', async () => {

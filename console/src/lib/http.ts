@@ -18,9 +18,23 @@ export function setTransport(next: FetchLike): void {
   transport = next;
 }
 
+/**
+ * Reads the device gates behind the admin key. Every other read is open, and
+ * staying open matters: the status poll runs every couple of seconds, and a
+ * request that does not need the key should not put it on the wire.
+ *
+ * `tests/api.test.ts` pins this list to the operations `docs/openapi.json`
+ * declares `bearer_auth` on, so a new authenticated read cannot forget it.
+ */
+export const AUTHENTICATED_READS: ReadonlySet<string> = new Set(['/api/logs']);
+
+function needsAdminKey(request: Request): boolean {
+  return request.method !== 'GET' || AUTHENTICATED_READS.has(new URL(request.url).pathname);
+}
+
 export async function deviceFetch<T>(url: string, options: RequestInit): Promise<T> {
   const request = new Request(url, options);
-  if (request.method !== 'GET') {
+  if (needsAdminKey(request)) {
     const key = storedAdminKey();
     if (key && isUnlocked()) request.headers.set('Authorization', `Bearer ${key}`);
   }

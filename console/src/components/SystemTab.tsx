@@ -31,6 +31,7 @@ import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
 import { LedControls } from './LedControls';
+import { LogCard } from './LogCard';
 import { Notice } from './Notice';
 import { ResourceNotice } from './ResourceNotice';
 import { ActionState, TransactButton } from './Transact';
@@ -47,6 +48,7 @@ export function SystemTab() {
       <ButtonsCard />
       <AccessCard />
       <ResetCard />
+      <LogCard />
       <RawStatusCard />
     </>
   );

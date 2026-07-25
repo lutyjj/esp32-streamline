@@ -18,8 +18,11 @@ import type {
 import type {
   AudioProfileCatalog,
   BoardCatalog,
+  BootLog,
   DeviceConfig,
   DeviceStatus,
+  LoggedLine,
+  LogsResponse,
   TransportKeyResponse,
 } from '../lib/api';
 import { deviceConfig, deviceStatus } from './fixtures';
@@ -43,6 +46,26 @@ export type DeviceScenario = 'steady' | 'first-boot';
 /** Deterministic peak-level sweep, one step per status poll. */
 const PEAK_STEPS = [30800, 24500, 28100, 21900, 26400, 31200];
 
+/** Lines the fake device's log buffer holds before it evicts the oldest. */
+const MOCK_LOG_CAPACITY = 60;
+
+/** What a boot says before the console can reach it. */
+const BOOT_LOG = [
+  'boot: StreamLine 0.9.0 starting',
+  "board: using board descriptor 'ai-thinker-esp32-audio-kit-v2-2-es8388'",
+  'wifi: joined Study Wi-Fi, rssi -54',
+  'codec: ES8388 ready at 48000 Hz',
+  'httpd: console listening on :80',
+];
+
+/** How the boot before this one ended, so the previous-boot view has content. */
+const PREVIOUS_BOOT_TAIL = [
+  'ota: install requested for 0.9.0',
+  'ota: downloaded 1904832 bytes, sha256 verified',
+  'ota: signature verified, boot slot set',
+  'system: restarting into the new image',
+];
+
 /** A parsed form body: every field arrives as a string. */
 type FormBody = Partial<Record<string, string>>;
 
@@ -55,6 +78,11 @@ export class FakeDevice {
   private adminKey!: string | null;
   private poll = 0;
   private keySerial = 0;
+  /** This boot's captured log, and the one the last restart left behind. */
+  private logLines: LoggedLine[] = [];
+  private logSequence = 0;
+  private logDropped = 0;
+  private previousBootLog: BootLog | null = null;
   /** OTA phases still to play out, one per status poll. */
   private otaSteps: Array<() => void> = [];
 
@@ -67,6 +95,7 @@ export class FakeDevice {
       this.read('/api/audio-profiles', () => this.profiles),
       this.read('/api/boards', () => this.boards()),
       this.read('/api/openapi.json', () => contract),
+      this.readAuthorized('/api/logs', () => this.nextLogs()),
       http.get('/api/metrics', () => new HttpResponse(this.metricsText())),
       this.write('/api/unlock', () => ({ ok: true })),
       this.write('/api/settings/wifi', (body) => this.join(body)),
@@ -211,6 +240,7 @@ export class FakeDevice {
     }
     this.status.ota.rollback_available = false;
     this.config.led_roles = [{ id: 'status', role: 'status' }];
+    this.resetLog(scenario);
     this.profiles = {
       board_id: this.status.capabilities.board_id,
       schema_version: 1,
@@ -222,6 +252,19 @@ export class FakeDevice {
   /** GET: reads are open on the device. */
   private read(path: string, body: () => JsonBodyType): HttpHandler {
     return http.get(path, () => HttpResponse.json(body()));
+  }
+
+  /**
+   * GET behind the admin key, for a read that returns more than the device
+   * publishes openly. Same rejection the firmware gives a missing key.
+   */
+  private readAuthorized(path: string, body: () => JsonBodyType): HttpHandler {
+    return http.get(path, ({ request }) => {
+      if (this.adminKey && request.headers.get('authorization') !== `Bearer ${this.adminKey}`) {
+        return reject(401, 'unauthorized — unlock settings with the admin key');
+      }
+      return HttpResponse.json(body());
+    });
   }
 
   /**
@@ -406,6 +449,53 @@ export class FakeDevice {
     ota.rollback_available = false;
     ota.rollback_version = '';
     return { ok: true, rebooting: true };
+  }
+
+  /**
+   * Start this boot's log. A provisioned device has restarted at least once,
+   * so it can show the boot before this one; a first-boot device cannot.
+   */
+  private resetLog(scenario: DeviceScenario): void {
+    this.logLines = [];
+    this.logSequence = 0;
+    this.logDropped = 0;
+    for (const text of BOOT_LOG) this.appendLog(text);
+    this.previousBootLog =
+      scenario === 'steady'
+        ? { lines: [...this.logLines, ...PREVIOUS_BOOT_TAIL.map(this.numbered, this)], dropped: 12 }
+        : null;
+  }
+
+  private numbered(text: string, offset: number): LoggedLine {
+    return { sequence: BOOT_LOG.length + offset, text };
+  }
+
+  private appendLog(text: string): void {
+    this.logLines.push({
+      sequence: this.logSequence,
+      text: `I (${this.logSequence * 137}) ${text}`,
+    });
+    this.logSequence += 1;
+    if (this.logLines.length > MOCK_LOG_CAPACITY) {
+      this.logDropped += this.logLines.length - MOCK_LOG_CAPACITY;
+      this.logLines = this.logLines.slice(-MOCK_LOG_CAPACITY);
+    }
+  }
+
+  /**
+   * One read of the device log. The device keeps logging between reads, so
+   * each read adds a line and a follower sees the log move.
+   */
+  private nextLogs(): LogsResponse {
+    this.appendLog(
+      this.status.metrics.playing
+        ? `stream: sent ${this.status.metrics.packets} packets`
+        : 'capture: input silent, stream paused',
+    );
+    return {
+      current: { lines: [...this.logLines], dropped: this.logDropped },
+      previous: this.previousBootLog,
+    };
   }
 
   private metricsText(): string {

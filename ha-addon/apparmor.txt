@@ -1,0 +1,36 @@
+# AppArmor profile for the ESP32 StreamLine Bridge add-on. The Supervisor loads
+# it under the add-on slug, so the profile name must match `slug:` in
+# config.yaml; `make lint` checks that and compiles this file with AppArmor's
+# own parser. The paths below follow the Dockerfile's layout: the interpreter in
+# /usr/local and the add-on's virtual environment in /opt/venv.
+
+#include <tunables/global>
+
+profile streamline_bridge flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  # PCM input and HTTP output. No datagram, raw, or packet sockets.
+  network inet stream,
+  network inet6 stream,
+
+  # The interpreter, its standard library, and the add-on's virtual environment.
+  # `streamline-ha-addon` execs `streamline-bridge` in the same profile. `m`
+  # covers the native extension modules the interpreter maps executable.
+  /usr/local/bin/python3* ix,
+  /opt/venv/bin/* ix,
+  /usr/local/lib/python3*/** mr,
+  /usr/local/lib/lib*.so* mr,
+  /opt/venv/** mr,
+  /etc/ssl/openssl.cnf r,
+
+  # The only writable paths: the Supervisor's /data (options.json, transport
+  # state, recordings) and scratch space.
+  /data/{,**} rwk,
+  /tmp/{,**} rwk,
+
+  # The interpreter reads its own process state, and glibc reads the kernel's
+  # huge-page size at startup.
+  @{PROC}/@{pid}/{,**} r,
+  /sys/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+}

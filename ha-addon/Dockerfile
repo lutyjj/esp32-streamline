@@ -1,8 +1,8 @@
 # The build context is the self-contained tree assembled by `make context`:
 # the bridge distribution (pyproject.toml, uv.lock, src) with the freshly built
-# console asset, alongside config.yaml. Building from a standard add-on context
-# rather than the repository root lets the Home Assistant builder validate this
-# add-on unchanged (`make validate`).
+# console asset, alongside config.yaml and apparmor.txt. Building from a
+# standard add-on context rather than the repository root lets the Home
+# Assistant builder validate this add-on unchanged (`make validate`).
 FROM ghcr.io/astral-sh/uv:0.11.32@sha256:df4cae8f3a96d175e2e5f992e597550000edbe78fdc2594d5cd8de1a217f504c AS uv
 
 FROM python:3.14-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084d1f1a0a6ef6bcaae871a30 AS build

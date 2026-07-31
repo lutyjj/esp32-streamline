@@ -98,9 +98,9 @@ fn main() -> Result<()> {
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
     // The setup network's credentials exist in every mode: the AP serves them
-    // when it runs, and the API serves them so the owner can note the password
-    // a recovery fallback will require. Minted once, kept in NVS; factory
-    // reset removes the stored value and the next boot mints a fresh one.
+    // when it runs, and the factory-reset response shows them. Minted once at
+    // first boot and kept in NVS for the device's life, so a pre-flashed
+    // unit's label stays true; only a full flash erase mints a fresh one.
     let setup_network = SetupNetwork {
         ssid: identity::setup_ssid(&wifi::device_suffix()?),
         password: store
@@ -172,6 +172,7 @@ fn main() -> Result<()> {
         ota: Arc::new(ota::OtaProgress::default()),
         health,
         setup_network,
+        auth: Mutex::new(streamline_firmware::auth::DigestAuthenticator::default()),
     });
     #[cfg(not(feature = "qemu"))]
     let captive_portal_address = match mode {

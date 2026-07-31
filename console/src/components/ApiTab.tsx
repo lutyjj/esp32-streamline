@@ -157,11 +157,12 @@ function schemaType(schema: ApiSchema): string {
 }
 
 /**
- * A safe, dispatchable example: the bearer header is double-quoted so a real
- * shell expands the environment token, and only required fields appear —
- * optional ones are documented in the table above, never invented as live
- * values (a blank optional pair can change an operation's meaning, e.g. a
- * custom OTA collapsing into a release install).
+ * A safe, dispatchable example: `--digest` has curl answer the device's
+ * challenge itself, the credential is double-quoted so a real shell expands
+ * the environment token, and only required fields appear — optional ones are
+ * documented in the table above, never invented as live values (a blank
+ * optional pair can change an operation's meaning, e.g. a custom OTA
+ * collapsing into a release install).
  */
 export function curlCommand(
   method: 'GET' | 'POST',
@@ -171,7 +172,7 @@ export function curlCommand(
   origin: string = window.location.origin,
 ) {
   const lines = [`curl${method === 'POST' ? ' -X POST' : ''}`];
-  if (operation.security) lines.push(`  -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY"`);
+  if (operation.security) lines.push(`  --digest -u "admin:$STREAMLINE_ADMIN_KEY"`);
   const required = new Set(body?.required ?? []);
   for (const [name, schema] of Object.entries(body?.properties ?? {})) {
     if (!required.has(name)) continue;

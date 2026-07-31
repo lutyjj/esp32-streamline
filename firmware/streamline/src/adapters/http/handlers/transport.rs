@@ -34,8 +34,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
 fn register_settings(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_TRANSPORT, move |mut request| {
-        if !authorized_for(&request, &state, api::SET_TRANSPORT) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::SET_TRANSPORT) {
+            return unauthorized(request, &challenge);
         }
         let result = form(&mut request).and_then(|form: api::TransportSettingsRequest| {
             mutate(&state, |next| {
@@ -57,8 +57,8 @@ fn register_settings(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
 fn register_stage(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::TRANSPORT_KEY_STAGE, move |request| {
-        if !authorized_for(&request, &state, api::TRANSPORT_KEY_STAGE) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::TRANSPORT_KEY_STAGE) {
+            return unauthorized(request, &challenge);
         }
         match mutate(&state, |next| {
             Ok(key_response(&next.transport.keys.stage(&mut EspRandom)?))
@@ -72,8 +72,8 @@ fn register_stage(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Res
 fn register_verify(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::TRANSPORT_KEY_VERIFY, move |request| {
-        if !authorized_for(&request, &state, api::TRANSPORT_KEY_VERIFY) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::TRANSPORT_KEY_VERIFY) {
+            return unauthorized(request, &challenge);
         }
         let Some(verifier) = state.key_verifier.as_deref() else {
             return unavailable(
@@ -96,8 +96,8 @@ fn register_verify(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Re
 fn register_activate(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::TRANSPORT_KEY_ACTIVATE, move |request| {
-        if !authorized_for(&request, &state, api::TRANSPORT_KEY_ACTIVATE) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::TRANSPORT_KEY_ACTIVATE) {
+            return unauthorized(request, &challenge);
         }
         match mutate(&state, |next| {
             next.transport.keys.activate()?;
@@ -113,8 +113,8 @@ fn register_activate(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
 fn register_discard(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::TRANSPORT_KEY_DISCARD, move |request| {
-        if !authorized_for(&request, &state, api::TRANSPORT_KEY_DISCARD) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::TRANSPORT_KEY_DISCARD) {
+            return unauthorized(request, &challenge);
         }
         match mutate(&state, |next| Ok(next.transport.keys.discard_pending()?)) {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
@@ -126,8 +126,8 @@ fn register_discard(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> R
 fn register_rollback(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::TRANSPORT_KEY_ROLLBACK, move |request| {
-        if !authorized_for(&request, &state, api::TRANSPORT_KEY_ROLLBACK) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::TRANSPORT_KEY_ROLLBACK) {
+            return unauthorized(request, &challenge);
         }
         match mutate(&state, |next| Ok(next.transport.keys.rollback_key()?)) {
             Ok(()) => reboot_response(request),
@@ -139,8 +139,8 @@ fn register_rollback(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
 fn register_retire(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::TRANSPORT_KEY_RETIRE, move |request| {
-        if !authorized_for(&request, &state, api::TRANSPORT_KEY_RETIRE) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::TRANSPORT_KEY_RETIRE) {
+            return unauthorized(request, &challenge);
         }
         match mutate(&state, |next| Ok(next.transport.keys.retire_rollback()?)) {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
@@ -152,8 +152,8 @@ fn register_retire(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Re
 fn register_recovery(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::TRANSPORT_RECOVER, move |request| {
-        if !authorized_for(&request, &state, api::TRANSPORT_RECOVER) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::TRANSPORT_RECOVER) {
+            return unauthorized(request, &challenge);
         }
         match mutate(&state, |next| {
             next.transport.mode = TransportMode::Cleartext;

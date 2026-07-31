@@ -45,7 +45,6 @@ export {
   getBoards,
   getLogs,
   getSettings,
-  getSetupNetwork,
   getStatus,
   otaCheck,
   otaRollback,

@@ -9,7 +9,7 @@ before its last restart — and pull the core dump a panic left behind.
 ## Read the log
 
 ```sh
-curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
+curl -s --digest -u "admin:$STREAMLINE_ADMIN_KEY" \
   http://192.0.2.10/api/logs
 ```
 
@@ -40,7 +40,7 @@ Lines are truncated at 240 bytes and carry no terminal colour codes.
 Print one boot's log:
 
 ```sh
-curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
+curl -s --digest -u "admin:$STREAMLINE_ADMIN_KEY" \
   http://192.0.2.10/api/logs | jq -r .current.text
 ```
 
@@ -91,7 +91,7 @@ slots. The dump is a copy of task memory at the moment of the crash, so like
 the log it sits behind the admin key.
 
 ```sh
-curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
+curl -s --digest -u "admin:$STREAMLINE_ADMIN_KEY" \
   http://192.0.2.10/api/coredump
 ```
 
@@ -103,7 +103,7 @@ Download the dump and read it with ESP-IDF's `espcoredump.py`, using the
 `.elf` published beside the release the device was running:
 
 ```sh
-curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
+curl -s --digest -u "admin:$STREAMLINE_ADMIN_KEY" \
   -o crash.bin http://192.0.2.10/api/coredump/image
 espcoredump.py info_corefile -t raw -c crash.bin streamline-X.Y.Z.elf
 ```

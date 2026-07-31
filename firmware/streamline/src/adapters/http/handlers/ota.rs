@@ -19,8 +19,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // outcome (`up-to-date` or `update-available`).
     let state_for_check = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::OTA_CHECK, move |request| {
-        if !authorized_for(&request, &state_for_check, api::OTA_CHECK) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_check, api::OTA_CHECK) {
+            return unauthorized(request, &challenge);
         }
         ota_accepted(
             request,
@@ -35,8 +35,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // progress, and the device reboots into the new image on success.
     let state_for_ota = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::OTA_UPDATE, move |mut request| {
-        if !authorized_for(&request, &state_for_ota, api::OTA_UPDATE) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_ota, api::OTA_UPDATE) {
+            return unauthorized(request, &challenge);
         }
         let form: api::OtaUpdateRequest = match form(&mut request) {
             Ok(form) => form,
@@ -65,8 +65,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // which its boot path re-confirms.
     let state_for_rollback = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::OTA_ROLLBACK, move |request| {
-        if !authorized_for(&request, &state_for_rollback, api::OTA_ROLLBACK) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_rollback, api::OTA_ROLLBACK) {
+            return unauthorized(request, &challenge);
         }
         match ota_adapter::select_rollback_slot() {
             Ok(()) => reboot_response(request),

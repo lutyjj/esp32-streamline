@@ -52,8 +52,9 @@ pub struct ErrorResponse<'a> {
     pub error: &'a str,
 }
 
-/// The setup network's join credentials. The password is a secret, so this
-/// read is admin-gated even though most reads are public.
+/// The setup network's join credentials. The password is a secret with no
+/// read endpoint; it appears only inside the factory-reset response, the
+/// one moment the owner is deliberately heading back to commissioning.
 #[derive(Debug, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -65,9 +66,10 @@ pub struct SetupNetworkResponse<'a> {
     pub password: &'a str,
 }
 
-/// Factory-reset acknowledgment carrying the next commissioning credentials.
-/// The reset regenerates the setup-AP password, and this response is the last
-/// chance to show it before the device leaves the network.
+/// Factory-reset acknowledgment carrying the commissioning credentials. The
+/// setup password is device identity — stable across resets, matching a
+/// pre-flashed unit's label — and this response shows it before the device
+/// leaves the network.
 #[derive(Debug, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct FactoryResetResponse<'a> {

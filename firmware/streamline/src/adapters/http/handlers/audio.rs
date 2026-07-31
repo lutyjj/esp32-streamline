@@ -42,8 +42,8 @@ pub(super) fn register_writes(
     // persisted and take effect when the device boots into streaming.
     let state_for_audio = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_AUDIO, move |mut request| {
-        if !authorized_for(&request, &state_for_audio, api::SET_AUDIO) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_audio, api::SET_AUDIO) {
+            return unauthorized(request, &challenge);
         }
         // Ok(true) means the settings were applied live.
         let result = (|| -> Result<bool, MutationError> {
@@ -67,12 +67,12 @@ pub(super) fn register_writes(
     // Replacing definitions never activates a profile as a side effect.
     let state_for_profile_catalog = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_AUDIO_PROFILES, move |mut request| {
-        if !authorized_for(
+        if let Err(challenge) = authorized_for(
             &request,
             &state_for_profile_catalog,
             api::SET_AUDIO_PROFILES,
         ) {
-            return unauthorized(request);
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::AudioProfilesSettingsRequest = form(&mut request)?;
@@ -104,8 +104,10 @@ pub(super) fn register_writes(
     // A stable activation contract also serves external source selectors.
     let state_for_active_profile = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_AUDIO_PROFILE, move |mut request| {
-        if !authorized_for(&request, &state_for_active_profile, api::SET_AUDIO_PROFILE) {
-            return unauthorized(request);
+        if let Err(challenge) =
+            authorized_for(&request, &state_for_active_profile, api::SET_AUDIO_PROFILE)
+        {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<bool, MutationError> {
             let form: api::ActiveAudioProfileRequest = form(&mut request)?;

@@ -19,8 +19,8 @@ use super::super::{
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_ANALOG_PASSTHROUGH, move |mut request| {
-        if !authorized_for(&request, &state, api::SET_ANALOG_PASSTHROUGH) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::SET_ANALOG_PASSTHROUGH) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::AnalogPassthroughSettingsRequest = form(&mut request)?;

@@ -429,9 +429,12 @@ impl ConfigStore {
         self.write_state(state)
     }
 
+    /// Erase the configuration and diagnostics, keeping the setup-AP
+    /// password: it is device identity, minted once for the device's life,
+    /// and a pre-flashed unit's label must stay true across resets.
     pub fn clear(&self) -> Result<()> {
         self.write_state(PersistentState::empty())?;
-        for key in [KEY_LAST_FALLBACK, KEY_LAST_OTA, KEY_SETUP_AP_PASSWORD] {
+        for key in [KEY_LAST_FALLBACK, KEY_LAST_OTA] {
             if let Err(error) = self.nvs.remove(key) {
                 log::warn!("could not clear reset diagnostic {key}: {error:#}");
             }
@@ -440,8 +443,8 @@ impl ConfigStore {
     }
 
     /// The stored setup-AP password, or mint and persist a fresh one when the
-    /// stored value is absent or malformed. Factory reset removes the stored
-    /// value, so the next caller regenerates it.
+    /// stored value is absent or malformed. Only a full flash erase removes
+    /// the stored value.
     pub fn ensure_setup_network_password(&self, random: &mut impl RandomBytes) -> Result<String> {
         // A read failure must not look like an absent key. `optional_string`
         // collapses both to empty, which is right for a diagnostic note and

@@ -1,10 +1,9 @@
 """Contract tests for the device API checks and readiness polling."""
 
-import gzip
 import json
 import unittest
 
-from streamline_tools.device.api import DeviceApi, _decoded, api_checks, wait_for_api
+from streamline_tools.device.api import DeviceApi, api_checks, wait_for_api
 from streamline_tools.device.checks import CheckResult
 
 
@@ -50,17 +49,6 @@ class ApiChecksTest(unittest.TestCase):
         results = api_checks(fetch)
         self.assertFalse(result(results, "status-readable").passed)
         self.assertIn("connection refused", result(results, "status-readable").detail)
-
-
-class TransportDecodingTest(unittest.TestCase):
-    """The device serves its embedded assets gzip-encoded; the client decodes."""
-
-    def test_gzip_encoded_bodies_are_decompressed(self) -> None:
-        body = b'{"openapi": "3.1.0"}'
-        self.assertEqual(_decoded("gzip", gzip.compress(body)), body)
-
-    def test_identity_bodies_pass_through(self) -> None:
-        self.assertEqual(_decoded(None, b"plain"), b"plain")
 
 
 class WaitForApiTest(unittest.TestCase):

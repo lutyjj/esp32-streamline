@@ -10,9 +10,9 @@ emulator can produce lives in `test_qemu_device.py` behind the `emulated` marker
 
 import dataclasses
 import json
-import re
 
 import pytest
+import requests
 
 from streamline_tools.device.api import DeviceApi, api_checks
 
@@ -156,22 +156,14 @@ def test_unlock_accepts_the_key_and_rejects_the_rest(authed_device_api: DeviceAp
     assert code == 401, f"a wrong key was accepted at unlock with HTTP {code}"
 
 
-def test_setup_network_credentials_stay_behind_the_admin_key(
-    authed_device_api: DeviceApi,
-) -> None:
-    # The WPA2 password anchors commissioning to possession of the board, so
-    # a provisioned device serves it only to the key holder.
-    stranger = dataclasses.replace(authed_device_api, admin_key=None)
-    code, _ = stranger.fetch("/api/setup-network")
-    assert code == 401, f"GET /api/setup-network without the key answered HTTP {code}"
-
-    code, body = authed_device_api.fetch("/api/setup-network")
-    assert code == 200, f"GET /api/setup-network answered HTTP {code}"
-    network = json.loads(body)
-    assert network["ssid"].startswith("esp32-streamline-"), network["ssid"]
-    # The generated shape: four dash-joined groups from the unambiguous
-    # alphabet, inside WPA2-Personal's 8..=63 passphrase bounds.
-    assert re.fullmatch(r"([a-km-np-z2-9]{4}-){3}[a-km-np-z2-9]{4}", network["password"])
+def test_writes_challenge_with_a_sha256_digest(authed_device_api: DeviceApi) -> None:
+    # The posture: the admin key never rides a request. A bare write gets the
+    # RFC 7616 challenge any standard client (curl --digest, requests) answers.
+    response = requests.post(f"{authed_device_api.base_url}/api/unlock", timeout=10)
+    assert response.status_code == 401, f"a bare unlock answered HTTP {response.status_code}"
+    challenge = response.headers.get("WWW-Authenticate", "")
+    assert challenge.startswith("Digest "), challenge
+    assert 'realm="streamline"' in challenge and "SHA-256" in challenge, challenge
 
 
 def test_coredump_reads_stay_behind_the_admin_key(authed_device_api: DeviceApi) -> None:

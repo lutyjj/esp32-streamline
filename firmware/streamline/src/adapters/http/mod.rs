@@ -84,10 +84,12 @@ pub struct ApiState {
     pub ota: Arc<OtaProgress>,
     /// The startup health verdict, assembled once at boot (see [`crate::health`]).
     pub health: Arc<HealthReport>,
-    /// The setup network's credentials, minted at boot (see
-    /// [`crate::setup_network`]). Served admin-gated so the owner can note the
-    /// password a recovery fallback will require.
+    /// The setup network's credentials, loaded at boot (see
+    /// [`crate::setup_network`]). Stable for the device's life; the API shows
+    /// them only in the factory-reset response.
     pub setup_network: SetupNetwork,
+    /// Digest-authentication nonce state (see [`crate::auth`]).
+    pub auth: Mutex<crate::auth::DigestAuthenticator>,
 }
 
 fn method(endpoint: Endpoint) -> Method {

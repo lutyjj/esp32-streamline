@@ -38,8 +38,8 @@ pub(super) fn register_network_writes(
     // target edits.
     let state_for_wifi = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_WIFI, move |mut request| {
-        if !authorized_for(&request, &state_for_wifi, api::SET_WIFI) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_wifi, api::SET_WIFI) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::WifiSettingsRequest = form(&mut request)?;
@@ -72,8 +72,8 @@ pub(super) fn register_network_writes(
     // (the stream target is fixed when the network task spawns).
     let state_for_target = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_TARGET, move |mut request| {
-        if !authorized_for(&request, &state_for_target, api::SET_TARGET) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_target, api::SET_TARGET) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
@@ -105,8 +105,8 @@ pub(super) fn register_identity_writes(
     // applies immediately; no reboot is needed. Blank clears the name.
     let state_for_name = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_NAME, move |mut request| {
-        if !authorized_for(&request, &state_for_name, api::SET_NAME) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_name, api::SET_NAME) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::NameSettingsRequest = form(&mut request)?;
@@ -124,8 +124,8 @@ pub(super) fn register_identity_writes(
 
     let state_for_admin_key = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_ADMIN_KEY, move |mut request| {
-        if !authorized_for(&request, &state_for_admin_key, api::SET_ADMIN_KEY) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_admin_key, api::SET_ADMIN_KEY) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::AdminKeySettingsRequest = form(&mut request)?;
@@ -146,8 +146,8 @@ pub(super) fn register_firmware_write(
 ) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_FIRMWARE, move |mut request| {
-        if !authorized_for(&request, &state, api::SET_FIRMWARE) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::SET_FIRMWARE) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::FirmwareSettingsRequest = form(&mut request)?;

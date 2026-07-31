@@ -126,7 +126,7 @@ uses placeholders only:
 
 ```sh
 curl -X POST \
-  -H 'Authorization: Bearer <device-admin-key>' \
+  --digest -u 'admin:<device-admin-key>' \
   http://192.0.2.10/api/transport/keys/stage
 
 curl -X PUT \
@@ -142,11 +142,11 @@ curl -X PUT \
   http://192.0.2.20:8088/api/transport/mode
 
 curl -X POST \
-  -H 'Authorization: Bearer <device-admin-key>' \
+  --digest -u 'admin:<device-admin-key>' \
   http://192.0.2.10/api/transport/keys/verify
 
 curl -X POST \
-  -H 'Authorization: Bearer <device-admin-key>' \
+  --digest -u 'admin:<device-admin-key>' \
   http://192.0.2.10/api/transport/keys/activate
 ```
 
@@ -185,11 +185,11 @@ The programmable recovery is:
 
 ```sh
 curl -X POST \
-  -H 'Authorization: Bearer <device-admin-key>' \
+  --digest -u 'admin:<device-admin-key>' \
   http://192.0.2.10/api/transport/recover
 
 curl -X POST \
-  -H 'Authorization: Bearer <device-admin-key>' \
+  --digest -u 'admin:<device-admin-key>' \
   http://192.0.2.10/api/restart
 ```
 

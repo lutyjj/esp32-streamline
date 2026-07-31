@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { getSetupNetwork, type SetupNetworkResponse, setTarget, setWifi } from '../lib/api';
+import { setTarget, setWifi } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
 import {
@@ -18,7 +18,6 @@ import { Card, CardFooter, CardStack } from './Card';
 import { Chip } from './Chip';
 import { GuidePrompt } from './GuidePrompt';
 import { KeyReveal } from './KeyReveal';
-import { Kv } from './Kv';
 import { ResourceNotice } from './ResourceNotice';
 import { ActionState, TransactButton } from './Transact';
 import { TransportCard } from './TransportCard';
@@ -241,62 +240,18 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
 
       {!setup && !noBridge.value && <TransportCard targetDirty={targetDirty} />}
 
-      {!setup && <SetupNetworkCard unlocked={writable} />}
-    </CardStack>
-  );
-}
-
-/**
- * The setup network's join credentials. A device that loses its Wi-Fi falls
- * back to this WPA2-protected network, so the owner can note its password
- * while the device is healthy. The read is admin-gated on the device, so the
- * card fetches only once unlocked and shows the password only on request.
- */
-function SetupNetworkCard({ unlocked }: { unlocked: boolean }) {
-  const [network, setNetwork] = useState<SetupNetworkResponse | null>(null);
-  const [revealed, setRevealed] = useState(false);
-
-  useEffect(() => {
-    if (!unlocked) {
-      setNetwork(null);
-      setRevealed(false);
-      return;
-    }
-    let cancelled = false;
-    getSetupNetwork().then(
-      (credentials) => {
-        if (!cancelled) setNetwork(credentials);
-      },
-      () => {},
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [unlocked]);
-
-  return (
-    <Card
-      gated
-      title="Setup network"
-      lead="If the device ever loses this Wi-Fi it broadcasts its own protected network. Keep the password with your admin key so recovery is a join away — or hold the board’s first key while powering on to open it for one boot."
-    >
-      {network ? (
-        <>
-          <Kv
-            rows={[
-              ['Network', network.ssid],
-              ['Password', revealed ? network.password : '••••-••••-••••-••••'],
-            ]}
-          />
-          <CardFooter compact>
-            <Button onClick={() => setRevealed(!revealed)}>
-              {revealed ? 'Hide password' : 'Show password'}
-            </Button>
-          </CardFooter>
-        </>
-      ) : (
-        <p class="lead">Unlock to view the network name and password.</p>
+      {!setup && (
+        <Card
+          title="Setup network"
+          lead="If the device ever loses this Wi-Fi it broadcasts its own protected network."
+        >
+          <p class="lead">
+            Its password never changes: it is on a pre-flashed device’s label and in the flasher’s
+            log. Without it, hold the board’s first key while powering on to open the network for
+            one boot.
+          </p>
+        </Card>
       )}
-    </Card>
+    </CardStack>
   );
 }

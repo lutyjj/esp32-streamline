@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{adapters::random::EspRandom, api, mutation::MutationError};
+use crate::{api, mutation::MutationError};
 
 use super::super::{
     auth::authorized_for,
@@ -26,32 +26,12 @@ pub(super) fn register_actions(
     server: &mut ContractServer<'_>,
     state: &Arc<ApiState>,
 ) -> Result<()> {
-    // The setup network's join credentials, so the console can show the owner
-    // the password a recovery fallback will require. Admin-gated: the WPA2
-    // password is a secret. On an unprovisioned device the gate is open like
-    // every write, and the reader is already on the setup network it names.
-    let state_for_setup_network = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SETUP_NETWORK, move |request| {
-        if !authorized_for(&request, &state_for_setup_network, api::SETUP_NETWORK) {
-            return unauthorized(request);
-        }
-        let network = &state_for_setup_network.setup_network;
-        json_response(
-            request,
-            200,
-            &api::SetupNetworkResponse {
-                ssid: &network.ssid,
-                password: &network.password,
-            },
-        )
-    })?;
-
     // Verify an admin key without changing anything, so the console can reject
     // a wrong key at unlock time instead of on the first settings write.
     let state_for_unlock = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::UNLOCK, move |request| {
-        if !authorized_for(&request, &state_for_unlock, api::UNLOCK) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_unlock, api::UNLOCK) {
+            return unauthorized(request, &challenge);
         }
         json_response(request, 200, &api::Ack::ok())
     })?;
@@ -60,37 +40,34 @@ pub(super) fn register_actions(
     // trip to the power plug.
     let state_for_restart = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::RESTART, move |request| {
-        if !authorized_for(&request, &state_for_restart, api::RESTART) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_restart, api::RESTART) {
+            return unauthorized(request, &challenge);
         }
         reboot_response(request)
     })?;
 
-    // Factory reset regenerates the setup-AP password and answers with the new
-    // credentials: this response is the last chance to show them before the
-    // device leaves the network and starts the setup AP they open.
+    // Factory reset erases the configuration but keeps the setup password:
+    // it is device identity, and a pre-flashed unit's label must stay true.
+    // The response shows the credentials before the device leaves the
+    // network — their only appearance in the API.
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::FACTORY_RESET, move |request| {
-        if !authorized_for(&request, &state, api::FACTORY_RESET) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::FACTORY_RESET) {
+            return unauthorized(request, &challenge);
         }
-        let result = (|| -> Result<String, MutationError> {
-            let store = lock_store(&state)?;
-            store
+        let result = (|| -> Result<(), MutationError> {
+            lock_store(&state)?
                 .clear()
-                .map_err(|error| MutationError::Persistence(format!("{error:#}")))?;
-            store
-                .ensure_setup_network_password(&mut EspRandom)
                 .map_err(|error| MutationError::Persistence(format!("{error:#}")))
         })();
         match result {
-            Ok(password) => reboot_response_with(
+            Ok(()) => reboot_response_with(
                 request,
                 &api::FactoryResetResponse {
                     rebooting: true,
                     setup_network: api::SetupNetworkResponse {
                         ssid: &state.setup_network.ssid,
-                        password: &password,
+                        password: &state.setup_network.password,
                     },
                 },
             ),

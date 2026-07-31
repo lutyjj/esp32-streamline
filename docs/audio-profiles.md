@@ -49,13 +49,13 @@ the applied settings.
 
 ## API
 
-Reads are open. Writes use the admin-key bearer token.
+Reads are open. Writes authenticate with the admin key over RFC 7616 digest.
 
 Replace the saved definitions with a validated catalog:
 
 ```sh
 curl -X POST http://192.0.2.10/api/settings/audio-profiles \
-  -H "Authorization: Bearer $ADMIN_KEY" \
+  --digest -u "admin:$ADMIN_KEY" \
   --data-urlencode 'catalog={"schema_version":1,"board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388","active_profile_id":null,"profiles":[]}'
 ```
 
@@ -67,7 +67,7 @@ Apply a profile:
 
 ```sh
 curl -X POST http://192.0.2.10/api/settings/audio-profile \
-  -H "Authorization: Bearer $ADMIN_KEY" \
+  --digest -u "admin:$ADMIN_KEY" \
   --data-urlencode 'profile_id=vinyl'
 ```
 

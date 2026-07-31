@@ -31,6 +31,7 @@ interface MockLogLine {
   text: string;
 }
 
+import { DIGEST_USERNAME, digestResponse, parseDigestFields } from '../lib/digest';
 import { deviceConfig, deviceStatus, setupNetwork } from './fixtures';
 
 /**
@@ -43,8 +44,8 @@ export const MOCK_ADMIN_KEY = 'a'.repeat(48);
 /** The version an install lands on, so update recovery reads as applied. */
 const MOCK_UPDATED_VERSION = '0.5.0-mock';
 
-/** The password a factory reset mints, standing in for the device's RNG. */
-const MOCK_RESET_PASSWORD = 'wxyz-2345-wxyz-2345';
+/** The realm the firmware names in every digest challenge. */
+const DIGEST_REALM = 'streamline';
 
 /**
  * Where in the journey the fake device starts: `steady` is a provisioned,
@@ -97,8 +98,11 @@ export class FakeDevice {
   private otaSteps: Array<() => void> = [];
   /** The stored crash dump's bytes; null while none is stored. */
   private coredump: ArrayBuffer | null = null;
-  /** The setup network's credentials; factory reset regenerates the password. */
+  /** The setup network's credentials, stable for the device's life. */
   private setupNetwork = setupNetwork();
+  /** The live digest nonce and its accepted count, as the firmware tracks. */
+  private nonce: { value: string; lastNc: number } | null = null;
+  private nonceSerial = 0;
 
   constructor(scenario: DeviceScenario = 'steady') {
     this.reset(scenario);
@@ -110,15 +114,13 @@ export class FakeDevice {
       this.read('/api/boards', () => this.boards()),
       this.read('/api/openapi.json', () => contract),
       this.readAuthorized('/api/logs', () => this.nextLogs()),
-      this.readAuthorized('/api/setup-network', () => this.setupNetwork),
       this.readAuthorized('/api/coredump', () => ({
         present: this.coredump !== null,
         size_bytes: this.coredump?.byteLength ?? 0,
       })),
       http.get('/api/coredump/image', ({ request }) => {
-        if (this.adminKey && request.headers.get('authorization') !== `Bearer ${this.adminKey}`) {
-          return reject(401, 'unauthorized — unlock settings with the admin key');
-        }
+        const denied = this.deny(request);
+        if (denied) return denied;
         if (!this.coredump) return reject(404, 'no crash dump is stored');
         return new HttpResponse(this.coredump, {
           headers: { 'Content-Type': 'application/octet-stream' },
@@ -237,9 +239,10 @@ export class FakeDevice {
         this.status.system.uptime_seconds = 0;
         return { ok: true, rebooting: true };
       }),
+      // Reset erases the configuration but keeps the setup password: it is
+      // device identity, and the response repeats the label credentials.
       this.write('/api/factory-reset', () => {
         this.reset('first-boot');
-        this.setupNetwork = setupNetwork({ password: MOCK_RESET_PASSWORD });
         return { rebooting: true, setup_network: this.setupNetwork };
       }),
     ];
@@ -289,26 +292,83 @@ export class FakeDevice {
 
   /**
    * GET behind the admin key, for a read that returns more than the device
-   * publishes openly. Same rejection the firmware gives a missing key.
+   * publishes openly. Same challenge the firmware gives a missing key.
    */
   private readAuthorized(path: string, body: () => JsonBodyType): HttpHandler {
     return http.get(path, ({ request }) => {
-      if (this.adminKey && request.headers.get('authorization') !== `Bearer ${this.adminKey}`) {
-        return reject(401, 'unauthorized — unlock settings with the admin key');
-      }
+      const denied = this.deny(request);
+      if (denied) return denied;
       return HttpResponse.json(body());
     });
   }
 
   /**
+   * 401 with a fresh digest challenge, the header shape the firmware sends.
+   * Minting invalidates the previous nonce, as the firmware's bounded nonce
+   * table eventually does.
+   */
+  private challenge(): Response {
+    this.nonceSerial += 1;
+    this.nonce = { value: `mock-nonce-${this.nonceSerial}`, lastNc: 0 };
+    return HttpResponse.json(
+      { error: 'unauthorized' },
+      {
+        status: 401,
+        headers: {
+          'WWW-Authenticate': `Digest realm="${DIGEST_REALM}", qop="auth", algorithm=SHA-256, nonce="${this.nonce.value}"`,
+        },
+      },
+    );
+  }
+
+  /**
+   * The firmware's digest admin check: verify the RFC 7616 response over the
+   * live nonce and a strictly increasing count. Null when authorized; an
+   * unprovisioned device (no key) accepts everything.
+   */
+  private deny(request: Request): Response | null {
+    if (!this.adminKey) return null;
+    const fields = parseDigestFields(request.headers.get('authorization'));
+    if (!fields) return this.challenge();
+    const url = new URL(request.url);
+    const uri = url.pathname + url.search;
+    const nc = fields.get('nc') ?? '';
+    const count = Number.parseInt(nc, 16);
+    if (
+      fields.get('username') !== DIGEST_USERNAME ||
+      fields.get('realm') !== DIGEST_REALM ||
+      fields.get('uri') !== uri ||
+      !this.nonce ||
+      fields.get('nonce') !== this.nonce.value ||
+      !Number.isFinite(count) ||
+      count <= this.nonce.lastNc
+    ) {
+      return this.challenge();
+    }
+    const expected = digestResponse(
+      DIGEST_USERNAME,
+      DIGEST_REALM,
+      this.adminKey,
+      request.method,
+      uri,
+      this.nonce.value,
+      nc,
+      fields.get('cnonce') ?? '',
+    );
+    if (fields.get('response') !== expected) return this.challenge();
+    this.nonce.lastNc = count;
+    return null;
+  }
+
+  /**
    * POST: writes require the admin key once the device has one, exactly as
-   * `deviceFetch` sends it. The result may be an error `HttpResponse`.
+   * `deviceFetch` answers the challenge. The result may be an error
+   * `HttpResponse`.
    */
   private write(path: string, apply: (body: FormBody) => JsonBodyType | Response): HttpHandler {
     return http.post(path, async ({ request }) => {
-      if (this.adminKey && request.headers.get('authorization') !== `Bearer ${this.adminKey}`) {
-        return reject(401, 'unauthorized — unlock settings with the admin key');
-      }
+      const denied = this.deny(request);
+      if (denied) return denied;
       const form = await request.formData().catch(() => null);
       const body: FormBody = form
         ? Object.fromEntries([...form.entries()].map(([key, value]) => [key, String(value)]))

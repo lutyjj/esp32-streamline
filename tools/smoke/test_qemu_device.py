@@ -11,6 +11,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -275,32 +276,30 @@ def test_stream_pause_is_unavailable_without_audio_capture(
     assert json.loads(body)["stream"]["enabled"] is True
 
 
-def test_factory_reset_returns_to_setup(
+def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
     provisioned_device: EmulatedDevice, boot_device: Callable[..., EmulatedDevice]
 ) -> None:
-    code, body = provisioned_device.api.fetch("/api/setup-network")
-    assert code == 200, f"setup-network read answered HTTP {code}: {body[:200]!r}"
-    password_before = json.loads(body)["password"]
-
     code, body = provisioned_device.api.post_form("/api/factory-reset", {})
     assert code == 200, f"factory reset was answered with HTTP {code}: {body[:200]!r}"
     acknowledgement = json.loads(body)
     assert acknowledgement["rebooting"] is True
-    # The reset regenerates the setup-AP password and this response is the
-    # owner's last chance to see it before the device leaves the network.
-    regenerated = acknowledgement["setup_network"]["password"]
-    assert regenerated != password_before
+    # The response repeats the commissioning credentials — their only
+    # appearance in the API.
+    password = acknowledgement["setup_network"]["password"]
+    # The generated shape: four dash-joined groups from the unambiguous
+    # alphabet, inside WPA2-Personal's 8..=63 passphrase bounds.
+    assert re.fullmatch(r"([a-km-np-z2-9]{4}-){3}[a-km-np-z2-9]{4}", password)
 
     provisioned_device.dut.qemu.wait(timeout=60)
     wiped = boot_device(flash=provisioned_device.flash)
     wiped.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
     _expect_api_up(wiped)
     assert _mode(wiped) == "setup"
-    # The wiped device kept the regenerated credential, so the password the
-    # reset showed is the one its setup network now requires.
-    code, body = wiped.api.fetch("/api/setup-network")
-    assert code == 200, f"setup-network read after reset answered HTTP {code}"
-    assert json.loads(body)["password"] == regenerated
+    # The password is device identity: a second reset answers with the same
+    # credential, so a pre-flashed unit's label stays true across resets.
+    code, body = wiped.api.post_form("/api/factory-reset", {})
+    assert code == 200, f"factory reset on the wiped device answered HTTP {code}"
+    assert json.loads(body)["setup_network"]["password"] == password
 
 
 @pytest.fixture

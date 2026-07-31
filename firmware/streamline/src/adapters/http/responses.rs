@@ -103,12 +103,36 @@ where
     }
 }
 
-pub(super) fn unauthorized<C>(request: embedded_svc::http::server::Request<C>) -> Result<()>
+/// Answer a request that failed the admin-key check: `401` carrying the
+/// digest challenge a client answers on its retry.
+pub(super) fn unauthorized<C>(
+    request: embedded_svc::http::server::Request<C>,
+    challenge: &str,
+) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    error_response(request, 401, "unauthorized")
+    let mut writer = std::io::BufWriter::with_capacity(
+        BODY_BUFFER_BYTES,
+        StdWriter(request.into_response(
+            401,
+            None,
+            &[
+                ("Content-Type", "application/json"),
+                ("Cache-Control", "no-store"),
+                ("WWW-Authenticate", challenge),
+            ],
+        )?),
+    );
+    serde_json::to_writer(
+        &mut writer,
+        &api::ErrorResponse {
+            error: "unauthorized",
+        },
+    )?;
+    std::io::Write::flush(&mut writer)?;
+    Ok(())
 }
 
 /// Answer a failed mutation with the status its category earns: invalid input

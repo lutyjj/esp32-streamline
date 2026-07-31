@@ -17,8 +17,8 @@ use super::super::{
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_LED, move |mut request| {
-        if !authorized_for(&request, &state, api::SET_LED) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::SET_LED) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::LedSettingsRequest = form(&mut request)?;

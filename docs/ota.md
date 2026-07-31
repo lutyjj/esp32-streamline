@@ -26,7 +26,7 @@ half unused. It is applied at flash time via `espflash --partition-table`, so th
 The console separates checking from installing: `POST /api/ota/check` reports
 whether a newer release exists (`up-to-date` or `update-available`) without
 touching flash, and `POST /api/ota/update` performs the install. Both run on a
-background worker and require the admin-key bearer token.
+background worker and require the admin key (digest authentication).
 
 1. The console `POST`s `/api/ota/check` or `/api/ota/update`.
 2. A worker task fetches `releases/latest/download/SHA256SUMS` over HTTPS and
@@ -145,7 +145,7 @@ System tab.
 | Control | Effect |
 |---|---|
 | Vendor RSA-3072 signature verified before commit | `esp_ota` rejects any image the trusted key did not sign, so only vendor firmware installs |
-| Admin-key bearer token on `/api/ota/update` | Only the owner can trigger an update |
+| Admin-key digest authentication on `/api/ota/update` | Only the owner can trigger an update |
 | Published SHA-256 verified before commit | Detects a truncated or corrupted download before the signature check |
 | TLS via the mbedTLS certificate bundle | Authenticates `github.com` for the release download |
 | Bootloader image checksum + rollback | A malformed or non-booting image reverts automatically |

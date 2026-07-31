@@ -204,10 +204,11 @@ Promise:
   booting after a power cut needs no user action. The setup network stays
   reachable throughout as an escape hatch, and its indicator reads
   reconnecting, not first-run. The fallback network keeps the same WPA2
-  password; the console's Network tab shows it to an unlocked owner ahead of
-  time, a factory reset shows the regenerated one before the device
-  leaves, and a button held at power-on opens the network for one boot when
-  the password is lost. An owner who opens that setup network sees a
+  password the device has had since first boot — the one on a pre-flashed
+  unit's label and in the flasher's log, which no reset changes, so those
+  sources stay true for the device's life. A factory reset repeats it before
+  the device leaves, and a button held at power-on opens the network for one
+  boot when the password is lost. An owner who opens that setup network sees a
   recovery form, not first-run onboarding: the saved settings are prefilled,
   the form states the device is already provisioned, and the unlock sits
   inline, because a recovery write requires the admin key. The form retains

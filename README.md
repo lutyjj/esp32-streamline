@@ -13,10 +13,11 @@ HTTP consumer can read it too.
 - **Dumb device architecture** — the ESP32 captures and moves packets. Encoding,
   buffering, and syncing live on the bridge. See [design notes](docs/design.md).
 - **Zero-config commissioning** — an unconfigured device opens a setup AP,
-  WPA2-protected by a password it generates and prints on its serial log. A
-  small web console joins Wi-Fi, then handles the stream target and audio
-  levels. A per-device admin key gates every write; reads stay open, apart
-  from the device log, crash dumps, and the setup network's password.
+  WPA2-protected by a password it generates once and prints on its serial
+  log. A small web console joins Wi-Fi, then handles the stream target and
+  audio levels. A per-device admin key gates every write through digest
+  authentication, so the key never crosses the network; reads stay open,
+  apart from the device log and crash dumps.
 - **Signal-gated streaming** — the device streams while the input plays and
   pauses on sustained silence, so an idle input costs no bandwidth.
 - **Local analog output** — supported boards can send the selected input

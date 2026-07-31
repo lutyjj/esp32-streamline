@@ -1,24 +1,29 @@
 """The device HTTP surface: transport, readiness polling, and contract checks.
 
 `DeviceApi` is the one client both the smoke CLI and the pytest suite use,
-for hardware and emulated devices alike. Checks return `CheckResult` values
-and take the fetch callable, so they are unit-testable without a device.
+for hardware and emulated devices alike. It authenticates with RFC 7616
+digest (SHA-256), the scheme the firmware challenges with, through
+`requests`' standard implementation — the admin key never rides a request.
+Checks return `CheckResult` values and take the fetch callable, so they are
+unit-testable without a device.
 """
 
-import gzip
 import json
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
+
+import requests
+from requests.auth import HTTPDigestAuth
 
 from streamline_tools.device.checks import CheckResult
 
 # A fetch takes an API path such as "/api/status" and returns
 # (HTTP status code, response body). Errors surface as raised OSError.
 ApiFetch = Callable[[str], tuple[int, bytes]]
+
+#: The one account the single-owner device has.
+DIGEST_USERNAME = "admin"
 
 _HTTP_TIMEOUT = 10.0
 _POLL_INTERVAL = 2.0
@@ -32,36 +37,23 @@ class DeviceApi:
     admin_key: str | None = field(default=None, repr=False)
 
     def fetch(self, path: str) -> tuple[int, bytes]:
-        return self._exchange(urllib.request.Request(self.base_url + path))
+        return self._exchange("GET", path)
 
     def post_form(self, path: str, fields: dict[str, str]) -> tuple[int, bytes]:
-        request = urllib.request.Request(
+        return self._exchange("POST", path, data=fields)
+
+    def _exchange(self, method: str, path: str, data: dict[str, str] | None = None) -> tuple[int, bytes]:
+        # requests answers the device's digest challenge itself; a missing or
+        # wrong key surfaces as the final 401. RequestException is an OSError,
+        # so connection failures raise exactly as the ApiFetch contract says.
+        response = requests.request(
+            method,
             self.base_url + path,
-            data=urllib.parse.urlencode(fields).encode(),
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
+            data=data,
+            auth=HTTPDigestAuth(DIGEST_USERNAME, self.admin_key) if self.admin_key else None,
+            timeout=_HTTP_TIMEOUT,
         )
-        return self._exchange(request)
-
-    def _exchange(self, request: urllib.request.Request) -> tuple[int, bytes]:
-        if self.admin_key:
-            request.add_header("Authorization", f"Bearer {self.admin_key}")
-        # The device stores its embedded assets gzipped and serves them with
-        # Content-Encoding: gzip (docs/design.md "HTTP API Shape"); urllib
-        # does not decode transfer encodings, so this client honors the one
-        # the device uses.
-        request.add_header("Accept-Encoding", "gzip")
-        try:
-            with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT) as response:
-                return response.status, _decoded(response.headers.get("Content-Encoding"), response.read())
-        except urllib.error.HTTPError as error:
-            return error.code, _decoded(error.headers.get("Content-Encoding"), error.read())
-
-
-def _decoded(content_encoding: str | None, body: bytes) -> bytes:
-    if content_encoding == "gzip":
-        return gzip.decompress(body)
-    return body
+        return response.status_code, response.content
 
 
 def wait_for_api(fetch: ApiFetch, timeout: float) -> CheckResult:

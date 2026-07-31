@@ -16,8 +16,8 @@ use super::super::{
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_STREAM, move |mut request| {
-        if !authorized_for(&request, &state, api::SET_STREAM) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::SET_STREAM) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::StreamRequest = form(&mut request)?;

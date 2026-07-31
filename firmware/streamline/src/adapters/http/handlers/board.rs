@@ -37,8 +37,8 @@ pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiStat
 pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::SET_BOARD, move |mut request| {
-        if !authorized_for(&request, &state, api::SET_BOARD) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::SET_BOARD) {
+            return unauthorized(request, &challenge);
         }
         let result = (|| -> Result<(), MutationError> {
             let form: api::BoardSettingsRequest = form(&mut request)?;

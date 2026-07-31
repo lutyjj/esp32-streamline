@@ -56,7 +56,7 @@ describe('factory reset handoff', () => {
     );
     expect(host.textContent).toContain('192.168.71.1');
     expect(host.textContent).toContain('Installed firmware stays');
-    // The regenerated setup password is shown — the last chance to note it.
+    // The stable setup password is repeated, matching the device's label.
     expect(host.textContent).toContain('abcd-efgh-ijkm-npqr');
   });
 
@@ -85,7 +85,7 @@ describe('factory reset handoff', () => {
     // The response never arrived, so the credentials are unknown but the
     // handoff still happens.
     await vi.waitFor(() => expect(resetHandoff.value).toBe('unknown'));
-    expect(host.textContent).toContain('serial log or label');
+    expect(host.textContent).toContain('label or serial log');
   });
 
   it('suppresses the unreachable alarm and survives navigation', async () => {

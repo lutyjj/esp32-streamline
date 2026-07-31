@@ -22,8 +22,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // at the moment of the panic and can hold anything the firmware held.
     let state_for_status = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::COREDUMP, move |request| {
-        if !authorized_for(&request, &state_for_status, api::COREDUMP) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_status, api::COREDUMP) {
+            return unauthorized(request, &challenge);
         }
         match coredump::state() {
             CoredumpState::Unavailable => unavailable(request, NO_PARTITION),
@@ -48,8 +48,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
 
     let state_for_image = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::COREDUMP_IMAGE, move |request| {
-        if !authorized_for(&request, &state_for_image, api::COREDUMP_IMAGE) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_image, api::COREDUMP_IMAGE) {
+            return unauthorized(request, &challenge);
         }
         match coredump::state() {
             CoredumpState::Unavailable => unavailable(request, NO_PARTITION),
@@ -67,8 +67,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
 
     let state_for_erase = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::COREDUMP_ERASE, move |request| {
-        if !authorized_for(&request, &state_for_erase, api::COREDUMP_ERASE) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state_for_erase, api::COREDUMP_ERASE) {
+            return unauthorized(request, &challenge);
         }
         match coredump::state() {
             CoredumpState::Unavailable => unavailable(request, NO_PARTITION),

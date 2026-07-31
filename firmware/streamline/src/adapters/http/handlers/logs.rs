@@ -19,8 +19,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // firmware said.
     let state = Arc::clone(state);
     server.handler::<anyhow::Error, _>(api::LOGS, move |request| {
-        if !authorized_for(&request, &state, api::LOGS) {
-            return unauthorized(request);
+        if let Err(challenge) = authorized_for(&request, &state, api::LOGS) {
+            return unauthorized(request, &challenge);
         }
         // Copy under the capture lock, serialize after it: the response goes
         // out over a socket, and holding the lock for that would block every

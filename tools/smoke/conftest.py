@@ -26,7 +26,11 @@ from streamline_tools.device.flash_image import pad_flash_image
 from streamline_tools.secret_input import read_secret_fd
 
 BOOT_TIMEOUT = 120.0
-API_TIMEOUT = 60.0
+# Bounded like BOOT_TIMEOUT rather than tighter: under parallel workers
+# (SMOKE_JOBS) concurrent emulator boots dilate the gap between the serial
+# boot marker and a listening HTTP port, and the serial expectation has
+# already proven the device alive.
+API_TIMEOUT = 120.0
 # Synthetic commissioning credential; it exists only inside throwaway
 # emulated flash copies.
 # The canonical admin-key shape: exactly 48 lowercase hex characters. Built

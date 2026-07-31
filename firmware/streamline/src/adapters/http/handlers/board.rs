@@ -7,10 +7,9 @@ use anyhow::Result;
 use crate::{api, board, mutation::MutationError, profiles::AudioProfileCatalog};
 
 use super::super::{
-    auth::authorized_for,
     persistence::{lock_audio_profiles, lock_config, lock_store},
     requests::form,
-    responses::{json_response, mutation_error, reboot_response, unauthorized},
+    responses::{json_response, mutation_error, reboot_response},
     ApiState, ContractServer,
 };
 
@@ -36,10 +35,7 @@ pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiStat
 
 pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_BOARD, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state, api::SET_BOARD) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_BOARD, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::BoardSettingsRequest = form(&mut request)?;
             let update = board::resolve_update(

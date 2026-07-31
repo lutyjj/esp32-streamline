@@ -39,7 +39,7 @@ export function ApiTab() {
           <h2>{document.info?.title ?? 'Device API'}</h2>
           <p class="lead">
             Contract v{document.info?.version ?? '1.0'} · {operations.length} operations · writes
-            use the admin key as a bearer token
+            prove the admin key with digest authentication
           </p>
         </div>
         <a class="btn secondary" href="/api/openapi.json" target="_blank" rel="noreferrer">

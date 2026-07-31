@@ -522,8 +522,8 @@ export function ResetCard() {
               async () => {
                 try {
                   const response = await factoryReset();
-                  // The response carries the regenerated setup-network
-                  // password — the last chance to show it.
+                  // The response repeats the setup-network credentials — the
+                  // stable ones a pre-flashed unit's label carries.
                   beginResetHandoff(response.setup_network);
                 } catch (error) {
                   // A rejection came back over HTTP: inline and retryable.

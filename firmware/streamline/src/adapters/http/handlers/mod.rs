@@ -22,8 +22,8 @@ use super::{ApiState, ContractServer};
 
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     status::register(server, state)?;
-    logs::register(server, state)?;
-    coredump::register(server, state)?;
+    logs::register(server)?;
+    coredump::register(server)?;
     settings::register_read(server, state)?;
     audio::register_read(server, state)?;
     board::register_read(server, state)?;

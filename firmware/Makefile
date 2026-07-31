@@ -68,7 +68,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test signature-check signing-key
+.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test signature-check signing-key size-report
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -97,6 +97,12 @@ lint: image console-asset
 
 build: image console-asset
 	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET)
+
+# Attribute the built ELF's flash bytes to their owners (issue #355), so a
+# diff's flash cost has a name before the OTA size gate refuses it. The
+# analysis lives in tools; this target owns building its input.
+size-report: build
+	$(MAKE) -C ../tools size-report
 
 # The QEMU image variant: network over emulated Ethernet, audio skipped. It
 # shares the hardware image's bootloader, partition table, and console asset,

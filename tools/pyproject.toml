@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
   "numpy>=2.2.6,<3",
+  "pyelftools>=0.32,<1",
   "pytest>=9.1.1,<10",
   "pytest-embedded>=2.8,<3",
   "pytest-embedded-qemu>=2.8,<3",
@@ -19,6 +20,7 @@ dependencies = [
 [project.scripts]
 streamline-analyze = "streamline_tools.analysis.report:main"
 streamline-capture = "streamline_tools.serial_capture:main"
+streamline-size-report = "streamline_tools.size.report:main"
 streamline-smoke = "streamline_tools.smoke:main"
 
 [dependency-groups]

@@ -33,7 +33,7 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
-.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze smoke-qemu smoke-device
+.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze size-report smoke-qemu smoke-device
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
@@ -67,6 +67,13 @@ analyze: image
 	@test -n "$(CAP)" || (echo "CAP=/path/to/capture.wav is required" >&2; exit 2)
 	$(CONTAINER) run --rm $(INPUT_MOUNTS) $(IMAGE) \
 		streamline-analyze --reference "$(abspath $(REF))" --capture "$(abspath $(CAP))"
+
+# Attribute the built firmware ELF's flash bytes to ESP-IDF components, radio
+# blobs, and Rust crates (issue #355), reading the firmware build tree through
+# a read-only /repo mount. `make firmware-size-report` builds the ELF first
+# and forwards here.
+size-report: image
+	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" $(IMAGE) streamline-size-report
 
 qemu-image:
 	$(CONTAINER) build -f Dockerfile --target qemu-runner -t $(QEMU_IMAGE) .

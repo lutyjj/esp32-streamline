@@ -113,6 +113,17 @@ where
     error_response(request, error.status(), error.message())
 }
 
+pub(super) fn not_found<C>(
+    request: embedded_svc::http::server::Request<C>,
+    message: &str,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    error_response(request, 404, message)
+}
+
 pub(super) fn unavailable<C>(
     request: embedded_svc::http::server::Request<C>,
     message: &str,

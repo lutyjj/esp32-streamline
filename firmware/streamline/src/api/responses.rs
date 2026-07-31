@@ -417,6 +417,20 @@ pub struct IndicatorStatus {
     pub state: &'static str,
 }
 
+/// The stored crash dump's status, as `GET /api/coredump` returns it.
+///
+/// A panic writes an ELF core dump to its flash partition, where it survives
+/// the reboot and any rollback. `GET /api/coredump/image` downloads the bytes
+/// for `espcoredump.py`; `POST /api/coredump/erase` clears them.
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct CoredumpResponse {
+    /// Whether the partition holds a valid dump from an earlier panic.
+    pub present: bool,
+    /// Size of the stored ELF image in bytes; `0` when none is stored.
+    pub size_bytes: u32,
+}
+
 /// The device's captured log, as `GET /api/logs` returns it.
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]

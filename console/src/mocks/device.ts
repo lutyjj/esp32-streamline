@@ -92,6 +92,8 @@ export class FakeDevice {
   private previousBootLog: BootLog | null = null;
   /** OTA phases still to play out, one per status poll. */
   private otaSteps: Array<() => void> = [];
+  /** The stored crash dump's bytes; null while none is stored. */
+  private coredump: ArrayBuffer | null = null;
 
   constructor(scenario: DeviceScenario = 'steady') {
     this.reset(scenario);
@@ -103,6 +105,23 @@ export class FakeDevice {
       this.read('/api/boards', () => this.boards()),
       this.read('/api/openapi.json', () => contract),
       this.readAuthorized('/api/logs', () => this.nextLogs()),
+      this.readAuthorized('/api/coredump', () => ({
+        present: this.coredump !== null,
+        size_bytes: this.coredump?.byteLength ?? 0,
+      })),
+      http.get('/api/coredump/image', ({ request }) => {
+        if (this.adminKey && request.headers.get('authorization') !== `Bearer ${this.adminKey}`) {
+          return reject(401, 'unauthorized — unlock settings with the admin key');
+        }
+        if (!this.coredump) return reject(404, 'no crash dump is stored');
+        return new HttpResponse(this.coredump, {
+          headers: { 'Content-Type': 'application/octet-stream' },
+        });
+      }),
+      this.write('/api/coredump/erase', () => {
+        this.coredump = null;
+        return { ok: true };
+      }),
       http.get('/api/metrics', () => new HttpResponse(this.metricsText())),
       this.write('/api/unlock', () => ({ ok: true })),
       this.write('/api/settings/wifi', (body) => this.join(body)),

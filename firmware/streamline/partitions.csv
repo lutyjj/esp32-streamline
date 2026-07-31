@@ -5,9 +5,14 @@
 # fails when the application image exceeds a slot minus the declared margin, so
 # the fit is enforced, not assumed. An 8 MB board runs this layout too, leaving
 # its upper half unused.
-# Name,     Type, SubType, Offset,   Size
-nvs,        data, nvs,     0x9000,   0x6000
-otadata,    data, ota,     0xf000,   0x2000
-phy_init,   data, phy,     0x11000,  0x1000
-ota_0,      app,  ota_0,   0x20000,  0x1F0000
-ota_1,      app,  ota_1,   0x210000, 0x1F0000
+# The coredump partition fills the alignment gap below the first 64 KB-aligned
+# app slot, so it adds crash capture without moving any other partition. On a
+# device flashed before it existed, the firmware reports crash capture as
+# unavailable until a USB reflash lands the current table.
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      0x9000,   0x6000
+otadata,    data, ota,      0xf000,   0x2000
+phy_init,   data, phy,      0x11000,  0x1000
+coredump,   data, coredump, 0x12000,  0xE000
+ota_0,      app,  ota_0,    0x20000,  0x1F0000
+ota_1,      app,  ota_1,    0x210000, 0x1F0000

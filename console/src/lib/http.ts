@@ -26,7 +26,11 @@ export function setTransport(next: FetchLike): void {
  * `tests/api.test.ts` pins this list to the operations `docs/openapi.json`
  * declares `bearer_auth` on, so a new authenticated read cannot forget it.
  */
-export const AUTHENTICATED_READS: ReadonlySet<string> = new Set(['/api/logs']);
+export const AUTHENTICATED_READS: ReadonlySet<string> = new Set([
+  '/api/logs',
+  '/api/coredump',
+  '/api/coredump/image',
+]);
 
 function needsAdminKey(request: Request): boolean {
   return request.method !== 'GET' || AUTHENTICATED_READS.has(new URL(request.url).pathname);

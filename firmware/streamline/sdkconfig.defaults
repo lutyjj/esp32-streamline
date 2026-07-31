@@ -94,3 +94,11 @@ CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
 CONFIG_LWIP_IPV6=n
 # The esp_err_t name table trades 2 KB of flash for prettier error strings.
 CONFIG_ESP_ERR_TO_NAME_LOOKUP=n
+
+# A panic writes an ELF core dump to the `coredump` partition, which the
+# admin-gated coredump API serves for off-device analysis. A device whose
+# flash predates the partition boots normally and reports the capability
+# unavailable.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y

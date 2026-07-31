@@ -45,6 +45,43 @@ struct PolledButton {
     detector: PressDetector,
 }
 
+/// How long the boot-time probe lets the pull settle before sampling.
+const PROBE_SETTLE_MS: u32 = 10;
+
+/// Whether the board's first button is held right now. Sampled once at boot,
+/// before the setup AP starts: a held button is the physical-presence signal
+/// that opens the AP for one boot when the password is unavailable (a worn
+/// label, a lost note). The pin driver is dropped before the poll task
+/// claims it. A board without buttons has no override.
+pub fn setup_override_held(board: &board::Board) -> bool {
+    let Some(spec) = board.buttons.first() else {
+        return false;
+    };
+    let pull = button_pull(spec.gpio, spec.active_low);
+    match PinDriver::input(pins::input_pin(spec.gpio), pull) {
+        Ok(input) => {
+            FreeRtos::delay_ms(PROBE_SETTLE_MS);
+            input.is_low() == spec.active_low
+        }
+        Err(error) => {
+            log::warn!("setup-override button probe failed: {error:#}");
+            false
+        }
+    }
+}
+
+/// The pull a button pin needs: internal pulls live on the output-capable
+/// pads; input-only pins (GPIO 34–39) rely on the board's own resistor.
+fn button_pull(gpio: u8, active_low: bool) -> Pull {
+    if !board::is_output_gpio(gpio) {
+        Pull::Floating
+    } else if active_low {
+        Pull::Up
+    } else {
+        Pull::Down
+    }
+}
+
 /// Start polling the board's buttons. A board with no buttons starts no task.
 pub fn start(state: Arc<ApiState>) -> Result<()> {
     if state.board.buttons.is_empty() {
@@ -52,15 +89,7 @@ pub fn start(state: Arc<ApiState>) -> Result<()> {
     }
     let mut buttons = Vec::with_capacity(state.board.buttons.len());
     for spec in &state.board.buttons {
-        // Internal pulls live on the output-capable pads; input-only pins
-        // (GPIO 34–39) rely on the board's own resistor.
-        let pull = if !board::is_output_gpio(spec.gpio) {
-            Pull::Floating
-        } else if spec.active_low {
-            Pull::Up
-        } else {
-            Pull::Down
-        };
+        let pull = button_pull(spec.gpio, spec.active_low);
         buttons.push(PolledButton {
             id: spec.id.clone(),
             active_low: spec.active_low,

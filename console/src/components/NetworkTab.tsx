@@ -278,7 +278,7 @@ function SetupNetworkCard({ unlocked }: { unlocked: boolean }) {
     <Card
       gated
       title="Setup network"
-      lead="If the device ever loses this Wi-Fi it broadcasts its own protected network. Keep the password with your admin key so recovery is a join away."
+      lead="If the device ever loses this Wi-Fi it broadcasts its own protected network. Keep the password with your admin key so recovery is a join away — or hold the board’s first key while powering on to open it for one boot."
     >
       {network ? (
         <>

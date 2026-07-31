@@ -17,7 +17,7 @@ place, and the standing items we track or have accepted.
 | HTTP reads (`:80`) | Open; never returns secrets | Status and metrics readable, no control |
 | Device log (`/api/logs`) | Admin-key gated | Owner-only; returns the network name, bridge host, and addresses the firmware logged. Never contains keys — see [diagnostics](diagnostics.md) |
 | Crash dump (`/api/coredump`, `/api/coredump/image`) | Admin-key gated | Owner-only; a dump is a copy of task memory at the moment of a panic and can hold anything the firmware held — see [diagnostics](diagnostics.md#crash-dumps) |
-| Setup AP | WPA2 with a per-device generated password; writes open only until an admin key is set | Joining needs the password from the device's serial log, the flasher, or its label, so commissioning is anchored to possession of the board |
+| Setup AP | WPA2 with a per-device generated password; writes open only until an admin key is set | Joining needs the password from the device's serial log, the flasher, or its label, so commissioning is anchored to possession of the board. A button held at power-on starts the AP open for one boot — the physical-presence fallback for a lost password |
 | OTA update (`/api/ota/update`) | Admin-key gated; vendor RSA-3072 signature verified before commit, plus SHA-256 and auto-rollback | Owner-only; only firmware signed by the trusted key installs |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; pinned by the admin SHA-256 and verified against the trusted signing key | Owner-only; a forged image is rejected even when its digest matches, so the URL may be plain HTTP |
 | PCM stream (`:39000`) | Explicit cleartext TCP or TLS 1.3 PSK mode | Cleartext permits LAN capture and impersonation; TLS authenticates the source and protects audio |
@@ -119,6 +119,7 @@ check: it validates the image against the `sha256` the caller supplies from
 | Cleartext PCM mode | owner-controlled | It provides no confidentiality or source authentication. Use it only when encryption is not enabled or during explicit recovery. |
 | Admin key travels over plain HTTP | by design | PCM transport encryption does not protect the HTTP API. Terminate TLS at a reverse proxy with a real certificate before exposure beyond the LAN. |
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
+| Button-held boot opens the setup AP for one boot | by design | Physical presence substitutes for the password: an attacker in radio range cannot press the button. The window is one boot and closes on restart. |
 | Setup-AP password readable over admin-gated plain HTTP | until #338 | `GET /api/setup-network` and the factory-reset response return it so the owner can note the recovery password; a LAN sniffer who captures it can join the AP when it next appears. #338 closes the plain-HTTP channel. |
 | Bridge WAV stream is unauthenticated | by design | Front it with an authenticating reverse proxy before sharing beyond a trusted LAN. |
 | Home Assistant recordings are working data, not backup data | by design | Recordings survive restarts and updates, but restore or uninstall removes them. Download every WAV that must be retained. |

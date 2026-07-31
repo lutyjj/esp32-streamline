@@ -175,7 +175,9 @@ trusted LAN; neither is an internet-facing service.
 
 1. Read the setup network's password from the flasher's **Logs & console**
    view (or `espflash monitor`) — the board prints its SSID and password when
-   it starts. Pre-provisioned boards carry both on a label.
+   it starts. Pre-provisioned boards carry both on a label. No password at
+   hand? Hold the board's first key (KEY1 on the Audio Kit) while plugging it
+   in: the setup network starts open for that one boot.
 2. Join the `esp32-streamline-XXXX` Wi-Fi network with that password. The
    operating system should
    offer or open the setup console; if it does not, open `http://192.168.71.1/`.

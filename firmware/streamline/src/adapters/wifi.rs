@@ -108,13 +108,28 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
     }
 }
 
-/// Start the physical-presence setup network, WPA2-protected by the
-/// device-generated password. Joining it requires the password from the
-/// device's serial log, the flasher, or its label, so commissioning is
-/// anchored to possession of the board. The AP runs only in setup and
-/// recovery, never while the device is on its home network.
-pub fn start_setup_ap(wifi: &mut WifiController<'_>, network: &SetupNetwork) -> Result<()> {
-    start_ap(wifi, network, None)
+/// Which protection the setup access point starts with.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApProtection {
+    /// WPA2 with the device-generated password: the default, anchoring
+    /// commissioning to possession of the board or its label.
+    Wpa2,
+    /// Open, for one boot: the physical-presence escape hatch a held button
+    /// selects when the password is unavailable. The next boot without the
+    /// button locks the network again.
+    OpenThisBoot,
+}
+
+/// Start the physical-presence setup network. Joining it requires the
+/// password from the device's serial log, the flasher, or its label — or a
+/// button held at power-on, which starts it open for this boot. The AP runs
+/// only in setup and recovery, never while the device is on its home network.
+pub fn start_setup_ap(
+    wifi: &mut WifiController<'_>,
+    network: &SetupNetwork,
+    protection: ApProtection,
+) -> Result<()> {
+    start_ap(wifi, network, protection, None)
 }
 
 /// Start the setup AP alongside a station that keeps retrying the saved Wi-Fi.
@@ -125,21 +140,27 @@ pub fn start_setup_ap(wifi: &mut WifiController<'_>, network: &SetupNetwork) -> 
 pub fn start_recovery_ap(
     wifi: &mut WifiController<'_>,
     network: &SetupNetwork,
+    protection: ApProtection,
     config: &RuntimeConfig,
 ) -> Result<()> {
-    start_ap(wifi, network, Some(config))
+    start_ap(wifi, network, protection, Some(config))
 }
 
 fn start_ap(
     wifi: &mut WifiController<'_>,
     network: &SetupNetwork,
+    protection: ApProtection,
     station: Option<&RuntimeConfig>,
 ) -> Result<()> {
+    let (auth_method, password) = match protection {
+        ApProtection::Wpa2 => (AuthMethod::WPA2Personal, network.password.as_str()),
+        ApProtection::OpenThisBoot => (AuthMethod::None, ""),
+    };
     let access_point = AccessPointConfiguration {
         ssid: network.ssid.as_str().try_into()?,
         ssid_hidden: false,
-        auth_method: AuthMethod::WPA2Personal,
-        password: network.password.as_str().try_into()?,
+        auth_method,
+        password: password.try_into()?,
         channel: 1,
         ..Default::default()
     };

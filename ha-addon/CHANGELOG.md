@@ -1,6 +1,31 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.10.0](https://github.com/lutyjj/esp32-streamline/compare/v0.9.0...v0.10.0) (2026-07-31)
+
+
+### Features
+
+* **console:** read the device log from System ([7007672](https://github.com/lutyjj/esp32-streamline/commit/7007672a2fb95839cab64df3473b702caedf0c89))
+* **firmware:** capture a panic's core dump and serve it over the API ([c9554d4](https://github.com/lutyjj/esp32-streamline/commit/c9554d48592098ecb500c0eb56c1262a590bbaa1))
+* **firmware:** open the setup AP for one boot when a button is held at power-on ([ef4fcba](https://github.com/lutyjj/esp32-streamline/commit/ef4fcba71f0934b64c76407b5605784d2a527b99))
+* **firmware:** protect the setup AP with a per-device WPA2 password ([32f5910](https://github.com/lutyjj/esp32-streamline/commit/32f5910a9f5ec16e725e59ec1f824ee30094043e))
+* **firmware:** report OTA signature enforcement and name rejections ([167b63d](https://github.com/lutyjj/esp32-streamline/commit/167b63d95add1c2b56a3873426464a91b70cefe3))
+* **firmware:** serve the device log at /api/logs ([d8cd049](https://github.com/lutyjj/esp32-streamline/commit/d8cd049f8705f9cd0c2af4cac6b12f748d5a40b7))
+* **firmware:** shrink the OTA image by 192 KB ([bb16232](https://github.com/lutyjj/esp32-streamline/commit/bb162320b10dd250a7dee0ee13291c9dba7e26ab))
+* **firmware:** store the embedded console and OpenAPI artifact gzipped ([5061547](https://github.com/lutyjj/esp32-streamline/commit/5061547f0969e1fbfcee5d80a3c92425a568b522))
+* **firmware:** verify vendor RSA-3072 signatures on OTA images ([3c8aef1](https://github.com/lutyjj/esp32-streamline/commit/3c8aef1689ed07d53e4e3d012b2e7d3feda87016))
+* **tools:** attribute firmware flash bytes with make firmware-size-report ([3612722](https://github.com/lutyjj/esp32-streamline/commit/361272238a1c83506bf1890c00d0ac59857216bf))
+
+
+### Bug Fixes
+
+* **firmware:** package the two-slot OTA table in the full image ([824790f](https://github.com/lutyjj/esp32-streamline/commit/824790ffdd88c4a15b9d9fc6b06d0e5a48e5dff3))
+* **firmware:** pause streaming during an OTA install so it cannot panic ([#366](https://github.com/lutyjj/esp32-streamline/issues/366)) ([62a2bb5](https://github.com/lutyjj/esp32-streamline/commit/62a2bb51b510066d13d17d791601170a9330f8af)), closes [#335](https://github.com/lutyjj/esp32-streamline/issues/335)
+* **firmware:** treat the log hook as a stream, not a line at a time ([07eeaec](https://github.com/lutyjj/esp32-streamline/commit/07eeaec7413ed3bfa99f48419ccffac7ab1beec0))
+* **firmware:** use dynamic mbedTLS buffers so the update check survives streaming ([36bff18](https://github.com/lutyjj/esp32-streamline/commit/36bff188d5ac48d2910f383be9af1f0d2143a491)), closes [#334](https://github.com/lutyjj/esp32-streamline/issues/334)
+* identify the boot a log line belongs to ([1a142ad](https://github.com/lutyjj/esp32-streamline/commit/1a142ad481cca92afa7cbc5dc7eafb8b4deadf74))
+
 ## [0.9.0](https://github.com/lutyjj/esp32-streamline/compare/v0.8.1...v0.9.0) (2026-07-23)
 
 

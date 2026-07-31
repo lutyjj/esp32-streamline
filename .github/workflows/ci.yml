@@ -149,7 +149,11 @@ jobs:
         with:
           name: qemu-firmware-images-${{ github.sha }}
           path: dist/firmware
-      - run: make tools-smoke-qemu
+      # One xdist worker per runner vCPU: the standard runner has four, and
+      # each test boots its own emulator, so 4 workers is the same 1:1
+      # CPU:worker bound proven on the lab host. Drop back to serial (remove
+      # SMOKE_JOBS) if the "no healthy response" setup flake climbs.
+      - run: make tools-smoke-qemu SMOKE_JOBS=4
 
   api-contract:
     name: Device API contract

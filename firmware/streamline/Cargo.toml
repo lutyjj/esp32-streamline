@@ -52,6 +52,9 @@ esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
 
 [build-dependencies]
 embuild = { version = "0.33", features = ["espidf"] }
+# Gzips the embedded console and OpenAPI artifact at build time; the image
+# stores and serves them compressed (docs/design.md "HTTP API Shape").
+flate2 = "1"
 
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/mdns", version = "1.8.2" }

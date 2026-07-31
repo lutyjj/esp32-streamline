@@ -9,13 +9,13 @@ use crate::{api, mutation::MutationError};
 use super::super::{
     auth::authorized_for,
     persistence::lock_store,
-    responses::{json_response, mutation_error, reboot_response, respond, unauthorized},
-    ApiState, ContractServer, OPENAPI,
+    responses::{json_response, mutation_error, reboot_response, respond_gzip, unauthorized},
+    ApiState, ContractServer, OPENAPI_GZ,
 };
 
 pub(super) fn register_contract(server: &mut ContractServer<'_>) -> Result<()> {
     server.handler(api::OPENAPI, move |request| {
-        respond(request, 200, "application/json", OPENAPI)
+        respond_gzip(request, 200, "application/json", OPENAPI_GZ)
     })
 }
 

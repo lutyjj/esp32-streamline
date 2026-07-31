@@ -1,6 +1,30 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.11.0](https://github.com/lutyjj/esp32-streamline/compare/v0.10.0...v0.11.0) (2026-07-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **firmware:** prove the admin key with digest auth and make the setup password device identity
+
+### Features
+
+* **firmware:** prove the admin key with digest auth and make the setup password device identity ([d58ed51](https://github.com/lutyjj/esp32-streamline/commit/d58ed5120913e4433785bc25e9d02efb5a6a18f2))
+
+
+### Bug Fixes
+
+* **ci:** inherit secrets when release-please chains to publish ([#369](https://github.com/lutyjj/esp32-streamline/issues/369)) ([d0fe186](https://github.com/lutyjj/esp32-streamline/commit/d0fe186255a89865599893f6065f262906f1b081))
+* **firmware:** make the OTA quiesce handshake explicit and stop regenerating the setup password on a read error ([799a0ed](https://github.com/lutyjj/esp32-streamline/commit/799a0ede8d11be92c928130419513c19ea0b3b8e))
+* **firmware:** make the OTA quiesce handshake explicit; stop regenerating the setup password on a read error ([#370](https://github.com/lutyjj/esp32-streamline/issues/370)) ([799a0ed](https://github.com/lutyjj/esp32-streamline/commit/799a0ede8d11be92c928130419513c19ea0b3b8e))
+* **tools:** keep pytest away from the admin-key descriptor in smoke-device ([29d4b14](https://github.com/lutyjj/esp32-streamline/commit/29d4b14e0037991959c6ed195cfb754bb9390d7e))
+
+
+### Performance Improvements
+
+* **tools:** run the QEMU smoke suite in parallel with SMOKE_JOBS ([08524a1](https://github.com/lutyjj/esp32-streamline/commit/08524a12022b48f1c41fbf2b806d76f02e119cfe))
+
 ## [0.10.0](https://github.com/lutyjj/esp32-streamline/compare/v0.9.0...v0.10.0) (2026-07-31)
 
 

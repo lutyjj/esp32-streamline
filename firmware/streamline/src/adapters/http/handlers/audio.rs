@@ -12,12 +12,11 @@ use crate::{
 };
 
 use super::super::{
-    auth::authorized_for,
     persistence::{
         lock_audio_profiles, lock_config, save_audio_profiles, save_configuration_and_profiles,
     },
     requests::form,
-    responses::{json_response, mutation_error, reboot_response, unauthorized},
+    responses::{json_response, mutation_error, reboot_response},
     ApiState, ContractServer,
 };
 
@@ -41,10 +40,7 @@ pub(super) fn register_writes(
     // needed. In setup-AP mode the codec is not running, so the settings are
     // persisted and take effect when the device boots into streaming.
     let state_for_audio = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_AUDIO, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state_for_audio, api::SET_AUDIO) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_AUDIO, move |mut request| {
         // Ok(true) means the settings were applied live.
         let result = (|| -> Result<bool, MutationError> {
             let form: api::AudioSettingsRequest = form(&mut request)?;
@@ -66,14 +62,7 @@ pub(super) fn register_writes(
 
     // Replacing definitions never activates a profile as a side effect.
     let state_for_profile_catalog = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_AUDIO_PROFILES, move |mut request| {
-        if let Err(challenge) = authorized_for(
-            &request,
-            &state_for_profile_catalog,
-            api::SET_AUDIO_PROFILES,
-        ) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_AUDIO_PROFILES, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AudioProfilesSettingsRequest = form(&mut request)?;
             let mut catalog: AudioProfileCatalog =
@@ -103,12 +92,7 @@ pub(super) fn register_writes(
 
     // A stable activation contract also serves external source selectors.
     let state_for_active_profile = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_AUDIO_PROFILE, move |mut request| {
-        if let Err(challenge) =
-            authorized_for(&request, &state_for_active_profile, api::SET_AUDIO_PROFILE)
-        {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_AUDIO_PROFILE, move |mut request| {
         let result = (|| -> Result<bool, MutationError> {
             let form: api::ActiveAudioProfileRequest = form(&mut request)?;
             let mut catalog = lock_audio_profiles(&state_for_active_profile)?.clone();

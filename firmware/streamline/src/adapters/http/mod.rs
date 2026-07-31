@@ -10,7 +10,6 @@ mod responses;
 pub(in crate::adapters) use handlers::audio::set_audio;
 
 use std::{
-    fmt::Debug,
     net::Ipv4Addr,
     sync::{Arc, Mutex},
 };
@@ -100,32 +99,35 @@ fn method(endpoint: Endpoint) -> Method {
 }
 
 /// Thin ESP-IDF binding that refuses to finish unless every declared API
-/// operation has exactly one registered handler.
+/// operation has exactly one registered handler, and enforces each
+/// declaration's authentication policy before the handler runs — a handler
+/// cannot forget the admin-key check, because the route table owns it.
 struct ContractServer<'a> {
     inner: EspHttpServer<'a>,
+    state: Arc<ApiState>,
     registered: u64,
 }
 
 impl<'a> ContractServer<'a> {
-    fn new(inner: EspHttpServer<'a>) -> Self {
+    fn new(inner: EspHttpServer<'a>, state: Arc<ApiState>) -> Self {
         assert!(
             api::ENDPOINTS.len() <= u64::BITS as usize,
             "API endpoint tracker capacity exceeded"
         );
         Self {
             inner,
+            state,
             registered: 0,
         }
     }
 
-    fn handler<E, F>(&mut self, endpoint: Endpoint, handler: F) -> Result<()>
+    fn handler<F>(&mut self, endpoint: Endpoint, handler: F) -> Result<()>
     where
         F: for<'request> Fn(
                 embedded_svc::http::server::Request<&mut EspHttpConnection<'request>>,
-            ) -> std::result::Result<(), E>
+            ) -> Result<()>
             + Send
             + 'static,
-        E: Debug,
     {
         let index = api::ENDPOINTS
             .iter()
@@ -135,8 +137,14 @@ impl<'a> ContractServer<'a> {
         if self.registered & bit != 0 {
             bail!("duplicate API handler for {}", endpoint.path);
         }
+        let state = Arc::clone(&self.state);
         self.inner
-            .fn_handler(endpoint.path, method(endpoint), handler)?;
+            .fn_handler(endpoint.path, method(endpoint), move |request| {
+                if let Err(challenge) = auth::authorized_for(&request, &state, endpoint) {
+                    return responses::unauthorized(request, &challenge);
+                }
+                handler(request)
+            })?;
         self.registered |= bit;
         Ok(())
     }
@@ -177,7 +185,7 @@ pub fn start(
         responses::respond_gzip(request, 200, "text/html; charset=utf-8", INDEX_GZ)
     })?;
 
-    let mut server = ContractServer::new(server);
+    let mut server = ContractServer::new(server, Arc::clone(&state));
     handlers::register(&mut server, &state)?;
     let mut server = server.finish()?;
     if let Some(address) = captive_portal_address {

@@ -12,10 +12,9 @@ use crate::{
 };
 
 use super::super::{
-    auth::authorized_for,
     persistence::{lock_config, save_configuration},
     requests::form,
-    responses::{json_response, mutation_error, reboot_response, unauthorized},
+    responses::{json_response, mutation_error, reboot_response},
     ApiState, ContractServer,
 };
 
@@ -30,17 +29,14 @@ pub(super) fn register_network_writes(
     server: &mut ContractServer<'_>,
     state: &Arc<ApiState>,
 ) -> Result<()> {
-    // Mutating endpoints require the admin key once one is provisioned (see
-    // `authorized_for`); an unconfigured device accepts setup writes so the first
-    // key can be set. Wi-Fi and the stream target are separate nouns: each write
+    // The route table gates every mutating endpoint behind the admin key once
+    // one is provisioned; an unconfigured device accepts setup writes so the
+    // first key can be set. Wi-Fi and the stream target are separate nouns: each write
     // validates and persists only its own fields, so a malformed target host
     // cannot fail a Wi-Fi save and a Wi-Fi save cannot smuggle in half-typed
     // target edits.
     let state_for_wifi = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_WIFI, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state_for_wifi, api::SET_WIFI) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_WIFI, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::WifiSettingsRequest = form(&mut request)?;
             let current = lock_config(&state_for_wifi)?.clone();
@@ -71,10 +67,7 @@ pub(super) fn register_network_writes(
     // next boot; applying it to the running stream without a reboot is deferred
     // (the stream target is fixed when the network task spawns).
     let state_for_target = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_TARGET, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state_for_target, api::SET_TARGET) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_TARGET, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
             let current = lock_config(&state_for_target)?.clone();
@@ -104,10 +97,7 @@ pub(super) fn register_identity_writes(
     // The friendly device name only labels the console and browser tab, so it
     // applies immediately; no reboot is needed. Blank clears the name.
     let state_for_name = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_NAME, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state_for_name, api::SET_NAME) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_NAME, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::NameSettingsRequest = form(&mut request)?;
             let mut next = lock_config(&state_for_name)?.clone();
@@ -123,10 +113,7 @@ pub(super) fn register_identity_writes(
     })?;
 
     let state_for_admin_key = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_ADMIN_KEY, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state_for_admin_key, api::SET_ADMIN_KEY) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_ADMIN_KEY, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AdminKeySettingsRequest = form(&mut request)?;
             let mut next = lock_config(&state_for_admin_key)?.clone();
@@ -145,10 +132,7 @@ pub(super) fn register_firmware_write(
     state: &Arc<ApiState>,
 ) -> Result<()> {
     let state = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_FIRMWARE, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state, api::SET_FIRMWARE) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_FIRMWARE, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::FirmwareSettingsRequest = form(&mut request)?;
             let auto_update_schedule = match form.auto_update_schedule {

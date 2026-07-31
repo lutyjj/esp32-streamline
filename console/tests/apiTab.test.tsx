@@ -23,7 +23,7 @@ describe('ApiTab', () => {
           '/api/settings/name': {
             post: {
               summary: 'Set device name',
-              security: [{ bearer_auth: [] }],
+              security: [{ digest_auth: [] }],
               requestBody: {
                 content: {
                   'application/x-www-form-urlencoded': {

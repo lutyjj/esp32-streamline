@@ -9,19 +9,15 @@ use crate::{
 };
 
 use super::super::{
-    auth::authorized_for,
     persistence::{lock_config, save_configuration},
     requests::form,
-    responses::{json_response, mutation_error, unauthorized},
+    responses::{json_response, mutation_error},
     ApiState, ContractServer,
 };
 
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_ANALOG_PASSTHROUGH, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state, api::SET_ANALOG_PASSTHROUGH) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_ANALOG_PASSTHROUGH, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AnalogPassthroughSettingsRequest = form(&mut request)?;
             let capability = state.board.analog_passthrough.as_ref();

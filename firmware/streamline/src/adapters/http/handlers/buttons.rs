@@ -7,19 +7,15 @@ use anyhow::Result;
 use crate::{api, mutation::MutationError};
 
 use super::super::{
-    auth::authorized_for,
     persistence::{lock_config, save_configuration},
     requests::form,
-    responses::{json_response, mutation_error, unauthorized},
+    responses::{json_response, mutation_error},
     ApiState, ContractServer,
 };
 
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_BUTTON, move |mut request| {
-        if let Err(challenge) = authorized_for(&request, &state, api::SET_BUTTON) {
-            return unauthorized(request, &challenge);
-        }
+    server.handler(api::SET_BUTTON, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::ButtonSettingsRequest = form(&mut request)?;
             if !state.board.has_button(&form.id) {

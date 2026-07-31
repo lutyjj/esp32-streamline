@@ -1,13 +1,10 @@
 //! RFC 7616 digest authentication for mutating HTTP requests.
 //!
 //! The admin key never crosses the wire: a client proves possession by
-//! hashing it into a challenge-response (SHA-256, `qop=auth`), and the
-//! device tracks each nonce's count so a captured exchange authorizes
-//! nothing — not the same request again, not a different one. Standard
-//! clients speak this natively (`curl --digest`, Python `requests`,
-//! browsers), which keeps every capability scriptable without a custom
-//! client. This module owns the whole protocol state machine and is
-//! host-tested; the HTTP adapter only feeds it requests and a clock.
+//! hashing it with a challenge nonce (SHA-256, `qop=auth`), and the device
+//! tracks each nonce's count so a captured exchange authorizes nothing.
+//! This module owns the protocol state machine and is host-tested; the
+//! HTTP adapter feeds it requests and a clock.
 
 use core::fmt::Write as _;
 

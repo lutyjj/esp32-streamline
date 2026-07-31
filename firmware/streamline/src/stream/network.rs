@@ -2,7 +2,7 @@
 //! fresh, accounting reconnects, errors, TLS handshake failures, and stale
 //! drops.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::packet::AudioPacket;
 
@@ -14,6 +14,11 @@ use super::{
 
 /// Back off this long after a send failure before retrying the same target.
 const SEND_ERROR_BACKOFF_MS: u32 = 250;
+
+/// How long one queue wait may block before the engine rechecks for a
+/// transport quiesce, bounding how long an idle connection outlives the
+/// request that asked for its buffers.
+const CONTROL_POLL_MS: u32 = 100;
 
 /// A successful send at least this slow is a stall worth accounting: the queue
 /// absorbs roughly 170 ms of backlog before dropping audio, so stalls surface
@@ -28,7 +33,8 @@ const SEND_STALL_MS: u64 = 100;
 /// current samples instead of replaying the outage.
 const MAX_IN_FLIGHT_AGE_PACKETS: u32 = QUEUE_DEPTH as u32;
 
-/// Drain the queue forever, sending each packet in order.
+/// Drain the queue forever, sending each packet in order and honoring
+/// transport quiesce requests between packets.
 pub fn run(
     mut sink: impl PacketSink,
     queue: Arc<PacketQueue<AudioPacket>>,
@@ -37,10 +43,36 @@ pub fn run(
     clock: impl Clock,
 ) -> ! {
     loop {
-        let (packet, depth) = queue.pop();
-        status.set_queue_depth(depth);
-        send_packet(&mut sink, &packet, &status, &delay, &clock);
+        step(&mut sink, &queue, &status, &delay, &clock);
     }
+}
+
+/// One engine iteration: yield the connection while a quiesce is in force,
+/// otherwise wait briefly for a packet and send it.
+fn step(
+    sink: &mut impl PacketSink,
+    queue: &PacketQueue<AudioPacket>,
+    status: &StreamStatus,
+    delay: &impl Delay,
+    clock: &impl Clock,
+) {
+    if status.transport_quiesce_requested() {
+        // Idempotent: repeated steps during one quiesce disconnect a sink
+        // that is already closed. The queue is left alone; capture stops
+        // enqueuing too, and packets from before the pause age out via the
+        // stale bound once streaming resumes.
+        sink.disconnect();
+        status.set_transport_connected(false);
+        delay.delay_ms(CONTROL_POLL_MS);
+        return;
+    }
+    let Some((packet, depth)) =
+        queue.pop_timeout(Duration::from_millis(u64::from(CONTROL_POLL_MS)))
+    else {
+        return;
+    };
+    status.set_queue_depth(depth);
+    send_packet(sink, &packet, status, delay, clock);
 }
 
 /// Retry one packet while it stays within the latency bound, so a brief
@@ -55,6 +87,11 @@ fn send_packet(
     clock: &impl Clock,
 ) {
     loop {
+        // A quiesce abandons the in-flight packet: reconnect attempts would
+        // reallocate the very buffers the quiesce exists to free.
+        if status.transport_quiesce_requested() {
+            return;
+        }
         if status.sequence().wrapping_sub(packet.sequence()) > MAX_IN_FLIGHT_AGE_PACKETS {
             status.record_stale_drop();
             return;
@@ -62,6 +99,7 @@ fn send_packet(
         let started = clock.monotonic_millis();
         match sink.send(packet.as_bytes()) {
             Ok(reconnected) => {
+                status.set_transport_connected(true);
                 let elapsed = clock.monotonic_millis().saturating_sub(started);
                 if elapsed >= SEND_STALL_MS {
                     status.record_send_stall(elapsed);
@@ -71,6 +109,8 @@ fn send_packet(
                 return;
             }
             Err(failure) => {
+                // The sink drops its connection on failure.
+                status.set_transport_connected(false);
                 status.record_network_error(failure.secure_handshake);
                 delay.delay_ms(SEND_ERROR_BACKOFF_MS);
             }
@@ -82,23 +122,40 @@ fn send_packet(
 mod tests {
     use std::{cell::RefCell, collections::VecDeque};
 
-    use super::{send_packet, MAX_IN_FLIGHT_AGE_PACKETS, SEND_ERROR_BACKOFF_MS, SEND_STALL_MS};
+    use super::{
+        send_packet, step, MAX_IN_FLIGHT_AGE_PACKETS, SEND_ERROR_BACKOFF_MS, SEND_STALL_MS,
+    };
     use crate::{
         packet::AudioPacket,
         protocol::PAYLOAD_BYTES,
         stream::{
             effects::{Clock, Delay, PacketSink, SendFailed},
+            queue::PacketQueue,
             status::StreamStatus,
         },
     };
 
     struct FakeSink {
         results: VecDeque<Result<bool, SendFailed>>,
+        disconnects: usize,
     }
 
     impl PacketSink for FakeSink {
         fn send(&mut self, _bytes: &[u8]) -> Result<bool, SendFailed> {
             self.results.pop_front().expect("no more scripted sends")
+        }
+
+        fn disconnect(&mut self) {
+            self.disconnects += 1;
+        }
+    }
+
+    impl FakeSink {
+        fn scripted<const N: usize>(results: [Result<bool, SendFailed>; N]) -> Self {
+            Self {
+                results: VecDeque::from(results),
+                disconnects: 0,
+            }
         }
     }
 
@@ -151,9 +208,7 @@ mod tests {
     #[test]
     fn the_first_connect_is_not_counted_as_a_reconnect() {
         let status = StreamStatus::default();
-        let mut sink = FakeSink {
-            results: VecDeque::from([Ok(true)]),
-        };
+        let mut sink = FakeSink::scripted([Ok(true)]);
 
         send_packet(
             &mut sink,
@@ -176,9 +231,7 @@ mod tests {
 
         // The first packet lands on the initial connection.
         send_packet(
-            &mut FakeSink {
-                results: VecDeque::from([Ok(true)]),
-            },
+            &mut FakeSink::scripted([Ok(true)]),
             &packet(),
             &status,
             &delay,
@@ -186,9 +239,7 @@ mod tests {
         );
         // The second fails twice, backs off after each, then reconnects.
         send_packet(
-            &mut FakeSink {
-                results: VecDeque::from([io_error(), io_error(), Ok(true)]),
-            },
+            &mut FakeSink::scripted([io_error(), io_error(), Ok(true)]),
             &packet(),
             &status,
             &delay,
@@ -210,9 +261,7 @@ mod tests {
             status.next_sequence();
         }
         // An empty script panics on any send, proving none was attempted.
-        let mut sink = FakeSink {
-            results: VecDeque::new(),
-        };
+        let mut sink = FakeSink::scripted([]);
 
         send_packet(
             &mut sink,
@@ -244,6 +293,8 @@ mod tests {
                 secure_handshake: false,
             })
         }
+
+        fn disconnect(&mut self) {}
     }
 
     #[test]
@@ -275,14 +326,12 @@ mod tests {
     #[test]
     fn tls_handshake_failures_are_counted_apart_from_io_errors() {
         let status = StreamStatus::default();
-        let mut sink = FakeSink {
-            results: VecDeque::from([
-                Err(SendFailed {
-                    secure_handshake: true,
-                }),
-                Ok(false),
-            ]),
-        };
+        let mut sink = FakeSink::scripted([
+            Err(SendFailed {
+                secure_handshake: true,
+            }),
+            Ok(false),
+        ]);
 
         send_packet(
             &mut sink,
@@ -302,9 +351,7 @@ mod tests {
     #[test]
     fn a_slow_successful_send_is_accounted_as_a_stall() {
         let status = StreamStatus::default();
-        let mut sink = FakeSink {
-            results: VecDeque::from([Ok(false)]),
-        };
+        let mut sink = FakeSink::scripted([Ok(false)]);
 
         send_packet(
             &mut sink,
@@ -323,9 +370,7 @@ mod tests {
     #[test]
     fn a_send_faster_than_the_stall_bound_is_not_a_stall() {
         let status = StreamStatus::default();
-        let mut sink = FakeSink {
-            results: VecDeque::from([Ok(false)]),
-        };
+        let mut sink = FakeSink::scripted([Ok(false)]);
 
         send_packet(
             &mut sink,
@@ -339,5 +384,95 @@ mod tests {
         assert_eq!(snapshot.packets, 1);
         assert_eq!(snapshot.send_stalls, 0);
         assert_eq!(snapshot.longest_send_stall_ms, 0);
+    }
+
+    #[test]
+    fn sends_track_whether_the_transport_holds_a_connection() {
+        let status = StreamStatus::default();
+        assert!(!status.transport_connected());
+
+        send_packet(
+            &mut FakeSink::scripted([Ok(true)]),
+            &packet(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::default(),
+        );
+        assert!(status.transport_connected());
+
+        send_packet(
+            &mut FakeSink::scripted([io_error(), Ok(true)]),
+            &packet(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::default(),
+        );
+        // The failure marked it released mid-retry; the recovery re-marked it.
+        assert!(status.transport_connected());
+    }
+
+    #[test]
+    fn a_quiesced_step_disconnects_the_sink_and_reports_a_released_transport() {
+        let status = StreamStatus::default();
+        status.set_transport_connected(true);
+        status.request_transport_quiesce();
+        let queue = PacketQueue::new();
+        queue.push_drop_oldest(packet());
+        // An empty script panics on any send, proving the queue is left alone.
+        let mut sink = FakeSink::scripted([]);
+        let delay = RecordingDelay::default();
+
+        step(
+            &mut sink,
+            &queue,
+            &status,
+            &delay,
+            &SteppingClock::default(),
+        );
+
+        assert_eq!(sink.disconnects, 1);
+        assert!(!status.transport_connected());
+        // The step backed off instead of spinning on the control flag.
+        assert_eq!(delay.waits.borrow().len(), 1);
+    }
+
+    #[test]
+    fn streaming_resumes_after_a_quiesce_ends() {
+        let status = StreamStatus::default();
+        status.request_transport_quiesce();
+        let queue = PacketQueue::new();
+        queue.push_drop_oldest(packet());
+        let mut sink = FakeSink::scripted([Ok(true)]);
+        let delay = RecordingDelay::default();
+        let clock = SteppingClock::default();
+
+        step(&mut sink, &queue, &status, &delay, &clock);
+        status.end_transport_quiesce();
+        step(&mut sink, &queue, &status, &delay, &clock);
+
+        let snapshot = status.snapshot();
+        assert_eq!(snapshot.packets, 1);
+        assert!(status.transport_connected());
+    }
+
+    #[test]
+    fn an_in_flight_packet_is_abandoned_when_a_quiesce_arrives() {
+        let status = StreamStatus::default();
+        status.request_transport_quiesce();
+        // An empty script panics on any send, proving none was attempted.
+        let mut sink = FakeSink::scripted([]);
+
+        send_packet(
+            &mut sink,
+            &packet(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::default(),
+        );
+
+        let snapshot = status.snapshot();
+        assert_eq!(snapshot.packets, 0);
+        assert_eq!(snapshot.network_errors, 0);
+        assert_eq!(snapshot.stale_drops, 0);
     }
 }

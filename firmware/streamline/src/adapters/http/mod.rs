@@ -83,10 +83,6 @@ pub struct ApiState {
     pub ota: Arc<OtaProgress>,
     /// The startup health verdict, assembled once at boot (see [`crate::health`]).
     pub health: Arc<HealthReport>,
-    /// The version the inactive slot would roll back into, read once at boot;
-    /// `None` when no valid previous image is stored. Fixed until the next OTA,
-    /// which reboots and re-reads it.
-    pub rollback: Option<String>,
 }
 
 fn method(endpoint: Endpoint) -> Method {

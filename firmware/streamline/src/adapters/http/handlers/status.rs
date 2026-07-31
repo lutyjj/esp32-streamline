@@ -97,7 +97,10 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         Mode::Provisioned => ("provisioned", "connected"),
     };
     let ota = state.ota.snapshot();
-    let rollback = &state.rollback;
+    // Read fresh on every snapshot: a failed install invalidates the inactive
+    // slot without a reboot, and a cached value would keep advertising a
+    // rollback that no longer exists.
+    let rollback = crate::adapters::ota::rollback_target();
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
         device_name: config.device_name.clone(),

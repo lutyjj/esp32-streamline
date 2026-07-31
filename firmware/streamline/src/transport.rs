@@ -381,6 +381,12 @@ impl<C: PcmConnector> ReconnectingSender<C> {
         }
     }
 
+    /// Drop the open stream, closing its connection and freeing its buffers.
+    /// The next send reconnects.
+    pub fn disconnect(&mut self) {
+        self.stream = None;
+    }
+
     /// Connect lazily and discard a failed stream so the next call retries the
     /// same selected profile. The connector has no fallback profile to try.
     pub fn send_all(&mut self, bytes: &[u8]) -> Result<bool, C::Error> {
@@ -638,6 +644,20 @@ mod tests {
         assert_eq!(sender.send_all(b"one"), Ok(true));
         assert_eq!(sender.send_all(b"two"), Err("disconnected"));
         assert_eq!(sender.send_all(b"three"), Ok(true));
+        assert_eq!(*attempts.borrow(), 2);
+    }
+
+    #[test]
+    fn disconnect_closes_the_stream_and_the_next_send_reconnects() {
+        let (connector, attempts) = connector([
+            Ok(VecDeque::from([Ok(()), Ok(())])),
+            Ok(VecDeque::from([Ok(())])),
+        ]);
+        let mut sender = ReconnectingSender::new(connector);
+
+        assert_eq!(sender.send_all(b"one"), Ok(true));
+        sender.disconnect();
+        assert_eq!(sender.send_all(b"two"), Ok(true));
         assert_eq!(*attempts.borrow(), 2);
     }
 

@@ -52,6 +52,29 @@ pub struct ErrorResponse<'a> {
     pub error: &'a str,
 }
 
+/// The setup network's join credentials. The password is a secret, so this
+/// read is admin-gated even though most reads are public.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "api-spec",
+    schema(example = json!({"ssid": "esp32-streamline-1AA8B2", "password": "abcd-efgh-ijkm-npqr"}))
+)]
+pub struct SetupNetworkResponse<'a> {
+    pub ssid: &'a str,
+    pub password: &'a str,
+}
+
+/// Factory-reset acknowledgment carrying the next commissioning credentials.
+/// The reset regenerates the setup-AP password, and this response is the last
+/// chance to show it before the device leaves the network.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct FactoryResetResponse<'a> {
+    pub rebooting: bool,
+    pub setup_network: SetupNetworkResponse<'a>,
+}
+
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::config())))]

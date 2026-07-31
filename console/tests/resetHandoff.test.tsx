@@ -27,7 +27,7 @@ function click(label: string): void {
 
 beforeEach(() => {
   status.value = deviceStatus({ auth_required: false });
-  resetHandoff.value = false;
+  resetHandoff.value = null;
   unreachable.value = false;
 });
 
@@ -38,14 +38,26 @@ afterEach(() => {
 
 describe('factory reset handoff', () => {
   it('enters the setup handoff on acknowledgement instead of reboot polling', async () => {
-    setTransport(async () => response(200, '{"rebooting":true}'));
+    setTransport(async () =>
+      response(
+        200,
+        '{"rebooting":true,"setup_network":{"ssid":"esp32-streamline-1AA8B2","password":"abcd-efgh-ijkm-npqr"}}',
+      ),
+    );
     mount();
 
     click('Factory reset');
     click('Erase everything');
-    await vi.waitFor(() => expect(resetHandoff.value).toBe(true));
+    await vi.waitFor(() =>
+      expect(resetHandoff.value).toEqual({
+        ssid: 'esp32-streamline-1AA8B2',
+        password: 'abcd-efgh-ijkm-npqr',
+      }),
+    );
     expect(host.textContent).toContain('192.168.71.1');
     expect(host.textContent).toContain('Installed firmware stays');
+    // The regenerated setup password is shown — the last chance to note it.
+    expect(host.textContent).toContain('abcd-efgh-ijkm-npqr');
   });
 
   it('keeps a rejection inline and retryable', async () => {
@@ -55,7 +67,7 @@ describe('factory reset handoff', () => {
     click('Factory reset');
     click('Erase everything');
     await vi.waitFor(() => expect(host.querySelector('.actionstate')?.textContent).toBeTruthy());
-    expect(resetHandoff.value).toBe(false);
+    expect(resetHandoff.value).toBe(null);
     // The trigger is back for a retry.
     expect(
       [...host.querySelectorAll('button')].some((b) => b.textContent === 'Factory reset'),
@@ -70,11 +82,14 @@ describe('factory reset handoff', () => {
 
     click('Factory reset');
     click('Erase everything');
-    await vi.waitFor(() => expect(resetHandoff.value).toBe(true));
+    // The response never arrived, so the credentials are unknown but the
+    // handoff still happens.
+    await vi.waitFor(() => expect(resetHandoff.value).toBe('unknown'));
+    expect(host.textContent).toContain('serial log or label');
   });
 
   it('suppresses the unreachable alarm and survives navigation', async () => {
-    resetHandoff.value = true;
+    resetHandoff.value = 'unknown';
     setTransport(async () => {
       throw new TypeError('gone');
     });

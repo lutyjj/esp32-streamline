@@ -508,6 +508,19 @@ endpoint!(
     summary = "Roll back firmware"
 );
 endpoint!(
+    SETUP_NETWORK,
+    get_setup_network,
+    Get,
+    get,
+    "/api/setup-network",
+    authenticated,
+    summary = "Read the setup network's SSID and WPA2 password",
+    responses(
+        (status = 200, body = SetupNetworkResponse),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
     UNLOCK,
     unlock,
     Post,
@@ -542,7 +555,7 @@ endpoint!(
     authenticated,
     summary = "Factory-reset the device",
     responses(
-        (status = 200, body = Ack),
+        (status = 200, body = FactoryResetResponse),
         (status = 401, body = ErrorResponse),
         (status = 500, body = ErrorResponse)
     )
@@ -584,6 +597,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     OTA_CHECK,
     OTA_UPDATE,
     OTA_ROLLBACK,
+    SETUP_NETWORK,
     UNLOCK,
     RESTART,
     FACTORY_RESET,
@@ -597,7 +611,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_logs, get_coredump, get_coredump_image, post_coredump_erase, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_status, get_health, get_metrics, get_logs, get_coredump, get_coredump_image, post_coredump_erase, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, get_setup_network, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]

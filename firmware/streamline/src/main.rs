@@ -27,7 +27,9 @@ use streamline_firmware::{
         logs,
         mdns::MdnsAdvertisement,
         nvs::ConfigStore,
-        ota, status_light, time, wifi,
+        ota,
+        random::EspRandom,
+        status_light, time, wifi,
     },
     analog_passthrough::AnalogPassthroughState,
     board::{self, Board},
@@ -35,7 +37,9 @@ use streamline_firmware::{
     health::{BootFacts, HealthReport},
     identity,
     profiles::AudioProfileCatalog,
-    recovery, stream,
+    recovery,
+    setup_network::SetupNetwork,
+    stream,
     transport::KeyVerifier,
     update,
 };
@@ -93,6 +97,17 @@ fn main() -> Result<()> {
     }
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
+    // The setup network's credentials exist in every mode: the AP serves them
+    // when it runs, and the API serves them so the owner can note the password
+    // a recovery fallback will require. Minted once, kept in NVS; factory
+    // reset removes the stored value and the next boot mints a fresh one.
+    let setup_network = SetupNetwork {
+        ssid: identity::setup_ssid(&wifi::device_suffix()?),
+        password: store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
+            .ensure_setup_network_password(&mut EspRandom)?,
+    };
 
     // The network is the one seam between the hardware image and the QEMU
     // image; exactly one `network_boot` variant below compiles into each,
@@ -104,6 +119,7 @@ fn main() -> Result<()> {
         &store,
         &board,
         persisted,
+        &setup_network,
     )?;
     // The composition root holds the network link for the life of the process.
     // On hardware the recovery boot loop drives station retries through it; the
@@ -155,6 +171,7 @@ fn main() -> Result<()> {
         mdns,
         ota: Arc::new(ota::OtaProgress::default()),
         health,
+        setup_network,
     });
     #[cfg(not(feature = "qemu"))]
     let captive_portal_address = match mode {
@@ -272,8 +289,8 @@ fn network_boot(
     store: &Arc<Mutex<ConfigStore>>,
     board: &Arc<Board>,
     persisted: Option<RuntimeConfig>,
+    setup_network: &SetupNetwork,
 ) -> Result<NetworkBoot> {
-    let suffix = wifi::device_suffix()?;
     let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
     let state = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
@@ -329,11 +346,11 @@ fn network_boot(
                 let (codec, analog_passthrough) =
                     start_recovery_local_output(peripherals.i2c0, board.as_ref(), &config);
                 let (mode, config, stream, _, _, health) =
-                    start_setup(&mut wifi, &suffix, board.as_ref(), Some(config))?;
+                    start_setup(&mut wifi, setup_network, board.as_ref(), Some(config))?;
                 (mode, config, stream, codec, analog_passthrough, health)
             }
         },
-        None => start_setup(&mut wifi, &suffix, board.as_ref(), None)?,
+        None => start_setup(&mut wifi, setup_network, board.as_ref(), None)?,
     };
     Ok((wifi, state))
 }
@@ -352,6 +369,8 @@ fn network_boot(
     _store: &Arc<Mutex<ConfigStore>>,
     board: &Arc<Board>,
     persisted: Option<RuntimeConfig>,
+    // No radio under emulation; the credentials still exist for the API.
+    _setup_network: &SetupNetwork,
 ) -> Result<NetworkBoot> {
     let ethernet = openeth::start(peripherals.mac, event_loop)?;
     let state = match persisted {
@@ -576,17 +595,23 @@ type SetupState = (
 #[cfg(not(feature = "qemu"))]
 fn start_setup(
     wifi: &mut wifi::WifiController<'_>,
-    suffix: &str,
+    setup_network: &SetupNetwork,
     board: &Board,
     persisted: Option<RuntimeConfig>,
 ) -> Result<SetupState> {
     // A provisioned device that fell back runs the station beside the AP so it
     // can rejoin its home network on its own; a first-run device is AP-only.
-    let ssid = match persisted.as_ref() {
-        Some(config) => wifi::start_recovery_ap(wifi, suffix, config)?,
-        None => wifi::start_setup_ap(wifi, suffix)?,
+    match persisted.as_ref() {
+        Some(config) => wifi::start_recovery_ap(wifi, setup_network, config)?,
+        None => wifi::start_setup_ap(wifi, setup_network)?,
     };
-    log::info!("setup AP started: {ssid}");
+    // The one place a DIY build reads its setup password: `espflash monitor`
+    // and the WebFlasher's log view both show this line.
+    log::info!(
+        "setup network ready: SSID \"{}\" password \"{}\" — join it and open http://192.168.71.1/",
+        setup_network.ssid,
+        setup_network.password
+    );
     Ok((
         if persisted.is_some() {
             Mode::Recovery

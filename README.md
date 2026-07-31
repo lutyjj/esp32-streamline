@@ -12,10 +12,11 @@ HTTP consumer can read it too.
 
 - **Dumb device architecture** — the ESP32 captures and moves packets. Encoding,
   buffering, and syncing live on the bridge. See [design notes](docs/design.md).
-- **Zero-config commissioning** — an unconfigured device opens a setup AP. A
+- **Zero-config commissioning** — an unconfigured device opens a setup AP,
+  WPA2-protected by a password it generates and prints on its serial log. A
   small web console joins Wi-Fi, then handles the stream target and audio
   levels. A per-device admin key gates every write; reads stay open, apart
-  from the device log.
+  from the device log, crash dumps, and the setup network's password.
 - **Signal-gated streaming** — the device streams while the input plays and
   pauses on sustained silence, so an idle input costs no bandwidth.
 - **Local analog output** — supported boards can send the selected input
@@ -172,14 +173,18 @@ trusted LAN; neither is an internet-facing service.
 
 ### 3. Configure the device
 
-1. Join the `esp32-streamline-XXXX` Wi-Fi network. The operating system should
+1. Read the setup network's password from the flasher's **Logs & console**
+   view (or `espflash monitor`) — the board prints its SSID and password when
+   it starts. Pre-provisioned boards carry both on a label.
+2. Join the `esp32-streamline-XXXX` Wi-Fi network with that password. The
+   operating system should
    offer or open the setup console; if it does not, open `http://192.168.71.1/`.
-2. Enter your Wi-Fi credentials and continue to the generated admin key.
-3. **Save the generated admin key.** The device never shows it again. The key
+3. Enter your Wi-Fi credentials and continue to the generated admin key.
+4. **Save the generated admin key.** The device never shows it again. The key
    unlocks every later settings change; lose it and you must reflash.
-4. Join. The device reboots onto your network and advertises its console as
+5. Join. The device reboots onto your network and advertises its console as
    `http://streamline-xxxx.local/`.
-5. Open the station console, then set the bridge host in **Network** and
+6. Open the station console, then set the bridge host in **Network** and
    calibrate from **Audio**. Save a source profile when several players need
    different input levels.
 

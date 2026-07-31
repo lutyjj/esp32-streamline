@@ -10,6 +10,7 @@ emulator can produce lives in `test_qemu_device.py` behind the `emulated` marker
 
 import dataclasses
 import json
+import re
 
 import pytest
 
@@ -153,6 +154,24 @@ def test_unlock_accepts_the_key_and_rejects_the_rest(authed_device_api: DeviceAp
     imposter = dataclasses.replace(authed_device_api, admin_key="wrong-key-entirely")
     code, _ = imposter.post_form("/api/unlock", {})
     assert code == 401, f"a wrong key was accepted at unlock with HTTP {code}"
+
+
+def test_setup_network_credentials_stay_behind_the_admin_key(
+    authed_device_api: DeviceApi,
+) -> None:
+    # The WPA2 password anchors commissioning to possession of the board, so
+    # a provisioned device serves it only to the key holder.
+    stranger = dataclasses.replace(authed_device_api, admin_key=None)
+    code, _ = stranger.fetch("/api/setup-network")
+    assert code == 401, f"GET /api/setup-network without the key answered HTTP {code}"
+
+    code, body = authed_device_api.fetch("/api/setup-network")
+    assert code == 200, f"GET /api/setup-network answered HTTP {code}"
+    network = json.loads(body)
+    assert network["ssid"].startswith("esp32-streamline-"), network["ssid"]
+    # The generated shape: four dash-joined groups from the unambiguous
+    # alphabet, inside WPA2-Personal's 8..=63 passphrase bounds.
+    assert re.fullmatch(r"([a-km-np-z2-9]{4}-){3}[a-km-np-z2-9]{4}", network["password"])
 
 
 def test_coredump_reads_stay_behind_the_admin_key(authed_device_api: DeviceApi) -> None:

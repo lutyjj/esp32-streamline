@@ -5,10 +5,11 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::{
+    adapters::random::EspRandom,
     api,
     config::RuntimeConfig,
     mutation::MutationError,
-    transport::{self, RandomBytes, TransportMode},
+    transport::{self, TransportMode},
 };
 
 use super::super::{
@@ -18,14 +19,6 @@ use super::super::{
     responses::{json_response, mutation_error, reboot_response, unauthorized, unavailable},
     ApiState, ContractServer,
 };
-
-struct EspRandom;
-
-impl RandomBytes for EspRandom {
-    fn fill(&mut self, output: &mut [u8]) {
-        unsafe { esp_idf_svc::sys::esp_fill_random(output.as_mut_ptr().cast(), output.len()) };
-    }
-}
 
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     register_settings(server, state)?;

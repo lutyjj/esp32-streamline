@@ -43,7 +43,9 @@ Exit: the board broadcasts its own `esp32-streamline-XXXX` network.
 Entry: the user joins the setup network, usually on a phone, with the WPA2
 password the device generated — the flasher's log view and `espflash monitor`
 print it beside the SSID, and a pre-provisioned board carries both on its
-label. The operating
+label. A missing or wrong password never strands the owner: holding the
+board's first button while power is applied starts the network open for that
+one boot, so physical possession always commissions. The operating
 system offers the setup console or opens it after detecting the captive
 network. If the prompt does not appear, `http://192.168.71.1/` opens the same
 console. The console recognizes an unconfigured device and opens first-run
@@ -203,8 +205,9 @@ Promise:
   reachable throughout as an escape hatch, and its indicator reads
   reconnecting, not first-run. The fallback network keeps the same WPA2
   password; the console's Network tab shows it to an unlocked owner ahead of
-  time, and a factory reset shows the regenerated one before the device
-  leaves. An owner who opens that setup network sees a
+  time, a factory reset shows the regenerated one before the device
+  leaves, and a button held at power-on opens the network for one boot when
+  the password is lost. An owner who opens that setup network sees a
   recovery form, not first-run onboarding: the saved settings are prefilled,
   the form states the device is already provisioned, and the unlock sits
   inline, because a recovery write requires the admin key. The form retains

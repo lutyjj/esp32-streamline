@@ -599,11 +599,20 @@ fn start_setup(
     board: &Board,
     persisted: Option<RuntimeConfig>,
 ) -> Result<SetupState> {
+    // The physical-presence escape hatch: the board's first button, held
+    // while power is applied, starts this boot's AP open — for the owner
+    // whose label wore off or note went missing. Sampled before the AP
+    // starts, and only for this boot.
+    let protection = if buttons::setup_override_held(board) {
+        wifi::ApProtection::OpenThisBoot
+    } else {
+        wifi::ApProtection::Wpa2
+    };
     // A provisioned device that fell back runs the station beside the AP so it
     // can rejoin its home network on its own; a first-run device is AP-only.
     match persisted.as_ref() {
-        Some(config) => wifi::start_recovery_ap(wifi, setup_network, config)?,
-        None => wifi::start_setup_ap(wifi, setup_network)?,
+        Some(config) => wifi::start_recovery_ap(wifi, setup_network, protection, config)?,
+        None => wifi::start_setup_ap(wifi, setup_network, protection)?,
     };
     // The one place a DIY build reads its setup password: `espflash monitor`
     // and the WebFlasher's log view both show this line.
@@ -612,6 +621,12 @@ fn start_setup(
         setup_network.ssid,
         setup_network.password
     );
+    if protection == wifi::ApProtection::OpenThisBoot {
+        log::warn!(
+            "setup network is OPEN for this boot: a button was held at power-on; \
+             the next restart protects it again"
+        );
+    }
     Ok((
         if persisted.is_some() {
             Mode::Recovery

@@ -22,7 +22,7 @@ export function beginResetHandoff(setupNetwork?: SetupNetworkResponse): void {
 export function resetHandoffMessage(): string {
   const join =
     resetHandoff.value === 'unknown'
-      ? 'Join the esp32-streamline-… network with the password from the device’s serial log or label,'
+      ? 'Join the esp32-streamline-… network with the password from the device’s serial log or label (or hold the board’s first key while powering on to open it once),'
       : 'Join the network below with its new password,';
   return `The device left this network and is broadcasting its setup Wi-Fi. ${join} then open http://192.168.71.1/ to set it up again.`;
 }

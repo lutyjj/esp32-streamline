@@ -84,13 +84,18 @@ qemu-image:
 # `make -C firmware qemu-artifacts`. The OTA image is optional; without it
 # the OTA test skips.
 OTA_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-ota.bin
+# Parallel pytest-xdist workers for the emulated suite. Each test boots its
+# own QEMU, so the suite parallelizes cleanly; bound the count to what the
+# host can spare, because oversubscription reproduces the "no healthy
+# response" setup flake. Empty runs serially, which is what CI uses.
+SMOKE_JOBS ?=
 smoke-qemu: qemu-image
 	@test -f "$(FLASH_IMAGE)" || (echo "FLASH_IMAGE=$(FLASH_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	$(CONTAINER) run --rm -v "$(abspath $(FLASH_IMAGE)):/flash.bin:ro" \
 		$(if $(wildcard $(OTA_IMAGE)),-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" -e STREAMLINE_QEMU_OTA_IMAGE=/ota.bin) \
 		-v "$(CURDIR):/workspace" -w /workspace \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_QEMU_IMAGE=/flash.bin \
-		$(QEMU_IMAGE) pytest smoke -v
+		$(QEMU_IMAGE) pytest smoke -v $(if $(SMOKE_JOBS),-n $(SMOKE_JOBS))
 
 # Reset the USB-connected board, sanity-check its boot over serial, then run
 # the same device-agnostic API suite the QEMU run uses against the live

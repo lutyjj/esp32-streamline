@@ -113,9 +113,10 @@ impl CaptureEngine {
         status.set_playing(playing);
         status.set_noise_floor(self.detector.noise_floor());
         let sequence = status.next_sequence();
-        // A pause consumes sequence numbers exactly like silence, so the
-        // bridge sees an honest timeline gap when streaming resumes.
-        if !playing || !status.streaming_enabled() {
+        // A pause or transport quiesce consumes sequence numbers exactly like
+        // silence, so the bridge sees an honest timeline gap when streaming
+        // resumes.
+        if !playing || !status.streaming_enabled() || status.transport_quiesce_requested() {
             return;
         }
         let Some(queue) = queue else {
@@ -163,7 +164,7 @@ impl Default for CaptureEngine {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, collections::VecDeque};
+    use std::{cell::RefCell, collections::VecDeque, time::Duration};
 
     use super::{CaptureEngine, READ_STALL_BACKOFF_MS, STALL_EXPIRY_MS};
     use crate::{
@@ -283,9 +284,7 @@ mod tests {
             }
         }
         assert!(status.snapshot().playing, "warm-up should start playback");
-        for _ in 0..status.snapshot().queue_depth {
-            queue.pop();
-        }
+        while queue.pop_timeout(Duration::ZERO).is_some() {}
     }
 
     #[test]
@@ -337,7 +336,9 @@ mod tests {
         assert!(snapshot.queue_depth >= 1);
         // The 50 idle packets consumed sequence numbers, so the first enqueued
         // packet is numbered past the silent gap, not from zero.
-        let (packet, _) = queue.pop();
+        let (packet, _) = queue
+            .pop_timeout(Duration::ZERO)
+            .expect("a packet was enqueued");
         assert!(sequence_of(&packet) >= 50);
     }
 
@@ -378,7 +379,48 @@ mod tests {
             &status,
             &RecordingDelay::default(),
         );
-        let (packet, _) = queue.pop();
+        let (packet, _) = queue
+            .pop_timeout(Duration::ZERO)
+            .expect("a packet was enqueued");
+        assert_eq!(sequence_of(&packet), sequence_before + 5);
+    }
+
+    #[test]
+    fn a_transport_quiesce_gates_the_queue_like_a_pause() {
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        let mut engine = CaptureEngine::new();
+        warm_to_playing(&mut engine, &queue, &status);
+        let sequence_before = status.snapshot().sequence;
+
+        status.request_transport_quiesce();
+        let mut source = ConstantSource { sample: LOUD };
+        for _ in 0..5 {
+            engine.step(
+                &mut source,
+                Some(&queue),
+                &status,
+                &RecordingDelay::default(),
+            );
+        }
+
+        let snapshot = status.snapshot();
+        // Meters and the timeline continue; nothing reaches the queue, so the
+        // network task has nothing to reconnect for while an install runs.
+        assert!(snapshot.playing);
+        assert_eq!(snapshot.sequence, sequence_before + 5);
+        assert!(queue.pop_timeout(Duration::ZERO).is_none());
+
+        status.end_transport_quiesce();
+        engine.step(
+            &mut source,
+            Some(&queue),
+            &status,
+            &RecordingDelay::default(),
+        );
+        let (packet, _) = queue
+            .pop_timeout(Duration::ZERO)
+            .expect("a packet was enqueued");
         assert_eq!(sequence_of(&packet), sequence_before + 5);
     }
 
@@ -424,7 +466,9 @@ mod tests {
         // final 256-byte read completed exactly what was requested.
         assert_eq!(snapshot.short_reads, short_reads_before + 2);
         assert_eq!(snapshot.sequence, sequence_before + 1);
-        let (packet, _) = queue.pop();
+        let (packet, _) = queue
+            .pop_timeout(Duration::ZERO)
+            .expect("a packet was enqueued");
         assert_eq!(sequence_of(&packet), sequence_before);
         let payload = &packet.as_bytes()[24..];
         let expected: Vec<u8> = (0..PAYLOAD_BYTES).map(|i| i as u8).collect();
@@ -448,7 +492,9 @@ mod tests {
             );
         }
 
-        let (packet, _) = queue.pop();
+        let (packet, _) = queue
+            .pop_timeout(Duration::ZERO)
+            .expect("a packet was enqueued");
         let payload = &packet.as_bytes()[24..];
         let expected: Vec<u8> = (0..PAYLOAD_BYTES).map(|i| i as u8).collect();
         assert_eq!(payload, expected, "a zero read must not shift the stream");
@@ -591,7 +637,9 @@ mod tests {
         // The 100 pre-stall bytes were dropped as stale: the packet after
         // recovery starts at stream offset 100 and the gap still covers the
         // full stall.
-        let (packet, _) = queue.pop();
+        let (packet, _) = queue
+            .pop_timeout(Duration::ZERO)
+            .expect("a packet was enqueued");
         assert_eq!(
             sequence_of(&packet),
             sequence_before + STOP_AFTER_PACKETS,

@@ -92,6 +92,10 @@ impl PacketSink for TcpClient {
             SendFailed { secure_handshake }
         })
     }
+
+    fn disconnect(&mut self) {
+        self.sender.disconnect();
+    }
 }
 
 #[derive(Debug)]

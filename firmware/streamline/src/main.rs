@@ -124,11 +124,6 @@ fn main() -> Result<()> {
         ota::mark_current_valid();
     }
 
-    // Rollback availability is fixed until the next OTA install, which reboots,
-    // so read the inactive slot once here rather than on every status poll and
-    // metrics scrape.
-    let rollback = ota::rollback_target();
-
     let mdns = if mode == Mode::Provisioned {
         match MdnsAdvertisement::start(&mdns_hostname, &config) {
             Ok(advertisement) => Some(Arc::new(Mutex::new(advertisement))),
@@ -160,7 +155,6 @@ fn main() -> Result<()> {
         mdns,
         ota: Arc::new(ota::OtaProgress::default()),
         health,
-        rollback,
     });
     #[cfg(not(feature = "qemu"))]
     let captive_portal_address = match mode {
@@ -226,6 +220,7 @@ fn main() -> Result<()> {
                         Arc::clone(&state.ota),
                         Arc::clone(&state.store),
                         ota::Source::LatestRelease,
+                        state.stream.clone(),
                     ) {
                         log::warn!("automatic firmware update check could not start: {error:#}");
                     }

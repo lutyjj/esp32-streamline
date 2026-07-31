@@ -442,6 +442,7 @@ export class FakeDevice {
     ota.bytes_total = 1500000;
     ota.bytes_written = 0;
     ota.phase = 'downloading';
+    ota.message = 'audio paused while the update installs';
     this.otaSteps = [
       () => {
         ota.bytes_written = 750000;

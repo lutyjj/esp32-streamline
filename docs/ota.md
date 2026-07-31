@@ -33,12 +33,17 @@ background worker and require the admin-key bearer token.
    reads the `-ota.bin` entry — one small file yields both the latest version
    and the expected digest, so no GitHub API call or token is needed.
 3. For a check, it reports the result and stops. For an update, if the release
-   is newer than the running firmware, it streams
-   `releases/latest/download/streamline-<ver>-ota.bin` straight into the
-   inactive slot, hashing as it writes.
-4. On a SHA-256 match it commits the boot pointer and reboots; a mismatch aborts
-   the write and leaves the running slot untouched.
-5. Progress and result surface in `/api/status` under `ota`, which the console
+   is newer than the running firmware, the worker pauses audio streaming: the
+   PCM connection closes, freeing its socket and TLS buffers so the download,
+   hashing, and flash writes fit in memory beside a live stream. The status
+   message narrates the pause; audio meters stay live. A stream that will not
+   pause fails the install cleanly with both firmware slots intact.
+4. It streams `releases/latest/download/streamline-<ver>-ota.bin` straight into
+   the inactive slot, hashing as it writes.
+5. On a SHA-256 match it commits the boot pointer and reboots; a mismatch aborts
+   the write and leaves the running slot untouched. Any other failure aborts the
+   same way and resumes streaming.
+6. Progress and result surface in `/api/status` under `ota`, which the console
    polls.
 
 `GET /api/settings` reports the persisted `auto_update_schedule` policy.
@@ -94,6 +99,12 @@ applies. `/api/status` advertises `ota.rollback_available` and
 action only when a valid previous image is stored and can name the version it
 returns to. A freshly serial-flashed device, with only one slot written, reports
 it unavailable.
+
+Installing consumes the rollback image: the previous firmware lives in the
+inactive slot, and the install erases that slot before writing into it. A
+download that fails after that point leaves the device on its running image
+with no rollback until the next successful install, and `/api/status` reads the
+slot state fresh so `rollback_available` reports that honestly.
 
 ## Startup health
 

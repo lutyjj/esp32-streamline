@@ -184,6 +184,8 @@ Promise:
 
 - Updating is automatic by default, configurable as daily or weekly, waits for
   idle audio, and can be disabled. Manual checks and installs remain available.
+  An install pauses audio streaming for its duration and narrates the pause;
+  a failed install resumes the stream on its own.
   Progress is a visible log, and the device either
   confirms the new version or rolls back by itself. A rollback is narrated
   too (the console names the version still running rather than claiming a

@@ -54,6 +54,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
                 Arc::clone(&state_for_ota.ota),
                 Arc::clone(&state_for_ota.store),
                 source,
+                state_for_ota.stream.clone(),
             ),
         )
     })?;

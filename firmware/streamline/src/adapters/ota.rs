@@ -32,6 +32,7 @@ use serde::Serialize;
 
 use crate::{
     adapters::{nvs::ConfigStore, time},
+    stream::StreamStatus,
     update::{self, CustomImage, ImageSink, ImageSource, InstallProgress, OtaRelease},
 };
 
@@ -43,6 +44,10 @@ const REPO: &str = "lutyjj/esp32-streamline";
 /// default worker.
 const WORKER_STACK_BYTES: usize = 16_384;
 const READ_CHUNK_BYTES: usize = 4_096;
+/// How often the install worker rechecks whether the PCM transport released
+/// its connection, and how long it waits before giving up on the pause.
+const QUIESCE_POLL_MS: u32 = 100;
+const QUIESCE_TIMEOUT_MS: u32 = 10_000;
 /// Guard against a malformed or hostile checksum listing exhausting the heap.
 const MAX_SUMS_BYTES: usize = 8_192;
 
@@ -239,8 +244,9 @@ fn valid_rollback_slot() -> Option<*const sys::esp_partition_t> {
 
 /// The firmware version the device would roll back into, when a valid previous
 /// slot exists. `Some("")` when the slot is valid but its version cannot be
-/// read; `None` when there is nothing to roll back to. Read fresh — rollback
-/// availability is fixed between reboots, and an OTA install reboots.
+/// read; `None` when there is nothing to roll back to. Read fresh on every
+/// call and never cached: an install invalidates the inactive slot the moment
+/// it begins writing, without a reboot when the install fails.
 pub fn rollback_target() -> Option<String> {
     let slot = valid_rollback_slot()?;
     let mut desc: sys::esp_app_desc_t = unsafe { core::mem::zeroed() };
@@ -297,25 +303,29 @@ enum Action {
 /// handler returns immediately; callers poll [`OtaProgress::snapshot`] for the
 /// result (`up-to-date` or `update-available`).
 pub fn spawn_check(progress: Arc<OtaProgress>) -> Result<()> {
-    spawn(progress, Action::Check, None)
+    spawn(progress, Action::Check, None, None)
 }
 
 /// Kick off an install on a worker thread. The HTTP handler returns
 /// immediately; callers poll [`OtaProgress::snapshot`] for status. A successful
 /// install reboots the device into the new slot; the outcome is persisted in
-/// `store` so it survives the reboot (and a possible rollback).
+/// `store` so it survives the reboot (and a possible rollback). The install
+/// pauses `stream` while it runs — see [`quiesce_streaming`] — and resumes it
+/// on failure.
 pub fn spawn_update(
     progress: Arc<OtaProgress>,
     store: Arc<Mutex<ConfigStore>>,
     source: Source,
+    stream: Option<Arc<StreamStatus>>,
 ) -> Result<()> {
-    spawn(progress, Action::Install(source), Some(store))
+    spawn(progress, Action::Install(source), Some(store), stream)
 }
 
 fn spawn(
     progress: Arc<OtaProgress>,
     action: Action,
     store: Option<Arc<Mutex<ConfigStore>>>,
+    stream: Option<Arc<StreamStatus>>,
 ) -> Result<()> {
     if !progress.begin() {
         bail!("an update is already in progress");
@@ -331,7 +341,7 @@ fn spawn(
 
     let spawned = thread::Builder::new()
         .stack_size(WORKER_STACK_BYTES)
-        .spawn(move || run(&progress, action, store.as_deref()))
+        .spawn(move || run(&progress, action, store.as_deref(), stream.as_deref()))
         .context("cannot spawn OTA task");
 
     ThreadSpawnConfiguration::default()
@@ -341,7 +351,12 @@ fn spawn(
     spawned.map(drop)
 }
 
-fn run(progress: &OtaProgress, action: Action, store: Option<&Mutex<ConfigStore>>) {
+fn run(
+    progress: &OtaProgress,
+    action: Action,
+    store: Option<&Mutex<ConfigStore>>,
+    stream: Option<&StreamStatus>,
+) {
     if let Action::Install(Source::Custom(image)) = &action {
         // A custom image is digest-pinned and version-agnostic, so no release
         // check. Clock sync exists only for TLS certificate validation; a
@@ -357,6 +372,7 @@ fn run(progress: &OtaProgress, action: Action, store: Option<&Mutex<ConfigStore>
             image.display_name(),
             progress,
             store,
+            stream,
         );
     }
 
@@ -389,7 +405,28 @@ fn run(progress: &OtaProgress, action: Action, store: Option<&Mutex<ConfigStore>
         &release.version,
         progress,
         store,
+        stream,
     );
+}
+
+/// Pause streaming and wait until the network task closes the PCM connection,
+/// freeing the socket and TLS buffers the download and flash writes need. A
+/// device without a live pipeline passes through immediately; a transport that
+/// will not release fails the install cleanly, keeping both firmware slots
+/// intact.
+fn quiesce_streaming(stream: Option<&StreamStatus>, progress: &OtaProgress) -> Result<(), String> {
+    let Some(stream) = stream else { return Ok(()) };
+    progress.set_message("pausing audio to install the update");
+    stream.request_transport_quiesce();
+    for _ in 0..QUIESCE_TIMEOUT_MS / QUIESCE_POLL_MS {
+        if !stream.transport_connected() {
+            progress.set_message("audio paused while the update installs");
+            return Ok(());
+        }
+        esp_idf_svc::hal::delay::FreeRtos::delay_ms(QUIESCE_POLL_MS);
+    }
+    stream.end_transport_quiesce();
+    Err("audio streaming did not pause in time".to_owned())
 }
 
 fn sync_clock(progress: &OtaProgress) -> Result<(), String> {
@@ -399,18 +436,30 @@ fn sync_clock(progress: &OtaProgress) -> Result<(), String> {
 
 /// Download, verify, and boot into the image at `url`; `what` is a non-sensitive
 /// name for progress messages and persisted notes ("0.3.3", "custom image").
+///
+/// Streaming pauses for the duration and resumes if the install fails; a
+/// successful install reboots, which resumes it in the new image.
 fn install_and_reboot(
     url: &str,
     sha256: &str,
     what: &str,
     progress: &OtaProgress,
     store: Option<&Mutex<ConfigStore>>,
+    stream: Option<&StreamStatus>,
 ) {
+    if let Err(error) = quiesce_streaming(stream, progress) {
+        let message = format!("install {what} failed: {error}");
+        note_outcome(store, &message);
+        return progress.fail(message);
+    }
     progress.set_phase(Phase::Downloading);
     // Written before the download so a crash mid-install still leaves evidence;
     // overwritten by the final outcome below.
     note_outcome(store, &format!("installing {what} (did not finish)"));
     if let Err(error) = install(url, sha256, progress) {
+        if let Some(stream) = stream {
+            stream.end_transport_quiesce();
+        }
         let message = format!("install {what} failed: {error:#}");
         note_outcome(store, &message);
         return progress.fail(message);

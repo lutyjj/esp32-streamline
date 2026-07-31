@@ -49,6 +49,15 @@ pub struct StreamStatus {
     /// streaming — flipped by `POST /api/stream` and the `toggle_stream`
     /// button action.
     paused: AtomicBool,
+    /// Transport quiesce: while set, capture stops enqueuing and the network
+    /// task closes its connection, freeing the socket and TLS buffers a
+    /// firmware install needs. Requested by the OTA worker; cleared by it to
+    /// resume streaming after a failed install.
+    transport_quiesce: AtomicBool,
+    /// Whether the network task currently holds an open connection. The OTA
+    /// worker waits for `false` after requesting quiesce; a device without a
+    /// network task never connects, so the wait ends immediately.
+    transport_connected: AtomicBool,
 }
 
 impl StreamStatus {
@@ -65,6 +74,34 @@ impl StreamStatus {
     /// Whether captured packets are currently allowed onto the wire.
     pub fn streaming_enabled(&self) -> bool {
         !self.paused.load(Ordering::Relaxed)
+    }
+
+    /// Ask the pipeline to release the PCM transport: capture stops enqueuing
+    /// and the network task closes its connection, freeing its buffers. Poll
+    /// [`Self::transport_connected`] for completion.
+    pub fn request_transport_quiesce(&self) {
+        self.transport_quiesce.store(true, Ordering::Relaxed);
+    }
+
+    /// Let the pipeline reconnect and stream again after a quiesce.
+    pub fn end_transport_quiesce(&self) {
+        self.transport_quiesce.store(false, Ordering::Relaxed);
+    }
+
+    /// Whether a transport quiesce is in force.
+    pub(crate) fn transport_quiesce_requested(&self) -> bool {
+        self.transport_quiesce.load(Ordering::Relaxed)
+    }
+
+    /// Whether the network task holds an open connection right now.
+    pub fn transport_connected(&self) -> bool {
+        self.transport_connected.load(Ordering::Relaxed)
+    }
+
+    /// Record whether the network task holds an open connection; maintained by
+    /// the network engine on every connect, send failure, and quiesce.
+    pub(crate) fn set_transport_connected(&self, connected: bool) {
+        self.transport_connected.store(connected, Ordering::Relaxed);
     }
 
     /// Ask the capture task to restart play detection from scratch. Called

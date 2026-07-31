@@ -62,7 +62,10 @@ fn step(
         // enqueuing too, and packets from before the pause age out via the
         // stale bound once streaming resumes.
         sink.disconnect();
-        status.set_transport_connected(false);
+        // Acknowledge only here, after the connection is closed and from the
+        // one branch that cannot reach a send. A waiter that observes this
+        // knows no reconnect can race its download.
+        status.acknowledge_transport_quiesced();
         delay.delay_ms(CONTROL_POLL_MS);
         return;
     }
@@ -99,7 +102,6 @@ fn send_packet(
         let started = clock.monotonic_millis();
         match sink.send(packet.as_bytes()) {
             Ok(reconnected) => {
-                status.set_transport_connected(true);
                 let elapsed = clock.monotonic_millis().saturating_sub(started);
                 if elapsed >= SEND_STALL_MS {
                     status.record_send_stall(elapsed);
@@ -109,8 +111,6 @@ fn send_packet(
                 return;
             }
             Err(failure) => {
-                // The sink drops its connection on failure.
-                status.set_transport_connected(false);
                 status.record_network_error(failure.secure_handshake);
                 delay.delay_ms(SEND_ERROR_BACKOFF_MS);
             }
@@ -386,19 +386,14 @@ mod tests {
         assert_eq!(snapshot.longest_send_stall_ms, 0);
     }
 
+    /// The acknowledgement is what an installer waits on, so an ordinary send
+    /// failure must never look like one: the sender reconnects after a
+    /// failure, and a waiter fooled into starting its download would race
+    /// that reconnect for the buffers it just freed.
     #[test]
-    fn sends_track_whether_the_transport_holds_a_connection() {
+    fn a_send_failure_never_acknowledges_a_quiesce() {
         let status = StreamStatus::default();
-        assert!(!status.transport_connected());
-
-        send_packet(
-            &mut FakeSink::scripted([Ok(true)]),
-            &packet(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::default(),
-        );
-        assert!(status.transport_connected());
+        status.mark_transport_present();
 
         send_packet(
             &mut FakeSink::scripted([io_error(), Ok(true)]),
@@ -407,14 +402,37 @@ mod tests {
             &RecordingDelay::default(),
             &SteppingClock::default(),
         );
-        // The failure marked it released mid-retry; the recovery re-marked it.
-        assert!(status.transport_connected());
+
+        assert!(!status.transport_quiesced());
+        assert_eq!(status.snapshot().network_errors, 1);
+    }
+
+    /// A stale acknowledgement from an earlier install must not satisfy the
+    /// next one, which would let a download start against a live transport.
+    #[test]
+    fn a_new_request_discards_the_previous_acknowledgement() {
+        let status = StreamStatus::default();
+        status.mark_transport_present();
+        status.request_transport_quiesce();
+        step(
+            &mut FakeSink::scripted([]),
+            &PacketQueue::new(),
+            &status,
+            &RecordingDelay::default(),
+            &SteppingClock::default(),
+        );
+        assert!(status.transport_quiesced());
+
+        status.end_transport_quiesce();
+        status.request_transport_quiesce();
+
+        assert!(!status.transport_quiesced());
     }
 
     #[test]
-    fn a_quiesced_step_disconnects_the_sink_and_reports_a_released_transport() {
+    fn a_quiesced_step_disconnects_the_sink_and_acknowledges_the_release() {
         let status = StreamStatus::default();
-        status.set_transport_connected(true);
+        status.mark_transport_present();
         status.request_transport_quiesce();
         let queue = PacketQueue::new();
         queue.push_drop_oldest(packet());
@@ -431,7 +449,7 @@ mod tests {
         );
 
         assert_eq!(sink.disconnects, 1);
-        assert!(!status.transport_connected());
+        assert!(status.transport_quiesced());
         // The step backed off instead of spinning on the control flag.
         assert_eq!(delay.waits.borrow().len(), 1);
     }
@@ -450,9 +468,7 @@ mod tests {
         status.end_transport_quiesce();
         step(&mut sink, &queue, &status, &delay, &clock);
 
-        let snapshot = status.snapshot();
-        assert_eq!(snapshot.packets, 1);
-        assert!(status.transport_connected());
+        assert_eq!(status.snapshot().packets, 1);
     }
 
     #[test]

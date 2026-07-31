@@ -55,6 +55,10 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
     })?;
 
     if let (Some(target), Some(queue)) = (target, queue) {
+        // Recorded here, beside the decision itself: an install must wait for
+        // this sender to release its buffers, and must not wait when there is
+        // no sender to wait for.
+        status.mark_transport_present();
         let network_status = Arc::clone(&status);
         spawn_pinned(c"network", NETWORK_PRIORITY, move || {
             stream::run_network(

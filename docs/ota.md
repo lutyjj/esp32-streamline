@@ -33,11 +33,14 @@ background worker and require the admin-key bearer token.
    reads the `-ota.bin` entry — one small file yields both the latest version
    and the expected digest, so no GitHub API call or token is needed.
 3. For a check, it reports the result and stops. For an update, if the release
-   is newer than the running firmware, the worker pauses audio streaming: the
-   PCM connection closes, freeing its socket and TLS buffers so the download,
-   hashing, and flash writes fit in memory beside a live stream. The status
-   message narrates the pause; audio meters stay live. A stream that will not
-   pause fails the install cleanly with both firmware slots intact.
+   is newer than the running firmware, the worker pauses audio streaming and
+   waits for the sender to confirm it: the PCM connection closes, freeing its
+   socket and TLS buffers so the download, hashing, and flash writes fit in
+   memory. The download starts only after that confirmation, so no reconnect
+   can race it for the buffers it just freed. A device with no bridge target
+   holds no connection and starts at once. The status message narrates the
+   pause; audio meters stay live. A sender that will not release fails the
+   install cleanly with both firmware slots intact.
 4. It streams `releases/latest/download/streamline-<ver>-ota.bin` straight into
    the inactive slot, hashing as it writes.
 5. On a SHA-256 match it commits the boot pointer and reboots; a mismatch aborts

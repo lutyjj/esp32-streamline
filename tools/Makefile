@@ -101,7 +101,10 @@ smoke-qemu: qemu-image
 # the same device-agnostic API suite the QEMU run uses against the live
 # board. Serial and espflash are host resources, so the boot capture runs
 # with the system python3, like `make firmware-capture`; the API suite runs
-# in the pytest runner image and skips emulated-only tests.
+# in the pytest runner image and skips emulated-only tests. `--capture=sys`
+# keeps pytest away from file descriptor 0: default fd-capture nulls it, and
+# the admin key rides in on that descriptor — without this the authenticated
+# tests silently skip as "key unavailable".
 smoke-device: qemu-image
 	PYTHONPATH=src python3 -m streamline_tools.smoke device --port "$(PORT)" \
 		$(if $(DEVICE),--url "http://$(DEVICE)")
@@ -109,4 +112,4 @@ smoke-device: qemu-image
 		-v "$(CURDIR):/workspace" -w /workspace \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_SMOKE_TARGET="http://$(DEVICE)" \
 		-e STREAMLINE_ADMIN_KEY_FD=0 \
-		$(QEMU_IMAGE) pytest smoke -v,@echo "DEVICE is unset: skipping the API contract suite")
+		$(QEMU_IMAGE) pytest smoke -v --capture=sys,@echo "DEVICE is unset: skipping the API contract suite")

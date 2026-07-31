@@ -6,6 +6,7 @@
 pub mod buttons;
 pub mod captive_portal;
 pub mod codec;
+pub mod coredump;
 pub mod http;
 pub mod i2s;
 pub mod logs;

@@ -155,6 +155,39 @@ def test_unlock_accepts_the_key_and_rejects_the_rest(authed_device_api: DeviceAp
     assert code == 401, f"a wrong key was accepted at unlock with HTTP {code}"
 
 
+def test_coredump_reads_stay_behind_the_admin_key(authed_device_api: DeviceApi) -> None:
+    # A dump is a copy of device memory, so on a provisioned device both
+    # coredump reads require the key, unlike the open reads.
+    stranger = dataclasses.replace(authed_device_api, admin_key=None)
+    for path in ("/api/coredump", "/api/coredump/image"):
+        code, _ = stranger.fetch(path)
+        assert code == 401, f"GET {path} without the key answered HTTP {code}"
+
+
+def test_coredump_status_names_a_coherent_state(authed_device_api: DeviceApi) -> None:
+    # A layout with the coredump partition answers 200 with a present flag; a
+    # layout from before the partition existed answers 503. Both are healthy
+    # states, and erase is idempotent, so this stays safe on a live board.
+    code, body = authed_device_api.fetch("/api/coredump")
+    assert code in (200, 503), f"GET /api/coredump answered HTTP {code}: {body[:200]!r}"
+    if code == 503:
+        image_code, _ = authed_device_api.fetch("/api/coredump/image")
+        assert image_code == 503, f"image endpoint disagrees about availability: HTTP {image_code}"
+        return
+    status = json.loads(body)
+    assert isinstance(status["present"], bool)
+    assert isinstance(status["size_bytes"], int)
+    assert status["present"] == (status["size_bytes"] > 0), status
+    if status["present"]:
+        pytest.skip("device holds a real crash dump; refusing to erase evidence")
+    image_code, _ = authed_device_api.fetch("/api/coredump/image")
+    assert image_code == 404, f"absent dump downloaded with HTTP {image_code}"
+    # Erasing an empty store is the idempotent no-op that proves the endpoint
+    # without destroying anything.
+    erase_code, _ = authed_device_api.post_form("/api/coredump/erase", {})
+    assert erase_code == 200, f"erase answered HTTP {erase_code}"
+
+
 def test_ota_rejects_a_partial_custom_image_request(authed_device_api: DeviceApi) -> None:
     # A custom install pins content by digest, so a URL without its sha256 must
     # be refused outright — never silently downgraded to a latest-release pull.

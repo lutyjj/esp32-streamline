@@ -222,7 +222,8 @@ Flashing runs on the host because Docker Desktop on macOS cannot reliably
 expose serial devices. Install the tool once: `cargo install espflash`.
 
 A device already on the network needs none of that to be read: it serves its
-own log, this boot and the one before it, at `GET /api/logs`. See
+own log, this boot and the one before it, at `GET /api/logs`, and the crash
+dump a panic leaves behind at `GET /api/coredump/image`. See
 [diagnostics](docs/diagnostics.md).
 
 Docs: [architecture](docs/architecture.md) ·

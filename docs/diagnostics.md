@@ -1,9 +1,10 @@
 # Device diagnostics
 
-The device keeps its own log in memory and serves it over the API. Reading a
-node needs no USB cable, no laptop beside it, and no serial console: anything
-that can reach the device and hold the admin key can read what the firmware
-said, including what it said before its last restart.
+The device keeps its own log in memory, stores a crash dump in flash when it
+panics, and serves both over the API. Reading a node needs no USB cable, no
+laptop beside it, and no serial console: anything that can reach the device and
+hold the admin key can read what the firmware said — including what it said
+before its last restart — and pull the core dump a panic left behind.
 
 ## Read the log
 
@@ -64,10 +65,9 @@ into the next boot.
 - **The first lines of a boot.** The bootloader and the ESP-IDF startup run
   before the firmware installs its capture, so those reach the UART only.
 - **Panic backtraces.** The panic handler writes straight to the UART, below
-  the logging library. The log holds what led up to the panic, not the dump
-  that follows it. Recovering that needs `CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH`
-  and a `coredump` partition, which is a partition-table change and therefore a
-  serial reflash.
+  the logging library. The log holds what led up to the panic; the dump that
+  follows it lands in flash and is served separately — see
+  [crash dumps](#crash-dumps).
 - **Anything after a power cycle.** Retention across a restart relies on RAM
   the reset does not clear. Pulling power clears it, so `previous` is `null`
   after one.
@@ -83,6 +83,40 @@ Read often enough and the reader keeps more history than the device does: the
 console merges each read into what it already holds, so lines that scrolled out
 of the device's buffer between two reads stay on screen.
 
+## Crash dumps
+
+A panic writes an ELF core dump to the dedicated `coredump` flash partition,
+where it survives the reboot — and a rollback, which touches only the app
+slots. The dump is a copy of task memory at the moment of the crash, so like
+the log it sits behind the admin key.
+
+```sh
+curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
+  http://192.0.2.10/api/coredump
+```
+
+```json
+{ "present": true, "size_bytes": 23972 }
+```
+
+Download the dump and read it with ESP-IDF's `espcoredump.py`, using the
+`.elf` published beside the release the device was running:
+
+```sh
+curl -s -H "Authorization: Bearer $STREAMLINE_ADMIN_KEY" \
+  -o crash.bin http://192.0.2.10/api/coredump/image
+espcoredump.py info_corefile -t raw -c crash.bin streamline-X.Y.Z.elf
+```
+
+`POST /api/coredump/erase` clears the stored dump and always succeeds, so a
+handled crash does not shadow the next one. The device keeps one dump: a later
+panic overwrites an earlier one.
+
+A flash layout from before the `coredump` partition existed reports every
+coredump endpoint `503`; the device is otherwise unaffected. OTA never
+rewrites the partition table, so such units gain crash capture at their next
+USB reflash ([OTA: migrating existing devices](ota.md#migrating-existing-devices)).
+
 ## In the console
 
 **System → Developer — device log** shows both boots, with a **Follow** switch
@@ -92,5 +126,5 @@ settings unlock, for the same reason the endpoint needs the key.
 ## When serial is still the answer
 
 Reach for [`make firmware-monitor`](../README.md#development) when the device
-does not reach the network at all, when the earliest boot lines matter, or when
-a panic dump is what you need. Everything else is now readable over the API.
+does not reach the network at all or when the earliest boot lines matter.
+Everything else is readable over the API.

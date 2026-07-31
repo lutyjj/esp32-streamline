@@ -18,6 +18,7 @@ half unused. It is applied at flash time via `espflash --partition-table`, so th
 | `nvs` | 24 KB | Wi-Fi/target/audio config, audio profiles, selected board descriptor, and admin key |
 | `otadata` | 8 KB | Records the bootable slot |
 | `phy_init` | 4 KB | RF calibration |
+| `coredump` | 56 KB | Crash dump a panic writes, served by the [diagnostics API](diagnostics.md#crash-dumps) |
 | `ota_0`, `ota_1` | 1.9 MB each | Application slots; the bootloader runs one and updates the other |
 
 ## Update flow
@@ -216,5 +217,7 @@ cannot point the bootloader at a slot that moved; the web flasher does this and
 lands the device fresh in setup mode. Every update after that is over-the-air.
 
 Two layouts have needed this reflash: the original single-app image, and the 8 MB
-two-slot table that the 4 MB layout replaced. A device already on the 4 MB layout
-never needs it again.
+two-slot table that the 4 MB layout replaced. A device on a 4 MB layout without
+the `coredump` partition keeps every capability except crash capture, which its
+firmware reports unavailable; the reflash that adds the partition is optional
+and adds nothing else.

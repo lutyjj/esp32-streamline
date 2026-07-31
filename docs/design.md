@@ -352,8 +352,9 @@ so integrations and the UI inspect the same document.
 
 Endpoint paths use nouns for state and verbs for actions. Every write requires
 the admin key ([security.md](security.md)). Reads are open where they return
-facts chosen for publication; `/api/logs` is the exception, because it returns
-whatever the firmware logged. Responses carry
+facts chosen for publication; `/api/logs` and the `/api/coredump` reads are the
+exceptions, because they return whatever the firmware logged or held in memory
+when it crashed. Responses carry
 `rebooting: true` when a change restarts the device, so clients react to the
 response instead of assuming.
 

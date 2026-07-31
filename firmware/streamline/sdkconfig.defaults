@@ -78,3 +78,19 @@ CONFIG_MBEDTLS_SSL_TLS1_3_KEXM_PSK_EPHEMERAL=y
 # after use. This selects MBEDTLS_ASYMMETRIC_CONTENT_LEN and is safe for the
 # persistent PSK stream, whose sessions only move record buffers.
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
+# The image must fit a 1.9 MB OTA slot (partitions.csv), so capabilities the
+# product cannot reach stay out of the build. The device's only TLS-certificate
+# peer is GitHub (release checks and downloads); the common-CA subset carries
+# its DigiCert and Amazon Trust roots, and the full 67 KB Mozilla bundle buys
+# nothing beyond them.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=n
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+# The Wi-Fi config model is SSID + passphrase; no EAP identity exists, so
+# WPA2-Enterprise support is unreachable code.
+CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
+# The product is IPv4: the bridge identifies cleartext sources by peer IPv4
+# address, and setup, mDNS, and OTA all run over v4.
+CONFIG_LWIP_IPV6=n
+# The esp_err_t name table trades 2 KB of flash for prettier error strings.
+CONFIG_ESP_ERR_TO_NAME_LOOKUP=n

@@ -31,7 +31,7 @@ interface MockLogLine {
   text: string;
 }
 
-import { deviceConfig, deviceStatus } from './fixtures';
+import { deviceConfig, deviceStatus, setupNetwork } from './fixtures';
 
 /**
  * The admin key the fake device accepts once provisioned: the canonical
@@ -43,12 +43,7 @@ export const MOCK_ADMIN_KEY = 'a'.repeat(48);
 /** The version an install lands on, so update recovery reads as applied. */
 const MOCK_UPDATED_VERSION = '0.5.0-mock';
 
-/**
- * The setup network the fake device would fall back to, from the schema's
- * canonical example device. Factory reset regenerates the password the way
- * the firmware mints a fresh one.
- */
-const MOCK_SETUP_NETWORK = { ssid: 'esp32-streamline-1AA8B2', password: 'abcd-efgh-ijkm-npqr' };
+/** The password a factory reset mints, standing in for the device's RNG. */
 const MOCK_RESET_PASSWORD = 'wxyz-2345-wxyz-2345';
 
 /**
@@ -103,7 +98,7 @@ export class FakeDevice {
   /** The stored crash dump's bytes; null while none is stored. */
   private coredump: ArrayBuffer | null = null;
   /** The setup network's credentials; factory reset regenerates the password. */
-  private setupNetwork = { ...MOCK_SETUP_NETWORK };
+  private setupNetwork = setupNetwork();
 
   constructor(scenario: DeviceScenario = 'steady') {
     this.reset(scenario);
@@ -244,7 +239,7 @@ export class FakeDevice {
       }),
       this.write('/api/factory-reset', () => {
         this.reset('first-boot');
-        this.setupNetwork = { ...MOCK_SETUP_NETWORK, password: MOCK_RESET_PASSWORD };
+        this.setupNetwork = setupNetwork({ password: MOCK_RESET_PASSWORD });
         return { rebooting: true, setup_network: this.setupNetwork };
       }),
     ];

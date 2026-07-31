@@ -244,9 +244,12 @@ fn valid_rollback_slot() -> Option<*const sys::esp_partition_t> {
 
 /// The firmware version the device would roll back into, when a valid previous
 /// slot exists. `Some("")` when the slot is valid but its version cannot be
-/// read; `None` when there is nothing to roll back to. Read fresh on every
-/// call and never cached: an install invalidates the inactive slot the moment
-/// it begins writing, without a reboot when the install fails.
+/// read; `None` when there is nothing to roll back to.
+///
+/// Read fresh on every call: an install erases the inactive slot as soon as it
+/// begins writing, so a value cached at boot is wrong from that moment until
+/// the next reboot, which a failed install never reaches. The read costs less
+/// than the status response's own jitter, so caching it buys nothing.
 pub fn rollback_target() -> Option<String> {
     let slot = valid_rollback_slot()?;
     let mut desc: sys::esp_app_desc_t = unsafe { core::mem::zeroed() };
@@ -419,7 +422,7 @@ fn quiesce_streaming(stream: Option<&StreamStatus>, progress: &OtaProgress) -> R
     progress.set_message("pausing audio to install the update");
     stream.request_transport_quiesce();
     for _ in 0..QUIESCE_TIMEOUT_MS / QUIESCE_POLL_MS {
-        if !stream.transport_connected() {
+        if stream.transport_quiesced() {
             progress.set_message("audio paused while the update installs");
             return Ok(());
         }

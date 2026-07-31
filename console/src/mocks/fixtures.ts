@@ -7,13 +7,20 @@
  */
 
 import contract from '../../../docs/openapi.json';
-import type { DeviceConfig, DeviceStatus, TransportStatus } from '../lib/api';
+import type { DeviceConfig, DeviceStatus, SetupNetworkResponse, TransportStatus } from '../lib/api';
 
 // A single narrowing cast, not `as unknown`: JSON imports widen enum values
 // to `string`, but the structures must still line up, so a missing or
 // mistyped example field fails `tsc` here.
 const STATUS_EXAMPLE = contract.components.schemas.StatusResponse.example as DeviceStatus;
 const CONFIG_EXAMPLE = contract.components.schemas.ConfigResponse.example as DeviceConfig;
+const SETUP_NETWORK_EXAMPLE = contract.components.schemas.SetupNetworkResponse
+  .example as SetupNetworkResponse;
+
+/** The example device's setup network, so its SSID shape follows the firmware's. */
+export function setupNetwork(overrides: Partial<SetupNetworkResponse> = {}): SetupNetworkResponse {
+  return { ...structuredClone(SETUP_NETWORK_EXAMPLE), ...overrides };
+}
 
 /** The example device's cleartext transport; override the fields a test cares about. */
 export function transportStatus(overrides: Partial<TransportStatus> = {}): TransportStatus {

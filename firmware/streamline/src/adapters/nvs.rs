@@ -1,6 +1,6 @@
 //! ESP-IDF NVS persistence for StreamLine configuration.
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
 
 use crate::{
@@ -443,10 +443,26 @@ impl ConfigStore {
     /// stored value is absent or malformed. Factory reset removes the stored
     /// value, so the next caller regenerates it.
     pub fn ensure_setup_network_password(&self, random: &mut impl RandomBytes) -> Result<String> {
-        let stored = self.optional_string(KEY_SETUP_AP_PASSWORD);
-        if setup_network::is_valid_password(&stored) {
-            return Ok(stored);
+        // A read failure must not look like an absent key. `optional_string`
+        // collapses both to empty, which is right for a diagnostic note and
+        // wrong for a credential: regenerating on a transient error would
+        // silently invalidate the password printed on the device's label.
+        let mut buffer = [0_u8; 256];
+        let stored = self
+            .nvs
+            .get_str(KEY_SETUP_AP_PASSWORD, &mut buffer)
+            .context("could not read the stored setup-network password")?;
+        match stored {
+            Some(password) if setup_network::is_valid_password(password) => Ok(password.to_owned()),
+            Some(_) => {
+                log::warn!("stored setup-network password is malformed; generating a new one");
+                self.generate_setup_network_password(random)
+            }
+            None => self.generate_setup_network_password(random),
         }
+    }
+
+    fn generate_setup_network_password(&self, random: &mut impl RandomBytes) -> Result<String> {
         let password = setup_network::generate_password(random);
         self.nvs.set_str(KEY_SETUP_AP_PASSWORD, &password)?;
         Ok(password)

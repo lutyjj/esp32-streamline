@@ -27,6 +27,7 @@ use crate::{
     config::RuntimeConfig,
     health::HealthReport,
     profiles::AudioProfileCatalog,
+    setup_network::SetupNetwork,
     stream::StreamStatus,
     transport::KeyVerifier,
 };
@@ -83,6 +84,10 @@ pub struct ApiState {
     pub ota: Arc<OtaProgress>,
     /// The startup health verdict, assembled once at boot (see [`crate::health`]).
     pub health: Arc<HealthReport>,
+    /// The setup network's credentials, minted at boot (see
+    /// [`crate::setup_network`]). Served admin-gated so the owner can note the
+    /// password a recovery fallback will require.
+    pub setup_network: SetupNetwork,
 }
 
 fn method(endpoint: Endpoint) -> Method {

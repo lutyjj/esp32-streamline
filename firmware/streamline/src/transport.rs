@@ -4,6 +4,8 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::random::RandomBytes;
+
 pub const CONTRACT_VERSION: u8 = 1;
 pub const DEFAULT_PORT: u16 = 39_000;
 pub const PSK_BYTES: usize = 32;
@@ -321,10 +323,6 @@ impl TransportSettings {
     pub fn requires_restart_to(&self, next: &Self) -> bool {
         self.mode != next.mode
     }
-}
-
-pub trait RandomBytes {
-    fn fill(&mut self, output: &mut [u8]);
 }
 
 /// Hardware/network edge used only to prove a staged key before activation.

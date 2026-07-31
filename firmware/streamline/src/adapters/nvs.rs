@@ -11,6 +11,8 @@ use crate::{
     profiles::{
         AudioProfile, AudioProfileCatalog, AUDIO_PROFILE_SCHEMA_VERSION, MAX_AUDIO_PROFILES,
     },
+    random::RandomBytes,
+    setup_network,
     state::{GenerationStorage, PersistentState, StateStore},
 };
 
@@ -30,6 +32,7 @@ const KEY_INPUT_GAIN: &str = "input_gain";
 const KEY_ADC_ATTENUATION: &str = "adc_attenuation";
 const KEY_LAST_FALLBACK: &str = "last_fallback";
 const KEY_LAST_OTA: &str = "last_ota";
+const KEY_SETUP_AP_PASSWORD: &str = "setup_ap_pw";
 const KEY_PROFILE_SCHEMA: &str = "prof_schema";
 const KEY_PROFILE_BOARD: &str = "prof_board";
 const KEY_ACTIVE_PROFILE: &str = "prof_active";
@@ -428,12 +431,25 @@ impl ConfigStore {
 
     pub fn clear(&self) -> Result<()> {
         self.write_state(PersistentState::empty())?;
-        for key in [KEY_LAST_FALLBACK, KEY_LAST_OTA] {
+        for key in [KEY_LAST_FALLBACK, KEY_LAST_OTA, KEY_SETUP_AP_PASSWORD] {
             if let Err(error) = self.nvs.remove(key) {
                 log::warn!("could not clear reset diagnostic {key}: {error:#}");
             }
         }
         Ok(())
+    }
+
+    /// The stored setup-AP password, or mint and persist a fresh one when the
+    /// stored value is absent or malformed. Factory reset removes the stored
+    /// value, so the next caller regenerates it.
+    pub fn ensure_setup_network_password(&self, random: &mut impl RandomBytes) -> Result<String> {
+        let stored = self.optional_string(KEY_SETUP_AP_PASSWORD);
+        if setup_network::is_valid_password(&stored) {
+            return Ok(stored);
+        }
+        let password = setup_network::generate_password(random);
+        self.nvs.set_str(KEY_SETUP_AP_PASSWORD, &password)?;
+        Ok(password)
     }
 
     /// Record why this boot fell back to the setup AP. Persisted so the

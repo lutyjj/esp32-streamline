@@ -476,13 +476,22 @@ export function ResetCard() {
 
   // Reset is a handoff, not a reboot wait: the device abandons this network
   // for its setup AP, so the card's last render is the way there.
-  if (resetHandoff.value) {
+  const handoff = resetHandoff.value;
+  if (handoff) {
     return (
       <Card title="Reset">
         <Notice tone="info">
           <strong class="strong">Factory reset done.</strong> {resetHandoffMessage()} Installed
           firmware stays; every setting was erased.
         </Notice>
+        {handoff !== 'unknown' && (
+          <Kv
+            rows={[
+              ['Setup network', handoff.ssid],
+              ['Password', handoff.password],
+            ]}
+          />
+        )}
       </Card>
     );
   }
@@ -512,14 +521,17 @@ export function ResetCard() {
             factory.run(
               async () => {
                 try {
-                  await factoryReset();
+                  const response = await factoryReset();
+                  // The response carries the regenerated setup-network
+                  // password — the last chance to show it.
+                  beginResetHandoff(response.setup_network);
                 } catch (error) {
                   // A rejection came back over HTTP: inline and retryable.
                   if (error instanceof ApiError) throw error;
                   // A dropped connection is the reset tearing this network
                   // down — the handoff itself, not a failure.
+                  beginResetHandoff();
                 }
-                beginResetHandoff();
                 return undefined;
               },
               { busyText: 'Erasing…', okText: '' },

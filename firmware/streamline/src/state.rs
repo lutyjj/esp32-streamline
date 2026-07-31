@@ -285,7 +285,8 @@ mod tests {
         board,
         config::{AudioSettings, AutoUpdateSchedule},
         profiles::{AudioProfile, AUDIO_PROFILE_SCHEMA_VERSION},
-        transport::{RandomBytes, TransportMode},
+        random::RandomBytes,
+        transport::TransportMode,
     };
 
     struct Sequence(u8);

@@ -44,6 +44,14 @@ export const MOCK_ADMIN_KEY = 'a'.repeat(48);
 const MOCK_UPDATED_VERSION = '0.5.0-mock';
 
 /**
+ * The setup network the fake device would fall back to, from the schema's
+ * canonical example device. Factory reset regenerates the password the way
+ * the firmware mints a fresh one.
+ */
+const MOCK_SETUP_NETWORK = { ssid: 'esp32-streamline-1AA8B2', password: 'abcd-efgh-ijkm-npqr' };
+const MOCK_RESET_PASSWORD = 'wxyz-2345-wxyz-2345';
+
+/**
  * Where in the journey the fake device starts: `steady` is a provisioned,
  * streaming device; `first-boot` is an unconfigured one on its setup network.
  */
@@ -94,6 +102,8 @@ export class FakeDevice {
   private otaSteps: Array<() => void> = [];
   /** The stored crash dump's bytes; null while none is stored. */
   private coredump: ArrayBuffer | null = null;
+  /** The setup network's credentials; factory reset regenerates the password. */
+  private setupNetwork = { ...MOCK_SETUP_NETWORK };
 
   constructor(scenario: DeviceScenario = 'steady') {
     this.reset(scenario);
@@ -105,6 +115,7 @@ export class FakeDevice {
       this.read('/api/boards', () => this.boards()),
       this.read('/api/openapi.json', () => contract),
       this.readAuthorized('/api/logs', () => this.nextLogs()),
+      this.readAuthorized('/api/setup-network', () => this.setupNetwork),
       this.readAuthorized('/api/coredump', () => ({
         present: this.coredump !== null,
         size_bytes: this.coredump?.byteLength ?? 0,
@@ -233,7 +244,8 @@ export class FakeDevice {
       }),
       this.write('/api/factory-reset', () => {
         this.reset('first-boot');
-        return { ok: true, rebooting: true };
+        this.setupNetwork = { ...MOCK_SETUP_NETWORK, password: MOCK_RESET_PASSWORD };
+        return { rebooting: true, setup_network: this.setupNetwork };
       }),
     ];
   }

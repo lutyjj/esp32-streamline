@@ -24,7 +24,7 @@ use esp_idf_svc::{
     wifi::{BlockingWifi, EspWifi},
 };
 
-use crate::{config::RuntimeConfig, identity};
+use crate::{config::RuntimeConfig, identity, setup_network::SetupNetwork};
 
 pub type WifiController<'d> = BlockingWifi<EspWifi<'d>>;
 
@@ -108,11 +108,13 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
     }
 }
 
-/// Start the physical-presence setup network as an open AP: initial
-/// configuration has no pre-shared secret to authenticate against. The AP runs
-/// only in setup and recovery, never while the device is on its home network.
-pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<String> {
-    start_ap(wifi, suffix, None)
+/// Start the physical-presence setup network, WPA2-protected by the
+/// device-generated password. Joining it requires the password from the
+/// device's serial log, the flasher, or its label, so commissioning is
+/// anchored to possession of the board. The AP runs only in setup and
+/// recovery, never while the device is on its home network.
+pub fn start_setup_ap(wifi: &mut WifiController<'_>, network: &SetupNetwork) -> Result<()> {
+    start_ap(wifi, network, None)
 }
 
 /// Start the setup AP alongside a station that keeps retrying the saved Wi-Fi.
@@ -122,23 +124,22 @@ pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<Str
 /// or not the station associates.
 pub fn start_recovery_ap(
     wifi: &mut WifiController<'_>,
-    suffix: &str,
+    network: &SetupNetwork,
     config: &RuntimeConfig,
-) -> Result<String> {
-    start_ap(wifi, suffix, Some(config))
+) -> Result<()> {
+    start_ap(wifi, network, Some(config))
 }
 
 fn start_ap(
     wifi: &mut WifiController<'_>,
-    suffix: &str,
+    network: &SetupNetwork,
     station: Option<&RuntimeConfig>,
-) -> Result<String> {
-    let ssid = format!("esp32-streamline-{suffix}");
+) -> Result<()> {
     let access_point = AccessPointConfiguration {
-        ssid: ssid.as_str().try_into()?,
+        ssid: network.ssid.as_str().try_into()?,
         ssid_hidden: false,
-        auth_method: AuthMethod::None,
-        password: "".try_into()?,
+        auth_method: AuthMethod::WPA2Personal,
+        password: network.password.as_str().try_into()?,
         channel: 1,
         ..Default::default()
     };
@@ -153,7 +154,7 @@ fn start_ap(
     if let Err(error) = advertise_setup_dns() {
         log::warn!("setup DHCP DNS advertisement unavailable: {error:#}");
     }
-    Ok(ssid)
+    Ok(())
 }
 
 /// Wait for the soft-AP interface to obtain its address before advertising DNS.

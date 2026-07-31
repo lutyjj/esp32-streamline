@@ -5,6 +5,11 @@ pub fn setup_suffix(mac: [u8; 6]) -> String {
     format!("{:02X}{:02X}{:02X}", mac[3], mac[4], mac[5])
 }
 
+/// The setup access point's SSID for a device suffix.
+pub fn setup_ssid(suffix: &str) -> String {
+    format!("esp32-streamline-{suffix}")
+}
+
 /// Bare mDNS host label. The resolver presents it as `<label>.local`.
 pub fn mdns_hostname(mac: [u8; 6]) -> String {
     format!("streamline-{:02x}{:02x}", mac[4], mac[5])

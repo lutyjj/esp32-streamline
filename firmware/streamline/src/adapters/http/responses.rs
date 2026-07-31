@@ -11,11 +11,23 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    json_response(request, 200, &api::Ack::rebooting())?;
-    // Restart from a detached task so this handler returns and the server
-    // completes the chunked response. Restarting inside the handler leaves
-    // the terminating chunk unsent, and every client that reads the body to
-    // its end then hangs until the reboot kills the connection.
+    reboot_response_with(request, &api::Ack::rebooting())
+}
+
+/// Acknowledge with `body`, then restart. The restart runs on a detached task
+/// so this handler returns and the server completes the chunked response.
+/// Restarting inside the handler leaves the terminating chunk unsent, and
+/// every client that reads the body to its end then hangs until the reboot
+/// kills the connection.
+pub(super) fn reboot_response_with<C>(
+    request: embedded_svc::http::server::Request<C>,
+    body: &impl Serialize,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    json_response(request, 200, body)?;
     std::thread::spawn(|| {
         esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
         unsafe { esp_idf_svc::sys::esp_restart() };

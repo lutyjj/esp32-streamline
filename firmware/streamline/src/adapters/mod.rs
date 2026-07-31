@@ -16,6 +16,7 @@ pub mod nvs;
 pub mod openeth;
 pub mod ota;
 pub mod pins;
+pub mod random;
 pub mod status_light;
 pub mod system;
 pub mod tcp;

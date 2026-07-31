@@ -5,6 +5,7 @@ for hardware and emulated devices alike. Checks return `CheckResult` values
 and take the fetch callable, so they are unit-testable without a device.
 """
 
+import gzip
 import json
 import time
 import urllib.error
@@ -45,11 +46,22 @@ class DeviceApi:
     def _exchange(self, request: urllib.request.Request) -> tuple[int, bytes]:
         if self.admin_key:
             request.add_header("Authorization", f"Bearer {self.admin_key}")
+        # The device stores its embedded assets gzipped and serves them with
+        # Content-Encoding: gzip (docs/design.md "HTTP API Shape"); urllib
+        # does not decode transfer encodings, so this client honors the one
+        # the device uses.
+        request.add_header("Accept-Encoding", "gzip")
         try:
             with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT) as response:
-                return response.status, response.read()
+                return response.status, _decoded(response.headers.get("Content-Encoding"), response.read())
         except urllib.error.HTTPError as error:
-            return error.code, error.read()
+            return error.code, _decoded(error.headers.get("Content-Encoding"), error.read())
+
+
+def _decoded(content_encoding: str | None, body: bytes) -> bytes:
+    if content_encoding == "gzip":
+        return gzip.decompress(body)
+    return body
 
 
 def wait_for_api(fetch: ApiFetch, timeout: float) -> CheckResult:

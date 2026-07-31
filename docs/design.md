@@ -338,7 +338,10 @@ It contains no independent route strings or form-field map.
 A host-only `utoipa` feature generates [the OpenAPI 3.1 contract](openapi.json)
 from the Rust module. `make firmware-openapi` refreshes the checked-in artifact;
 `make firmware-openapi-check` fails when it is stale. The device serves the same
-artifact at `GET /api/openapi.json`.
+artifact at `GET /api/openapi.json`. The firmware stores this artifact and the
+embedded console gzipped and serves both with `Content-Encoding: gzip` — raw,
+the pair costs 194 KB of the OTA slot; compressed, 50 KB. Browsers and HTTP
+client libraries decompress transparently; raw `curl` needs `--compressed`.
 
 The console runs Orval before lint, test, and build. Orval generates types and
 operation-named Fetch functions from the contract. The hand-written

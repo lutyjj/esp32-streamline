@@ -31,8 +31,10 @@ use crate::{
     transport::KeyVerifier,
 };
 
-const INDEX: &str = include_str!("../../../../../console/dist/index.html");
-const OPENAPI: &str = include_str!("../../../../../docs/openapi.json");
+// Stored gzipped (build.rs compresses them into OUT_DIR) and served with
+// `Content-Encoding: gzip`: raw, these two assets cost 194 KB of the OTA slot.
+const INDEX_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.html.gz"));
+const OPENAPI_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/openapi.json.gz"));
 
 /// The boot contract: the one decision made at startup that fixes which
 /// services run and who may write until the next reboot.
@@ -169,7 +171,7 @@ pub fn start(
         ..Default::default()
     })?;
     server.fn_handler("/", Method::Get, move |request| {
-        responses::respond(request, 200, "text/html; charset=utf-8", INDEX)
+        responses::respond_gzip(request, 200, "text/html; charset=utf-8", INDEX_GZ)
     })?;
 
     let mut server = ContractServer::new(server);

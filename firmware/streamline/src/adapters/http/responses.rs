@@ -23,11 +23,17 @@ where
     Ok(())
 }
 
-pub(super) fn respond<C>(
+/// Serve a body that build.rs stored gzipped (the embedded console and the
+/// OpenAPI artifact), declared with `Content-Encoding: gzip`. Browsers and
+/// HTTP client libraries decompress transparently; raw `curl` needs
+/// `--compressed`. The encoding is unconditional because no identity copy
+/// exists in flash — storing one would return the 144 KB the compression
+/// reclaims.
+pub(super) fn respond_gzip<C>(
     request: embedded_svc::http::server::Request<C>,
     code: u16,
     content_type: &str,
-    body: &str,
+    body: &[u8],
 ) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
@@ -39,10 +45,11 @@ where
             None,
             &[
                 ("Content-Type", content_type),
+                ("Content-Encoding", "gzip"),
                 ("Cache-Control", "no-store"),
             ],
         )?
-        .write_all(body.as_bytes())?;
+        .write_all(body)?;
     Ok(())
 }
 

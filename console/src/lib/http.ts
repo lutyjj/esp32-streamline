@@ -15,6 +15,18 @@ export type FetchLike = (request: Request) => Promise<Response>;
 
 let transport: FetchLike = (request) => fetch(request);
 
+/**
+ * The console answers the device's digest challenge itself, so its requests
+ * must not carry browser-managed credentials. A same-origin request that does
+ * would make the browser prompt for a username and password on the 401
+ * (Fetch, HTTP-network-or-cache fetch: a 401 prompts only when
+ * `includeCredentials` is true), interrupting the unlock flow with a native
+ * dialog the console cannot style, explain, or dismiss.
+ */
+function deviceRequest(url: string, options: RequestInit = {}): Request {
+  return new Request(url, { ...options, credentials: 'omit' });
+}
+
 /** The accepted challenge writes reuse; dropped when the device stops accepting it. */
 let session: DigestSession | null = null;
 
@@ -66,7 +78,7 @@ async function authorizedExchange(request: Request, key: string): Promise<Respon
 }
 
 export async function deviceFetch<T>(url: string, options: RequestInit): Promise<T> {
-  const request = new Request(url, options);
+  const request = deviceRequest(url, options);
   const key = needsAdminKey(request) && isUnlocked() ? storedAdminKey() : '';
 
   const response = key ? await authorizedExchange(request, key) : await transport(request);
@@ -99,7 +111,7 @@ function parseBody(text: string): unknown {
 /** Ask the device whether it accepts `key`; this intentionally bypasses stored auth state. */
 export async function verifyAdminKey(key: string): Promise<boolean> {
   const attempt = (authorization?: string) => {
-    const request = new Request('/api/unlock', { method: 'POST' });
+    const request = deviceRequest('/api/unlock', { method: 'POST' });
     if (authorization) request.headers.set('Authorization', authorization);
     return transport(request);
   };

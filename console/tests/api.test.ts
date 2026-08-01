@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, isUnlocked, unlockSettings } from '../src/lib/adminKey';
 import { getLogs, getStatus, restart, setTransport, setWifi } from '../src/lib/api';
 import { digestResponse, parseDigestFields } from '../src/lib/digest';
-import { AUTHENTICATED_READS } from '../src/lib/http';
+import { AUTHENTICATED_READS, verifyAdminKey } from '../src/lib/http';
 
 function respond(status: number, body: string): Response {
   return new Response(body, { status });
@@ -80,6 +80,21 @@ describe('api transport', () => {
     expect(device.seen).toHaveLength(3);
     const fields = parseDigestFields(device.seen[2].headers.get('Authorization'));
     expect(fields?.get('nc')).toBe('00000002');
+  });
+
+  it('never lets the browser answer a challenge on the console behalf', async () => {
+    // A same-origin request carrying credentials makes the browser pop its
+    // own username/password dialog on the 401 instead of letting the console
+    // answer the digest challenge.
+    unlockSettings('secret-key', false);
+    const device = deviceTransport('secret-key', () => respond(200, '{"ok":true}'));
+    setTransport(device.transport);
+
+    await restart();
+    await verifyAdminKey('secret-key');
+
+    expect(device.seen.length).toBeGreaterThan(0);
+    for (const request of device.seen) expect(request.credentials).toBe('omit');
   });
 
   it('sends reads without credentials', async () => {

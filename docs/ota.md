@@ -42,7 +42,10 @@ background worker and require the admin key (digest authentication).
    pause; audio meters stay live. A sender that will not release fails the
    install cleanly with both firmware slots intact.
 4. It streams `releases/latest/download/streamline-<ver>-ota.bin` straight into
-   the inactive slot, hashing as it writes.
+   the inactive slot, hashing as it writes. The connection allocates its TLS
+   receive buffer once, after the handshake, and holds it until the download
+   ends, so the transfer never waits on a large allocation from a heap that
+   fragments as it runs.
 5. On a SHA-256 match it commits the boot pointer and reboots; a mismatch aborts
    the write and leaves the running slot untouched. Any other failure aborts the
    same way and resumes streaming.

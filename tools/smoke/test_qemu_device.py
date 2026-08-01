@@ -316,12 +316,25 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
 
     stall_started = threading.Event()
     release_stall = threading.Event()
+    # The redirect target, known once the server has bound its port and read
+    # by the handler only at request time.
+    asset_url = ""
 
     class OtaImageHandler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             path = self.path.partition("?")[0]
             if path == "/unavailable.bin":
                 self.send_error(503)
+                return
+            if path == "/release/streamline-qemu-ota.bin":
+                # GitHub's `releases/latest/download/` answers with a redirect
+                # to the asset host; installs must follow it. The target is
+                # the fixture's own, never built from request input, which no
+                # response header may carry.
+                self.send_response(302)
+                self.send_header("Location", asset_url)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
                 return
             body = forged if path == "/forged.bin" else payload
             self.send_response(200)
@@ -346,9 +359,14 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://{_SLIRP_HOST_ALIAS}:{server.server_address[1]}"
     query = f"?token={_OTA_URL_CANARY}"
+    # Carrying the canary across the hop keeps the privacy assertions covering
+    # the URL the device actually downloads from.
+    asset_url = f"{base}/streamline-qemu-ota.bin{query}"
     try:
         yield ServedOtaImage(
-            download_url=f"{base}/streamline-qemu-ota.bin{query}",
+            # The canonical URL redirects like a GitHub release asset, so every
+            # install that uses it also proves redirect-following.
+            download_url=f"{base}/release/streamline-qemu-ota.bin{query}",
             unavailable_url=f"{base}/unavailable.bin{query}",
             stalled_url=f"{base}/stalled.bin{query}",
             forged_url=f"{base}/forged.bin{query}",

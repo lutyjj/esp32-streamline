@@ -159,14 +159,28 @@ prose too — a `README.md`, `docs/` page, or contract table that now describes
 the old behavior is part of the change, not a follow-up. Grep the docs for the
 names and paths the change touches before calling it ready.
 
-## Prove firmware on a device
+## Prove firmware where it can fail
 
-A firmware change is ready only after the new image ran on real hardware,
-installed over the custom OTA path: the console's developer install under
-System → Firmware, or `POST /api/ota/update` with `url` and `sha256`.
-Serial flashing is for repartitioning, bootloader work, and recovery. Your
-device's address and admin key live in the gitignored root `.env`
-(see `.env.example`).
+Prove a firmware change on the target that can actually show it failing, and
+prefer the cheaper one. The QEMU smoke (`make tools-smoke-qemu`) is sufficient
+when the changed behavior runs there, which covers boot and mode selection,
+provisioning and factory reset, the HTTP API and its authentication, NVS
+persistence across reboots, and OTA install, rollback, and signature
+rejection. A change that one of those exercises does not need hardware.
+
+Real hardware is required when the change depends on what the emulator does
+not have: the audio codec and I2S capture, Wi-Fi and its fallback, LEDs and
+buttons, the PCM transport to a bridge, or heap and timing behavior under a
+live network. Memory and TLS faults are the clearest case. The OTA download
+that exhausted the heap mid-transfer passed every emulated run and failed only
+on a device, because nothing in QEMU reproduces a megabyte of real TLS records
+landing on a fragmented heap.
+
+Install a hardware proof over the custom OTA path: the console's developer
+install under System → Firmware, or `POST /api/ota/update` with `url` and
+`sha256`. Serial flashing is for repartitioning, bootloader work, and
+recovery. Your device's address and admin key live in the gitignored root
+`.env` (see `.env.example`).
 
 ## Keep lab details out of public artifacts
 

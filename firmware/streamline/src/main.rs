@@ -200,6 +200,10 @@ fn main() -> Result<()> {
         log::warn!("buttons unavailable: {error:#}");
     }
     let _server = http::start(Arc::clone(&state), captive_portal_address)?;
+    // The mode lines above report which boot this is; only this one reports
+    // that the API can answer. A client polling earlier races the server's
+    // own registration, which can abort the device.
+    log::info!("console ready");
     #[cfg(not(feature = "qemu"))]
     let _dns_responder = match captive_portal_address {
         Some(address) => match DnsResponder::start(address) {

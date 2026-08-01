@@ -128,8 +128,7 @@ def _assert_ota_url_absent_from_serial(device: EmulatedDevice) -> None:
 
 
 def test_fresh_boot_reaches_setup_console(boot_device: Callable[..., EmulatedDevice]) -> None:
-    device = boot_device()
-    device.dut.expect_exact("using board descriptor '", timeout=BOOT_TIMEOUT)
+    device = boot_device(until="using board descriptor '")
     device.dut.expect_exact("emulated ethernet up", timeout=30)
     device.dut.expect_exact("setup console started", timeout=30)
     _expect_api_up(device)
@@ -216,8 +215,7 @@ def test_led_role_assignment_persists_and_is_reversible(
     code, _ = provisioned_device.api.post_form("/api/restart", {})
     assert code == 200
     provisioned_device.dut.qemu.wait(timeout=60)
-    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY, until="StreamLine provisioned")
     _expect_api_up(rebooted)
     assert _led_role(rebooted, led_id) == "off"
 
@@ -252,8 +250,7 @@ def test_button_action_assignment_persists_and_is_reversible(
     code, _ = provisioned_device.api.post_form("/api/restart", {})
     assert code == 200
     provisioned_device.dut.qemu.wait(timeout=60)
-    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY, until="StreamLine provisioned")
     _expect_api_up(rebooted)
     assert _button_action(rebooted, button_id) == "toggle_stream"
 
@@ -291,8 +288,7 @@ def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
     assert re.fullmatch(r"([a-km-np-z2-9]{4}-){3}[a-km-np-z2-9]{4}", password)
 
     provisioned_device.dut.qemu.wait(timeout=60)
-    wiped = boot_device(flash=provisioned_device.flash)
-    wiped.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
+    wiped = boot_device(flash=provisioned_device.flash, until="setup console started")
     _expect_api_up(wiped)
     assert _mode(wiped) == "setup"
     # The password is device identity: a second reset answers with the same
@@ -396,8 +392,11 @@ def test_ota_install_boots_from_the_other_slot(
     provisioned_device.dut.qemu.wait(timeout=180)
     _assert_ota_url_absent_from_serial(provisioned_device)
 
-    updated = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    updated.dut.expect_exact(f"Loaded app from partition at offset {_OTA_1_OFFSET}", timeout=BOOT_TIMEOUT)
+    updated = boot_device(
+        flash=provisioned_device.flash,
+        admin_key=ADMIN_KEY,
+        until=f"Loaded app from partition at offset {_OTA_1_OFFSET}",
+    )
     updated.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
     _expect_api_up(updated)
     assert _mode(updated) == "provisioned"
@@ -486,8 +485,7 @@ def test_ota_interruption_persists_only_a_redacted_recovery_note(
     served_ota_image.release_stall.set()
     _assert_ota_url_absent_from_serial(provisioned_device)
 
-    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY, until="StreamLine provisioned")
     _expect_api_up(rebooted)
     status = _assert_ota_url_private(rebooted)
     assert "installing custom image (did not finish)" in status["diagnostics"]["last_ota"]

@@ -1,6 +1,14 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.11.1](https://github.com/lutyjj/esp32-streamline/compare/v0.11.0...v0.11.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **console:** stop the browser prompting for credentials on unlock ([0389158](https://github.com/lutyjj/esp32-streamline/commit/038915808f1666724f8c317c12c0fa2abc524650))
+* **firmware:** hold one TLS receive buffer for the whole OTA download ([741ca6a](https://github.com/lutyjj/esp32-streamline/commit/741ca6a449b21a1c8fa394f79c1f791996d1d747)), closes [#373](https://github.com/lutyjj/esp32-streamline/issues/373)
+
 ## [0.11.0](https://github.com/lutyjj/esp32-streamline/compare/v0.10.0...v0.11.0) (2026-07-31)
 
 

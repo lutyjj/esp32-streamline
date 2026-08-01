@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
   "numpy>=2.2.6,<3",
+  "pexpect>=4.9,<5",
   "pyelftools>=0.32,<1",
   "pytest>=9.1.1,<10",
   "pytest-xdist>=3.6,<4",
@@ -30,6 +31,7 @@ dev = [
   "mypy",
   "pyyaml>=6.0.3,<7",
   "ruff",
+  "types-pexpect",
   "types-pyyaml",
   "types-requests",
   "wcmatch>=11.0,<12",

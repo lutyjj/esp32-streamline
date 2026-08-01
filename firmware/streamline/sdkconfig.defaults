@@ -76,7 +76,9 @@ CONFIG_MBEDTLS_SSL_TLS1_3_KEXM_PSK_EPHEMERAL=y
 # the PCM transport occupies the heap the handshake cannot allocate them and
 # fails at connect. Dynamic buffers allocate each buffer on demand and free it
 # after use. This selects MBEDTLS_ASYMMETRIC_CONTENT_LEN and is safe for the
-# persistent PSK stream, whose sessions only move record buffers.
+# persistent PSK stream, whose sessions only move record buffers. The OTA
+# download opts out per connection (adapters/download.rs): per-record
+# reallocation cannot carry a firmware-sized body across a fragmenting heap.
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 
 # The image must fit a 1.9 MB OTA slot (partitions.csv), so capabilities the

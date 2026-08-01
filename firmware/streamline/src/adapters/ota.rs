@@ -17,21 +17,15 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use embedded_svc::{
-    http::{client::Client, Headers},
-    io::Read,
-    utils::io::try_read_full,
-};
-use esp_idf_svc::{
-    hal::task::thread::ThreadSpawnConfiguration,
-    http::client::{Configuration, EspHttpConnection, FollowRedirectsPolicy},
-    ota::EspOta,
-    sys,
-};
+use esp_idf_svc::{hal::task::thread::ThreadSpawnConfiguration, ota::EspOta, sys};
 use serde::Serialize;
 
 use crate::{
-    adapters::{nvs::ConfigStore, time},
+    adapters::{
+        download::{HttpGet, TlsRxBuffer},
+        nvs::ConfigStore,
+        time,
+    },
     stream::StreamStatus,
     update::{self, CustomImage, ImageSink, ImageSource, InstallProgress, OtaRelease},
 };
@@ -43,7 +37,6 @@ const REPO: &str = "lutyjj/esp32-streamline";
 /// TLS plus the HTTP client and SHA-256 hashing need a roomier stack than the
 /// default worker.
 const WORKER_STACK_BYTES: usize = 16_384;
-const READ_CHUNK_BYTES: usize = 4_096;
 /// How often the install worker rechecks whether the PCM transport released
 /// its connection, and how long it waits before giving up on the pause.
 const QUIESCE_POLL_MS: u32 = 100;
@@ -496,18 +489,6 @@ fn note_outcome(store: Option<&Mutex<ConfigStore>>, outcome: &str) {
     }
 }
 
-fn client() -> Result<Client<EspHttpConnection>> {
-    let connection = EspHttpConnection::new(&Configuration {
-        crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
-        follow_redirects_policy: FollowRedirectsPolicy::FollowAll,
-        buffer_size: Some(READ_CHUNK_BYTES),
-        buffer_size_tx: Some(1024),
-        ..Default::default()
-    })
-    .context("cannot create HTTPS client")?;
-    Ok(Client::wrap(connection))
-}
-
 fn download_url(asset: &str) -> String {
     format!("https://github.com/{REPO}/releases/latest/download/{asset}")
 }
@@ -516,11 +497,8 @@ fn download_url(asset: &str) -> String {
 /// filename and expected digest.
 fn check() -> Result<OtaRelease> {
     let url = download_url("SHA256SUMS");
-    let mut client = client()?;
-    let mut response = client
-        .get(&url)
-        .and_then(|request| request.submit())
-        .map_err(|error| anyhow!("{error:?}"))?;
+    // The check runs beside a live stream; per-record buffers keep it small.
+    let mut response = HttpGet::get(&url, TlsRxBuffer::PerRecord)?;
     let status = response.status();
     if status != 200 {
         bail!("checksum fetch returned HTTP {status}");
@@ -529,9 +507,7 @@ fn check() -> Result<OtaRelease> {
     let mut body = Vec::new();
     let mut chunk = [0_u8; 512];
     loop {
-        let read = response
-            .read(&mut chunk)
-            .map_err(|error| anyhow!("{error:?}"))?;
+        let read = response.read(&mut chunk)?;
         if read == 0 {
             break;
         }
@@ -552,16 +528,14 @@ fn check() -> Result<OtaRelease> {
 /// wires the HTTP response and the flash slot into it and commits or discards
 /// the slot on the outcome.
 fn install(url: &str, sha256: &str, progress: &OtaProgress) -> Result<()> {
-    let mut client = client()?;
-    let mut response = client
-        .get(url)
-        .and_then(|request| request.submit())
-        .map_err(|_| anyhow!("download request failed"))?;
+    // Streaming is quiesced and the handshake just freed its burst: the held
+    // receive buffer claims its one contiguous block at the best moment.
+    let mut response = HttpGet::get(url, TlsRxBuffer::Held).context("download request failed")?;
     let status = response.status();
     if status != 200 {
         bail!("download returned HTTP {status}");
     }
-    let total = response.content_len().unwrap_or(0) as u32;
+    let total = response.content_length().unwrap_or(0) as u32;
     progress.set_progress(0, total);
 
     let mut ota = EspOta::new().context("cannot open OTA partition set")?;
@@ -593,12 +567,12 @@ fn install(url: &str, sha256: &str, progress: &OtaProgress) -> Result<()> {
     }
 }
 
-/// Adapts an HTTPS response body to the byte source the installer reads from.
-struct ResponseSource<'a, R: Read>(&'a mut R);
+/// Adapts an HTTP(S) response body to the byte source the installer reads from.
+struct ResponseSource<'a>(&'a mut HttpGet);
 
-impl<R: Read> ImageSource for ResponseSource<'_, R> {
+impl ImageSource for ResponseSource<'_> {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize, String> {
-        try_read_full(&mut *self.0, buffer).map_err(|error| format!("{:?}", error.0))
+        self.0.read(buffer).map_err(|error| format!("{error:#}"))
     }
 }
 

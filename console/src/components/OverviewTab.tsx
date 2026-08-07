@@ -61,7 +61,7 @@ export function OverviewTab({
     ['Last boot', s.diagnostics?.reset_reason || '—'],
     ...(s.system ? [['Uptime', duration(s.system.uptime_seconds)] as [string, string]] : []),
     ['Config source', s.config_source],
-    ['Packets sent', `${s.metrics.packets} · ${s.metrics.queue_drops_total} dropped`],
+    ['Packets sent', `${s.metrics.packets_total} · ${s.metrics.queue_drops_total} dropped`],
     [
       'Network',
       `${s.metrics.network_errors_total} send errors · ${s.metrics.reconnects_total} reconnects`,
@@ -70,7 +70,10 @@ export function OverviewTab({
       'Send stalls',
       `${s.metrics.send_stalls_total} · longest ${s.metrics.longest_send_stall_ms} ms`,
     ],
-    ['Capture', `${s.metrics.read_errors} read errors · ${s.metrics.short_reads} short reads`],
+    [
+      'Capture',
+      `${s.metrics.read_errors_total} read errors · ${s.metrics.short_reads_total} short reads`,
+    ],
     ['Sequence', String(s.metrics.sequence)],
     ['Detector floor', `${s.metrics.noise_floor} RMS`],
     ...(s.diagnostics?.last_ota

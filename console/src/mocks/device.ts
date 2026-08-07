@@ -263,8 +263,8 @@ export class FakeDevice {
         metrics: {
           playing: false,
           sequence: 0,
-          packets: 0,
-          bytes: 0,
+          packets_total: 0,
+          bytes_total: 0,
           peak_abs_left: 0,
           peak_abs_right: 0,
           rms_left: 0,
@@ -387,8 +387,8 @@ export class FakeDevice {
       // A pause keeps capture and the meters running but nothing on the wire,
       // exactly like the firmware's capture gate.
       if (this.status.stream.enabled) {
-        metrics.packets += 100;
-        metrics.bytes += 176400;
+        metrics.packets_total += 100;
+        metrics.bytes_total += 176400;
       }
       metrics.peak_abs_left = peak;
       metrics.peak_abs_right = peak - 900;
@@ -589,7 +589,7 @@ export class FakeDevice {
   private nextLogs(): LogsResponse {
     this.appendLog(
       this.status.metrics.playing
-        ? `stream: sent ${this.status.metrics.packets} packets`
+        ? `stream: sent ${this.status.metrics.packets_total} packets`
         : 'capture: input silent, stream paused',
     );
     return {
@@ -606,8 +606,8 @@ export class FakeDevice {
   private metricsText(): string {
     const metrics = this.status.metrics;
     return [
-      `streamline_packets_total ${metrics.packets}`,
-      `streamline_bytes_total ${metrics.bytes}`,
+      `streamline_stream_packets_total ${metrics.packets_total}`,
+      `streamline_stream_bytes_total ${metrics.bytes_total}`,
       `streamline_playing ${metrics.playing ? 1 : 0}`,
       '',
     ].join('\n');

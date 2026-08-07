@@ -130,8 +130,8 @@ function applyStatus(s: StatusResponse): void {
     now,
   );
 
-  packetsMoving.value = lastPackets >= 0 && s.metrics.packets > lastPackets;
-  lastPackets = s.metrics.packets;
+  packetsMoving.value = lastPackets >= 0 && s.metrics.packets_total > lastPackets;
+  lastPackets = s.metrics.packets_total;
   status.value = s;
   document.title = s.device_name ? `${s.device_name} — StreamLine` : 'StreamLine';
 }

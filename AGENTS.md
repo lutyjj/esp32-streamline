@@ -32,13 +32,15 @@ lives in git.
 Prefer a clean break to a compatibility layer: a shim, deprecated alias,
 path-preserving re-export, dual-format reader, or version fallback is a second
 definition that obscures which shape is current and tends to outlive its
-purpose. Change every caller and delete the old shape in one change, and
-convert stored state with a one-off migration rather than teaching the code to
-read both forms. This holds after release; the only thing that forces keeping
-an old shape is a consumer the change cannot reach, such as a released artifact
-or a separate repository, which gets an explicit versioned migration, not a
-silent layer. This is the code counterpart to "Write for the present, not the
-past".
+purpose. Change every caller and delete the old shape in one change. The
+project has no external users, so nothing creates a compatibility obligation:
+not a published release, not a flashed device, not stored state. Delete the
+old shape outright; whatever still holds it re-commissions or gets reflashed,
+and a device whose stored state no reader accepts is unconfigured. No
+dual-format readers, no deprecation aliases, no versioned migrations. Taking
+on a real compatibility obligation is the owner's explicit decision once
+external users exist, not a default this file grants. This is the code
+counterpart to "Write for the present, not the past".
 
 ## Keep logic testable; push hardware to the edges
 

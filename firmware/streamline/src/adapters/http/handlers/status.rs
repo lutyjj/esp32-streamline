@@ -81,7 +81,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         Ok(store) => (store.last_fallback(), store.last_ota()),
         Err(_) => (String::new(), String::new()),
     };
-    let config = state.config.lock().expect("configuration lock poisoned");
+    let config = state.lock_config();
     let passthrough = state
         .analog_passthrough
         .lock()

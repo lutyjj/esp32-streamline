@@ -13,7 +13,7 @@ use crate::{
 };
 
 use super::super::{
-    persistence::{lock_config, save_configuration},
+    persistence::save_configuration,
     requests::form,
     responses::{json_response, mutation_error, reboot_response, unavailable},
     ApiState, ContractServer,
@@ -146,7 +146,7 @@ fn mutate<T>(
     state: &ApiState,
     change: impl FnOnce(&mut RuntimeConfig) -> Result<T, MutationError>,
 ) -> Result<T, MutationError> {
-    let mut next = lock_config(state)?.clone();
+    let mut next = state.lock_config().clone();
     let value = change(&mut next)?;
     save_configuration(state, next)?;
     Ok(value)

@@ -7,7 +7,6 @@ use anyhow::Result;
 use crate::{api, board, mutation::MutationError, profiles::AudioProfileCatalog};
 
 use super::super::{
-    persistence::{lock_audio_profiles, lock_config, lock_store},
     requests::form,
     responses::{json_response, mutation_error, reboot_response},
     ApiState, ContractServer,
@@ -45,11 +44,12 @@ pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiSta
             )
             .map_err(|error| MutationError::InvalidInput(error.to_string()))?;
             let selected = update.board();
-            let next = lock_config(&state)?
+            let next = state
+                .lock_config()
                 .clone()
                 .with_board_compatible_with(selected);
 
-            let store = lock_store(&state)?;
+            let store = state.lock_store();
             if state.mode.has_persisted_configuration() {
                 next.validate(selected).map_err(|error| {
                     MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
@@ -62,8 +62,8 @@ pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiSta
                     state.mode.has_persisted_configuration().then_some(&next),
                 )
                 .map_err(|error| MutationError::Persistence(format!("{error:#}")))?;
-            *lock_config(&state)? = next;
-            *lock_audio_profiles(&state)? = AudioProfileCatalog::empty(selected);
+            *state.lock_config() = next;
+            *state.lock_audio_profiles() = AudioProfileCatalog::empty(selected);
             Ok(())
         })();
         match result {

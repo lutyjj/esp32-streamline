@@ -2,9 +2,9 @@
 
 mod auth;
 mod handlers;
-mod persistence;
 mod requests;
 mod responses;
+mod writes;
 
 /// The audio mutation flow, shared with the button adapter's `cycle_input`.
 pub(in crate::adapters) use handlers::audio::set_audio;
@@ -25,6 +25,7 @@ use crate::{
     board,
     config::RuntimeConfig,
     health::HealthReport,
+    mode::Mode,
     profiles::AudioProfileCatalog,
     setup_network::SetupNetwork,
     stream::StreamStatus,
@@ -35,35 +36,6 @@ use crate::{
 // `Content-Encoding: gzip`: raw, these two assets cost 194 KB of the OTA slot.
 const INDEX_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.html.gz"));
 const OPENAPI_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/openapi.json.gz"));
-
-/// The boot contract: the one decision made at startup that fixes which
-/// services run and who may write until the next reboot.
-///
-/// A state earns a variant here only if it changes the service set or the
-/// trust model, and only at boot. Anything that changes at runtime is status
-/// (`metrics.playing`, `ota.phase`); anything that is a configuration
-/// difference reads from config (an empty `target_host` is "no bridge yet",
-/// not a mode).
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Mode {
-    /// Unconfigured: own open AP, writes accepted so a first admin key can be
-    /// set. Capture and streaming are down.
-    Setup,
-    /// A provisioned device that could not join its saved Wi-Fi starts the
-    /// setup AP with its validated state, keeps writes behind its key, and
-    /// retries the saved network in the background so it rejoins on its own. A
-    /// persisted local analog route remains independent of that network fault.
-    Recovery,
-    /// Station on the home network: console behind the admin key, capture
-    /// running; the TCP stream runs only while a bridge target is configured.
-    Provisioned,
-}
-
-impl Mode {
-    const fn has_persisted_configuration(self) -> bool {
-        matches!(self, Self::Recovery | Self::Provisioned)
-    }
-}
 
 pub struct ApiState {
     pub mode: Mode,

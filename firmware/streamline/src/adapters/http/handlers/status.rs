@@ -10,7 +10,9 @@ use crate::{
     health::{HealthReport, Severity},
     indicator,
     levels::CLIP_THRESHOLD_ABS,
-    metrics, protocol,
+    metrics,
+    mode::Mode,
+    protocol,
     telemetry::{
         AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
         StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
@@ -19,7 +21,7 @@ use crate::{
 
 use super::super::{
     responses::{body_writer, json_response},
-    ApiState, ContractServer, Mode,
+    ApiState, ContractServer,
 };
 
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";

@@ -4,14 +4,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{
-    analog_passthrough::AnalogPassthroughRoute, api, config::RuntimeConfig, mutation::MutationError,
-};
+use crate::{analog_passthrough::AnalogPassthroughRoute, api, mutation::MutationError};
 
 use super::super::{
-    persistence::save_configuration,
     requests::form,
     responses::{json_response, mutation_error},
+    writes::update_configuration,
     ApiState, ContractServer,
 };
 
@@ -26,12 +24,10 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
                     "local analog output is not supported by this board".to_owned(),
                 ));
             }
-            let current = state.lock_config().clone();
-            let next = RuntimeConfig {
-                analog_passthrough_enabled: form.enabled,
-                ..current
-            };
-            save_configuration(&state, next.clone())?;
+            let input_line = update_configuration(&state, |next| {
+                next.analog_passthrough_enabled = form.enabled;
+                Ok(next.audio.input_line)
+            })?;
 
             let Some(codec) = &state.codec else {
                 let mut passthrough = state
@@ -48,7 +44,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
                 return Ok(());
             };
             let route = capability.map(|capability| AnalogPassthroughRoute {
-                input_line: next.audio.input_line,
+                input_line,
                 output_line: capability.output_line,
             });
             let mut codec = codec.lock().expect("codec lock poisoned");

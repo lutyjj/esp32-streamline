@@ -24,6 +24,7 @@ pub mod led;
 pub mod levels;
 pub mod logs;
 pub mod metrics;
+pub mod mode;
 pub mod mutation;
 pub mod packet;
 pub mod play;

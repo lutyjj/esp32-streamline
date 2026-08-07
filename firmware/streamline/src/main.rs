@@ -23,7 +23,7 @@ use streamline_firmware::adapters::{
 use streamline_firmware::{
     adapters::{
         buttons, codec,
-        http::{self, ApiState, Mode},
+        http::{self, ApiState},
         logs,
         mdns::MdnsAdvertisement,
         nvs::ConfigStore,
@@ -36,6 +36,7 @@ use streamline_firmware::{
     config::RuntimeConfig,
     health::{BootFacts, HealthReport},
     identity,
+    mode::Mode,
     profiles::AudioProfileCatalog,
     recovery,
     setup_network::SetupNetwork,

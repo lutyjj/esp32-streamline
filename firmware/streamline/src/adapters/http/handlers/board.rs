@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{api, board, mutation::MutationError, profiles::AudioProfileCatalog};
+use crate::{
+    api, board, mode::ConfigWrite, mutation::MutationError, profiles::AudioProfileCatalog,
+};
 
 use super::super::{
     requests::form,
@@ -49,18 +51,21 @@ pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiSta
                 .clone()
                 .with_board_compatible_with(selected);
 
-            let store = state.lock_store();
-            if state.mode.has_persisted_configuration() {
-                next.validate(selected).map_err(|error| {
-                    MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
-                })?;
-            }
-            store
-                .save_board_state(
-                    selected,
-                    update.is_custom(),
-                    state.mode.has_persisted_configuration().then_some(&next),
-                )
+            // The board record commits in every mode, because the selection is
+            // what the next boot resolves its descriptor from. The
+            // configuration rides along only where one is already durable.
+            let persisted = match state.mode.config_write() {
+                ConfigWrite::Persist => {
+                    next.validate(selected).map_err(|error| {
+                        MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
+                    })?;
+                    Some(&next)
+                }
+                ConfigWrite::Stage => None,
+            };
+            state
+                .lock_store()
+                .save_board_state(selected, update.is_custom(), persisted)
                 .map_err(|error| MutationError::Persistence(format!("{error:#}")))?;
             *state.lock_config() = next;
             *state.lock_audio_profiles() = AudioProfileCatalog::empty(selected);

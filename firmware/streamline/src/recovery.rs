@@ -154,6 +154,37 @@ mod tests {
     }
 
     #[test]
+    fn commissioning_carries_staged_settings_into_the_first_persisted_configuration() {
+        let board = board();
+        let mut staged = setup_baseline(&board, None);
+        staged.device_name = "Studio".to_owned();
+        staged.auto_update_schedule = AutoUpdateSchedule::Weekly;
+        staged.audio.input_gain = 3;
+        staged
+            .led_roles
+            .insert(board.leds[0].id.clone(), crate::led::LedRole::Off);
+        assert_eq!(staged.validate_staged(&board), Ok(()));
+
+        let commissioned = replace_wifi(
+            staged.clone(),
+            "home-wifi".to_owned(),
+            "home-password".to_owned(),
+            crate::config::TEST_ADMIN_SECRET.to_owned(),
+            None,
+            None,
+        );
+
+        assert_eq!(commissioned.validate(&board), Ok(()));
+        assert_eq!(commissioned.device_name, staged.device_name);
+        assert_eq!(
+            commissioned.auto_update_schedule,
+            staged.auto_update_schedule
+        );
+        assert_eq!(commissioned.audio, staged.audio);
+        assert_eq!(commissioned.led_roles, staged.led_roles);
+    }
+
+    #[test]
     fn failed_recovery_write_keeps_the_in_memory_baseline() {
         let mut current = configured();
         let next = replace_wifi(

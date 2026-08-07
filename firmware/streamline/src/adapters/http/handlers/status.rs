@@ -107,7 +107,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         config_source: "nvs",
         web_server: true,
         configuration_writable: true,
-        auth_required: !config.admin_secret.is_empty(),
+        auth_required: !config.admin_key.is_empty(),
         wifi: WifiTelemetry {
             hostname: state.hostname.clone(),
             ssid: config.ssid.clone(),
@@ -226,7 +226,7 @@ impl<'a> api::StatusResponse<'a> {
                 status: snapshot.wifi.status,
                 sta_ip: &snapshot.wifi.sta_ip,
                 ap_ip: &snapshot.wifi.ap_ip,
-                rssi: snapshot.wifi.rssi_dbm,
+                rssi_dbm: snapshot.wifi.rssi_dbm,
             },
             target: api::TargetStatus {
                 target_host: &snapshot.target.host,
@@ -237,7 +237,7 @@ impl<'a> api::StatusResponse<'a> {
                 input_line: snapshot.audio.input_line,
                 input_gain: snapshot.audio.input_gain,
                 adc_attenuation_db: snapshot.audio.adc_attenuation_db,
-                sample_rate: snapshot.audio.sample_rate_hz,
+                sample_rate_hz: snapshot.audio.sample_rate_hz,
                 channels: snapshot.audio.channels,
                 bits_per_sample: snapshot.audio.bits_per_sample,
             },

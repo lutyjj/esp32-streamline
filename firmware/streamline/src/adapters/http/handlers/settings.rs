@@ -21,7 +21,7 @@ use super::super::{
 pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler(api::SETTINGS, move |request| {
-        respond_config(request, &state)
+        respond_settings(request, &state)
     })
 }
 
@@ -49,7 +49,7 @@ pub(super) fn register_network_writes(
                 current,
                 form.ssid,
                 form.password,
-                form.admin_secret,
+                form.admin_key,
                 form.target_host.map(|value| value.trim().to_owned()),
                 form.target_port,
             );
@@ -123,7 +123,7 @@ pub(super) fn register_identity_writes(
                 .mode
                 .require_commissioned("replacing the admin key")?;
             update_configuration(&state_for_admin_key, |next| {
-                next.admin_secret = form.admin_secret;
+                next.admin_key = form.admin_key;
                 Ok(())
             })
         })();
@@ -159,7 +159,7 @@ pub(super) fn register_firmware_write(
     })
 }
 
-fn respond_config<C>(
+fn respond_settings<C>(
     request: embedded_svc::http::server::Request<C>,
     state: &ApiState,
 ) -> Result<()>
@@ -171,7 +171,7 @@ where
     json_response(
         request,
         200,
-        &api::ConfigResponse {
+        &api::SettingsResponse {
             device_name: &config.device_name,
             ssid: &config.ssid,
             target_host: &config.target_host,

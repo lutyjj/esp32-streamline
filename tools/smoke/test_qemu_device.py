@@ -160,7 +160,7 @@ def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
     # Commissioning carries the staged name into the first persisted generation.
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
-        {"ssid": "qemu-smoke-lab", "admin_secret": ADMIN_KEY},
+        {"ssid": "qemu-smoke-lab", "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
     setup_boot.dut.qemu.wait(timeout=60)

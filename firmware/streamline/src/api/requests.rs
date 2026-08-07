@@ -24,7 +24,7 @@ pub struct WifiSettingsRequest {
     /// stored key.
     #[serde(default)]
     #[cfg_attr(feature = "api-spec", schema(pattern = "^$|^[0-9a-f]{48}$"))]
-    pub admin_secret: String,
+    pub admin_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,7 +137,7 @@ pub struct AdminKeySettingsRequest {
         feature = "api-spec",
         schema(min_length = 48, max_length = 48, pattern = "^[0-9a-f]{48}$")
     )]
-    pub admin_secret: String,
+    pub admin_key: String,
 }
 
 #[derive(Debug, Deserialize)]

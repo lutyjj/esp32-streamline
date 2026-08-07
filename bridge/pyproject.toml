@@ -9,11 +9,11 @@ description = "ESP32 StreamLine TCP PCM to HTTP WAV bridge"
 requires-python = ">=3.13"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
-  "fastapi>=0.140.8,<1",
+  "fastapi>=0.141.1,<1",
   # The ingress guard drives h11 connection state directly; uvicorn already
   # resolves it, so this pin only names the contract we depend on.
   "h11>=0.16,<1",
-  "uvicorn>=0.35,<1",
+  "uvicorn>=0.52.1,<1",
 ]
 
 [project.scripts]

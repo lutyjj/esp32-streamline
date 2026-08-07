@@ -6,11 +6,9 @@
 //! This module owns the protocol state machine and is host-tested; the
 //! HTTP adapter feeds it requests and a clock.
 
-use core::fmt::Write as _;
-
 use sha2::{Digest, Sha256};
 
-use crate::random::RandomBytes;
+use crate::{hex, random::RandomBytes};
 
 /// The one account this single-owner device has.
 pub const USERNAME: &str = "admin";
@@ -63,7 +61,7 @@ impl DigestAuthenticator {
             .retain(|nonce| now_ms.saturating_sub(nonce.issued_at_ms) < NONCE_TTL_MS);
         let mut bytes = [0_u8; NONCE_BYTES];
         random.fill(&mut bytes);
-        let value = hex(&bytes);
+        let value = hex::encode(&bytes);
         if self.nonces.len() >= MAX_NONCES {
             self.nonces.remove(0);
         }
@@ -189,15 +187,7 @@ fn parse_digest_fields(header: &str) -> Option<std::collections::HashMap<String,
 }
 
 fn sha256_hex(input: &str) -> String {
-    hex(&Sha256::digest(input.as_bytes()))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    let mut encoded = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        let _ = write!(encoded, "{byte:02x}");
-    }
-    encoded
+    hex::encode(&Sha256::digest(input.as_bytes()))
 }
 
 /// Length-checked constant-time byte comparison so response validation does

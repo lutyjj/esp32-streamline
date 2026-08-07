@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-use crate::config::AutoUpdateSchedule;
+use crate::{config::AutoUpdateSchedule, hex};
 
 /// The application image published for over-the-air updates. Its filename
 /// carries the release version, so one `SHA256SUMS` entry yields everything the
@@ -287,7 +287,7 @@ pub fn install_verified(
     }
 
     progress.verifying();
-    let actual = hex_lower(&hasher.finalize());
+    let actual = hex::encode(&hasher.finalize());
     if actual != expected_sha256 {
         return Err(InstallError::Checksum {
             expected: expected_sha256.to_owned(),
@@ -295,16 +295,6 @@ pub fn install_verified(
         });
     }
     Ok(())
-}
-
-/// Render bytes as a lowercase hex string for digest comparison.
-pub fn hex_lower(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(char::from_digit((byte >> 4) as u32, 16).unwrap());
-        out.push(char::from_digit((byte & 0x0f) as u32, 16).unwrap());
-    }
-    out
 }
 
 #[cfg(test)]

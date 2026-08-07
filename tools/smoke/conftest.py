@@ -186,7 +186,7 @@ def provisioned_device(boot_device: Callable[..., EmulatedDevice]) -> EmulatedDe
     assert ready.passed, ready.detail
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
-        {"ssid": "qemu-smoke-lab", "admin_secret": ADMIN_KEY},
+        {"ssid": "qemu-smoke-lab", "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
     setup_boot.dut.qemu.wait(timeout=60)

@@ -79,8 +79,8 @@ pub struct FactoryResetResponse<'a> {
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::config())))]
-pub struct ConfigResponse<'a> {
+#[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::settings())))]
+pub struct SettingsResponse<'a> {
     pub device_name: &'a str,
     pub ssid: &'a str,
     pub target_host: &'a str,
@@ -354,7 +354,7 @@ pub struct WifiStatus<'a> {
     pub status: &'a str,
     pub sta_ip: &'a str,
     pub ap_ip: &'a str,
-    pub rssi: i32,
+    pub rssi_dbm: i32,
 }
 
 #[derive(Serialize)]
@@ -371,7 +371,7 @@ pub struct AudioStatus {
     pub input_line: u8,
     pub input_gain: u8,
     pub adc_attenuation_db: u8,
-    pub sample_rate: u32,
+    pub sample_rate_hz: u32,
     pub channels: u8,
     pub bits_per_sample: u8,
 }

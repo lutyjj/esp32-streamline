@@ -20,16 +20,16 @@ pub const MAX_DEVICE_NAME_CHARS: usize = 32;
 /// Admin keys are generated, never composed by hand: exactly 24 random bytes
 /// rendered as lowercase hexadecimal. One exact shape keeps runtime
 /// validation, the OpenAPI schema, and every client in agreement.
-pub const ADMIN_SECRET_HEX_CHARS: usize = 48;
+pub const ADMIN_KEY_HEX_CHARS: usize = 48;
 /// The canonical admin-key shape as the OpenAPI schema declares it.
-pub const ADMIN_SECRET_PATTERN: &str = "^[0-9a-f]{48}$";
+pub const ADMIN_KEY_PATTERN: &str = "^[0-9a-f]{48}$";
 /// A valid admin key for tests across modules, in the canonical form.
 #[cfg(test)]
-pub(crate) const TEST_ADMIN_SECRET: &str = "0123456789abcdef0123456789abcdef0123456789abcdef";
+pub(crate) const TEST_ADMIN_KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef";
 
-/// Whether an admin secret is in the canonical generated form.
-pub fn is_canonical_admin_secret(secret: &str) -> bool {
-    secret.len() == ADMIN_SECRET_HEX_CHARS
+/// Whether an admin key is in the canonical generated form.
+pub fn is_canonical_admin_key(secret: &str) -> bool {
+    secret.len() == ADMIN_KEY_HEX_CHARS
         && secret
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
@@ -160,7 +160,7 @@ pub enum ConfigError {
     UnsupportedAnalogPassthrough,
     UnknownLed,
     UnknownButton,
-    MalformedAdminSecret,
+    MalformedAdminKey,
     DeviceNameTooLong,
     InvalidTransport(TransportError),
 }
@@ -186,7 +186,7 @@ pub struct RuntimeConfig {
     pub transport: TransportSettings,
     /// Admin key required on the mutating HTTP API. Set during commissioning
     /// and write-only: it is persisted but never returned through the API.
-    pub admin_secret: String,
+    pub admin_key: String,
     /// Friendly name that tells devices apart in the console and browser tab.
     /// Empty means unnamed; clients fall back to the device's address.
     pub device_name: String,
@@ -212,8 +212,8 @@ impl RuntimeConfig {
     /// Every rule a durable configuration satisfies.
     pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
         self.network().validate()?;
-        if !is_canonical_admin_secret(&self.admin_secret) {
-            return Err(ConfigError::MalformedAdminSecret);
+        if !is_canonical_admin_key(&self.admin_key) {
+            return Err(ConfigError::MalformedAdminKey);
         }
         self.validate_device_settings(board)
     }
@@ -428,7 +428,7 @@ mod tests {
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
             transport: Default::default(),
-            admin_secret: super::TEST_ADMIN_SECRET.to_owned(),
+            admin_key: super::TEST_ADMIN_KEY.to_owned(),
             device_name: String::new(),
             auto_update_schedule: AutoUpdateSchedule::Daily,
             audio: AudioSettings {
@@ -451,7 +451,7 @@ mod tests {
     fn a_staged_configuration_waives_only_what_commissioning_supplies() {
         let mut config = sample_runtime_config();
         config.ssid = String::new();
-        config.admin_secret = String::new();
+        config.admin_key = String::new();
 
         assert_eq!(
             config.validate(&default_board()),
@@ -465,7 +465,7 @@ mod tests {
         let staged = || {
             let mut config = sample_runtime_config();
             config.ssid = String::new();
-            config.admin_secret = String::new();
+            config.admin_key = String::new();
             config
         };
 
@@ -545,23 +545,23 @@ mod tests {
     }
 
     #[test]
-    fn accepts_only_the_canonical_admin_secret_shape() {
+    fn accepts_only_the_canonical_admin_key_shape() {
         let mut config = sample_runtime_config();
         assert_eq!(config.validate(&default_board()), Ok(()));
 
         for invalid in [
             String::new(),
             "short".to_owned(),
-            super::TEST_ADMIN_SECRET.to_uppercase(),
-            super::TEST_ADMIN_SECRET[..47].to_owned(),
-            format!("{}0", super::TEST_ADMIN_SECRET),
-            format!("{}g", &super::TEST_ADMIN_SECRET[..47]),
-            format!("{}é", &super::TEST_ADMIN_SECRET[..47]),
+            super::TEST_ADMIN_KEY.to_uppercase(),
+            super::TEST_ADMIN_KEY[..47].to_owned(),
+            format!("{}0", super::TEST_ADMIN_KEY),
+            format!("{}g", &super::TEST_ADMIN_KEY[..47]),
+            format!("{}é", &super::TEST_ADMIN_KEY[..47]),
         ] {
-            config.admin_secret = invalid.clone();
+            config.admin_key = invalid.clone();
             assert_eq!(
                 config.validate(&default_board()),
-                Err(ConfigError::MalformedAdminSecret),
+                Err(ConfigError::MalformedAdminKey),
                 "must reject {invalid:?}",
             );
         }

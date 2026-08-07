@@ -199,7 +199,7 @@ endpoint!(
     "/api/settings",
     public,
     summary = "Read device settings",
-    responses((status = 200, body = ConfigResponse))
+    responses((status = 200, body = SettingsResponse))
 );
 endpoint!(
     AUDIO_PROFILES,
@@ -644,20 +644,20 @@ mod spec {
         }
         let schemas = &json["components"]["schemas"];
         assert_eq!(
-            schemas["WifiSettingsRequest"]["properties"]["admin_secret"]["pattern"],
-            format!("^$|{}", crate::config::ADMIN_SECRET_PATTERN)
+            schemas["WifiSettingsRequest"]["properties"]["admin_key"]["pattern"],
+            format!("^$|{}", crate::config::ADMIN_KEY_PATTERN)
         );
         assert_eq!(
-            schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["pattern"],
-            crate::config::ADMIN_SECRET_PATTERN
+            schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["pattern"],
+            crate::config::ADMIN_KEY_PATTERN
         );
         assert_eq!(
-            schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["minLength"],
-            crate::config::ADMIN_SECRET_HEX_CHARS
+            schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["minLength"],
+            crate::config::ADMIN_KEY_HEX_CHARS
         );
         assert_eq!(
-            schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["maxLength"],
-            crate::config::ADMIN_SECRET_HEX_CHARS
+            schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["maxLength"],
+            crate::config::ADMIN_KEY_HEX_CHARS
         );
         assert_eq!(
             schemas["NameSettingsRequest"]["properties"]["name"]["maxLength"],
@@ -693,8 +693,8 @@ mod spec {
             crate::api::examples::status()
         );
         assert_eq!(
-            schemas["ConfigResponse"]["example"],
-            crate::api::examples::config()
+            schemas["SettingsResponse"]["example"],
+            crate::api::examples::settings()
         );
         document
     }

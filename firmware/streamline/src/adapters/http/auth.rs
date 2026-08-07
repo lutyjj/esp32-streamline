@@ -29,7 +29,7 @@ where
         return Ok(());
     }
     let secret = match state.config.lock() {
-        Ok(config) => config.admin_secret.clone(),
+        Ok(config) => config.admin_key.clone(),
         Err(_) => return Err(challenge(state, false)),
     };
     let method = match endpoint.method {

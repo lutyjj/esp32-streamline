@@ -12,9 +12,7 @@ use crate::{
 };
 
 use super::super::{
-    persistence::{
-        lock_audio_profiles, lock_config, save_audio_profiles, save_configuration_and_profiles,
-    },
+    persistence::{save_audio_profiles, save_configuration_and_profiles},
     requests::form,
     responses::{json_response, mutation_error, reboot_response},
     ApiState, ContractServer,
@@ -23,10 +21,7 @@ use super::super::{
 pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler(api::AUDIO_PROFILES, move |request| {
-        let catalog = state
-            .audio_profiles
-            .lock()
-            .expect("audio profile lock poisoned");
+        let catalog = state.lock_audio_profiles();
         json_response(request, 200, &*catalog)
     })
 }
@@ -75,12 +70,13 @@ pub(super) fn register_writes(
                 .map_err(|error| {
                     MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
                 })?;
-            let previous_active = lock_audio_profiles(&state_for_profile_catalog)?
+            let previous_active = state_for_profile_catalog
+                .lock_audio_profiles()
                 .active_profile_id
                 .clone();
             catalog.active_profile_id = previous_active
                 .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));
-            let current_audio = lock_config(&state_for_profile_catalog)?.audio;
+            let current_audio = state_for_profile_catalog.lock_config().audio;
             catalog.reconcile_active_audio(current_audio);
             save_audio_profiles(&state_for_profile_catalog, catalog)
         })();
@@ -95,12 +91,12 @@ pub(super) fn register_writes(
     server.handler(api::SET_AUDIO_PROFILE, move |mut request| {
         let result = (|| -> Result<bool, MutationError> {
             let form: api::ActiveAudioProfileRequest = form(&mut request)?;
-            let mut catalog = lock_audio_profiles(&state_for_active_profile)?.clone();
+            let mut catalog = state_for_active_profile.lock_audio_profiles().clone();
             let audio = catalog.activate(Some(&form.profile_id)).map_err(|error| {
                 MutationError::InvalidInput(format!("invalid active audio profile: {error:?}"))
             })?;
             if let Some(audio) = audio {
-                let current = lock_config(&state_for_active_profile)?.clone();
+                let current = state_for_active_profile.lock_config().clone();
                 save_configuration_and_profiles(
                     &state_for_active_profile,
                     RuntimeConfig { audio, ..current },
@@ -127,11 +123,11 @@ pub(in crate::adapters) fn set_audio(
     state: &ApiState,
     audio: AudioSettings,
 ) -> Result<bool, MutationError> {
-    let current = lock_config(state)?.clone();
+    let current = state.lock_config().clone();
     let audio = audio.validate(state.board.as_ref()).map_err(|error| {
         MutationError::InvalidInput(format!("invalid audio settings: {error:?}"))
     })?;
-    let mut catalog = lock_audio_profiles(state)?.clone();
+    let mut catalog = state.lock_audio_profiles().clone();
     catalog.active_profile_id = None;
     save_configuration_and_profiles(state, RuntimeConfig { audio, ..current }, catalog)?;
     apply_audio_live(state, audio)
@@ -142,15 +138,12 @@ fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool, Muta
     let Some(codec) = &state.codec else {
         return Ok(false);
     };
-    let result = codec
-        .lock()
-        .map_err(|_| MutationError::Internal("codec lock poisoned".to_owned()))?
-        .apply(audio);
+    let result = codec.lock().expect("codec lock poisoned").apply(audio);
     if let Err(error) = result {
         let mut passthrough = state
             .analog_passthrough
             .lock()
-            .map_err(|_| MutationError::Internal("analog passthrough lock poisoned".to_owned()))?;
+            .expect("analog passthrough lock poisoned");
         if passthrough.active {
             passthrough.record_fault(format!("audio control failed: {error:#}"));
         }

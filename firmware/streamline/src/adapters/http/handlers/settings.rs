@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::super::{
-    persistence::{lock_config, save_configuration},
+    persistence::save_configuration,
     requests::form,
     responses::{json_response, mutation_error, reboot_response},
     ApiState, ContractServer,
@@ -39,7 +39,7 @@ pub(super) fn register_network_writes(
     server.handler(api::SET_WIFI, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::WifiSettingsRequest = form(&mut request)?;
-            let current = lock_config(&state_for_wifi)?.clone();
+            let current = state_for_wifi.lock_config().clone();
             // Commissioning may set the initial stream target in the same
             // write, because the device reboots onto the home network right
             // after and the two cannot be posted separately. Absent target
@@ -70,7 +70,7 @@ pub(super) fn register_network_writes(
     server.handler(api::SET_TARGET, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
-            let current = lock_config(&state_for_target)?.clone();
+            let current = state_for_target.lock_config().clone();
             let target_host = form.target_host.trim().to_owned();
             let target_port = form.target_port.unwrap_or(current.target_port);
             let mut next = RuntimeConfig {
@@ -100,7 +100,7 @@ pub(super) fn register_identity_writes(
     server.handler(api::SET_NAME, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::NameSettingsRequest = form(&mut request)?;
-            let mut next = lock_config(&state_for_name)?.clone();
+            let mut next = state_for_name.lock_config().clone();
             next.device_name = form.name.trim().to_owned();
             save_configuration(&state_for_name, next.clone())?;
             refresh_mdns_name(&state_for_name, &next);
@@ -116,7 +116,7 @@ pub(super) fn register_identity_writes(
     server.handler(api::SET_ADMIN_KEY, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AdminKeySettingsRequest = form(&mut request)?;
-            let mut next = lock_config(&state_for_admin_key)?.clone();
+            let mut next = state_for_admin_key.lock_config().clone();
             next.admin_secret = form.admin_secret;
             save_configuration(&state_for_admin_key, next)
         })();
@@ -140,7 +140,7 @@ pub(super) fn register_firmware_write(
                 api::AutoUpdateScheduleRequest::Daily => AutoUpdateSchedule::Daily,
                 api::AutoUpdateScheduleRequest::Weekly => AutoUpdateSchedule::Weekly,
             };
-            let current = lock_config(&state)?.clone();
+            let current = state.lock_config().clone();
             let next = RuntimeConfig {
                 auto_update_schedule,
                 ..current
@@ -148,7 +148,7 @@ pub(super) fn register_firmware_write(
             if state.mode.has_persisted_configuration() {
                 save_configuration(&state, next)
             } else {
-                *lock_config(&state)? = next;
+                *state.lock_config() = next;
                 Ok(())
             }
         })();
@@ -167,7 +167,7 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    let config = state.config.lock().expect("configuration lock poisoned");
+    let config = state.lock_config();
     json_response(
         request,
         200,
@@ -216,12 +216,8 @@ fn refresh_mdns_name(state: &ApiState, config: &RuntimeConfig) {
     let Some(mdns) = &state.mdns else {
         return;
     };
-    match mdns.lock() {
-        Ok(mut advertisement) => {
-            if let Err(error) = advertisement.set_instance_name(config) {
-                log::warn!("could not refresh mDNS instance name: {error:#}");
-            }
-        }
-        Err(_) => log::warn!("could not refresh mDNS instance name: lock poisoned"),
+    let mut advertisement = mdns.lock().expect("mDNS lock poisoned");
+    if let Err(error) = advertisement.set_instance_name(config) {
+        log::warn!("could not refresh mDNS instance name: {error:#}");
     }
 }

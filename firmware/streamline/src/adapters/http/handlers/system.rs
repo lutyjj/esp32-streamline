@@ -7,7 +7,6 @@ use anyhow::Result;
 use crate::{api, mutation::MutationError};
 
 use super::super::{
-    persistence::lock_store,
     responses::{
         json_response, mutation_error, reboot_response, reboot_response_with, respond_gzip,
     },
@@ -41,11 +40,10 @@ pub(super) fn register_actions(
     // network — their only appearance in the API.
     let state = Arc::clone(state);
     server.handler(api::FACTORY_RESET, move |request| {
-        let result = (|| -> Result<(), MutationError> {
-            lock_store(&state)?
-                .clear()
-                .map_err(|error| MutationError::Persistence(format!("{error:#}")))
-        })();
+        let result = state
+            .lock_store()
+            .clear()
+            .map_err(|error| MutationError::Persistence(format!("{error:#}")));
         match result {
             Ok(()) => reboot_response_with(
                 request,

@@ -11,7 +11,7 @@ pub(in crate::adapters) use handlers::audio::set_audio;
 
 use std::{
     net::Ipv4Addr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use anyhow::{bail, Result};
@@ -89,6 +89,30 @@ pub struct ApiState {
     pub setup_network: SetupNetwork,
     /// Digest-authentication nonce state (see [`crate::auth`]).
     pub auth: Mutex<crate::auth::DigestAuthenticator>,
+}
+
+/// Shared-state access for every handler, read and write alike.
+///
+/// The espidf target's panic strategy is `abort`, so a panic resets the device
+/// instead of unwinding and no lock is ever observed poisoned. These accessors
+/// therefore unwrap, and no path answers a 500 that only unwinding could
+/// produce.
+impl ApiState {
+    fn lock_config(&self) -> MutexGuard<'_, RuntimeConfig> {
+        self.config.lock().expect("configuration lock poisoned")
+    }
+
+    fn lock_store(&self) -> MutexGuard<'_, ConfigStore> {
+        self.store
+            .lock()
+            .expect("configuration store lock poisoned")
+    }
+
+    fn lock_audio_profiles(&self) -> MutexGuard<'_, AudioProfileCatalog> {
+        self.audio_profiles
+            .lock()
+            .expect("audio profile lock poisoned")
+    }
 }
 
 fn method(endpoint: Endpoint) -> Method {

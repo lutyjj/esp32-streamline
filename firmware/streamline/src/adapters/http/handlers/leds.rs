@@ -7,7 +7,7 @@ use anyhow::Result;
 use crate::{api, mutation::MutationError};
 
 use super::super::{
-    persistence::{lock_config, save_configuration},
+    persistence::save_configuration,
     requests::form,
     responses::{json_response, mutation_error},
     ApiState, ContractServer,
@@ -24,7 +24,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
                     form.id
                 )));
             }
-            let mut next = lock_config(&state)?.clone();
+            let mut next = state.lock_config().clone();
             next.led_roles.insert(form.id, form.role);
             // The render task reads the live configuration, so a persisted role
             // applies without a reboot. In setup mode nothing is persisted yet;
@@ -32,7 +32,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
             if state.mode.has_persisted_configuration() {
                 save_configuration(&state, next)
             } else {
-                *lock_config(&state)? = next;
+                *state.lock_config() = next;
                 Ok(())
             }
         })();

@@ -45,10 +45,12 @@ pub trait GenerationStorage {
     fn set(&self, key: &str, value: &str) -> Result<(), Self::Error>;
 }
 
+/// A write that could not be committed. Reading has no such failures beyond
+/// storage itself: state this firmware cannot decode is reported as an
+/// unconfigured device, not an error (see [`StateStore::load`]).
 #[derive(Debug, Eq, PartialEq)]
 pub enum StateError<E> {
     Storage(E),
-    InvalidMarker,
     InvalidRecord(&'static str),
     OversizedRecord(&'static str),
 }
@@ -145,6 +147,13 @@ impl<S> StateStore<S> {
 }
 
 impl<S: GenerationStorage> StateStore<S> {
+    /// The committed generation, or `None` when nothing this firmware can read
+    /// is stored.
+    ///
+    /// A marker or record it cannot decode means the device is unconfigured: it
+    /// opens setup and is commissioned again. Refusing to boot instead would
+    /// leave the device rebooting until an update rolled back, so no firmware
+    /// that changes the stored shape could ever be installed over the air.
     pub fn load(&self) -> Result<Option<PersistentState>, StateError<S::Error>> {
         let Some(marker) = self
             .storage
@@ -153,23 +162,33 @@ impl<S: GenerationStorage> StateStore<S> {
         else {
             return Ok(None);
         };
-        let generation = Generation::parse_marker(&marker).ok_or(StateError::InvalidMarker)?;
-        self.read_generation(generation).map(Some)
+        let Some(generation) = Generation::parse_marker(&marker) else {
+            return Ok(unreadable("active-generation marker"));
+        };
+        match self.read_generation(generation) {
+            Ok(state) => Ok(Some(state)),
+            Err(StateError::Storage(error)) => Err(StateError::Storage(error)),
+            Err(StateError::InvalidRecord(record) | StateError::OversizedRecord(record)) => {
+                Ok(unreadable(record))
+            }
+        }
     }
 
     /// Write every record to the inactive generation, then switch the one
     /// marker readers consult. An error leaves the previous active generation
     /// selected, so callers must update memory only after this returns `Ok`.
     pub fn save(&self, state: &PersistentState) -> Result<(), StateError<S::Error>> {
+        // An unreadable marker names no generation to preserve, so the write
+        // starts a fresh one and the device becomes commissionable again.
         let inactive = match self
             .storage
             .get(ACTIVE_GENERATION_KEY)
             .map_err(StateError::Storage)?
         {
             None => Generation::A,
-            Some(marker) => Generation::parse_marker(&marker)
-                .ok_or(StateError::InvalidMarker)?
-                .inactive(),
+            Some(marker) => {
+                Generation::parse_marker(&marker).map_or(Generation::A, Generation::inactive)
+            }
         };
         let config = encode(
             "configuration",
@@ -255,6 +274,11 @@ impl<S: GenerationStorage> StateStore<S> {
             .map_err(StateError::Storage)?
             .ok_or(StateError::InvalidRecord(record))
     }
+}
+
+fn unreadable(record: &str) -> Option<PersistentState> {
+    log::warn!("stored {record} is unreadable; opening setup to commission the device again");
+    None
 }
 
 fn encode<T: Serialize, E>(
@@ -590,34 +614,67 @@ mod tests {
         }
     }
 
-    #[test]
-    fn corrupt_marker_is_an_error_not_a_guess() {
+    /// The stored values of a configured device, with one key replaced.
+    fn stored_with(key_fragment: &str, value: Option<&str>) -> BTreeMap<String, String> {
         let store = StateStore::new(FakeStorage::default());
         store.save(&state("first")).expect("state saves");
         let mut values = store.into_inner().values();
-        values.insert(ACTIVE_GENERATION_KEY.to_owned(), "9:z".to_owned());
-
-        let corrupted = StateStore::new(FakeStorage::from_values(values, usize::MAX));
-        assert_eq!(corrupted.load(), Err(StateError::InvalidMarker));
+        let key = values
+            .keys()
+            .find(|key| key.contains(key_fragment))
+            .unwrap_or_else(|| panic!("a {key_fragment} record exists"))
+            .clone();
+        match value {
+            Some(value) => values.insert(key, value.to_owned()),
+            None => values.remove(&key),
+        };
+        values
     }
 
     #[test]
-    fn missing_record_in_the_active_generation_is_an_error() {
-        let store = StateStore::new(FakeStorage::default());
-        store.save(&state("first")).expect("state saves");
-        let mut values = store.into_inner().values();
-        let config_key = values
-            .keys()
-            .find(|key| key.contains("config"))
-            .expect("a config record exists")
-            .clone();
-        values.remove(&config_key);
+    fn state_this_firmware_cannot_read_leaves_the_device_unconfigured() {
+        for (unreadable, values) in [
+            ("corrupt marker", stored_with("active_gen", Some("9:z"))),
+            ("missing record", stored_with("config", None)),
+            ("truncated record", stored_with("config", Some("{\"vers"))),
+            (
+                "future schema version",
+                stored_with(
+                    "config",
+                    Some(
+                        &serde_json::json!({"version": STATE_SCHEMA_VERSION + 1, "config": null})
+                            .to_string(),
+                    ),
+                ),
+            ),
+            (
+                "a configuration shaped for another firmware",
+                stored_with(
+                    "config",
+                    Some(
+                        &serde_json::json!({
+                            "version": STATE_SCHEMA_VERSION,
+                            "config": {"ssid": "studio"},
+                        })
+                        .to_string(),
+                    ),
+                ),
+            ),
+        ] {
+            let store = StateStore::new(FakeStorage::from_values(values, usize::MAX));
+            assert_eq!(store.load(), Ok(None), "{unreadable}");
+        }
+    }
 
-        let truncated = StateStore::new(FakeStorage::from_values(values, usize::MAX));
-        assert_eq!(
-            truncated.load(),
-            Err(StateError::InvalidRecord("configuration"))
-        );
+    #[test]
+    fn a_device_with_unreadable_state_commissions_again() {
+        let values = stored_with("active_gen", Some("9:z"));
+        let store = StateStore::new(FakeStorage::from_values(values, usize::MAX));
+        let commissioned = state("re-commissioned");
+
+        store.save(&commissioned).expect("commissioning saves");
+
+        assert_eq!(store.load(), Ok(Some(commissioned)));
     }
 
     #[test]

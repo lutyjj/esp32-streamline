@@ -380,10 +380,10 @@ pub struct AudioStatus {
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct MetricsStatus {
     pub sequence: u32,
-    pub packets: u64,
-    pub bytes: u64,
-    pub read_errors: u64,
-    pub short_reads: u64,
+    pub packets_total: u64,
+    pub bytes_total: u64,
+    pub read_errors_total: u64,
+    pub short_reads_total: u64,
     pub queue_depth: u32,
     pub queue_drops_total: u64,
     pub stale_drops_total: u64,

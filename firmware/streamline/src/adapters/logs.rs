@@ -89,7 +89,7 @@ pub fn install() {
         // before this boot can write over them.
         unsafe { esp_log_set_vprintf(Some(capture_line)) };
         if unsafe { heap_caps_register_failed_alloc_callback(Some(note_allocation_failure)) }
-            != ESP_OK as i32
+            != ESP_OK
         {
             log::warn!("allocation failures will not be captured in the device log");
         }

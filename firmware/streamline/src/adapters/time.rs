@@ -16,10 +16,12 @@ pub fn start() -> Result<()> {
         return Ok(());
     }
 
-    let mut config = sys::esp_sntp_config_t::default();
-    config.wait_for_sync = true;
-    config.start = true;
-    config.num_of_servers = 1;
+    let mut config = sys::esp_sntp_config_t {
+        wait_for_sync: true,
+        start: true,
+        num_of_servers: 1,
+        ..Default::default()
+    };
     config.servers[0] = NTP_SERVER.as_ptr();
 
     let result = unsafe { sys::esp_netif_sntp_init(&config) };

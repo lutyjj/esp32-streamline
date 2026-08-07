@@ -31,7 +31,7 @@ describe('joinNetwork', () => {
     const fields = new URLSearchParams(body);
     expect(fields.get('ssid')).toBe('studio');
     expect(fields.get('password')).toBe('pw');
-    expect(fields.get('admin_secret')).toBe('generated-key');
+    expect(fields.get('admin_key')).toBe('generated-key');
     expect(fields.get('target_host')).toBe('');
     expect(fields.get('target_port')).toBe('39000');
   });

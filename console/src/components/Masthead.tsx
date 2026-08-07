@@ -62,7 +62,7 @@ export function Masthead() {
               v{s?.firmware_version ?? '—'}
             </Chip>
             <Chip>
-              {s ? `${s.audio.sample_rate / 1000} kHz / ${s.audio.bits_per_sample}-bit` : '— Hz'}
+              {s ? `${s.audio.sample_rate_hz / 1000} kHz / ${s.audio.bits_per_sample}-bit` : '— Hz'}
             </Chip>
             <Chip>
               {s ? (setupMode.value ? s.wifi.ap_ip : s.wifi.hostname || s.wifi.sta_ip) : '—'}

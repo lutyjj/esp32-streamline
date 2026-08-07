@@ -109,7 +109,7 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
           setup
             ? 'Not configured yet — join the device to your home network.'
             : s
-              ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi} dBm · ${s.wifi.sta_ip}`
+              ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi_dbm} dBm · ${s.wifi.sta_ip}`
               : '—'
         }
       >

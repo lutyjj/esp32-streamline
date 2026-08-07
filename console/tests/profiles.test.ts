@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AudioProfileCatalog, BoardCapabilities, DeviceConfig } from '../src/lib/api';
+import type { AudioProfileCatalog, CapabilitiesStatus, SettingsResponse } from '../src/lib/api';
 import {
   type AudioProfileImportLimits,
   addProfile,
@@ -11,7 +11,7 @@ import {
   updateProfile,
 } from '../src/lib/profiles';
 
-const capabilities: BoardCapabilities = {
+const capabilities: CapabilitiesStatus = {
   board_id: 'board-a',
   board: 'Board A',
   codec: { driver: 'es8388', i2c_address: 16 },
@@ -33,7 +33,7 @@ const limits: AudioProfileImportLimits = {
   nameMaxChars: 32,
 };
 
-const config: DeviceConfig = {
+const config: SettingsResponse = {
   device_name: '',
   ssid: 'home',
   target_host: '',
@@ -215,7 +215,7 @@ describe('audio profile edits', () => {
 
   it('re-snapshots the selected profile from the current applied settings', () => {
     const seeded = addProfile(empty, 'Vinyl', config, limits).catalog;
-    const louder: DeviceConfig = { ...config, adc_attenuation_db: 24 };
+    const louder: SettingsResponse = { ...config, adc_attenuation_db: 24 };
     const next = updateProfile(seeded, 'vinyl', 'Vinyl HD', louder, limits);
     expect(next.profiles).toEqual([
       {

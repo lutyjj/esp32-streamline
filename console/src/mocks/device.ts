@@ -17,11 +17,11 @@ import type {
 } from '../generated/api';
 import type {
   AudioProfileCatalog,
-  BoardCatalog,
+  BoardCatalogResponse,
   BootLog,
-  DeviceConfig,
-  DeviceStatus,
   LogsResponse,
+  SettingsResponse,
+  StatusResponse,
   TransportKeyResponse,
 } from '../lib/api';
 
@@ -81,8 +81,8 @@ type FormBody = Partial<Record<string, string>>;
 
 export class FakeDevice {
   readonly handlers: HttpHandler[];
-  private status!: DeviceStatus;
-  private config!: DeviceConfig;
+  private status!: StatusResponse;
+  private config!: SettingsResponse;
   private profiles!: AudioProfileCatalog;
   /** The accepted admin key; null while the device has none (setup mode). */
   private adminKey!: string | null;
@@ -184,8 +184,8 @@ export class FakeDevice {
         this.activateProfile(body.profile_id ?? ''),
       ),
       this.write('/api/settings/admin-key', (body) => {
-        if (!body.admin_secret) return reject(400, 'admin_secret is required');
-        this.adminKey = body.admin_secret;
+        if (!body.admin_key) return reject(400, 'admin_key is required');
+        this.adminKey = body.admin_key;
         return { ok: true };
       }),
       this.write('/api/settings/firmware', (body) => {
@@ -257,7 +257,7 @@ export class FakeDevice {
       this.status = deviceStatus({
         mode: 'setup',
         auth_required: false,
-        wifi: { ssid: '', status: 'setup', sta_ip: '', ap_ip: '192.168.71.1', rssi: 0 },
+        wifi: { ssid: '', status: 'setup', sta_ip: '', ap_ip: '192.168.71.1', rssi_dbm: 0 },
         target: { target_host: '' },
         // The contract example streams; an unconfigured device is silent.
         metrics: {
@@ -379,7 +379,7 @@ export class FakeDevice {
   }
 
   /** One status poll: audio moves while playing, and pending OTA phases advance. */
-  private nextStatus(): DeviceStatus {
+  private nextStatus(): StatusResponse {
     const metrics = this.status.metrics;
     if (metrics.playing) {
       const peak = PEAK_STEPS[this.poll % PEAK_STEPS.length];
@@ -408,7 +408,7 @@ export class FakeDevice {
   private join(body: FormBody): JsonBodyType | Response {
     const ssid = (body.ssid ?? '').trim();
     if (!ssid) return reject(400, 'ssid must not be empty');
-    if (body.admin_secret) this.adminKey = body.admin_secret;
+    if (body.admin_key) this.adminKey = body.admin_key;
     this.config.ssid = ssid;
     if (body.target_host) {
       this.config.target_host = body.target_host;
@@ -421,7 +421,7 @@ export class FakeDevice {
       status: 'connected',
       sta_ip: '192.0.2.10',
       ap_ip: '',
-      rssi: -55,
+      rssi_dbm: -55,
     });
     this.status.target.target_host = this.config.target_host;
     this.status.target.target_port = this.config.target_port;
@@ -459,7 +459,7 @@ export class FakeDevice {
     return { ok: true };
   }
 
-  private boards(): BoardCatalog {
+  private boards(): BoardCatalogResponse {
     return {
       boards: [this.status.capabilities],
       selected_board: this.status.capabilities,

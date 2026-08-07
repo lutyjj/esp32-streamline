@@ -78,23 +78,14 @@ fn main() -> Result<()> {
     } else {
         None
     };
-    let audio_profiles = match persisted.as_ref() {
-        Some(config) => store
+    let audio_profiles = if persisted.is_some() {
+        store
             .lock()
             .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
-            .load_audio_profiles(board.as_ref(), config.audio)?,
-        None => AudioProfileCatalog::empty(board.as_ref()),
+            .load_audio_profiles(board.as_ref())?
+    } else {
+        AudioProfileCatalog::empty(board.as_ref())
     };
-    if persisted.is_some() {
-        match store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
-            .migrate_legacy(board.as_ref())
-        {
-            Ok(()) => {}
-            Err(error) => log::warn!("could not migrate legacy configuration: {error:#}"),
-        }
-    }
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
     // The setup network's credentials exist in every mode: the AP serves them

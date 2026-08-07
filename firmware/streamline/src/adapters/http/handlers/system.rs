@@ -31,7 +31,10 @@ pub(super) fn register_actions(
     })?;
 
     // Plain reboot with settings intact; recovers a wedged stream without a
-    // trip to the power plug.
+    // trip to the power plug. The wrapping closure supplies the higher-ranked
+    // connection lifetime `handler` demands, which the bare function item
+    // cannot satisfy.
+    #[allow(clippy::redundant_closure)]
     server.handler(api::RESTART, move |request| reboot_response(request))?;
 
     // Factory reset erases the configuration but keeps the setup password:

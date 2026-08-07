@@ -88,12 +88,18 @@ lock: image
 lock-check: image
 	$(CONTAINER_RUN) cargo metadata --locked --no-deps --format-version 1 > /dev/null
 
-# clippy runs `--lib` on the host target: the crate core is host-buildable while
-# the `cfg(espidf)` adapters and binary only compile in the cross build, which
-# `build` exercises with warnings intact.
+# clippy covers every configuration this crate compiles in, because a lint that
+# skips one is a blind spot the release build never reports. The host passes
+# take the crate core alone and then with the host-only feature bins; the
+# device pass is the only one that sees the `cfg(espidf)` adapters, `runtime`,
+# and `main.rs`. It shares the release profile and target with `build`, so it
+# reuses that target directory instead of populating a second one.
 lint: image console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --locked --lib -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --features api-spec,pcm-frame-vectors \
+		--lib --bin streamline-openapi --bin streamline-pcm-frame-vectors -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) -- -D warnings
 
 build: image console-asset
 	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET)

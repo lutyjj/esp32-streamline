@@ -2,8 +2,6 @@
 //! endpoints.
 
 use serde::Serialize;
-#[cfg(feature = "api-spec")]
-use serde_json::json;
 
 use crate::{board::Board, health::HealthReport};
 

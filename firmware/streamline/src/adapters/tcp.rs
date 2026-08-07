@@ -187,12 +187,14 @@ impl TlsConnection {
             key_size: key.psk().as_bytes().len(),
             hint: identity.as_ptr(),
         });
-        let mut config = sys::esp_tls_cfg_t::default();
-        config.timeout_ms = TLS_TIMEOUT_MS;
-        config.psk_hint_key = &*psk;
-        config.ciphersuites_list = TLS_CIPHERSUITES.as_ptr();
-        config.tls_version = sys::esp_tls_proto_ver_t_ESP_TLS_VER_TLS_1_3;
-        config.addr_family = sys::esp_tls_addr_family_ESP_TLS_AF_INET;
+        let config = sys::esp_tls_cfg_t {
+            timeout_ms: TLS_TIMEOUT_MS,
+            psk_hint_key: &*psk,
+            ciphersuites_list: TLS_CIPHERSUITES.as_ptr(),
+            tls_version: sys::esp_tls_proto_ver_t_ESP_TLS_VER_TLS_1_3,
+            addr_family: sys::esp_tls_addr_family_ESP_TLS_AF_INET,
+            ..Default::default()
+        };
         let handle = unsafe { sys::esp_tls_init() };
         if handle.is_null() {
             return Err(anyhow!("cannot allocate ESP-TLS handle"));

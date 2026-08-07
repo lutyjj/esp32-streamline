@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "streamline-bridge"
-version = "0.11.1" # x-release-please-version
+version = "0.11.2" # x-release-please-version
 description = "ESP32 StreamLine TCP PCM to HTTP WAV bridge"
 requires-python = ">=3.13"
 license = { text = "AGPL-3.0-or-later" }

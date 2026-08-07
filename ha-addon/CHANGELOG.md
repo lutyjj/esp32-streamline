@@ -1,6 +1,17 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.11.2](https://github.com/lutyjj/esp32-streamline/compare/v0.11.1...v0.11.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* **console:** keep the lint gate silent and e2e-proof ([e3fe7e4](https://github.com/lutyjj/esp32-streamline/commit/e3fe7e40bc2117cdc18b33f69d6b1336603d4fb3))
+* **firmware:** drop the storage layout that predates generations ([c9d1200](https://github.com/lutyjj/esp32-streamline/commit/c9d12000a57c41ba8842b2fad28f5fa88bc7bbd0))
+* **firmware:** give setup-mode settings writes one policy ([0d1c0ff](https://github.com/lutyjj/esp32-streamline/commit/0d1c0ff574541949cfa676ab5f441ee305b20b4e))
+* **firmware:** open setup when stored state cannot be decoded ([cc26f11](https://github.com/lutyjj/esp32-streamline/commit/cc26f11d5f3cde3d85adf21a487b9e8fb3452703))
+* **firmware:** report console readiness only once the API can answer ([b1b0647](https://github.com/lutyjj/esp32-streamline/commit/b1b0647aae4460a6665a38ddf1834d04197cfb87))
+
 ## [0.11.1](https://github.com/lutyjj/esp32-streamline/compare/v0.11.0...v0.11.1) (2026-08-01)
 
 

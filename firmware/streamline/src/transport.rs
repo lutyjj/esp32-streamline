@@ -4,7 +4,7 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::random::RandomBytes;
+use crate::{hex, random::RandomBytes};
 
 pub const CONTRACT_VERSION: u8 = 1;
 pub const DEFAULT_PORT: u16 = 39_000;
@@ -50,7 +50,7 @@ impl TransportPsk {
     }
 
     pub fn hex(&self) -> String {
-        encode_hex(&self.0)
+        hex::encode(&self.0)
     }
 }
 
@@ -155,7 +155,7 @@ impl TransportKeys {
         random.fill(&mut id_random);
         random.fill(&mut psk);
         let key = TransportKey {
-            id: format!("{KEY_ID_PREFIX}{}", encode_hex(&id_random)),
+            id: format!("{KEY_ID_PREFIX}{}", hex::encode(&id_random)),
             psk: TransportPsk::new(psk),
         };
         if self.active().is_some_and(|active| active.id() == key.id()) {
@@ -493,16 +493,6 @@ fn valid_key_id(value: &str) -> bool {
         && value[KEY_ID_PREFIX.len()..]
             .bytes()
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-}
-
-fn encode_hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut encoded = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        encoded.push(HEX[usize::from(byte >> 4)] as char);
-        encoded.push(HEX[usize::from(byte & 0x0f)] as char);
-    }
-    encoded
 }
 
 fn decode_hex(text: &str) -> Option<[u8; PSK_BYTES]> {

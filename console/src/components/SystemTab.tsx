@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import { generateAdminKey, isUnlocked, replaceAdminKey, useAuthEpoch } from '../lib/adminKey';
 import {
-  type DeviceConfig,
   factoryReset,
   otaCheck,
   otaRollback,
   otaUpdate,
   restart as restartDevice,
+  type SettingsResponse,
   setAdminKey,
   setName as setDeviceName,
   setFirmware,
@@ -138,7 +138,7 @@ function FirmwareCard() {
   const settingsTransact = useTransact();
   const customTransact = useTransact();
   const [autoUpdateSchedule, setAutoUpdateSchedule] =
-    useState<DeviceConfig['auto_update_schedule']>('daily');
+    useState<SettingsResponse['auto_update_schedule']>('daily');
   const [url, setUrl] = useState('');
   const [sha256, setSha256] = useState('');
 
@@ -192,7 +192,9 @@ function FirmwareCard() {
             disabled={!writable}
             value={autoUpdateSchedule}
             onChange={(e) =>
-              setAutoUpdateSchedule(e.currentTarget.value as DeviceConfig['auto_update_schedule'])
+              setAutoUpdateSchedule(
+                e.currentTarget.value as SettingsResponse['auto_update_schedule'],
+              )
             }
           >
             <option value="daily">Daily when idle</option>
@@ -417,7 +419,7 @@ function AccessCard() {
     transact.run(
       async () => {
         const ack = await replaceAdminKey(
-          (secret) => setAdminKey({ admin_secret: secret }),
+          (secret) => setAdminKey({ admin_key: secret }),
           staged,
           remember,
         );

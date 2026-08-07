@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Ack, DeviceConfig, TransportKeyResponse, TransportStatus } from '../src/lib/api';
+import type { Ack, SettingsResponse, TransportKeyResponse, TransportStatus } from '../src/lib/api';
 import {
   type TransportApi,
   TransportController,
@@ -147,7 +147,7 @@ describe('PCM transport lifecycle', () => {
   it('uses the version when explicitly returning the one listener to cleartext', async () => {
     const api = fakeApi();
     const controller = new TransportController(api, async () => undefined);
-    const config = { transport: status({ contract_version: 1 }) } as DeviceConfig;
+    const config = { transport: status({ contract_version: 1 }) } as SettingsResponse;
 
     await controller.useCleartext(config);
 

@@ -6,12 +6,12 @@
 import { computed, signal } from '@preact/signals';
 import {
   type AudioProfileCatalog,
-  type DeviceConfig,
-  type DeviceStatus,
   getAudioProfiles,
   getContract,
   getSettings,
   getStatus,
+  type SettingsResponse,
+  type StatusResponse,
 } from '../lib/api';
 import { type ApiDocument, audioProfileConstraints } from '../lib/contract';
 import type { AudioProfileImportLimits } from '../lib/profiles';
@@ -42,9 +42,9 @@ export function nextPeakHold(
   return { left, right, at: rose || expired ? now : hold.at };
 }
 
-export const status = signal<DeviceStatus | null>(null);
+export const status = signal<StatusResponse | null>(null);
 /** Last /api/settings read; forms copy it into local edit state. */
-export const configResource = resource<DeviceConfig>('device settings', getSettings);
+export const configResource = resource<SettingsResponse>('device settings', getSettings);
 export const config = configResource.data;
 /** Device-owned named audio profiles, stored separately from raw settings. */
 export const audioProfilesResource = resource<AudioProfileCatalog>(
@@ -121,7 +121,7 @@ export async function refresh(): Promise<void> {
   }
 }
 
-function applyStatus(s: DeviceStatus): void {
+function applyStatus(s: StatusResponse): void {
   const now = Date.now();
   peakHold.value = nextPeakHold(
     peakHold.value,

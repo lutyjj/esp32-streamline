@@ -157,7 +157,7 @@ export function OverviewTab({
           <span class="sub">
             {setup
               ? `setup network at ${s.wifi.ap_ip}`
-              : `${s.wifi.rssi} dBm · ${s.wifi.hostname || s.wifi.sta_ip}`}
+              : `${s.wifi.rssi_dbm} dBm · ${s.wifi.hostname || s.wifi.sta_ip}`}
           </span>
         </div>
         <div class="health">

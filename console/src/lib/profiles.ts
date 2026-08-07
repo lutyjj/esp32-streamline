@@ -1,9 +1,4 @@
-import type {
-  AudioProfile,
-  AudioProfileCatalog,
-  AudioProfileSettings,
-  BoardCapabilities,
-} from './api';
+import type { AudioProfile, AudioProfileCatalog, AudioSettings, CapabilitiesStatus } from './api';
 import type { AudioProfileConstraints } from './contract';
 
 /**
@@ -15,11 +10,7 @@ export interface AudioProfileImportLimits extends AudioProfileConstraints {
   schemaVersion: number;
 }
 
-export function profileFromAudio(
-  id: string,
-  name: string,
-  audio: AudioProfileSettings,
-): AudioProfile {
+export function profileFromAudio(id: string, name: string, audio: AudioSettings): AudioProfile {
   return {
     id,
     name,
@@ -49,7 +40,7 @@ function validProfileName(name: string, limits: AudioProfileConstraints): string
 export function addProfile(
   catalog: AudioProfileCatalog,
   name: string,
-  audio: AudioProfileSettings,
+  audio: AudioSettings,
   limits: AudioProfileConstraints,
 ): { catalog: AudioProfileCatalog; id: string } {
   const trimmed = validProfileName(name, limits);
@@ -75,7 +66,7 @@ export function updateProfile(
   catalog: AudioProfileCatalog,
   id: string,
   name: string,
-  audio: AudioProfileSettings,
+  audio: AudioSettings,
   limits: AudioProfileConstraints,
 ): AudioProfileCatalog {
   const trimmed = validProfileName(name, limits);
@@ -141,7 +132,7 @@ export function nextProfileId(
 /** Parse shared bytes once into the same bounded model the firmware accepts. */
 export function parseAudioProfileCatalog(
   text: string,
-  capabilities: BoardCapabilities,
+  capabilities: CapabilitiesStatus,
   limits: AudioProfileImportLimits,
 ): AudioProfileCatalog {
   let value: unknown;

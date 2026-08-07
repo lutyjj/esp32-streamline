@@ -6,9 +6,6 @@
 //! hardware calls stay in the adapters; the assembly is pure and host-tested.
 //! Adding a check is adding an entry to [`HealthReport::assess`]; consumers and
 //! sibling checks do not change.
-//!
-//! Mirrors the `health` block in `console/src/lib/api.ts` — change one, change
-//! the other in the same PR.
 
 use serde::Serialize;
 

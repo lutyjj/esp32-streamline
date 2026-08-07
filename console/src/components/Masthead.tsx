@@ -40,7 +40,7 @@ export function Masthead() {
           };
 
   function onChipClick() {
-    if (!s || !s.auth_required) return;
+    if (!s?.auth_required) return;
     if (isUnlocked()) {
       lockSettings();
       toast('Settings locked', 'ok');

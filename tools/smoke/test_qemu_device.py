@@ -136,6 +136,45 @@ def test_fresh_boot_reaches_setup_console(boot_device: Callable[..., EmulatedDev
     assert _mode(device) == "setup"
 
 
+def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
+    boot_device: Callable[..., EmulatedDevice],
+) -> None:
+    """Emulated: needs a device on a fresh unprovisioned flash."""
+    setup_boot = boot_device(until=("setup console started", CONSOLE_READY))
+    _expect_api_up(setup_boot)
+    assert _mode(setup_boot) == "setup"
+
+    # A settings write that commissioning does not gate applies to the running
+    # configuration instead of failing on the Wi-Fi credentials it never sent.
+    code, body = setup_boot.api.post_form("/api/settings/name", {"name": "staged-name"})
+    assert code == 200, f"setup-mode rename was answered with HTTP {code}: {body[:200]!r}"
+    code, body = setup_boot.api.fetch("/api/settings")
+    assert code == 200
+    assert json.loads(body)["device_name"] == "staged-name"
+
+    # A transport key binds to a bridge and must survive the reboot that
+    # activates it, so it names that precondition rather than staging.
+    code, body = setup_boot.api.post_form("/api/transport/keys/stage", {})
+    assert code == 503, f"setup-mode key staging was answered with HTTP {code}: {body[:200]!r}"
+
+    # Commissioning carries the staged name into the first persisted generation.
+    code, body = setup_boot.api.post_form(
+        "/api/settings/wifi",
+        {"ssid": "qemu-smoke-lab", "admin_secret": ADMIN_KEY},
+    )
+    assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
+    setup_boot.dut.qemu.wait(timeout=60)
+    provisioned = boot_device(
+        flash=setup_boot.flash,
+        admin_key=ADMIN_KEY,
+        until=("StreamLine provisioned", CONSOLE_READY),
+    )
+    _expect_api_up(provisioned)
+    code, body = provisioned.api.fetch("/api/settings")
+    assert code == 200
+    assert json.loads(body)["device_name"] == "staged-name"
+
+
 def test_provisioning_persists_across_reboot(provisioned_device: EmulatedDevice) -> None:
     # The fixture performed the commissioning write and the reboot; what is
     # left to assert is the durable outcome.

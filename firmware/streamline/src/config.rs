@@ -134,6 +134,11 @@ impl<'a> NetworkSettings<'a> {
         if self.ssid.is_empty() {
             return Err(ConfigError::MissingSsid);
         }
+        self.validate_target()
+    }
+
+    /// The stream target's own rules, which hold before an SSID exists.
+    pub fn validate_target(self) -> Result<Self, ConfigError> {
         if self.target_host.contains(':') || self.target_host.contains('/') {
             return Err(ConfigError::MalformedTargetHost);
         }
@@ -204,16 +209,33 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Every rule a durable configuration satisfies.
     pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
+        self.network().validate()?;
+        if !is_canonical_admin_secret(&self.admin_secret) {
+            return Err(ConfigError::MalformedAdminSecret);
+        }
+        self.validate_device_settings(board)
+    }
+
+    /// The rules that hold before commissioning. The SSID and the admin key
+    /// stay blank until the commissioning write supplies them, so a setup-mode
+    /// write is checked against everything else (see
+    /// [`crate::mode::ConfigWrite::Stage`]).
+    pub fn validate_staged(&self, board: &Board) -> Result<(), ConfigError> {
+        self.network().validate_target()?;
+        self.validate_device_settings(board)
+    }
+
+    fn network(&self) -> NetworkSettings<'_> {
         NetworkSettings {
             ssid: &self.ssid,
             target_host: &self.target_host,
             target_port: self.target_port,
         }
-        .validate()?;
-        if !is_canonical_admin_secret(&self.admin_secret) {
-            return Err(ConfigError::MalformedAdminSecret);
-        }
+    }
+
+    fn validate_device_settings(&self, board: &Board) -> Result<(), ConfigError> {
         if self.device_name.chars().count() > MAX_DEVICE_NAME_CHARS {
             return Err(ConfigError::DeviceNameTooLong);
         }
@@ -423,6 +445,58 @@ mod tests {
     #[test]
     fn validates_an_owned_runtime_configuration() {
         assert_eq!(sample_runtime_config().validate(&default_board()), Ok(()));
+    }
+
+    #[test]
+    fn a_staged_configuration_waives_only_what_commissioning_supplies() {
+        let mut config = sample_runtime_config();
+        config.ssid = String::new();
+        config.admin_secret = String::new();
+
+        assert_eq!(
+            config.validate(&default_board()),
+            Err(ConfigError::MissingSsid)
+        );
+        assert_eq!(config.validate_staged(&default_board()), Ok(()));
+    }
+
+    #[test]
+    fn a_staged_configuration_still_rejects_every_other_bad_value() {
+        let staged = || {
+            let mut config = sample_runtime_config();
+            config.ssid = String::new();
+            config.admin_secret = String::new();
+            config
+        };
+
+        let mut malformed_target = staged();
+        malformed_target.target_host = "bridge.local:39000".to_owned();
+        let mut long_name = staged();
+        long_name.device_name = "x".repeat(super::MAX_DEVICE_NAME_CHARS + 1);
+        let mut unknown_led = staged();
+        unknown_led
+            .led_roles
+            .insert("no-such-led".to_owned(), LedRole::On);
+        let mut unknown_button = staged();
+        unknown_button
+            .button_actions
+            .insert("no-such-button".to_owned(), ButtonAction::Restart);
+        let mut bad_audio = staged();
+        bad_audio.audio.input_line = 99;
+
+        for (config, expected) in [
+            (malformed_target, ConfigError::MalformedTargetHost),
+            (long_name, ConfigError::DeviceNameTooLong),
+            (unknown_led, ConfigError::UnknownLed),
+            (unknown_button, ConfigError::UnknownButton),
+            (bad_audio, ConfigError::InvalidInputLine),
+        ] {
+            assert_eq!(
+                config.validate_staged(&default_board()),
+                Err(expected),
+                "{expected:?}"
+            );
+        }
     }
 
     #[test]

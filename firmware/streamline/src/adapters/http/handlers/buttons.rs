@@ -7,15 +7,17 @@ use anyhow::Result;
 use crate::{api, mutation::MutationError};
 
 use super::super::{
-    persistence::save_configuration,
     requests::form,
     responses::{json_response, mutation_error},
+    writes::update_configuration,
     ApiState, ContractServer,
 };
 
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler(api::SET_BUTTON, move |mut request| {
+        // The poll task reads the live configuration, so a new assignment fires
+        // without a reboot whether it persisted or was staged.
         let result = (|| -> Result<(), MutationError> {
             let form: api::ButtonSettingsRequest = form(&mut request)?;
             if !state.board.has_button(&form.id) {
@@ -24,17 +26,10 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
                     form.id
                 )));
             }
-            let mut next = state.lock_config().clone();
-            next.button_actions.insert(form.id, form.action);
-            // The poll task reads the live configuration, so a persisted
-            // assignment applies without a reboot. In setup mode nothing is
-            // persisted yet; update memory so the button still fires the choice.
-            if state.mode.has_persisted_configuration() {
-                save_configuration(&state, next)
-            } else {
-                *state.lock_config() = next;
+            update_configuration(&state, |next| {
+                next.button_actions.insert(form.id, form.action);
                 Ok(())
-            }
+            })
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),

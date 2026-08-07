@@ -12,9 +12,9 @@ use crate::{
 };
 
 use super::super::{
-    persistence::save_configuration,
     requests::form,
     responses::{json_response, mutation_error, reboot_response},
+    writes::{persist_configuration, update_configuration},
     ApiState, ContractServer,
 };
 
@@ -31,10 +31,10 @@ pub(super) fn register_network_writes(
 ) -> Result<()> {
     // The route table gates every mutating endpoint behind the admin key once
     // one is provisioned; an unconfigured device accepts setup writes so the
-    // first key can be set. Wi-Fi and the stream target are separate nouns: each write
-    // validates and persists only its own fields, so a malformed target host
-    // cannot fail a Wi-Fi save and a Wi-Fi save cannot smuggle in half-typed
-    // target edits.
+    // first key can be set. Wi-Fi and the stream target are separate nouns:
+    // each write validates and applies only its own fields, so a malformed
+    // target host cannot fail a Wi-Fi save and a Wi-Fi save cannot smuggle in
+    // half-typed target edits.
     let state_for_wifi = Arc::clone(state);
     server.handler(api::SET_WIFI, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
@@ -53,7 +53,7 @@ pub(super) fn register_network_writes(
                 form.target_host.map(|value| value.trim().to_owned()),
                 form.target_port,
             );
-            save_configuration(&state_for_wifi, next)
+            persist_configuration(&state_for_wifi, next)
         })();
         match result {
             Ok(()) => reboot_response(request),
@@ -70,18 +70,16 @@ pub(super) fn register_network_writes(
     server.handler(api::SET_TARGET, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
-            let current = state_for_target.lock_config().clone();
-            let target_host = form.target_host.trim().to_owned();
-            let target_port = form.target_port.unwrap_or(current.target_port);
-            let mut next = RuntimeConfig {
-                target_host,
-                target_port,
-                ..current
-            };
-            if next.target_host != current.target_host || next.target_port != current.target_port {
-                next.transport.keys.reset_pending_verification();
-            }
-            save_configuration(&state_for_target, next)
+            update_configuration(&state_for_target, |next| {
+                let target_host = form.target_host.trim().to_owned();
+                let target_port = form.target_port.unwrap_or(next.target_port);
+                if target_host != next.target_host || target_port != next.target_port {
+                    next.transport.keys.reset_pending_verification();
+                }
+                next.target_host = target_host;
+                next.target_port = target_port;
+                Ok(())
+            })
         })();
         match result {
             Ok(()) => reboot_response(request),
@@ -100,10 +98,11 @@ pub(super) fn register_identity_writes(
     server.handler(api::SET_NAME, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::NameSettingsRequest = form(&mut request)?;
-            let mut next = state_for_name.lock_config().clone();
-            next.device_name = form.name.trim().to_owned();
-            save_configuration(&state_for_name, next.clone())?;
-            refresh_mdns_name(&state_for_name, &next);
+            let named = update_configuration(&state_for_name, |next| {
+                next.device_name = form.name.trim().to_owned();
+                Ok(next.clone())
+            })?;
+            refresh_mdns_name(&state_for_name, &named);
             Ok(())
         })();
         match result {
@@ -112,13 +111,21 @@ pub(super) fn register_identity_writes(
         }
     })?;
 
+    // Rotation, not enrolment: the first admin key arrives with the
+    // commissioning write, which also arms authentication. Staging one here
+    // would lock an unprovisioned caller out of the very Wi-Fi write that
+    // finishes setup, so an uncommissioned device refuses instead.
     let state_for_admin_key = Arc::clone(state);
     server.handler(api::SET_ADMIN_KEY, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AdminKeySettingsRequest = form(&mut request)?;
-            let mut next = state_for_admin_key.lock_config().clone();
-            next.admin_secret = form.admin_secret;
-            save_configuration(&state_for_admin_key, next)
+            state_for_admin_key
+                .mode
+                .require_commissioned("replacing the admin key")?;
+            update_configuration(&state_for_admin_key, |next| {
+                next.admin_secret = form.admin_secret;
+                Ok(())
+            })
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
@@ -140,17 +147,10 @@ pub(super) fn register_firmware_write(
                 api::AutoUpdateScheduleRequest::Daily => AutoUpdateSchedule::Daily,
                 api::AutoUpdateScheduleRequest::Weekly => AutoUpdateSchedule::Weekly,
             };
-            let current = state.lock_config().clone();
-            let next = RuntimeConfig {
-                auto_update_schedule,
-                ..current
-            };
-            if state.mode.has_persisted_configuration() {
-                save_configuration(&state, next)
-            } else {
-                *state.lock_config() = next;
+            update_configuration(&state, |next| {
+                next.auto_update_schedule = auto_update_schedule;
                 Ok(())
-            }
+            })
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),

@@ -12,9 +12,9 @@ use crate::{
 };
 
 use super::super::{
-    persistence::{save_audio_profiles, save_configuration_and_profiles},
     requests::form,
     responses::{json_response, mutation_error, reboot_response},
+    writes::{save_audio_profiles, write_configuration_and_profiles},
     ApiState, ContractServer,
 };
 
@@ -32,8 +32,8 @@ pub(super) fn register_writes(
 ) -> Result<()> {
     // While streaming, audio params are written straight to the running codec
     // and play detection re-baselines to the new input scale; no reboot is
-    // needed. In setup-AP mode the codec is not running, so the settings are
-    // persisted and take effect when the device boots into streaming.
+    // needed. Setup mode has no running codec, so the values wait in the
+    // configuration and take effect when the device boots into streaming.
     let state_for_audio = Arc::clone(state);
     server.handler(api::SET_AUDIO, move |mut request| {
         // Ok(true) means the settings were applied live.
@@ -97,7 +97,7 @@ pub(super) fn register_writes(
             })?;
             if let Some(audio) = audio {
                 let current = state_for_active_profile.lock_config().clone();
-                save_configuration_and_profiles(
+                write_configuration_and_profiles(
                     &state_for_active_profile,
                     RuntimeConfig { audio, ..current },
                     catalog,
@@ -115,10 +115,10 @@ pub(super) fn register_writes(
     })
 }
 
-/// Validate, persist, and apply new audio settings, returning to custom
-/// settings (no active profile). `Ok(true)` means they were applied live;
-/// `Ok(false)` means the codec is down and a reboot applies them. Shared by
-/// the HTTP handler above and the `cycle_input` button action.
+/// Validate, write, and apply new audio settings, returning to custom settings
+/// (no active profile). `Ok(true)` means they were applied live; `Ok(false)`
+/// means the codec is down and a reboot applies them. Shared by the HTTP
+/// handler above and the `cycle_input` button action.
 pub(in crate::adapters) fn set_audio(
     state: &ApiState,
     audio: AudioSettings,
@@ -129,11 +129,11 @@ pub(in crate::adapters) fn set_audio(
     })?;
     let mut catalog = state.lock_audio_profiles().clone();
     catalog.active_profile_id = None;
-    save_configuration_and_profiles(state, RuntimeConfig { audio, ..current }, catalog)?;
+    write_configuration_and_profiles(state, RuntimeConfig { audio, ..current }, catalog)?;
     apply_audio_live(state, audio)
 }
 
-/// Apply already-persisted settings to the codec and reset play detection.
+/// Apply already-written settings to the codec and reset play detection.
 fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool, MutationError> {
     let Some(codec) = &state.codec else {
         return Ok(false);

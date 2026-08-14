@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling==1.31.0"]
+requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -10,7 +10,7 @@ description = "ESP32 StreamLine developer tools"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
-  "numpy>=2.2.6,<3",
+  "numpy>=2.5.2,<3",
   "pexpect>=4.9,<5",
   "pyelftools>=0.32,<1",
   "pytest>=9.1.1,<10",

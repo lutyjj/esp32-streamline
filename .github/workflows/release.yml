@@ -103,7 +103,7 @@ jobs:
           printf 'latest=%s\n' "$latest" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU for cross-architecture builds
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
 
       # CI owns cache writes. Publishing restores the same cache lifecycle and
       # leaves its contents reusable by the next firmware verification.
@@ -155,7 +155,7 @@ jobs:
       # One SPDX SBOM from the locked cargo graph, published beside the
       # binaries and bound to each of them by an SBOM attestation.
       - name: Generate firmware SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           path: firmware/streamline
           format: spdx-json

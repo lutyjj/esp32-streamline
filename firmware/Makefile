@@ -5,6 +5,7 @@ SRC := streamline
 TARGET := xtensa-esp32-espidf
 ELF := target/$(TARGET)/release/streamline-firmware
 VERSION ?= dev
+FEATURES ?=
 PORT ?= /dev/cu.usbserial-0001
 # Flash size baked into the release images. Keep in step with
 # CONFIG_ESPTOOLPY_FLASHSIZE in streamline/sdkconfig.defaults, which sizes the
@@ -68,7 +69,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test signature-check signing-key size-report
+.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts package repro-check ota-size-check ota-size-self-test signature-check signing-key size-report
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -104,9 +105,10 @@ lint: image console-asset
 		--lib --bin streamline-openapi --bin streamline-pcm-frame-vectors -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features test-source -- -D warnings
 
 build: image console-asset
-	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET)
+	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET) $(if $(FEATURES),--features $(FEATURES))
 
 # Attribute the built ELF's flash bytes to their owners (issue #355), so a
 # diff's flash cost has a name before the OTA size gate refuses it. The
@@ -205,7 +207,10 @@ endef
 # the inactive slot. Both carry the RSA signature block (see sign_and_package).
 # SHA256SUMS stores basenames so the device can match the `-ota.bin` entry by
 # filename, and hashes the signed bytes it actually serves.
-artifacts: build signing-key
+artifacts: build
+	$(MAKE) package
+
+package: signing-key
 	mkdir -p $(DIST_DIR)/firmware
 	$(call sign_and_package,streamline-$(VERSION))
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-$(VERSION)-ota.bin

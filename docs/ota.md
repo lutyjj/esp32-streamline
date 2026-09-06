@@ -1,240 +1,205 @@
-# Over-the-Air Updates
+# Over-the-air updates
 
-The device updates itself from GitHub releases. Daily automatic updates are
-enabled by default. After a ten-minute boot delay, the device checks on its
-selected daily or weekly cadence, waits for audio to be idle, installs a newer
-release into the inactive app slot, and reboots into it. System → Firmware can
-change the cadence, disable automatic updates, or start the same flow by hand.
-
-## Partition layout
-
-`firmware/streamline/partitions.csv` defines a two-slot OTA table sized for 4 MB
-flash, the common ESP32 module size; an 8 MB board runs it too, leaving its upper
-half unused. It is applied at flash time via `espflash --partition-table`, so the
-`CONFIG_PARTITION_TABLE_CUSTOM*` keys stay out of `sdkconfig.defaults`:
-
-| Partition | Size | Role |
-|---|---|---|
-| `nvs` | 24 KB | Wi-Fi/target/audio config, audio profiles, selected board descriptor, and admin key |
-| `otadata` | 8 KB | Records the bootable slot |
-| `phy_init` | 4 KB | RF calibration |
-| `coredump` | 56 KB | Crash dump a panic writes, served by the [diagnostics API](diagnostics.md#crash-dumps) |
-| `ota_0`, `ota_1` | 1.9 MB each | Application slots; the bootloader runs one and updates the other |
+The device installs signed firmware from GitHub releases. Daily automatic
+updates are enabled by default. After a ten-minute boot delay, the device checks
+on its selected daily or weekly cadence and waits for idle audio before updating.
+System → Firmware controls the schedule and offers manual checks and installs.
 
 ## Update flow
 
-The console separates checking from installing: `POST /api/ota/check` reports
-whether a newer release exists (`up-to-date` or `update-available`) without
-touching flash, and `POST /api/ota/update` performs the install. Both run on a
-background worker and require the admin key (digest authentication).
+`POST /api/ota/check` checks for a newer release without writing flash or pausing
+audio. `POST /api/ota/update` installs it. Both require digest authentication and
+return `202` after reserving their background worker. An active worker returns
+`409`; a worker that cannot start returns `503` and leaves OTA available to retry.
+An automatic attempt that cannot start retries after one minute, still waiting
+for idle audio and respecting the disabled schedule.
 
-1. The console `POST`s `/api/ota/check` or `/api/ota/update`.
-2. A worker task fetches `releases/latest/download/SHA256SUMS` over HTTPS and
-   reads the `-ota.bin` entry — one small file yields both the latest version
-   and the expected digest, so no GitHub API call or token is needed.
-3. For a check, it reports the result and stops. For an update, if the release
-   is newer than the running firmware, the worker pauses audio streaming and
-   waits for the sender to confirm it: the PCM connection closes, freeing its
-   socket and TLS buffers so the download, hashing, and flash writes fit in
-   memory. The download starts only after that confirmation, so no reconnect
-   can race it for the buffers it just freed. A device with no bridge target
-   holds no connection and starts at once. The status message narrates the
-   pause; audio meters stay live. A sender that will not release fails the
-   install cleanly with both firmware slots intact.
-4. It streams `releases/latest/download/streamline-<ver>-ota.bin` straight into
-   the inactive slot, hashing as it writes. The connection allocates its TLS
-   receive buffer once, after the handshake, and holds it until the download
-   ends, so the transfer never waits on a large allocation from a heap that
-   fragments as it runs.
-5. On a SHA-256 match it commits the boot pointer and reboots; a mismatch aborts
-   the write and leaves the running slot untouched. Any other failure aborts the
-   same way and resumes streaming.
-6. Progress and result surface in `/api/status` under `ota`, which the console
-   polls.
+1. HTTPS requires a usable wall clock. A clock at or after January 1, 2025 skips
+   the SNTP wait; certificate validity dates remain enforced by mbedTLS. An unset
+   clock waits up to 45 seconds for synchronization. Plain HTTP skips this step.
+2. The worker fetches `releases/latest/download/SHA256SUMS`. The `-ota.bin` entry
+   supplies the release version and expected digest. A failed fetch retries once
+   after one second, with the failed connection released. Checks keep audio running.
+3. A check reports `up-to-date` or `update-available` and stops. An install
+   proceeds only if the release is newer than the running firmware.
+4. Before downloading the image, the installer pauses streaming and waits for
+   the sender to close its PCM connection, freeing socket and TLS buffers. Audio
+   meters stay live. If the sender cannot release, the install fails with both
+   slots intact. A device without a sender proceeds immediately.
+5. The image streams into the inactive slot while SHA-256 is calculated. The TLS
+   receive buffer is allocated once after the handshake and held until download
+   finishes, avoiding repeated large allocations on a fragmenting heap.
+6. The image must match its expected SHA-256 and the running firmware's signing
+   key. Only then does the installer select the new boot slot and restart.
+   A failure resumes streaming and reports its cause.
 
-`GET /api/settings` reports the persisted `auto_update_schedule` policy.
-`POST /api/settings/firmware` changes it to `disabled`, `daily`, or `weekly`;
-the setting applies without a reboot. Existing provisioned devices adopt the
-daily default when they first run firmware that supports the setting.
+`GET /api/status` reports progress under `ota`. `GET /api/settings` reports
+`auto_update_schedule`; `POST /api/settings/firmware` sets `disabled`, `daily`,
+or `weekly` without a reboot.
 
 ## Custom image installs (development)
 
 `POST /api/ota/update` with form fields `url` and `sha256` installs that exact
-image instead of the latest release — no USB access needed to test a build:
+image regardless of version. A custom install uses the same signature and
+checksum verification as a release install.
 
-1. `make firmware-artifacts` (produces `dist/firmware/streamline-dev-ota.bin`
-   and `SHA256SUMS`).
-2. Serve it on the LAN: `cd dist/firmware && python3 -m http.server 8000`.
-3. In the console's **System → Firmware → Developer — install a custom image**
-   form, enter
-   `http://<your-host>:8000/streamline-dev-ota.bin` and the digest from
-   `SHA256SUMS`, then **Install custom image**.
+1. Run `make firmware-artifacts`. It creates
+   `dist/firmware/streamline-dev-ota.bin` and `SHA256SUMS`.
+2. Serve the artifacts on the LAN using an HTTP server.
+3. Submit the image URL and its digest through the API or System → Firmware →
+   Developer → Install a custom image.
 
-A custom image passes the same two checks as a release: its bytes must match the
-admin-supplied SHA-256, and it must carry a valid vendor signature (see
-[firmware signing](#firmware-signing)). Build and sign a developer image with
-`make firmware-artifacts`, which signs with this machine's generated development
-key; a device enrolled with that key accepts it, and any device rejects an image
-its trusted key did not sign. Because both checks are on the content, a
-plain-HTTP LAN URL is acceptable and skips the clock sync that only TLS needs,
-so an offline bench works. Custom installs skip the version comparison — a `dev` build can replace
-any release — and keep the rollback net below. Signed query parameters remain
-part of the download request, but status, diagnostics, and logs identify the
-source only as a custom image. URLs with userinfo or fragments are rejected.
+A plain HTTP URL works on an offline bench because the signature authenticates
+the image and the admin-supplied digest pins its bytes. Signed query parameters
+remain in the request; status, logs, and diagnostics identify the source only as
+"custom image". URLs with userinfo or fragments are rejected.
+
+### Signing keys and development builds
+
+To test a revision on a release-key device, dispatch the **CI** workflow on its
+branch with **Sign this revision for testing on release-key devices** enabled:
+
+```sh
+gh workflow run ci.yml --ref <branch> -f sign_firmware=true
+```
+
+The manual run builds and checks the firmware, signs the hardware image with the
+repository's signing key, and uploads `signed-firmware-<commit>` as a three-day
+workflow artifact. Download it with `gh run download <run-id> -n
+signed-firmware-<commit>`, then install its OTA image through the custom-image
+API. This does not publish a release or change automatic-update assets. Only
+maintainers who can dispatch workflows can request this signing operation;
+ordinary pull-request runs never use the signing key. Review the selected
+revision before dispatching: its image will be trusted by release-key devices.
+
+For unattended transport tests, also set `test_source=true`. This build replaces
+captured PCM with a 1 kHz square wave while preserving real I2S read timing,
+Wi-Fi, and the selected transport. It reports `firmware_variant: test-source` in
+status and the console. The normal image reports `standard` and excludes the
+generator. Install the normal image after testing. Local builds select the same
+variant with `make firmware-artifacts FEATURES=test-source`.
+
+A device accepts only the key in **signature block 0 of its running image**.
+ESP-IDF signed-on-update mode compares only block 0 of the incoming image against
+that key. Adding a second signature block does not switch the trusted key.
+
+A development-signed device cannot install a release-signed image. A
+release-signed device cannot install a development-signed image. Switching keys
+requires a serial flash of the destination key's `-full.bin`. Repeated OTA
+attempts cannot change this: they download the image and consume the inactive
+slot before signature verification rejects it.
+
+`GET /api/status` reports `ota.signing_key_sha256`, the SHA-256 of the running
+image's block-0 public key, or an empty string if it cannot be read. System →
+Firmware → Developer shows the same digest. `signed_updates` describes signature
+enforcement; it does not identify a release key. Compare the digest with the
+signing key used to produce the intended image. A version match alone says
+nothing about signing-key compatibility.
 
 ## Safety: rollback
 
-`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` boots a freshly flashed slot in
-*pending-verify*. The firmware calls `esp_ota_mark_app_valid_cancel_rollback`
-once it reaches the home network with the console up — the signal that the image
-boots and is manageable. Audio is deliberately outside this gate: a codec that
-will not initialize is a fault to fix (see [Startup health](#startup-health)),
-not a reason to revert, so it can never trigger a rollback. An image that
-crashes or cannot reach the network never confirms itself, and the bootloader
-reverts to the previous slot on the next reset. A bad update cannot brick the
-device.
+The rollback-enabled bootloader starts a newly installed slot in
+*pending-verify*. Firmware confirms it only after the device reaches its home
+network, registers every management route, and successfully reads complete
+responses from `/api/status` and `/api/settings` through the HTTP server.
+
+HTTP startup, route registration, or probe failure leaves the image unconfirmed.
+The firmware records a management startup failure in the persistent OTA note
+when storage is available. A crash or reset before confirmation lets the
+bootloader revert to the previous image. Recovery mode confirms only after the
+saved network returns and the management probes pass, before restarting into
+provisioned mode.
+
+Audio health is outside the confirmation gate. A failed codec stays visible in
+the console and cannot cause a firmware rollback.
 
 ### Manual rollback
 
-`POST /api/ota/rollback` returns to the previous firmware deliberately, without
-waiting for a bad boot. It points the next boot at the inactive slot and
-restarts — instant and offline, no re-download, going back one version. That
-slot boots in *pending-verify* like any other, so the same confirm-or-revert net
-applies. `/api/status` advertises `ota.rollback_available` and
-`ota.rollback_version`, read from the inactive slot, so the console offers the
-action only when a valid previous image is stored and can name the version it
-returns to. A freshly serial-flashed device, with only one slot written, reports
-it unavailable.
+`POST /api/ota/rollback` selects the inactive slot and restarts without a download.
+That image boots pending verification and must pass the same management gate.
+`ota.rollback_available` and `ota.rollback_version` describe the valid image in
+the inactive slot. A device with only one written slot reports it unavailable.
 
-Installing consumes the rollback image: the previous firmware lives in the
-inactive slot, and the install erases that slot before writing into it. A
-download that fails after that point leaves the device on its running image
-with no rollback until the next successful install, and `/api/status` reads the
-slot state fresh so `rollback_available` reports that honestly.
+An install consumes the rollback image when it starts writing the inactive slot.
+A later download or verification failure leaves the running image intact but may
+leave no rollback image. Status reads the slot state afresh to report this.
 
 ## Startup health
 
-Reaching the network confirms the image *boots*; it does not prove the device is
-*usable*. A separate startup health check answers that. Once the network is up,
-the firmware assembles a boot snapshot — did the audio codec answer, is a bridge
-configured — into a verdict: an overall severity plus a check list, each with a
-`status`, a `severity` (`ok`, `info`, or `blocking`), a plain-language `detail`
-and `remedy`, and a `fixable` flag.
+Startup health describes whether the audio codec initialized and a bridge is
+configured. `/api/status` carries the verdict under `health`, including severity,
+details, remedies, and whether each condition can be fixed through configuration.
+`GET /api/health` returns `200` when nothing blocks and `503` for a blocking fault.
 
-The verdict rides `/api/status` under `health`, and `GET /api/health` returns
-its status code — `200` when nothing blocks, `503` when a check does — for
-scriptable probes. A blocking fault, such as a codec that will not initialize,
-keeps the device provisioned and reachable so the fault is visible and fixable
-rather than dropping it to the setup AP; the console surfaces it on the Overview.
-The check is a one-time boot snapshot — intermittent or periodic checks are out
-of scope, and a new check is a new entry in the firmware's `health` module.
+This boot snapshot describes audio usability separately from management
+readiness. A codec failure keeps the provisioned device reachable for repair.
+See [the user journey](user-journey.md).
 
 ## Post-mortem diagnostics
 
-`/api/status` reports a `diagnostics` block that survives reboots:
+`/api/status` reports persistent `diagnostics.last_ota` and
+`diagnostics.last_fallback`, plus this boot's `reset_reason`. The OTA note names
+the firmware version that wrote it, so a rollback can be identified when the
+running version differs. The console exposes these diagnostics; the
+[diagnostics reference](diagnostics.md) covers logs and crash dumps.
 
-- `last_ota` — how the last install attempt ended, tagged with the version that
-  ran it. After a rollback the running version contradicts this note, which is
-  the tell.
-- `last_fallback` — why the device last fell back to the setup AP.
-- `reset_reason` — what produced this boot: `power-on`, `software` (OTA or
-  config reboot), `panic`, or a watchdog.
+## Firmware signing
 
-The console shows diagnostics in the Overview tab and the raw JSON in the
-System tab.
+Firmware enforces RSA-3072 signatures through ESP-IDF signed-app verification
+without hardware Secure Boot (`CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT`).
+It requires ESP32 revision 3.0 or later. No eFuse is burned. Physical serial
+flashing can replace the trusted image, so this protects the OTA path rather than
+boot-time or physical-flash integrity.
+
+The build produces a secure-padded application; `espsecure.py sign_data --version 2`
+appends the signature. Release CI signs with `FIRMWARE_SIGNING_KEY`, held in its
+release secret and removed after signing. The private key never enters the build.
+
+Development and QEMU builds use the gitignored
+`firmware/streamline/.dev_signing_key.pem`, generated on first use. Keep this key
+for subsequent installs on devices enrolled with it. To supply a different key,
+run `make firmware-artifacts SIGNING_KEY=my_key.pem`. A missing explicit key
+fails the build; it does not generate a substitute. Serial-flash the resulting
+full image to enroll that key. See [signing-key constraints](#signing-keys-and-development-builds).
 
 ## Security
 
 | Control | Effect |
 |---|---|
-| Vendor RSA-3072 signature verified before commit | `esp_ota` rejects any image the trusted key did not sign, so only vendor firmware installs |
-| Admin-key digest authentication on `/api/ota/update` | Only the owner can trigger an update |
-| Published SHA-256 verified before commit | Detects a truncated or corrupted download before the signature check |
-| TLS via the mbedTLS certificate bundle | Authenticates `github.com` for the release download |
-| Bootloader image checksum + rollback | A malformed or non-booting image reverts automatically |
+| RSA-3072 signature | Rejects images not signed by the running image's trusted key |
+| Digest authentication | Requires the admin key for checks, installs, and rollback |
+| SHA-256 | Pins image bytes before signature verification and boot selection |
+| HTTPS certificate validation | Authenticates release download servers |
+| Bootloader rollback | Reverts an image that resets before management confirmation |
 
-Image authenticity rests on the signing key, not on HTTPS to GitHub. The
-firmware carries the vendor's RSA-3072 public key and verifies the appended
-signature before it commits a slot, so a forged image that matches the caller's
-SHA-256 — a compromised release asset, a swapped custom-install URL, or a
-man-in-the-middle past TLS — is still rejected. See
-[firmware signing](#firmware-signing).
+Image authenticity rests on the signing key. A matching checksum or HTTPS
+connection alone cannot authorize an image signed by a different key. See the
+[security reference](security.md) for the trusted-LAN boundary.
 
-The signature guards the over-the-air path. It is not boot-time or
-physical-flash verification: without hardware Secure Boot the bootloader does
-not check the signature, so someone with physical flash access can still write
-an unsigned image. Secure Boot v2 with a burned key closes that gap and is the
-next step on the security roadmap.
+## Partition layout
 
-## Firmware signing
+`firmware/streamline/partitions.csv` owns the layout for 4 MB or larger flash.
+Larger devices leave their upper flash unused. The table is applied at serial
+flash time, not by OTA.
 
-The firmware verifies a vendor RSA-3072 signature on every over-the-air image
-using ESP-IDF signed-app verification without hardware Secure Boot
-(`CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT`, RSA scheme). No eFuse is
-burned, so signing stays reversible: a serial reflash of an unsigned build
-removes the enforcement.
-
-How the trust chain works without a hardware anchor:
-
-- The running application embeds the public key in an appended signature block.
-  When it installs an update, `esp_ota` verifies the new image's signature
-  against that embedded key and refuses to commit a slot on a mismatch. A device
-  therefore accepts only images signed by the key its current firmware already
-  trusts.
-- The image is built secure-padded but unsigned; CI appends the signature block
-  after the build (`espsecure.py sign_data --version 2`), so the private key
-  never reaches the build machine.
-- The RSA scheme requires an ESP32 of chip revision 3.0 (ECO3). Revisions 0 to 2
-  lack the v2 signature support and cannot run this firmware.
-
-No signing key lives in the repository. Two key domains come from one source
-tree, and a device accepts only the domain whose key it was enrolled with:
-
-- **Release units** run images signed by the maintainer's key, held only in the
-  `FIRMWARE_SIGNING_KEY` release secret and shredded after each signing run.
-- **Developer and QEMU builds** are signed with a key `make firmware-artifacts`
-  generates on first use into the gitignored
-  `firmware/streamline/.dev_signing_key.pem`, the way the kernel generates its
-  module-signing key. A fresh checkout therefore builds a bootable, installable
-  image with no setup, and each machine signs with its own key. That key is a
-  development credential, not a vendor identity: keep it off product units.
-
-To sign with a key you manage instead, generate one with
-`espsecure.py generate_signing_key --version 2 --scheme rsa3072 my_key.pem`,
-then run `make firmware-artifacts SIGNING_KEY=my_key.pem`. Serial-flash the
-resulting `-full.bin` once to enroll that key; the device then accepts only
-over-the-air images you sign with it. A `SIGNING_KEY` that names a missing file
-fails the build rather than generating a substitute, so a release can never ship
-signed by a throwaway.
-
-Because the over-the-air path enforces signatures, a device cannot be moved to a
-different key over the air. Adopting signing on an existing unsigned device is a
-normal update: the unsigned firmware installs the first signed image, and every
-update after that is verified. Moving between key domains, or back to an
-unsigned build, needs a one-time serial reflash.
+| Partition | Size | Role |
+|---|---|---|
+| `nvs` | 24 KB | Device configuration and credentials |
+| `otadata` | 8 KB | Boot-slot selection and verification state |
+| `phy_init` | 4 KB | RF calibration |
+| `coredump` | 56 KB | Persistent crash dump |
+| `ota_0`, `ota_1` | 1.9 MB each | Running and inactive application slots |
 
 ## Build artifacts
 
-`make artifacts` produces both images, listed by basename in `SHA256SUMS`. Both
-carry the appended vendor signature (see [firmware signing](#firmware-signing)),
-so the application in each is the signed one:
+`make firmware-artifacts` creates signed images and lists their digests in
+`SHA256SUMS`:
 
-- `streamline-<ver>-full.bin` — serial-flash image bundling the OTA partition
-  table, the rollback-enabled bootloader, and the signed application. Flash it
-  once over USB to move a device onto the OTA layout and enroll its signing key.
-- `streamline-<ver>-ota.bin` — signed application image the device pulls for
-  over-the-air updates.
+- `streamline-<ver>-full.bin`: partition table, rollback-enabled bootloader, and
+  signed application for serial flashing.
+- `streamline-<ver>-ota.bin`: signed application for OTA.
 
 ## Migrating existing devices
 
-OTA writes only app slots — never the partition table or bootloader — so a change
-to the flash layout is a one-time serial reflash of a `-full.bin` (web flasher or
-`espflash`/`esptool`). Erase the flash first, so stale `otadata` or an old table
-cannot point the bootloader at a slot that moved; the web flasher does this and
-lands the device fresh in setup mode. Every update after that is over-the-air.
-
-Two layouts have needed this reflash: the original single-app image, and the 8 MB
-two-slot table that the 4 MB layout replaced. A device on a 4 MB layout without
-the `coredump` partition keeps every capability except crash capture, which its
-firmware reports unavailable; the reflash that adds the partition is optional
-and adds nothing else.
+OTA cannot change the partition table or bootloader. A layout change requires
+erasing flash and serial-flashing the full image, then commissioning the device.

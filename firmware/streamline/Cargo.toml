@@ -39,6 +39,7 @@ pcm-frame-vectors = []
 # instead of Wi-Fi, audio bring-up skipped. Built by `make -C firmware
 # qemu-artifacts`; never part of a hardware release image.
 qemu = []
+test-source = []
 
 [dev-dependencies]
 # Host-only: proves the generated id pattern the console imports matches the
@@ -48,7 +49,8 @@ regex = "1"
 [target.'cfg(target_os = "espidf")'.dependencies]
 anyhow = "1"
 embedded-svc = "0.29"
-esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
+# 0.52.1 with the HTTP close-callback startup race fixed.
+esp-idf-svc = { git = "https://github.com/lutyjj/esp-idf-svc", rev = "1cf423ee51f6c9e730cbaf4c1f44fffcecc6025a", features = ["critical-section"] }
 
 [build-dependencies]
 embuild = { version = "0.33", features = ["espidf"] }
@@ -58,6 +60,9 @@ flate2 = "1"
 
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/mdns", version = "1.8.2" }
+
+[[package.metadata.esp-idf-sys.extra_components]]
+bindings_header = "bindings.h"
 
 [[bin]]
 name = "streamline-openapi"

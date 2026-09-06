@@ -10,6 +10,7 @@ emulator can produce lives in `test_qemu_device.py` behind the `emulated` marker
 
 import dataclasses
 import json
+import re
 
 import pytest
 import requests
@@ -35,6 +36,14 @@ def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:
     results = api_checks(device_api.fetch)
     failed = [result for result in results if not result.passed]
     assert not failed, failed
+
+
+def test_signed_firmware_reports_its_trusted_key(device_api: DeviceApi) -> None:
+    code, body = device_api.fetch("/api/status")
+    assert code == 200
+    ota = json.loads(body)["ota"]
+    assert ota["signed_updates"]
+    assert re.fullmatch(r"[0-9a-f]{64}", ota["signing_key_sha256"]), ota
 
 
 def test_status_reports_a_valid_mode(device_api: DeviceApi) -> None:

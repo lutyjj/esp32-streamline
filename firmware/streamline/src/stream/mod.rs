@@ -16,3 +16,5 @@ pub use effects::{Clock, Delay, PacketSink, PcmSource, ReadFailed, SendFailed};
 pub use network::run as run_network;
 pub use queue::{PacketQueue, QUEUE_DEPTH};
 pub use status::{StreamSnapshot, StreamStatus};
+#[cfg(any(test, feature = "test-source"))]
+pub mod test_source;

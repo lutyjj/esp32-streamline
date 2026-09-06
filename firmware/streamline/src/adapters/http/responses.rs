@@ -27,11 +27,24 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
+    let worker = crate::adapters::task::prepare(
+        esp_idf_svc::hal::task::thread::ThreadSpawnConfiguration::default(),
+        || {
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
+            unsafe { esp_idf_svc::sys::esp_restart() };
+        },
+    );
+    let worker = match worker {
+        Ok(worker) => worker,
+        Err(error) => {
+            return mutation_error(
+                request,
+                MutationError::Unavailable(format!("cannot start restart task: {error:#}")),
+            )
+        }
+    };
     json_response(request, 200, body)?;
-    std::thread::spawn(|| {
-        esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
-        unsafe { esp_idf_svc::sys::esp_restart() };
-    });
+    worker.commit();
     Ok(())
 }
 
@@ -91,7 +104,7 @@ where
 /// with the reason if one is already in progress.
 pub(super) fn ota_accepted<C>(
     request: embedded_svc::http::server::Request<C>,
-    spawned: anyhow::Result<()>,
+    spawned: Result<(), MutationError>,
 ) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
@@ -99,7 +112,7 @@ where
 {
     match spawned {
         Ok(()) => json_response(request, 202, &api::Ack::started()),
-        Err(error) => error_response(request, 409, &error.to_string()),
+        Err(error) => mutation_error(request, error),
     }
 }
 

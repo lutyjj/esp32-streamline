@@ -125,6 +125,9 @@ impl HttpGet {
         if read < 0 {
             bail!("HTTP read failed (error {read})");
         }
+        if read == 0 && !unsafe { sys::esp_http_client_is_complete_data_received(self.client) } {
+            bail!("HTTP response ended before its body was complete");
+        }
         Ok(read as usize)
     }
 }

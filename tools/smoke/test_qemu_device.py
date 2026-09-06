@@ -12,11 +12,13 @@ import http.server
 import json
 import os
 import re
+import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from conftest import ADMIN_KEY, API_TIMEOUT, CONSOLE_READY, EmulatedDevice
@@ -31,6 +33,39 @@ _SLIRP_HOST_ALIAS = "10.0.2.2"
 # boots ota_0, and a successful OTA must land in and boot from ota_1.
 _OTA_1_OFFSET = "0x210000"
 _OTA_URL_CANARY = "ota-url-private-canary"
+
+
+def test_http_connections_during_startup_do_not_abort(
+    boot_device: Callable[..., EmulatedDevice],
+) -> None:
+    # Requires a fresh boot with serial readiness observed before any retry.
+    device = boot_device()
+    address = urlsplit(device.api.base_url)
+    assert address.hostname is not None and address.port is not None
+    stop = threading.Event()
+
+    def connect_and_close() -> None:
+        while not stop.is_set():
+            try:
+                with socket.create_connection(
+                    (str(address.hostname), int(address.port or 80)), timeout=0.2
+                ) as connection:
+                    connection.sendall(b"GET /api/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            stop.wait(0.01)
+
+    clients = [threading.Thread(target=connect_and_close) for _ in range(4)]
+    for client in clients:
+        client.start()
+    try:
+        device.dut.expect_exact(CONSOLE_READY, timeout=120)
+    finally:
+        stop.set()
+        for client in clients:
+            client.join()
+    ready = wait_for_api(device.api.fetch, API_TIMEOUT)
+    assert ready.passed, ready.detail
 
 
 @dataclasses.dataclass(frozen=True)

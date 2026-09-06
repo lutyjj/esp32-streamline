@@ -102,6 +102,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
     let rollback = crate::adapters::ota::rollback_target();
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
+        firmware_variant: crate::telemetry::FirmwareVariant::current(),
         device_name: config.device_name.clone(),
         mode,
         config_source: "nvs",
@@ -176,6 +177,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             rollback_available: rollback.is_some(),
             rollback_version: rollback.clone().unwrap_or_default(),
             signed_updates: crate::adapters::ota::SIGNED_UPDATES,
+            signing_key_sha256: crate::adapters::ota::signing_key_sha256().to_owned(),
         },
         status_indicator_visible: config.shows_status_indicator(state.board.as_ref()),
     }
@@ -213,6 +215,7 @@ impl<'a> api::StatusResponse<'a> {
         );
         Self {
             firmware_version: snapshot.firmware_version,
+            firmware_variant: snapshot.firmware_variant,
             device_name: &snapshot.device_name,
             mode: snapshot.mode,
             config_source: snapshot.config_source,
@@ -302,6 +305,7 @@ impl<'a> api::StatusResponse<'a> {
                 rollback_available: snapshot.ota.rollback_available,
                 rollback_version: &snapshot.ota.rollback_version,
                 signed_updates: snapshot.ota.signed_updates,
+                signing_key_sha256: &snapshot.ota.signing_key_sha256,
             },
             indicator: api::IndicatorStatus {
                 available: snapshot.status_indicator_visible,

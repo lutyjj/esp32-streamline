@@ -33,6 +33,7 @@ pub fn status() -> Value {
     });
     let status = StatusResponse {
         firmware_version: FIRMWARE_VERSION,
+        firmware_variant: crate::telemetry::FirmwareVariant::Standard,
         device_name: "",
         mode: "provisioned",
         config_source: "nvs",
@@ -120,6 +121,7 @@ pub fn status() -> Value {
             rollback_available: false,
             rollback_version: "",
             signed_updates: true,
+            signing_key_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         },
         indicator: IndicatorStatus {
             available: true,

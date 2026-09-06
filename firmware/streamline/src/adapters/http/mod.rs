@@ -19,7 +19,7 @@ use embedded_svc::http::Method;
 use esp_idf_svc::http::server::{Configuration, EspHttpConnection, EspHttpServer};
 
 use crate::{
-    adapters::{codec::CodecControl, mdns::MdnsAdvertisement, nvs::ConfigStore, ota::OtaProgress},
+    adapters::{codec::CodecControl, mdns::MdnsAdvertisement, nvs::ConfigStore},
     analog_passthrough::AnalogPassthroughState,
     api::{self, Endpoint, HttpMethod},
     board,
@@ -30,6 +30,7 @@ use crate::{
     setup_network::SetupNetwork,
     stream::StreamStatus,
     transport::KeyVerifier,
+    update::progress::OtaProgress,
 };
 
 // Stored gzipped (build.rs compresses them into OUT_DIR) and served with
@@ -61,6 +62,39 @@ pub struct ApiState {
     pub setup_network: SetupNetwork,
     /// Digest-authentication nonce state (see [`crate::auth`]).
     pub auth: Mutex<crate::auth::DigestAuthenticator>,
+}
+
+pub fn probe(endpoint: Endpoint) -> Result<()> {
+    use crate::adapters::download::{HttpGet, TlsRxBuffer};
+
+    let mut response = HttpGet::get(
+        &format!("http://127.0.0.1{}", endpoint.path),
+        TlsRxBuffer::PerRecord,
+    )?;
+    if response.status() != 200 {
+        bail!(
+            "management probe {} returned HTTP {}",
+            endpoint.path,
+            response.status()
+        );
+    }
+    let mut buffer = [0_u8; 512];
+    let mut received = 0;
+    let started = std::time::Instant::now();
+    loop {
+        let read = response.read(&mut buffer)?;
+        received += read;
+        if received > 65_536 || started.elapsed() > std::time::Duration::from_secs(10) {
+            bail!(
+                "management probe {} exceeded its response budget",
+                endpoint.path
+            );
+        }
+        if read == 0 {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// Shared-state access for every handler, read and write alike.

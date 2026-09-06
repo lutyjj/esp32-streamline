@@ -121,15 +121,10 @@ fn main() -> Result<()> {
     #[cfg(feature = "qemu")]
     let _network = network;
 
-    // Reaching the home network with the console up is the signal an
-    // over-the-air image booted correctly; confirm the slot so the rollback
-    // watchdog accepts it. A device that fell back to the setup AP stays in
-    // pending-verify and reverts to the previous firmware on the next reboot.
     if mode == Mode::Provisioned {
         if let Err(error) = time::start() {
             log::warn!("SNTP initialization failed: {error:#}");
         }
-        ota::mark_current_valid();
     }
 
     let mdns = if mode == Mode::Provisioned {
@@ -161,7 +156,7 @@ fn main() -> Result<()> {
         codec,
         analog_passthrough: Arc::new(Mutex::new(analog_passthrough)),
         mdns,
-        ota: Arc::new(ota::OtaProgress::default()),
+        ota: Arc::new(update::progress::OtaProgress::default()),
         health,
         setup_network,
         auth: Mutex::new(streamline_firmware::auth::DigestAuthenticator::default()),
@@ -191,10 +186,21 @@ fn main() -> Result<()> {
     if let Err(error) = buttons::start(Arc::clone(&state)) {
         log::warn!("buttons unavailable: {error:#}");
     }
-    let _server = http::start(Arc::clone(&state), captive_portal_address)?;
-    // The mode lines above report which boot this is; only this one reports
-    // that the API can answer. A client polling earlier races the server's
-    // own registration, which can abort the device.
+    let server = streamline_firmware::boot_health::start(
+        mode,
+        || http::start(Arc::clone(&state), captive_portal_address),
+        http::probe,
+        ota::mark_current_valid,
+    );
+    let _server = server.map_err(|error| {
+        if let Ok(store) = state.store.lock() {
+            let _ = store.save_last_ota(&format!(
+                "v{}: management startup failed: {error:#}",
+                env!("CARGO_PKG_VERSION")
+            ));
+        }
+        error
+    })?;
     log::info!("console ready");
     #[cfg(not(feature = "qemu"))]
     let _dns_responder = match captive_portal_address {
@@ -237,6 +243,7 @@ fn main() -> Result<()> {
                         state.stream.clone(),
                     ) {
                         log::warn!("automatic firmware update check could not start: {error:#}");
+                        auto_update_timer.start_failed(booted_at.elapsed());
                     }
                 }
             }
@@ -254,7 +261,10 @@ fn main() -> Result<()> {
                         log::info!(
                             "recovery: home network reachable; confirming slot and rejoining"
                         );
-                        ota::mark_current_valid();
+                        for endpoint in streamline_firmware::boot_health::PROBES {
+                            http::probe(endpoint)?;
+                        }
+                        ota::mark_current_valid()?;
                         unsafe { esp_idf_svc::sys::esp_restart() };
                     }
                 }

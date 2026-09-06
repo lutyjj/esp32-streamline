@@ -87,7 +87,6 @@ function ButtonsCard() {
 function DeviceHealthCard() {
   const s = status.value;
   const sys = s?.system;
-  // Older firmware predates this block; the card simply stays hidden there.
   if (!sys) return null;
 
   const { heap, nvs } = sys;
@@ -150,6 +149,7 @@ function FirmwareCard() {
   const latest = ota?.latest_version || '';
   const rows: [string, string][] = [
     ['Installed', `v${s?.firmware_version ?? '—'}`],
+    ['Build', s?.firmware_variant ?? '—'],
     ['Latest release', latest ? `v${latest}` : '—'],
     ['Status', ota ? prettyPhase(ota.phase) : '—'],
     ...(ota?.phase === 'downloading' && ota.bytes_total
@@ -283,6 +283,14 @@ function FirmwareCard() {
         <ActionState state={transact.state} />
       </CardFooter>
       <Disclosure title="Developer — install a custom image" className="disclosure-offset">
+        <div class="card-section">
+          <p class="help">
+            Images must use the running firmware’s signing key. Switching between development and
+            release keys requires a full serial flash. Adding a second signature does not switch
+            keys.
+          </p>
+          <Kv rows={[['Signing key SHA-256', ota?.signing_key_sha256 || 'Unavailable']]} />
+        </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();

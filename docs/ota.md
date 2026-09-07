@@ -19,9 +19,8 @@ for idle audio and respecting the disabled schedule.
    clock waits up to 45 seconds for synchronization. Plain HTTP skips this step.
 2. The worker fetches `releases/latest/download/SHA256SUMS`. The `-ota.bin` entry
    supplies the release version and expected digest. A failed fetch retries once
-   after one second, with the failed connection released. Checks keep audio running.
-   The TCP receive window is four segments (5,760 bytes), limiting queued input
-   beside TLS allocations. The PCM send buffer has its own 23,040-byte budget.
+   after one second, with the failed connection released. Checks do not request
+   a streaming pause.
 3. A check reports `up-to-date` or `update-available` and stops. An install
    proceeds only if the release is newer than the running firmware.
 4. Before downloading the image, the installer pauses streaming and waits for
@@ -104,6 +103,10 @@ The rollback-enabled bootloader starts a newly installed slot in
 *pending-verify*. Firmware confirms it only after the device reaches its home
 network, registers every management route, and successfully reads complete
 responses from `/api/status` and `/api/settings` through the HTTP server.
+
+The HTTP listener is initialized before Wi-Fi or Ethernet starts, so its
+callback registry exists before external clients can connect. Routes are
+registered after the device mode and shared state are available.
 
 HTTP startup, route registration, or probe failure leaves the image unconfirmed.
 The firmware records a management startup failure in the persistent OTA note

@@ -197,22 +197,27 @@ impl<'a> ContractServer<'a> {
     }
 }
 
-pub fn start(
-    state: Arc<ApiState>,
-    captive_portal_address: Option<Ipv4Addr>,
-) -> Result<EspHttpServer<'static>> {
-    let captive_portal_enabled = captive_portal_address.is_some();
-    let mut server = EspHttpServer::new(&Configuration {
+/// Initialize the listener before any network interface can accept traffic.
+pub fn bind() -> Result<EspHttpServer<'static>> {
+    esp_idf_svc::netif::NetifStack::initialize()?;
+    Ok(EspHttpServer::new(&Configuration {
         // Authenticated transport-key writes serialize a complete atomic state
         // generation before returning the one-time credential. Keep that work
         // on the HTTP task without approaching FreeRTOS's stack guard.
         stack_size: 16_384,
         // One slot per API endpoint, the `/` console handler, and the optional
         // setup fallback, so a new route never silently overflows the table.
-        max_uri_handlers: api::ENDPOINTS.len() + 1 + usize::from(captive_portal_enabled),
-        uri_match_wildcard: captive_portal_enabled,
+        max_uri_handlers: api::ENDPOINTS.len() + 2,
+        uri_match_wildcard: true,
         ..Default::default()
-    })?;
+    })?)
+}
+
+pub fn start(
+    mut server: EspHttpServer<'static>,
+    state: Arc<ApiState>,
+    captive_portal_address: Option<Ipv4Addr>,
+) -> Result<EspHttpServer<'static>> {
     server.fn_handler("/", Method::Get, move |request| {
         responses::respond_gzip(request, 200, "text/html; charset=utf-8", INDEX_GZ)
     })?;

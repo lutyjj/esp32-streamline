@@ -94,8 +94,8 @@ smoke-qemu: qemu-image
 	@test -f "$(OTA_IMAGE)" || (echo "OTA_IMAGE=$(OTA_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	@test -f "$(FAILURE_IMAGE)" || (echo "FAILURE_IMAGE=$(FAILURE_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	$(CONTAINER) run --rm -v "$(abspath $(FLASH_IMAGE)):/flash.bin:ro" \
-		-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" -e STREAMLINE_QEMU_OTA_IMAGE=/ota.bin \
-		-v "$(abspath $(FAILURE_IMAGE)):/failure.bin:ro" -e STREAMLINE_QEMU_FAILURE_IMAGE=/failure.bin \
+		-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" \
+		-v "$(abspath $(FAILURE_IMAGE)):/failure.bin:ro" \
 		-v "$(CURDIR):/workspace" -w /workspace \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_QEMU_IMAGE=/flash.bin \
 		$(QEMU_IMAGE) pytest smoke -v $(if $(SMOKE_JOBS),-n $(SMOKE_JOBS))

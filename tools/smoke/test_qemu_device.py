@@ -10,7 +10,6 @@ import dataclasses
 import hashlib
 import http.server
 import json
-import os
 import re
 import socket
 import threading
@@ -386,11 +385,11 @@ def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
 @pytest.fixture
 def served_ota_image() -> Iterator[ServedOtaImage]:
     """Serve signed and invalid OTA images through guest-reachable HTTP URLs."""
-    payload = Path(os.environ["STREAMLINE_QEMU_OTA_IMAGE"]).read_bytes()
+    payload = Path("/ota.bin").read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
     forged = _forge_signature(payload)
     forged_digest = hashlib.sha256(forged).hexdigest()
-    failure = Path(os.environ["STREAMLINE_QEMU_FAILURE_IMAGE"]).read_bytes()
+    failure = Path("/failure.bin").read_bytes()
 
     stall_started = threading.Event()
     release_stall = threading.Event()

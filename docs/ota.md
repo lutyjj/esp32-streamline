@@ -20,6 +20,8 @@ for idle audio and respecting the disabled schedule.
 2. The worker fetches `releases/latest/download/SHA256SUMS`. The `-ota.bin` entry
    supplies the release version and expected digest. A failed fetch retries once
    after one second, with the failed connection released. Checks keep audio running.
+   The TCP receive window is four segments (5,760 bytes), limiting queued input
+   beside TLS allocations. The PCM send buffer has its own 23,040-byte budget.
 3. A check reports `up-to-date` or `update-available` and stops. An install
    proceeds only if the release is newer than the running firmware.
 4. Before downloading the image, the installer pauses streaming and waits for
@@ -105,10 +107,15 @@ responses from `/api/status` and `/api/settings` through the HTTP server.
 
 HTTP startup, route registration, or probe failure leaves the image unconfirmed.
 The firmware records a management startup failure in the persistent OTA note
-when storage is available. A crash or reset before confirmation lets the
-bootloader revert to the previous image. Recovery mode confirms only after the
-saved network returns and the management probes pass, before restarting into
-provisioned mode.
+when storage is available and restarts on a fatal error. A reset before
+confirmation lets the bootloader revert to the previous image. Recovery mode
+confirms only after the saved network returns and the management probes pass,
+before restarting into provisioned mode.
+
+The QEMU smoke installs a signed `qemu-fail-management` image whose management
+probe receives HTTP 404. It verifies the automatic restart, return to the
+confirmed slot, and persisted failure note. This variant implies `qemu` and is
+excluded from hardware builds.
 
 Audio health is outside the confirmation gate. A failed codec stays visible in
 the console and cannot cause a firmware rollback.

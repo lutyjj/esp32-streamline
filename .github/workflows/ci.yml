@@ -156,6 +156,7 @@ jobs:
           path: |
             dist/firmware/streamline-qemu-full.bin
             dist/firmware/streamline-qemu-ota.bin
+            dist/firmware/streamline-qemu-fail-management-ota.bin
           retention-days: 3
           if-no-files-found: error
 

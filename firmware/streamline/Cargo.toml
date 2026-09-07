@@ -39,6 +39,7 @@ pcm-frame-vectors = []
 # instead of Wi-Fi, audio bring-up skipped. Built by `make -C firmware
 # qemu-artifacts`; never part of a hardware release image.
 qemu = []
+qemu-fail-management = ["qemu"]
 test-source = []
 
 [dev-dependencies]
@@ -52,8 +53,12 @@ embedded-svc = "0.29"
 # 0.52.1 with the HTTP close-callback startup race fixed.
 esp-idf-svc = { git = "https://github.com/lutyjj/esp-idf-svc", rev = "1cf423ee51f6c9e730cbaf4c1f44fffcecc6025a", features = ["critical-section"] }
 
+[patch.crates-io]
+# Upstream support for ESP-IDF 5.5.5's SD host configuration.
+esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal", rev = "c2dac82f5243b0b7036c392f8218e6a2b4f7e375" }
+
 [build-dependencies]
-embuild = { version = "0.33", features = ["espidf"] }
+embuild = { version = "0.33.4", features = ["espidf"] }
 # Gzips the embedded console and OpenAPI artifact at build time; the image
 # stores and serves them compressed (docs/design.md "HTTP API Shape").
 flate2 = "1"

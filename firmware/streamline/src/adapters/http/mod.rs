@@ -67,10 +67,12 @@ pub struct ApiState {
 pub fn probe(endpoint: Endpoint) -> Result<()> {
     use crate::adapters::download::{HttpGet, TlsRxBuffer};
 
-    let mut response = HttpGet::get(
-        &format!("http://127.0.0.1{}", endpoint.path),
-        TlsRxBuffer::PerRecord,
-    )?;
+    let path = if cfg!(feature = "qemu-fail-management") {
+        "/api/missing-management-probe"
+    } else {
+        endpoint.path
+    };
+    let mut response = HttpGet::get(&format!("http://127.0.0.1{path}"), TlsRxBuffer::PerRecord)?;
     if response.status() != 200 {
         bail!(
             "management probe {} returned HTTP {}",

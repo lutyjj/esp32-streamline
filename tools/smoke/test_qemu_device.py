@@ -76,6 +76,8 @@ class ServedOtaImage:
     forged_url: str
     sha256: str
     forged_sha256: str
+    management_failure_url: str
+    management_failure_sha256: str
     stall_started: threading.Event
     release_stall: threading.Event
 
@@ -383,15 +385,12 @@ def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
 
 @pytest.fixture
 def served_ota_image() -> Iterator[ServedOtaImage]:
-    """The OTA application image served over HTTP as the guest reaches it:
-    a (URL, sha256) pair. Skips when the image was not built."""
-    source = os.environ.get("STREAMLINE_QEMU_OTA_IMAGE", "")
-    if not source:
-        pytest.skip("STREAMLINE_QEMU_OTA_IMAGE not set; build it with: make -C firmware qemu-artifacts")
-    payload = Path(source).read_bytes()
+    """Serve signed and invalid OTA images through guest-reachable HTTP URLs."""
+    payload = Path(os.environ["STREAMLINE_QEMU_OTA_IMAGE"]).read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
     forged = _forge_signature(payload)
     forged_digest = hashlib.sha256(forged).hexdigest()
+    failure = Path(os.environ["STREAMLINE_QEMU_FAILURE_IMAGE"]).read_bytes()
 
     stall_started = threading.Event()
     release_stall = threading.Event()
@@ -415,7 +414,7 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
-            body = forged if path == "/forged.bin" else payload
+            body = {"/forged.bin": forged, "/management-failure.bin": failure}.get(path, payload)
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -451,6 +450,8 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
             forged_url=f"{base}/forged.bin{query}",
             sha256=digest,
             forged_sha256=forged_digest,
+            management_failure_url=f"{base}/management-failure.bin",
+            management_failure_sha256=hashlib.sha256(failure).hexdigest(),
             stall_started=stall_started,
             release_stall=release_stall,
         )
@@ -494,6 +495,36 @@ def test_ota_install_boots_from_the_other_slot(
         until=(f"Loaded app from partition at offset {_OTA_1_OFFSET}", CONSOLE_READY),
     )
     _expect_api_up(confirmed)
+
+
+def test_failed_management_startup_reboots_and_rolls_back_with_diagnostics(
+    provisioned_device: EmulatedDevice,
+    boot_device: Callable[..., EmulatedDevice],
+    served_ota_image: ServedOtaImage,
+) -> None:
+    code, body = provisioned_device.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.management_failure_url, "sha256": served_ota_image.management_failure_sha256},
+    )
+    assert code == 202, f"OTA returned HTTP {code}: {body[:200]!r}"
+    provisioned_device.dut.qemu.wait(timeout=180)
+
+    failed = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
+    failed.dut.expect_exact(f"Loaded app from partition at offset {_OTA_1_OFFSET}", timeout=120)
+    failed.dut.expect_exact("firmware startup failed:", timeout=120)
+    failed.dut.qemu.wait(timeout=30)
+
+    recovered = boot_device(
+        flash=failed.flash,
+        admin_key=ADMIN_KEY,
+        until=("Loaded app from partition at offset 0x20000", CONSOLE_READY),
+    )
+    _expect_api_up(recovered)
+    code, body = recovered.api.fetch("/api/status")
+    assert code == 200
+    diagnostic = json.loads(body)["diagnostics"]["last_ota"]
+    assert "management startup failed" in diagnostic
+    assert "returned HTTP 404" in diagnostic
 
 
 def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(

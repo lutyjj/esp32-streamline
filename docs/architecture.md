@@ -48,6 +48,11 @@ context the official Home Assistant builder validates for each published
 architecture. These are deliberate build-time dependencies, not shared runtime
 state.
 
+The firmware Dockerfile pins the official ESP-IDF source and provides it through
+`IDF_PATH`. Cargo pins the Rust bindings, including upstream revisions needed by
+that SDK. Validate these pins together with the firmware build and QEMU smoke;
+network, TLS, and audio changes also need the hardware proof in `AGENTS.md`.
+
 ## Firmware boundaries
 
 The Rust library separates portable application logic from ESP-IDF integration:

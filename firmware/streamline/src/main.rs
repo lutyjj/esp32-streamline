@@ -48,7 +48,14 @@ use streamline_firmware::{
 #[cfg(not(feature = "qemu"))]
 use streamline_firmware::{analog_passthrough::AnalogPassthroughRoute, reconnect, runtime};
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(error) = run() {
+        log::error!("firmware startup failed: {error:#}");
+        unsafe { esp_idf_svc::sys::esp_restart() };
+    }
+}
+
+fn run() -> Result<()> {
     // Required by esp-idf-sys to link runtime patches on an ESP-IDF target.
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
@@ -56,6 +63,8 @@ fn main() -> Result<()> {
     // previous boot's lines, which a reset leaves in place only until they are
     // written over.
     logs::install();
+    // Cache image metadata before HTTP requests can trigger flash verification.
+    ota::signing_key_sha256();
 
     let peripherals = Peripherals::take()?;
     let event_loop = EspSystemEventLoop::take()?;

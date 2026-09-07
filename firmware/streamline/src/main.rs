@@ -110,6 +110,10 @@ fn run() -> Result<()> {
             .ensure_setup_network_password(&mut EspRandom)?,
     };
 
+    // Finish the HTTP callback registry before any interface accepts connections.
+    let server = http::bind().map_err(|error| management_startup_error(&store, error))?;
+    log::info!("management listener initialized");
+
     // The network is the one seam between the hardware image and the QEMU
     // image; exactly one `network_boot` variant below compiles into each,
     // and nothing after this call knows which network the device is on.
@@ -197,19 +201,11 @@ fn run() -> Result<()> {
     }
     let server = streamline_firmware::boot_health::start(
         mode,
-        || http::start(Arc::clone(&state), captive_portal_address),
+        || http::start(server, Arc::clone(&state), captive_portal_address),
         http::probe,
         ota::mark_current_valid,
     );
-    let _server = server.map_err(|error| {
-        if let Ok(store) = state.store.lock() {
-            let _ = store.save_last_ota(&format!(
-                "v{}: management startup failed: {error:#}",
-                env!("CARGO_PKG_VERSION")
-            ));
-        }
-        error
-    })?;
+    let _server = server.map_err(|error| management_startup_error(&state.store, error))?;
     log::info!("console ready");
     #[cfg(not(feature = "qemu"))]
     let _dns_responder = match captive_portal_address {
@@ -281,6 +277,16 @@ fn run() -> Result<()> {
             _ => {}
         }
     }
+}
+
+fn management_startup_error(store: &Mutex<ConfigStore>, error: anyhow::Error) -> anyhow::Error {
+    if let Ok(store) = store.lock() {
+        let _ = store.save_last_ota(&format!(
+            "v{}: management startup failed: {error:#}",
+            env!("CARGO_PKG_VERSION")
+        ));
+    }
+    error
 }
 
 /// What every `network_boot` variant delivers: the live network link, which

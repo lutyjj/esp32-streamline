@@ -50,8 +50,7 @@ regex = "1"
 [target.'cfg(target_os = "espidf")'.dependencies]
 anyhow = "1"
 embedded-svc = "0.29"
-# 0.52.1 with the HTTP close-callback startup race fixed.
-esp-idf-svc = { git = "https://github.com/lutyjj/esp-idf-svc", rev = "1cf423ee51f6c9e730cbaf4c1f44fffcecc6025a", features = ["critical-section"] }
+esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
 
 [patch.crates-io]
 # Upstream support for ESP-IDF 5.5.5's SD host configuration.

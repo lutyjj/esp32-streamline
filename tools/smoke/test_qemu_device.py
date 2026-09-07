@@ -58,6 +58,8 @@ def test_http_connections_during_startup_do_not_abort(
     for client in clients:
         client.start()
     try:
+        device.dut.expect_exact("management listener initialized", timeout=120)
+        device.dut.expect_exact("setup console started", timeout=120)
         device.dut.expect_exact(CONSOLE_READY, timeout=120)
     finally:
         stop.set()

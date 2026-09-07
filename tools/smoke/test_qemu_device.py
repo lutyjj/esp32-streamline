@@ -485,6 +485,16 @@ def test_ota_install_boots_from_the_other_slot(
     status = _assert_ota_url_private(updated)
     assert "installed custom image" in status["diagnostics"]["last_ota"]
 
+    code, body = updated.api.post_form("/api/restart", {})
+    assert code == 200, f"restart returned HTTP {code}: {body[:200]!r}"
+    updated.dut.qemu.wait(timeout=60)
+    confirmed = boot_device(
+        flash=updated.flash,
+        admin_key=ADMIN_KEY,
+        until=(f"Loaded app from partition at offset {_OTA_1_OFFSET}", CONSOLE_READY),
+    )
+    _expect_api_up(confirmed)
+
 
 def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(
     provisioned_device: EmulatedDevice,

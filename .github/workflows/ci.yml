@@ -157,6 +157,8 @@ jobs:
             dist/firmware/streamline-qemu-full.bin
             dist/firmware/streamline-qemu-ota.bin
             dist/firmware/streamline-qemu-fail-management-ota.bin
+            dist/firmware/streamline-qemu.elf
+            dist/firmware/streamline-qemu-fail-management.elf
           retention-days: 3
           if-no-files-found: error
 
@@ -199,6 +201,15 @@ jobs:
       # workers at once), so leave half the CPUs for QEMU itself. Drop back
       # to serial (remove SMOKE_JOBS) if the setup flake climbs.
       - run: make tools-smoke-qemu SMOKE_JOBS=2
+      - name: Preserve failed QEMU state
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qemu-failure-${{ github.sha }}-${{ github.run_attempt }}
+          path: tools/.smoke-qemu/
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: warn
 
   api-contract:
     name: Device API contract

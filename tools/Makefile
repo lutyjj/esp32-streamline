@@ -87,18 +87,21 @@ FAILURE_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-fail-management-ota.
 # Parallel pytest-xdist workers for the emulated suite. Each test boots its
 # own QEMU, so the suite parallelizes cleanly; bound the count to what the
 # host can spare, because oversubscription reproduces the "no healthy
-# response" setup flake. Empty runs serially, which is what CI uses.
+# response" setup flake. Empty runs serially; CI uses two workers.
 SMOKE_JOBS ?=
 smoke-qemu: qemu-image
 	@test -f "$(FLASH_IMAGE)" || (echo "FLASH_IMAGE=$(FLASH_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	@test -f "$(OTA_IMAGE)" || (echo "OTA_IMAGE=$(OTA_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	@test -f "$(FAILURE_IMAGE)" || (echo "FAILURE_IMAGE=$(FAILURE_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
+	mkdir -p .smoke-qemu
 	$(CONTAINER) run --rm -v "$(abspath $(FLASH_IMAGE)):/flash.bin:ro" \
 		-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" \
 		-v "$(abspath $(FAILURE_IMAGE)):/failure.bin:ro" \
+		-v "$(CURDIR)/.smoke-qemu:/evidence" \
 		-v "$(CURDIR):/workspace" -w /workspace \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_QEMU_IMAGE=/flash.bin \
-		$(QEMU_IMAGE) pytest smoke -v $(if $(SMOKE_JOBS),-n $(SMOKE_JOBS))
+		$(QEMU_IMAGE) pytest smoke -v $(if $(SMOKE_JOBS),-n $(SMOKE_JOBS)) \
+			--basetemp=/evidence/pytest --root-logdir=/evidence/serial
 
 # Reset the USB-connected board, sanity-check its boot over serial, then run
 # the same device-agnostic API suite the QEMU run uses against the live

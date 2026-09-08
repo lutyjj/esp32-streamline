@@ -12,13 +12,11 @@ are skipped on hardware targets.
 import os
 import shutil
 import socket
-import warnings
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pexpect
 import pytest
 from pytest_embedded.dut_factory import DutFactory
 from pytest_embedded_qemu.qemu import QEMU_TARGETS
@@ -32,12 +30,6 @@ BOOT_TIMEOUT = 120.0
 # boot this is and are logged well before the HTTP server exists, so polling
 # on one of those races the server's own registration.
 CONSOLE_READY = "console ready"
-# A boot occasionally panics before its marker: a flash operation disables the
-# cache while the second core still runs code from it ("Cache disabled but
-# cached memory region accessed"), and `-no-reboot` turns the reset into a dead
-# QEMU. That is an emulation artifact, so a boot that never arrives is retried
-# on a fresh emulator; a guest that cannot boot still fails.
-BOOT_ATTEMPTS = 2
 # Bounded like BOOT_TIMEOUT rather than tighter: under parallel workers
 # (SMOKE_JOBS) concurrent emulator boots dilate the gap between the serial
 # boot marker and a listening HTTP port, and the serial expectation has
@@ -108,8 +100,7 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
     cannot starve later tests.
 
     Pass `until` to return only once the guest has printed that marker, or
-    every marker of a sequence in order, with the retry described at
-    [`BOOT_ATTEMPTS`]. End on [`CONSOLE_READY`] before touching the API.
+    every marker of a sequence in order. End on [`CONSOLE_READY`] before touching the API.
     Callers own every later expectation, so a boot sequence stays asserted in
     its test.
     """
@@ -156,17 +147,6 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
         if until is None:
             return _start(flash, admin_key)
         markers = [until] if isinstance(until, str) else list(until)
-        for attempt in range(1, BOOT_ATTEMPTS):
-            device = _start(flash, admin_key)
-            try:
-                _await(device, markers)
-            except pexpect.TIMEOUT:
-                device.dut.qemu.terminate()
-                # The raised timeout names the marker it waited on.
-                warnings.warn(f"emulated boot {attempt} did not come up; retrying", stacklevel=2)
-            else:
-                return device
-        # The last attempt speaks for itself: its timeout is the failure.
         device = _start(flash, admin_key)
         _await(device, markers)
         return device

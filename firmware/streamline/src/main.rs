@@ -157,6 +157,8 @@ fn run() -> Result<()> {
     #[cfg(feature = "qemu")]
     let key_verifier: Option<Arc<dyn KeyVerifier>> = None;
     let state = Arc::new(ApiState {
+        control: Mutex::new(()),
+        button_action: Default::default(),
         mode,
         hostname: local_hostname,
         config: Arc::new(Mutex::new(config)),
@@ -470,7 +472,7 @@ fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
 #[cfg(not(feature = "qemu"))]
 struct AudioOutcome {
     stream: Option<Arc<stream::StreamStatus>>,
-    codec: Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    codec: Option<Arc<Mutex<codec::DeviceCodec<'static>>>>,
     analog_passthrough: AnalogPassthroughState,
     /// `Ok` when the codec answered and the capture task started; `Err(reason)`
     /// otherwise, phrased for a person reading the health check.
@@ -533,7 +535,7 @@ fn start_codec(
     i2c_pins: I2cBusPins<'static>,
     board: &Board,
     config: &RuntimeConfig,
-) -> Result<(codec::CodecControl<'static>, AnalogPassthroughState)> {
+) -> Result<(codec::DeviceCodec<'static>, AnalogPassthroughState)> {
     let mut codec = codec::configure(i2c0, i2c_pins, &board.codec, config.audio)?;
     let route = board
         .analog_passthrough
@@ -557,7 +559,7 @@ fn start_recovery_local_output(
     board: &Board,
     config: &RuntimeConfig,
 ) -> (
-    Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    Option<Arc<Mutex<codec::DeviceCodec<'static>>>>,
     AnalogPassthroughState,
 ) {
     if !config.analog_passthrough_enabled {
@@ -592,7 +594,7 @@ impl AudioOutcome {
     }
 
     fn degraded(
-        codec: codec::CodecControl<'static>,
+        codec: codec::DeviceCodec<'static>,
         analog_passthrough: AnalogPassthroughState,
         reason: String,
     ) -> Self {
@@ -609,7 +611,7 @@ type SetupState = (
     Mode,
     RuntimeConfig,
     Option<Arc<stream::StreamStatus>>,
-    Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    Option<Arc<Mutex<codec::DeviceCodec<'static>>>>,
     AnalogPassthroughState,
     Arc<HealthReport>,
 );

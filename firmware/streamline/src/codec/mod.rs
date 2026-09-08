@@ -5,6 +5,17 @@
 
 use crate::board::Board;
 
+mod control;
+mod es8388;
+
+pub use control::{AudioChangeError, CodecControl};
+
+/// Device control I/O; settling delays remain ordered with register writes.
+pub trait RegisterBus {
+    fn write(&mut self, register: u8, value: u8) -> anyhow::Result<()>;
+    fn delay_ms(&mut self, millis: u32);
+}
+
 pub const ES8388_DRIVER: &str = "es8388";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -32,7 +43,7 @@ impl Driver {
 
     pub fn validate_board(self, board: &Board) -> Result<(), CodecError> {
         match self {
-            Self::Es8388 => Es8388Capabilities.validate(board),
+            Self::Es8388 => es8388::validate_board(board),
         }
     }
 }
@@ -42,41 +53,6 @@ impl Driver {
 /// GPIO checks.
 pub fn validate_board(board: &Board) -> Result<(), CodecError> {
     Driver::resolve(&board.codec.driver)?.validate_board(board)
-}
-
-trait CodecCapabilities {
-    fn validate(self, board: &Board) -> Result<(), CodecError>;
-}
-
-struct Es8388Capabilities;
-
-impl CodecCapabilities for Es8388Capabilities {
-    fn validate(self, board: &Board) -> Result<(), CodecError> {
-        if board.codec.i2c_address != 0x10 {
-            return Err(CodecError::UnsupportedAddress);
-        }
-        if board
-            .input_lines
-            .iter()
-            .any(|input| !matches!(input.line, 1 | 2))
-        {
-            return Err(CodecError::UnsupportedInputLine);
-        }
-        if board.input_gain_max > 100 {
-            return Err(CodecError::UnsupportedInputGain);
-        }
-        if board.adc_atten_max_db > 48 {
-            return Err(CodecError::UnsupportedAdcAttenuation);
-        }
-        if board
-            .analog_passthrough
-            .as_ref()
-            .is_some_and(|capability| !matches!(capability.output_line, 1 | 2))
-        {
-            return Err(CodecError::UnsupportedAnalogPassthroughRoute);
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -135,3 +111,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod transaction_tests;

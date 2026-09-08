@@ -532,13 +532,16 @@ mod tests {
 
     struct Verifier(Result<(), &'static str>);
 
+    type SendScript = VecDeque<Result<(), &'static str>>;
+    type ConnectResult = Result<SendScript, &'static str>;
+
     #[derive(Clone)]
     struct FakeConnector {
         attempts: Rc<RefCell<usize>>,
-        results: Rc<RefCell<VecDeque<Result<VecDeque<Result<(), &'static str>>, &'static str>>>>,
+        results: Rc<RefCell<VecDeque<ConnectResult>>>,
     }
 
-    struct FakeStream(VecDeque<Result<(), &'static str>>);
+    struct FakeStream(SendScript);
 
     impl PcmStream<&'static str> for FakeStream {
         fn send_all(&mut self, _bytes: &[u8]) -> Result<(), &'static str> {
@@ -561,7 +564,7 @@ mod tests {
     }
 
     fn connector(
-        results: impl IntoIterator<Item = Result<VecDeque<Result<(), &'static str>>, &'static str>>,
+        results: impl IntoIterator<Item = ConnectResult>,
     ) -> (FakeConnector, Rc<RefCell<usize>>) {
         let attempts = Rc::new(RefCell::new(0));
         (

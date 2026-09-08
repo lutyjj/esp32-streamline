@@ -100,6 +100,7 @@ lock-check: image
 lint: image console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --locked --lib -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --lib --tests -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --features api-spec,pcm-frame-vectors \
 		--lib --bin streamline-openapi --bin streamline-pcm-frame-vectors -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) -- -D warnings

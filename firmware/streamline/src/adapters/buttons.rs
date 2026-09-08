@@ -121,11 +121,19 @@ fn spawn_action(state: &Arc<ApiState>, action: ButtonAction) {
     if action == ButtonAction::None {
         return;
     }
+    let Some(lease) = state.button_action.try_acquire() else {
+        log::warn!("button action ignored: another action is running");
+        return;
+    };
     let state = Arc::clone(state);
     let spawned = std::thread::Builder::new()
         .name("button-action".to_owned())
         .stack_size(ACTION_STACK_BYTES)
-        .spawn(move || execute(&state, action));
+        .spawn(move || {
+            let _lease = lease;
+            let _control = state.control.lock().expect("control lock poisoned");
+            execute(&state, action);
+        });
     if let Err(error) = spawned {
         log::warn!(
             "button action '{}' could not start: {error}",
@@ -206,7 +214,7 @@ fn execute(state: &Arc<ApiState>, action: ButtonAction) {
     }
 }
 
-/// Apply an audio-mutating action through the same validate-persist-apply
+/// Apply an audio-mutating action through the same validate-apply-commit
 /// flow as `POST /api/settings/audio`. A press that would not change anything
 /// — a step already at its limit — writes nothing, so a held button at the
 /// end of a range cannot wear flash.

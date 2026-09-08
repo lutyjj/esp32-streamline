@@ -285,7 +285,9 @@ repro-check:
 qemu-artifacts: qemu-build signing-key
 	mkdir -p $(DIST_DIR)/firmware
 	$(call sign_and_package,streamline-qemu)
+	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-qemu.elf
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin
 	$(MAKE) signature-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin
 	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET) --features qemu-fail-management
 	$(call sign_and_package,streamline-qemu-fail-management)
+	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-qemu-fail-management.elf

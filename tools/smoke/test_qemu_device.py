@@ -37,7 +37,7 @@ _OTA_URL_CANARY = "ota-url-private-canary"
 def test_http_connections_during_startup_do_not_abort(
     boot_device: Callable[..., EmulatedDevice],
 ) -> None:
-    # Requires a fresh boot with serial readiness observed before any retry.
+    # Start clients before waiting for the server's serial readiness markers.
     device = boot_device()
     address = urlsplit(device.api.base_url)
     assert address.hostname is not None and address.port is not None

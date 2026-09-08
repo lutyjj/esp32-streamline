@@ -112,7 +112,7 @@ impl KeySlot {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct TransportKeys {
     slot_a: Option<TransportKey>,
     slot_b: Option<TransportKey>,
@@ -290,7 +290,7 @@ impl TransportKeys {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct TransportSettings {
     pub contract_version: u8,
     pub mode: TransportMode,
@@ -740,14 +740,15 @@ mod tests {
 
     #[test]
     fn stale_pending_markers_and_wrong_persisted_key_ids_fail_validation() {
-        let stale: TransportKeys =
-            serde_json::from_str(r#"{"pending":"a","pending_verified":true}"#)
-                .expect("decodable stale state");
+        let stale: TransportKeys = serde_json::from_str(
+            r#"{"slot_a":null,"slot_b":null,"active":null,"pending":"a","pending_verified":true}"#,
+        )
+        .expect("decodable stale state");
         assert_eq!(stale.validate(), Err(TransportError::InvalidKeyState));
 
         let psk = "00".repeat(PSK_BYTES);
         let invalid: TransportKeys = serde_json::from_str(&format!(
-            r#"{{"slot_a":{{"id":"wrong-id","psk":"{psk}"}},"active":"a"}}"#
+            r#"{{"slot_a":{{"id":"wrong-id","psk":"{psk}"}},"slot_b":null,"active":"a","pending":null,"pending_verified":false}}"#
         ))
         .expect("decodable invalid id");
         assert_eq!(invalid.validate(), Err(TransportError::InvalidKeyId));

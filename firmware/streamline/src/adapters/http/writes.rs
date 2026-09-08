@@ -116,5 +116,11 @@ fn invalid_catalog(error: AudioProfileError) -> MutationError {
 }
 
 fn persistence(error: anyhow::Error) -> MutationError {
+    if matches!(
+        error.downcast_ref::<crate::state::StateError<anyhow::Error>>(),
+        Some(crate::state::StateError::OversizedState)
+    ) {
+        return MutationError::InvalidInput(error.to_string());
+    }
     MutationError::Persistence(format!("{error:#}"))
 }

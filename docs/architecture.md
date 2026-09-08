@@ -137,7 +137,7 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 
 | State | Owner | Lifetime |
 |---|---|---|
-| Wi-Fi, target, transport mode and keys, audio, admin key, board selection, audio profile catalog | Firmware NVS adapter | Across reboots and firmware updates; the adapter commits a complete inactive generation, then switches one active marker; factory reset selects an empty generation; a generation the running firmware cannot decode means the device is unconfigured and opens setup |
+| Wi-Fi, target, transport mode and keys, audio, admin key, board selection, audio profile catalog | Firmware state core and NVS adapter | Across reboots; one commit marker selects complete checksummed snapshots; factory reset commits an empty snapshot without a fallback |
 | Stream counters and level state | Firmware runtime | One boot |
 | OTA progress | Firmware OTA worker | One boot; final diagnostic note persists in NVS |
 | Bridge source pipelines and client queues | Bridge process | One bridge process |
@@ -147,6 +147,22 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 | Built console, firmware images, release notes | Build and release automation | Generated artifact; never source state |
 
 Persistent and cross-boundary values enter business logic only after parsing and validation. Secrets never appear in read APIs, build artifacts, logs, issues, or documentation examples.
+
+The complete serialized configuration snapshot is limited to 3,840 UTF-8 bytes,
+including JSON escaping, custom board descriptors, and profiles. A save checks
+that limit before writing. The 24 KB NVS partition holds two snapshot strings,
+the commit marker, setup credentials, diagnostics, and ESP-IDF Wi-Fi state;
+replacement and garbage collection need spare pages.
+
+The state core writes the inactive snapshot, then atomically replaces a marker
+containing its SHA-256 and the previous committed snapshot's SHA-256. A corrupt
+active snapshot falls back only to that named, checksum-valid predecessor.
+An interrupted write cannot become a fallback. The marker defines ordering,
+so no revision counter can wrap. An unreadable marker or two unreadable
+snapshots leave the device unconfigured; storage I/O errors fail boot.
+Factory reset removes the fallback reference so corruption cannot restore
+erased credentials. Stored shapes must match the current firmware; no
+compatibility reader or migration runs at boot.
 
 ## Contract ownership
 

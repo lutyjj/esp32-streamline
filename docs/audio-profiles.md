@@ -47,12 +47,10 @@ and the console reads them from the device-served contract. Import validation
 checks those limits, the catalog schema version the device reports, and the live
 board capabilities for immediate feedback; the device validates every write.
 
-NVS stores each profile as a separate short record plus catalog metadata and
-the active ID. This fits NVS's small-value design and avoids requiring one
-large contiguous string allocation. Raw applied audio settings remain in the
-main configuration, so a catalog write cannot leave the codec without a known
-boot configuration. At boot, an active ID is kept only when its profile matches
-the applied settings.
+Profiles and applied audio settings share one failure-atomic configuration
+snapshot. The [storage contract](architecture.md#state-ownership) bounds the
+complete snapshot in bytes. At boot, an active ID is kept only when its profile
+matches the applied settings.
 
 ## API
 

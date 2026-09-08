@@ -223,6 +223,38 @@ def test_provisioning_persists_across_reboot(provisioned_device: EmulatedDevice)
     assert isinstance(version, str) and version
 
 
+def test_profile_snapshots_survive_repeated_nvs_replacement_and_reboot(
+    provisioned_device: EmulatedDevice,
+    boot_device: Callable[..., EmulatedDevice],
+) -> None:
+    # Reboot and flash-capacity pressure require a disposable commissioned device.
+    code, body = provisioned_device.api.fetch("/api/audio-profiles")
+    assert code == 200
+    catalog = json.loads(body)
+    code, body = provisioned_device.api.fetch("/api/settings")
+    assert code == 200
+    settings = json.loads(body)
+    audio = {key: settings[key] for key in ("input_line", "input_gain", "adc_attenuation_db")}
+    catalog["profiles"] = [{"id": str(index) + "x" * 31, "name": "🎵" * 32, "audio": audio} for index in range(8)]
+    for generation in range(32):
+        catalog["profiles"][0]["name"] = str(generation) + "🎵" * 30
+        code, body = provisioned_device.api.post_form(
+            "/api/settings/audio-profiles", {"catalog": json.dumps(catalog, ensure_ascii=False)}
+        )
+        assert code == 200, (generation, code, body[:200])
+    provisioned_device.dut.qemu.terminate()
+    rebooted = boot_device(
+        flash=provisioned_device.flash,
+        admin_key=ADMIN_KEY,
+        until=("StreamLine provisioned", CONSOLE_READY),
+    )
+    _expect_api_up(rebooted)
+    code, body = rebooted.api.fetch("/api/audio-profiles")
+    assert code == 200
+    assert json.loads(body) == catalog
+    assert rebooted.api.post_form("/api/unlock", {})[0] == 200
+
+
 def test_provisioned_device_gates_writes_behind_the_key(provisioned_device: EmulatedDevice) -> None:
     stranger = dataclasses.replace(provisioned_device.api, admin_key=None)
     code, _ = stranger.post_form("/api/settings/name", {"name": "intruder"})

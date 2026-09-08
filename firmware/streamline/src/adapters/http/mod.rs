@@ -19,7 +19,7 @@ use embedded_svc::http::Method;
 use esp_idf_svc::http::server::{Configuration, EspHttpConnection, EspHttpServer};
 
 use crate::{
-    adapters::{codec::CodecControl, mdns::MdnsAdvertisement, nvs::ConfigStore},
+    adapters::{codec::DeviceCodec, mdns::MdnsAdvertisement, nvs::ConfigStore},
     analog_passthrough::AnalogPassthroughState,
     api::{self, Endpoint, HttpMethod},
     board,
@@ -39,6 +39,9 @@ const INDEX_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.html.gz"
 const OPENAPI_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/openapi.json.gz"));
 
 pub struct ApiState {
+    /// Serializes complete control operations across HTTP and physical buttons.
+    pub control: Mutex<()>,
+    pub button_action: crate::task_start::TaskSlot,
     pub mode: Mode,
     pub hostname: String,
     pub board_catalog: Arc<Vec<board::Board>>,
@@ -50,7 +53,7 @@ pub struct ApiState {
     pub key_verifier: Option<Arc<dyn KeyVerifier>>,
     /// Live codec control for immediate audio and local-output changes. It also
     /// stays available in network recovery when persisted local output is on.
-    pub codec: Option<Arc<Mutex<CodecControl<'static>>>>,
+    pub codec: Option<Arc<Mutex<DeviceCodec<'static>>>>,
     pub analog_passthrough: Arc<Mutex<AnalogPassthroughState>>,
     pub mdns: Option<Arc<Mutex<MdnsAdvertisement>>>,
     pub ota: Arc<OtaProgress>,
@@ -172,6 +175,7 @@ impl<'a> ContractServer<'a> {
         let state = Arc::clone(&self.state);
         self.inner
             .fn_handler(endpoint.path, method(endpoint), move |request| {
+                let _control = state.control.lock().expect("control lock poisoned");
                 if let Err(challenge) = auth::authorized_for(&request, &state, endpoint) {
                     return responses::unauthorized(request, &challenge);
                 }

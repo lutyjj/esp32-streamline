@@ -97,12 +97,11 @@ pub(super) fn register_writes(
             })?;
             if let Some(audio) = audio {
                 let current = state_for_active_profile.lock_config().clone();
-                write_configuration_and_profiles(
+                return change_audio(
                     &state_for_active_profile,
                     RuntimeConfig { audio, ..current },
                     catalog,
-                )?;
-                return apply_audio_live(&state_for_active_profile, audio);
+                );
             }
             save_audio_profiles(&state_for_active_profile, catalog)?;
             Ok(true)
@@ -115,7 +114,7 @@ pub(super) fn register_writes(
     })
 }
 
-/// Validate, write, and apply new audio settings, returning to custom settings
+/// Validate, apply, and commit audio settings, returning to custom settings
 /// (no active profile). `Ok(true)` means they were applied live; `Ok(false)`
 /// means the codec is down and a reboot applies them. Shared by the HTTP
 /// handler above and the `cycle_input` button action.
@@ -129,30 +128,43 @@ pub(in crate::adapters) fn set_audio(
     })?;
     let mut catalog = state.lock_audio_profiles().clone();
     catalog.active_profile_id = None;
-    write_configuration_and_profiles(state, RuntimeConfig { audio, ..current }, catalog)?;
-    apply_audio_live(state, audio)
+    change_audio(state, RuntimeConfig { audio, ..current }, catalog)
 }
 
-/// Apply already-written settings to the codec and reset play detection.
-fn apply_audio_live(state: &ApiState, audio: AudioSettings) -> Result<bool, MutationError> {
+fn change_audio(
+    state: &ApiState,
+    config: RuntimeConfig,
+    catalog: AudioProfileCatalog,
+) -> Result<bool, MutationError> {
     let Some(codec) = &state.codec else {
+        write_configuration_and_profiles(state, config, catalog)?;
         return Ok(false);
     };
-    let result = codec.lock().expect("codec lock poisoned").apply(audio);
+    let mut codec = codec.lock().expect("codec lock poisoned");
+    let result = codec.change_audio(config.audio, || {
+        write_configuration_and_profiles(state, config, catalog)
+    });
+    if let Some(stream) = &state.stream {
+        stream.request_relearn();
+    }
     if let Err(error) = result {
         let mut passthrough = state
             .analog_passthrough
             .lock()
             .expect("analog passthrough lock poisoned");
-        if passthrough.active {
-            passthrough.record_fault(format!("audio control failed: {error:#}"));
+        if passthrough.active && !codec.passthrough_active() {
+            passthrough.record_fault(error.cause.to_string());
         }
-        return Err(MutationError::Internal(format!(
-            "could not apply audio settings: {error:#}"
-        )));
-    }
-    if let Some(stream) = &state.stream {
-        stream.request_relearn();
+        if let Some(rollback) = error.rollback_error {
+            if let Some(stream) = &state.stream {
+                stream.set_streaming_enabled(false);
+            }
+            return Err(MutationError::Internal(format!(
+                "{}; {rollback}",
+                error.cause
+            )));
+        }
+        return Err(error.cause);
     }
     Ok(true)
 }

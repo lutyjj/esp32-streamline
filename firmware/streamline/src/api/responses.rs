@@ -144,6 +144,7 @@ pub struct BoardCatalogResponse<'a> {
 #[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::status())))]
 pub struct StatusResponse<'a> {
     pub firmware_version: &'a str,
+    pub firmware_variant: crate::telemetry::FirmwareVariant,
     pub device_name: &'a str,
     #[cfg_attr(feature = "api-spec", schema(inline))]
     pub mode: &'a str,
@@ -415,6 +416,8 @@ pub struct OtaStatus<'a> {
     /// the vendor key it trusts. Always true on a signed release build; false on
     /// an unsigned self-build.
     pub signed_updates: bool,
+    /// SHA-256 of signature block 0's public key; empty if unreadable.
+    pub signing_key_sha256: &'a str,
 }
 
 #[derive(Serialize)]

@@ -33,17 +33,17 @@ enum TransportSecurity {
     TlsPsk(TransportKey),
 }
 
-/// A resolved bridge endpoint and the exact transport selected at boot.
+/// A configured bridge endpoint, resolved again for each connection attempt.
 #[derive(Clone)]
 pub struct TargetAddress {
-    socket: SocketAddr,
+    host: String,
+    port: u16,
     security: TransportSecurity,
 }
 
 impl TargetAddress {
-    pub fn resolve(config: &RuntimeConfig) -> Result<Self> {
+    pub fn from_config(config: &RuntimeConfig) -> Result<Self> {
         let port = config.target_port;
-        let socket = resolve_socket(&config.target_host, port)?;
         let security = match config.transport.mode {
             TransportMode::Cleartext => TransportSecurity::Cleartext,
             TransportMode::TlsPsk => TransportSecurity::TlsPsk(
@@ -55,7 +55,11 @@ impl TargetAddress {
                     .ok_or_else(|| anyhow!("secure PCM transport has no active key"))?,
             ),
         };
-        Ok(Self { socket, security })
+        Ok(Self {
+            host: config.target_host.clone(),
+            port,
+            security,
+        })
     }
 }
 
@@ -143,10 +147,11 @@ impl PcmConnector for AdapterConnector {
     type Stream = Connection;
 
     fn connect(&mut self) -> std::result::Result<Self::Stream, Self::Error> {
+        let socket = resolve_socket(&self.0.host, self.0.port).map_err(TcpSendError::io)?;
         match &self.0.security {
             TransportSecurity::Cleartext => {
-                let stream = TcpStream::connect_timeout(&self.0.socket, CLEARTEXT_TIMEOUT)
-                    .with_context(|| format!("TCP connect to {} failed", self.0.socket))
+                let stream = TcpStream::connect_timeout(&socket, CLEARTEXT_TIMEOUT)
+                    .with_context(|| format!("TCP connect to {} failed", socket))
                     .map_err(TcpSendError::io)?;
                 stream.set_nodelay(true).map_err(TcpSendError::io)?;
                 stream
@@ -154,7 +159,7 @@ impl PcmConnector for AdapterConnector {
                     .map_err(TcpSendError::io)?;
                 Ok(Connection::Cleartext(stream))
             }
-            TransportSecurity::TlsPsk(key) => TlsConnection::connect(self.0.socket, key.clone())
+            TransportSecurity::TlsPsk(key) => TlsConnection::connect(socket, key.clone())
                 .map(Connection::Tls)
                 .map_err(TcpSendError::handshake),
         }

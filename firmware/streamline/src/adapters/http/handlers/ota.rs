@@ -56,9 +56,10 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // boot selection first so an unavailable rollback returns an error instead
     // of a false "rebooting"; the device then reboots into the previous image,
     // which its boot path re-confirms.
+    let state = Arc::clone(state);
     server.handler(api::OTA_ROLLBACK, move |request| {
         match ota_adapter::select_rollback_slot() {
-            Ok(()) => reboot_response(request),
+            Ok(()) => reboot_response(request, &state.restart),
             // No stored previous image is a state conflict, not a bad request.
             Err(error) => mutation_error(request, MutationError::Conflict(format!("{error:#}"))),
         }

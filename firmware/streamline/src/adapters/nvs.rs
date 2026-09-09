@@ -2,6 +2,11 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
+use esp_idf_svc::{
+    handle::RawHandle,
+    sys::{esp, nvs_commit, nvs_set_str},
+};
+use std::ffi::CString;
 
 use crate::{
     board::{self, Board, BoardSelection},
@@ -18,39 +23,6 @@ const KEY_LAST_OTA: &str = "last_ota";
 const KEY_SETUP_AP_PASSWORD: &str = "setup_ap_pw";
 /// Diagnostic notes are trimmed to fit the 256-byte read buffer.
 const MAX_NOTE_BYTES: usize = 240;
-/// Keep custom descriptors comfortably below ESP-IDF's NVS string limit.
-const MAX_BOARD_DESCRIPTOR_BUFFER_BYTES: usize = crate::board::MAX_DESCRIPTOR_BYTES + 1;
-/// Keys of the storage layout that predates generations. Nothing reads them,
-/// so a device that still holds them is unconfigured and opens setup; they are
-/// erased because they hold that device's Wi-Fi password and admin key. The
-/// setup-AP password and the reset diagnostics are not among them.
-const OBSOLETE_KEYS: [&str; 24] = [
-    "schema",
-    "ssid",
-    "password",
-    "target_host",
-    "target_port",
-    "admin_secret",
-    "device_name",
-    "auto_update",
-    "board_id",
-    "board_json",
-    "input_line",
-    "input_gain",
-    "adc_attenuation",
-    "prof_schema",
-    "prof_board",
-    "prof_active",
-    "profile_0",
-    "profile_1",
-    "profile_2",
-    "profile_3",
-    "profile_4",
-    "profile_5",
-    "profile_6",
-    "profile_7",
-];
-
 /// Typed access to the two durable generations. The ESP-IDF adapter remains
 /// small: portable `StateStore` owns the write ordering and recovery rule.
 struct NvsGenerationStorage<'a> {
@@ -62,19 +34,27 @@ impl GenerationStorage for NvsGenerationStorage<'_> {
 
     fn get(&self, key: &str) -> Result<Option<String>, Self::Error> {
         let capacity = match key {
-            "gen_a_config" | "gen_b_config" | "gen_a_board" | "gen_b_board" | "active_gen" => {
-                crate::state::MAX_CONFIG_RECORD_BYTES + 1
-            }
-            "gen_a_desc" | "gen_b_desc" => MAX_BOARD_DESCRIPTOR_BUFFER_BYTES,
-            "gen_a_profiles" | "gen_b_profiles" => crate::state::MAX_PROFILE_RECORD_BYTES + 1,
-            _ => return Err(anyhow!("unknown generated-state key: {key}")),
+            "state_a" | "state_b" => crate::state::MAX_STATE_BYTES + 1,
+            "state_commit" => crate::state::MAX_MARKER_BYTES + 1,
+            _ => return Err(anyhow!("unknown state key: {key}")),
         };
+        if self
+            .nvs
+            .str_len(key)?
+            .is_some_and(|length| length > capacity)
+        {
+            return Ok(None);
+        }
         let mut buffer = vec![0_u8; capacity];
         Ok(self.nvs.get_str(key, &mut buffer)?.map(str::to_owned))
     }
 
     fn set(&self, key: &str, value: &str) -> Result<(), Self::Error> {
-        self.nvs.set_str(key, value)?;
+        let key = CString::new(key)?;
+        let value = CString::new(value)?;
+        // EspNvs::set_str erases first; the commit pointer requires native replacement.
+        esp!(unsafe { nvs_set_str(self.nvs.handle(), key.as_ptr(), value.as_ptr()) })?;
+        esp!(unsafe { nvs_commit(self.nvs.handle()) })?;
         Ok(())
     }
 }
@@ -88,26 +68,13 @@ pub struct ConfigStore {
 
 impl ConfigStore {
     pub fn open(partition: EspDefaultNvsPartition) -> Result<Self> {
-        let store = Self {
+        Ok(Self {
             nvs: EspNvs::new(partition, NAMESPACE, true)?,
-        };
-        store.erase_obsolete_keys();
-        Ok(store)
+        })
     }
 
     fn state_store(&self) -> StateStore<NvsGenerationStorage<'_>> {
         StateStore::new(NvsGenerationStorage { nvs: &self.nvs })
-    }
-
-    /// Remove the keys that are no longer part of the stored layout, best
-    /// effort: a key that resists removal leaves the rest swept and the next
-    /// boot tries again.
-    fn erase_obsolete_keys(&self) {
-        for key in OBSOLETE_KEYS {
-            if let Err(error) = self.nvs.remove(key) {
-                log::warn!("could not erase the obsolete key {key}: {error:#}");
-            }
-        }
     }
 
     fn load_state(&self) -> Result<Option<PersistentState>> {
@@ -117,9 +84,7 @@ impl ConfigStore {
     }
 
     fn write_state(&self, state: PersistentState) -> Result<()> {
-        self.state_store()
-            .save(&state)
-            .map_err(|error| anyhow!("could not commit generated state: {error:?}"))
+        self.state_store().save(&state).map_err(anyhow::Error::new)
     }
 
     /// The committed generation, or empty state on a device that has none.
@@ -127,8 +92,7 @@ impl ConfigStore {
         Ok(self.load_state()?.unwrap_or_else(PersistentState::empty))
     }
 
-    /// Commit the main configuration and profile metadata together. Profile
-    /// activation changes both records, so they share the generation marker.
+    /// Commit configuration and profiles in one snapshot.
     pub fn save_configuration_and_profiles(
         &self,
         config: &RuntimeConfig,
@@ -196,38 +160,6 @@ impl ConfigStore {
         Ok(selection)
     }
 
-    pub fn save_built_in_board(&self, board: &Board) -> Result<()> {
-        board::validate_descriptor(board.clone())
-            .map_err(|error| anyhow!("invalid board descriptor '{}': {error}", board.id))?;
-        let state = self.current_state()?;
-        self.write_state(PersistentState {
-            board_id: Some(board.id.clone()),
-            board_descriptor: None,
-            ..state
-        })
-    }
-
-    /// Persist a validated custom board in its canonical serialization, so the
-    /// stored bytes are exactly what boot will parse back.
-    pub fn save_custom_board(&self, board: &Board) -> Result<()> {
-        board::validate_descriptor(board.clone())
-            .map_err(|error| anyhow!("invalid board descriptor '{}': {error}", board.id))?;
-        let descriptor_json = serde_json::to_string(board)?;
-        if descriptor_json.len() > crate::board::MAX_DESCRIPTOR_BYTES {
-            bail!(
-                "board descriptor is too large: {} bytes, max {}",
-                descriptor_json.len(),
-                crate::board::MAX_DESCRIPTOR_BYTES
-            );
-        }
-        let state = self.current_state()?;
-        self.write_state(PersistentState {
-            board_id: Some(board.id.clone()),
-            board_descriptor: Some(descriptor_json),
-            ..state
-        })
-    }
-
     pub fn load(&self, board: &Board) -> Result<Option<RuntimeConfig>> {
         match self.current_state()?.config {
             Some(config) if config.validate(board).is_ok() => Ok(Some(config)),
@@ -276,13 +208,7 @@ impl ConfigStore {
         self.write_state(state)
     }
 
-    pub fn clear_audio_profiles(&self) -> Result<()> {
-        let mut state = self.current_state()?;
-        state.profiles = None;
-        self.write_state(state)
-    }
-
-    /// Erase the configuration, any pre-generation layout, and diagnostics,
+    /// Erase the configuration and diagnostics,
     /// keeping the setup-AP password: it is device identity, minted once for
     /// the device's life, and a pre-flashed unit's label must stay true
     /// across resets.
@@ -293,7 +219,6 @@ impl ConfigStore {
                 log::warn!("could not clear reset diagnostic {key}: {error:#}");
             }
         }
-        self.erase_obsolete_keys();
         Ok(())
     }
 

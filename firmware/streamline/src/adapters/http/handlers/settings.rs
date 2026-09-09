@@ -56,7 +56,7 @@ pub(super) fn register_network_writes(
             persist_configuration(&state_for_wifi, next)
         })();
         match result {
-            Ok(()) => reboot_response(request),
+            Ok(()) => reboot_response(request, &state_for_wifi.restart),
             Err(error) => mutation_error(request, error),
         }
     })?;
@@ -82,7 +82,7 @@ pub(super) fn register_network_writes(
             })
         })();
         match result {
-            Ok(()) => reboot_response(request),
+            Ok(()) => reboot_response(request, &state_for_target.restart),
             Err(error) => mutation_error(request, error),
         }
     })

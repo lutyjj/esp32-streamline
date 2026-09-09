@@ -3,6 +3,7 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TelemetrySnapshot {
     pub firmware_version: &'static str,
+    pub firmware_variant: FirmwareVariant,
     /// Friendly device name; empty when unnamed.
     pub device_name: String,
     pub mode: &'static str,
@@ -143,4 +144,25 @@ pub struct OtaTelemetry {
     /// This firmware rejects an over-the-air image that is not signed by the
     /// vendor key it trusts. Always true on a signed release build.
     pub signed_updates: bool,
+    pub signing_key_sha256: String,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub enum FirmwareVariant {
+    Standard,
+    Qemu,
+    TestSource,
+}
+
+impl FirmwareVariant {
+    pub const fn current() -> Self {
+        if cfg!(feature = "qemu") {
+            Self::Qemu
+        } else if cfg!(feature = "test-source") {
+            Self::TestSource
+        } else {
+            Self::Standard
+        }
+    }
 }

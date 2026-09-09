@@ -1,23 +1,16 @@
-//! Recovery-mode cadence for rejoining the saved Wi-Fi.
+//! Monotonic cadence for station retries in provisioned and recovery modes.
 //!
-//! A provisioned device that could not join its Wi-Fi runs the setup AP and
-//! keeps the station side retrying the saved network in the background, so a
-//! router that was only briefly down (a power cut it is still recovering from)
-//! brings the device home with no user action. This unit owns only the *when*:
-//! it decides from a monotonic clock whether another station attempt is due.
-//! The combined AP-and-station radio mode and the attempt itself live in the
-//! `wifi` adapter, and the boot loop supplies the elapsed time, so this logic
-//! is host-testable away from the radio.
+//! The boot loop supplies elapsed time and the Wi-Fi adapter attempts association.
 
 use std::time::Duration;
 
 /// Wait this long after recovery starts before the first station retry, giving
 /// a home router that is only moments behind the device time to finish booting.
 pub const RECONNECT_INITIAL_DELAY: Duration = Duration::from_secs(30);
-/// Spacing between station retries while the setup AP stays up.
+/// Spacing between station retries.
 pub const RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Monotonic schedule for background station retries in recovery mode.
+/// Monotonic schedule for background station retries.
 ///
 /// The clock stays outside this unit so host tests use plain durations and the
 /// ESP-IDF boot loop supplies its own monotonic elapsed time, matching

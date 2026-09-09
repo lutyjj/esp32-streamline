@@ -20,6 +20,7 @@ pub mod pins;
 pub mod random;
 pub mod status_light;
 pub mod system;
+pub mod task;
 pub mod tcp;
 pub mod time;
 pub mod wifi;

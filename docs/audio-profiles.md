@@ -4,6 +4,13 @@ Audio profiles give one source a name and one complete set of input controls:
 source line, input gain, and ADC attenuation. Applying a profile writes those
 controls to the running codec immediately and persists them for the next boot.
 
+A live audio change commits configuration and profile selection only after all
+codec writes succeed. A codec or persistence failure restores the input controls
+and local-output route. If restoration also fails, streaming pauses and the API
+reports the failure with a retry-or-restart remedy. A successful retry leaves
+streaming paused until the owner resumes it. Without a running codec, settings
+are saved for the next boot.
+
 The device stores up to eight profiles. A profile catalog is versioned and
 bound to a board descriptor because input lines and level limits are hardware
 facts. The firmware rejects duplicate IDs, invalid references, wrong-board
@@ -34,18 +41,16 @@ imports, out-of-range settings, and names longer than 32 characters.
 
 The Rust types in `firmware/streamline/src/profiles.rs` own this contract.
 NVS and HTTP JSON are storage and transport representations of those validated
-types. The model declares its import limits — profile count, id pattern and
-length, name length — as schema constraints, so they ride `docs/openapi.json`
+types. The model declares profile count, id pattern, id length, and name length
+as schema constraints, so they ride `docs/openapi.json`
 and the console reads them from the device-served contract. Import validation
 checks those limits, the catalog schema version the device reports, and the live
 board capabilities for immediate feedback; the device validates every write.
 
-NVS stores each profile as a separate short record plus catalog metadata and
-the active ID. This fits NVS's small-value design and avoids requiring one
-large contiguous string allocation. Raw applied audio settings remain in the
-main configuration, so a catalog write cannot leave the codec without a known
-boot configuration. At boot, an active ID is kept only when its profile matches
-the applied settings.
+Profiles and applied audio settings share one failure-atomic configuration
+snapshot. The [storage contract](architecture.md#state-ownership) bounds the
+complete snapshot in bytes. At boot, an active ID is kept only when its profile
+matches the applied settings.
 
 ## API
 

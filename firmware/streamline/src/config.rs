@@ -65,17 +65,6 @@ impl AutoUpdateSchedule {
         }
     }
 
-    /// Decode the optional NVS value. Absence means the default for devices
-    /// provisioned before this setting existed; unknown future values fail
-    /// closed if older firmware boots the same NVS.
-    pub const fn from_storage(value: Option<u8>) -> Self {
-        match value {
-            None | Some(1) => Self::Daily,
-            Some(2) => Self::Weekly,
-            Some(0) | Some(_) => Self::Disabled,
-        }
-    }
-
     pub const fn interval(self) -> Option<Duration> {
         match self {
             Self::Disabled => None,
@@ -134,6 +123,9 @@ impl<'a> NetworkSettings<'a> {
         if self.ssid.is_empty() {
             return Err(ConfigError::MissingSsid);
         }
+        if self.ssid.len() > 32 || self.ssid.contains('\0') {
+            return Err(ConfigError::MalformedSsid);
+        }
         self.validate_target()
     }
 
@@ -152,6 +144,8 @@ impl<'a> NetworkSettings<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigError {
     MissingSsid,
+    MalformedSsid,
+    MalformedWifiPassword,
     MalformedTargetHost,
     InvalidTargetPort,
     InvalidInputLine,
@@ -171,6 +165,7 @@ pub enum ConfigError {
 /// adapters translate it only at their boundary, so validation can be tested
 /// on the host and used by both the setup HTTP service and boot path.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RuntimeConfig {
     pub ssid: String,
     pub password: String,
@@ -179,10 +174,7 @@ pub struct RuntimeConfig {
     /// not stream.
     pub target_host: String,
     pub target_port: u16,
-    /// Versioned PCM transport policy and write-only per-device keys. Missing
-    /// on installations created before secure transport and therefore
-    /// defaults to cleartext without invalidating their configuration.
-    #[serde(default)]
+    /// PCM transport policy and write-only per-device keys.
     pub transport: TransportSettings,
     /// Admin key required on the mutating HTTP API. Set during commissioning
     /// and write-only: it is persisted but never returned through the API.
@@ -194,17 +186,12 @@ pub struct RuntimeConfig {
     pub auto_update_schedule: AutoUpdateSchedule,
     pub audio: AudioSettings,
     /// Whether the selected board's local analog output should be active.
-    #[serde(default)]
     pub analog_passthrough_enabled: bool,
     /// Per-LED role assignments keyed by board LED id. A LED absent here uses
-    /// its descriptor default role. Missing on installations provisioned before
-    /// LED control existed, so it defaults to empty.
-    #[serde(default)]
+    /// its descriptor default role.
     pub led_roles: BTreeMap<String, LedRole>,
     /// Per-button action assignments keyed by board button id. A button absent
-    /// here fires its descriptor default action. Missing on installations
-    /// provisioned before button control existed, so it defaults to empty.
-    #[serde(default)]
+    /// here fires its descriptor default action.
     pub button_actions: BTreeMap<String, ButtonAction>,
 }
 
@@ -212,6 +199,13 @@ impl RuntimeConfig {
     /// Every rule a durable configuration satisfies.
     pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
         self.network().validate()?;
+        let password = self.password.as_bytes();
+        if self.password.contains('\0')
+            || !((8..=63).contains(&password.len())
+                || (password.len() == 64 && password.iter().all(u8::is_ascii_hexdigit)))
+        {
+            return Err(ConfigError::MalformedWifiPassword);
+        }
         if !is_canonical_admin_key(&self.admin_key) {
             return Err(ConfigError::MalformedAdminKey);
         }
@@ -297,7 +291,7 @@ impl RuntimeConfig {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{AudioSettings, AutoUpdateSchedule, ConfigError, NetworkSettings};
+    use super::{AudioSettings, AutoUpdateSchedule, ConfigError, NetworkSettings, RuntimeConfig};
     use crate::board::{
         self, Board, Button, CodecSpec, I2cPins, I2sPins, InputOption, Led, PinMap,
     };
@@ -424,7 +418,7 @@ mod tests {
     fn sample_runtime_config() -> super::RuntimeConfig {
         super::RuntimeConfig {
             ssid: "studio".to_owned(),
-            password: "secret".to_owned(),
+            password: "test-password".to_owned(),
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
             transport: Default::default(),
@@ -500,20 +494,6 @@ mod tests {
     }
 
     #[test]
-    fn persisted_configuration_without_local_output_intent_defaults_off() {
-        let mut value = serde_json::to_value(sample_runtime_config()).expect("serializable config");
-        value
-            .as_object_mut()
-            .expect("config object")
-            .remove("analog_passthrough_enabled");
-
-        let decoded: super::RuntimeConfig =
-            serde_json::from_value(value).expect("compatible persisted config");
-
-        assert!(!decoded.analog_passthrough_enabled);
-    }
-
-    #[test]
     fn board_compatibility_disables_an_unsupported_local_output() {
         let mut config = sample_runtime_config();
         config.analog_passthrough_enabled = true;
@@ -568,6 +548,35 @@ mod tests {
     }
 
     #[test]
+    fn persisted_configuration_requires_the_current_fields() {
+        let value = serde_json::to_value(sample_runtime_config()).unwrap();
+        for field in [
+            "transport",
+            "analog_passthrough_enabled",
+            "led_roles",
+            "button_actions",
+        ] {
+            let mut incomplete = value.clone();
+            incomplete.as_object_mut().unwrap().remove(field);
+            assert!(
+                serde_json::from_value::<RuntimeConfig>(incomplete).is_err(),
+                "{field}"
+            );
+        }
+        for field in ["contract_version", "mode", "keys"] {
+            let mut incomplete = value.clone();
+            incomplete["transport"]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(
+                serde_json::from_value::<RuntimeConfig>(incomplete).is_err(),
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
     fn automatic_update_schedules_have_stable_api_and_storage_names() {
         for (name, stored, schedule) in [
             ("disabled", 0, AutoUpdateSchedule::Disabled),
@@ -576,18 +585,9 @@ mod tests {
         ] {
             assert_eq!(AutoUpdateSchedule::parse(name), Some(schedule));
             assert_eq!(schedule.as_str(), name);
-            assert_eq!(AutoUpdateSchedule::from_storage(Some(stored)), schedule);
             assert_eq!(schedule as u8, stored);
         }
-        assert_eq!(
-            AutoUpdateSchedule::from_storage(None),
-            AutoUpdateSchedule::Daily
-        );
         assert_eq!(AutoUpdateSchedule::parse("0 3 * * *"), None);
-        assert_eq!(
-            AutoUpdateSchedule::from_storage(Some(3)),
-            AutoUpdateSchedule::Disabled
-        );
     }
 
     #[test]
@@ -686,38 +686,40 @@ mod tests {
         assert_eq!(config.button_action(&button), ButtonAction::None);
     }
 
-    #[test]
-    fn persisted_configuration_without_button_actions_defaults_empty() {
-        let mut value = serde_json::to_value(sample_runtime_config()).expect("serializable config");
-        value
-            .as_object_mut()
-            .expect("config object")
-            .remove("button_actions");
-
-        let decoded: super::RuntimeConfig =
-            serde_json::from_value(value).expect("compatible persisted config");
-
-        assert!(decoded.button_actions.is_empty());
-    }
-
-    #[test]
-    fn persisted_configuration_without_led_roles_defaults_empty() {
-        let mut value = serde_json::to_value(sample_runtime_config()).expect("serializable config");
-        value
-            .as_object_mut()
-            .expect("config object")
-            .remove("led_roles");
-
-        let decoded: super::RuntimeConfig =
-            serde_json::from_value(value).expect("compatible persisted config");
-
-        assert!(decoded.led_roles.is_empty());
-    }
-
     fn default_board() -> Board {
         let catalog = board::builtin_catalog().expect("valid catalog");
         board::resolve(&catalog, None)
             .expect("default board")
             .clone()
+    }
+    #[test]
+    fn wifi_credentials_match_the_driver_byte_bounds() {
+        let board = default_board();
+        let mut config = sample_runtime_config();
+        for ssid in ["x".repeat(32), "é".repeat(16)] {
+            config.ssid = ssid;
+            assert_eq!(config.validate(&board), Ok(()));
+        }
+        for ssid in ["x".repeat(33), "é".repeat(17), "a\0b".into()] {
+            config.ssid = ssid;
+            assert_eq!(config.validate(&board), Err(ConfigError::MalformedSsid));
+        }
+        config.ssid = "studio".into();
+        for password in ["x".repeat(8), "x".repeat(63), "a".repeat(64)] {
+            config.password = password;
+            assert_eq!(config.validate(&board), Ok(()));
+        }
+        for password in [
+            "x".repeat(7),
+            "x".repeat(64),
+            "a".repeat(65),
+            "abc\0defgh".into(),
+        ] {
+            config.password = password;
+            assert_eq!(
+                config.validate(&board),
+                Err(ConfigError::MalformedWifiPassword)
+            );
+        }
     }
 }

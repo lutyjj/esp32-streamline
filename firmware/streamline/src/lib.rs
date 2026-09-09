@@ -10,6 +10,7 @@ pub mod analog_passthrough;
 pub mod api;
 pub mod auth;
 pub mod board;
+pub mod boot_health;
 pub mod button;
 pub mod captive_portal;
 pub mod codec;
@@ -33,13 +34,16 @@ pub mod protocol;
 pub mod random;
 pub mod reconnect;
 pub mod recovery;
+pub mod restart;
 pub mod setup_network;
 pub mod state;
 pub mod stream;
+pub mod task_start;
 pub mod telemetry;
 pub mod transport;
 pub mod transport_diagnostics;
 pub mod update;
+pub mod wall_clock;
 
 #[cfg(target_os = "espidf")]
 pub mod adapters;

@@ -158,6 +158,7 @@ fn run() -> Result<()> {
     let key_verifier: Option<Arc<dyn KeyVerifier>> = None;
     let state = Arc::new(ApiState {
         control: Mutex::new(()),
+        restart: Default::default(),
         button_action: Default::default(),
         mode,
         hostname: local_hostname,
@@ -192,7 +193,7 @@ fn run() -> Result<()> {
     if let Err(error) = status_light::start(
         Arc::clone(&state.board),
         Arc::clone(&state.config),
-        mode == Mode::Setup,
+        mode.setup_network_active(),
         state.health.status,
         state.stream.clone(),
     ) {
@@ -231,6 +232,15 @@ fn run() -> Result<()> {
         FreeRtos::delay_ms(1_000);
         match mode {
             Mode::Provisioned => {
+                if state.restart.is_pending() {
+                    continue;
+                }
+                #[cfg(not(feature = "qemu"))]
+                if !wifi::station_connected(&network)
+                    && reconnect_timer.take_due(booted_at.elapsed())
+                {
+                    wifi::reconnect_station(&mut network);
+                }
                 let schedule = state
                     .config
                     .lock()
@@ -318,18 +328,15 @@ fn network_boot(
     let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
     let state = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
-            // Wi-Fi is up, so the device is reachable on the home network and
-            // stays provisioned. A bridge target that will not resolve or audio
-            // that will not initialize is a fault to surface through the health
-            // check, not a reason to drop to the setup AP — that recovery is for
-            // no network. Staying provisioned also lets `mark_current_valid`
-            // confirm the slot, so an audio fault can never trigger a rollback.
+            // A reachable management plane keeps this boot provisioned.
+            // Audio faults surface through health; bridge DNS belongs to the
+            // reconnecting sender and cannot disable its task at boot.
             Ok(()) => {
-                let target = match resolve_target(&config) {
+                let target = match configured_target(&config) {
                     Ok(target) => target,
                     Err(error) => {
                         log::warn!(
-                            "TCP target resolution failed: {error:#}; \
+                            "TCP target configuration failed: {error:#}; \
                              staying provisioned without a stream"
                         );
                         None
@@ -458,11 +465,11 @@ fn note_fallback(store: &Arc<Mutex<ConfigStore>>, reason: &str) {
 /// The stream target for a provisioned boot: `None` when no bridge is
 /// configured yet, so capture runs without a network task.
 #[cfg(not(feature = "qemu"))]
-fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
+fn configured_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
     if config.target_host.is_empty() {
         return Ok(None);
     }
-    TargetAddress::resolve(config).map(Some)
+    TargetAddress::from_config(config).map(Some)
 }
 
 /// Audio bring-up outcome: every live handle that came up, plus the single fact

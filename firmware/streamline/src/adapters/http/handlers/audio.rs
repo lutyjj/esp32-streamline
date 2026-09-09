@@ -50,7 +50,7 @@ pub(super) fn register_writes(
         })();
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
-            Ok(false) => reboot_response(request),
+            Ok(false) => reboot_response(request, &state_for_audio.restart),
             Err(error) => mutation_error(request, error),
         }
     })?;
@@ -108,7 +108,7 @@ pub(super) fn register_writes(
         })();
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
-            Ok(false) => reboot_response(request),
+            Ok(false) => reboot_response(request, &state_for_active_profile.restart),
             Err(error) => mutation_error(request, error),
         }
     })

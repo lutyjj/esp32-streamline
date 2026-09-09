@@ -198,7 +198,7 @@ def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
     # Commissioning carries the staged name into the first persisted generation.
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
-        {"ssid": "qemu-smoke-lab", "admin_key": ADMIN_KEY},
+        {"ssid": "qemu-smoke-lab", "password": "qemu-test-password", "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
     setup_boot.dut.qemu.wait(timeout=60)
@@ -397,6 +397,8 @@ def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
     code, body = provisioned_device.api.post_form("/api/factory-reset", {})
     assert code == 200, f"factory reset was answered with HTTP {code}: {body[:200]!r}"
     acknowledgement = json.loads(body)
+    code, _ = provisioned_device.api.post_form("/api/settings/name", {"name": "must-not-survive"})
+    assert code == 503, "writes must stop as soon as reset commits"
     assert acknowledgement["rebooting"] is True
     # The response repeats the commissioning credentials — their only
     # appearance in the API.

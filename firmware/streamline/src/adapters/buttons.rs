@@ -132,7 +132,9 @@ fn spawn_action(state: &Arc<ApiState>, action: ButtonAction) {
         .spawn(move || {
             let _lease = lease;
             let _control = state.control.lock().expect("control lock poisoned");
-            execute(&state, action);
+            if !state.restart.is_pending() {
+                execute(&state, action);
+            }
         });
     if let Err(error) = spawned {
         log::warn!(

@@ -10,9 +10,7 @@ use crate::{
     health::{HealthReport, Severity},
     indicator,
     levels::CLIP_THRESHOLD_ABS,
-    metrics,
-    mode::Mode,
-    protocol,
+    metrics, protocol,
     telemetry::{
         AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
         StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
@@ -94,9 +92,10 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         .as_ref()
         .map(|stream| stream.snapshot())
         .unwrap_or_default();
-    let (mode, wifi_status) = match state.mode {
-        Mode::Setup | Mode::Recovery => ("setup", "ap"),
-        Mode::Provisioned => ("provisioned", "connected"),
+    let (mode, wifi_status) = if state.mode.setup_network_active() {
+        ("setup", "ap")
+    } else {
+        ("provisioned", "connected")
     };
     let ota = state.ota.snapshot();
     let rollback = crate::adapters::ota::rollback_target();

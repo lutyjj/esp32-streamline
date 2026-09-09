@@ -70,9 +70,15 @@ Core modules may define narrow traits that adapters implement. Core code does no
 2. It loads configuration validated against that descriptor.
 3. The HTTP listener and its callback registry initialize before any network interface starts accepting connections.
 4. A configured device attempts station Wi-Fi. Without valid configuration it starts the setup AP. A configured device that cannot reach Wi-Fi starts the setup AP beside a station that keeps retrying the saved network, so it rejoins on its own once the network returns.
-5. In provisioned mode, the firmware starts audio capture even when no bridge target exists. It starts the TCP sender only when a target exists.
+5. In provisioned mode, the firmware starts audio capture even when no bridge target exists. It starts the TCP sender only when a target exists. Each connection attempt resolves that target again, so DNS failure or an address change can recover without a reboot. A lost station connection triggers periodic association retries while audio keeps running.
 6. The HTTP server exposes status and configuration after its routes are registered. An empty admin key permits first commissioning; a stored key gates every write. Provisioned firmware is confirmed only after management probes succeed.
 7. Startup health records whether audio initialized and whether a bridge target exists. It does not control OTA rollback.
+
+Management startup reserves one restart worker before registering API handlers.
+A successful rebooting mutation signals that worker before sending its response;
+a disconnected client cannot cancel the reboot. Further HTTP and button writes
+are refused until restart. Configuration validates the station driver's SSID
+and WPA2 password limits before committing Wi-Fi settings.
 
 The [user journey](user-journey.md) owns the visible behavior of these states. The [security model](security.md) owns who may call each surface.
 

@@ -4,12 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{
-    api,
-    config::{AutoUpdateSchedule, RuntimeConfig},
-    mutation::MutationError,
-    recovery,
-};
+use crate::{api, config::AutoUpdateSchedule, mutation::MutationError, recovery};
 
 use super::super::{
     requests::form,
@@ -94,7 +89,7 @@ pub(super) fn register_identity_writes(
             let form: api::NameSettingsRequest = form(&mut request)?;
             let named = update_configuration(&state_for_name, |next| {
                 next.device_name = form.name.trim().to_owned();
-                Ok(next.clone())
+                Ok(next.device_name.clone())
             })?;
             refresh_mdns_name(&state_for_name, &named);
             Ok(())
@@ -206,12 +201,12 @@ where
     )
 }
 
-fn refresh_mdns_name(state: &ApiState, config: &RuntimeConfig) {
+fn refresh_mdns_name(state: &ApiState, display_name: &str) {
     let Some(mdns) = &state.mdns else {
         return;
     };
     let mut advertisement = mdns.lock().expect("mDNS lock poisoned");
-    if let Err(error) = advertisement.set_instance_name(config) {
+    if let Err(error) = advertisement.set_instance_name(display_name) {
         log::warn!("could not refresh mDNS instance name: {error:#}");
     }
 }

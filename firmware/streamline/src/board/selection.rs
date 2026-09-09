@@ -5,7 +5,7 @@
 //! logic kept pure here so the host tests cover it; the NVS adapter only
 //! reads the stored values and logs the outcome.
 
-use super::{parse_descriptor, resolve, Board, BoardLoadError, DEFAULT_BOARD_ID};
+use super::{find, parse_descriptor, resolve, Board, BoardLoadError, DEFAULT_BOARD_ID};
 
 /// The board a device boots with, given what NVS holds.
 #[derive(Debug)]
@@ -33,9 +33,9 @@ impl BoardSelection {
 
 /// Resolve the stored selection against the built-in catalog.
 ///
-/// A stored custom descriptor wins over a built-in with the same id: the
-/// descriptor key is only present while a custom board is selected, and the
-/// user stored it to override whatever the firmware ships.
+/// A custom descriptor requires its matching non-built-in id. An inconsistent
+/// selection opens setup as unresolved. A fresh device with neither field
+/// stored selects the default board.
 pub fn select(
     catalog: &[Board],
     stored_id: Option<&str>,
@@ -44,12 +44,14 @@ pub fn select(
     let mut unavailable = None;
     if let Some(json) = custom_json {
         match parse_descriptor(json) {
-            Ok(board) if stored_id.is_none() || stored_id == Some(board.id.as_str()) => {
+            Ok(board)
+                if stored_id == Some(board.id.as_str()) && find(catalog, &board.id).is_none() =>
+            {
                 return Ok(BoardSelection::Custom(board));
             }
             Ok(board) => {
                 unavailable = Some(format!(
-                    "stored custom board descriptor '{}' does not match selected board id '{}'",
+                    "stored custom board descriptor '{}' requires a matching non-built-in selected id, got '{}'",
                     board.id,
                     stored_id.unwrap_or_default()
                 ));
@@ -60,8 +62,7 @@ pub fn select(
                 ));
             }
         }
-    }
-    if let Some(board) = resolve(catalog, stored_id) {
+    } else if let Some(board) = resolve(catalog, stored_id) {
         return Ok(BoardSelection::BuiltIn(board.clone()));
     }
     let fallback = resolve(catalog, None)
@@ -124,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn a_custom_descriptor_wins_over_a_built_in_with_the_same_id() {
+    fn a_custom_descriptor_cannot_replace_a_built_in_identity() {
         let catalog = catalog();
         let mut custom = catalog[0].clone();
         custom.name = "same id, custom wiring".to_owned();
@@ -133,10 +134,7 @@ mod tests {
 
         let selection = select(&catalog, Some(custom.id.as_str()), Some(&json)).expect("selection");
 
-        match selection {
-            BoardSelection::Custom(board) => assert_eq!(board, custom),
-            other => panic!("expected the custom descriptor to win, got {other:?}"),
-        }
+        assert!(matches!(selection, BoardSelection::Unknown { .. }));
     }
 
     #[test]
@@ -171,17 +169,17 @@ mod tests {
     }
 
     #[test]
-    fn an_invalid_custom_descriptor_recovers_to_the_stored_built_in() {
+    fn an_invalid_custom_descriptor_does_not_boot_a_different_board() {
         let catalog = catalog();
 
         let selection =
             select(&catalog, Some(DEFAULT_BOARD_ID), Some("{not json")).expect("selection");
 
-        assert!(matches!(selection, BoardSelection::BuiltIn(_)));
+        assert!(matches!(selection, BoardSelection::Unknown { .. }));
     }
 
     #[test]
-    fn a_mismatched_custom_descriptor_does_not_hijack_a_built_in_selection() {
+    fn a_mismatched_custom_descriptor_requires_a_new_selection() {
         let catalog = catalog();
         let mut custom = catalog[0].clone();
         custom.id = "custom-other".to_owned();
@@ -189,6 +187,18 @@ mod tests {
 
         let selection = select(&catalog, Some(DEFAULT_BOARD_ID), Some(&json)).expect("selection");
 
-        assert!(matches!(selection, BoardSelection::BuiltIn(_)));
+        assert!(matches!(selection, BoardSelection::Unknown { .. }));
+    }
+
+    #[test]
+    fn a_custom_descriptor_without_its_selected_id_is_unresolved() {
+        let catalog = catalog();
+        let mut custom = catalog[0].clone();
+        custom.id = "custom-board".to_owned();
+        let json = descriptor_json(&custom);
+        assert!(matches!(
+            select(&catalog, None, Some(&json)).unwrap(),
+            BoardSelection::Unknown { .. }
+        ));
     }
 }

@@ -3,8 +3,8 @@
 The device keeps its own log in memory, stores a crash dump in flash when it
 panics, and serves both over the API. Reading a node needs no USB cable, no
 laptop beside it, and no serial console: anything that can reach the device and
-hold the admin key can read what the firmware said — including what it said
-before its last restart — and pull the core dump a panic left behind.
+hold the admin key can read logs from this boot and the last, and download
+the core dump a panic left behind.
 
 ## Read the log
 
@@ -66,7 +66,7 @@ into the next boot.
   before the firmware installs its capture, so those reach the UART only.
 - **Panic backtraces.** The panic handler writes straight to the UART, below
   the logging library. The log holds what led up to the panic; the dump that
-  follows it lands in flash and is served separately — see
+  follows it lands in flash and is served separately; see
   [crash dumps](#crash-dumps).
 - **Anything after a power cycle.** Retention across a restart relies on RAM
   the reset does not clear. Pulling power clears it, so `previous` is `null`
@@ -86,9 +86,10 @@ of the device's buffer between two reads stay on screen.
 ## Crash dumps
 
 A panic writes an ELF core dump to the dedicated `coredump` flash partition,
-where it survives the reboot — and a rollback, which touches only the app
-slots. The dump is a copy of task memory at the moment of the crash, so like
+where it survives reboots and rollbacks, which touch only the app slots. The dump is a copy of task memory at the moment of the crash, so like
 the log it sits behind the admin key.
+The API verifies the stored checksum before reporting or serving a dump.
+Verification runs on request, after the scheduler has started.
 
 ```sh
 curl -s --digest -u "admin:$STREAMLINE_ADMIN_KEY" \
@@ -108,18 +109,14 @@ curl -s --digest -u "admin:$STREAMLINE_ADMIN_KEY" \
 espcoredump.py info_corefile -t raw -c crash.bin streamline-X.Y.Z.elf
 ```
 
-`POST /api/coredump/erase` clears the stored dump and always succeeds, so a
-handled crash does not shadow the next one. The device keeps one dump: a later
-panic overwrites an earlier one.
+`POST /api/coredump/erase` clears the stored dump; an empty partition also
+succeeds. The device keeps one dump: a later panic overwrites an earlier one.
 
-A flash layout from before the `coredump` partition existed reports every
-coredump endpoint `503`; the device is otherwise unaffected. OTA never
-rewrites the partition table, so such units gain crash capture at their next
-USB reflash ([OTA: migrating existing devices](ota.md#migrating-existing-devices)).
+A missing `coredump` partition makes these endpoints return `503`.
 
 ## In the console
 
-**System → Developer — device log** shows both boots, with a **Follow** switch
+The **device log** under **System → Developer** shows both boots, with a **Follow** switch
 that re-reads every few seconds and a copy button. The section needs the
 settings unlock, for the same reason the endpoint needs the key.
 

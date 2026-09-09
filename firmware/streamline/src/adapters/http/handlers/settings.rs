@@ -50,7 +50,7 @@ pub(super) fn register_network_writes(
                 form.ssid,
                 form.password,
                 form.admin_key,
-                form.target_host.map(|value| value.trim().to_owned()),
+                form.target_host,
                 form.target_port,
             );
             persist_configuration(&state_for_wifi, next)
@@ -71,13 +71,7 @@ pub(super) fn register_network_writes(
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
             update_configuration(&state_for_target, |next| {
-                let target_host = form.target_host.trim().to_owned();
-                let target_port = form.target_port.unwrap_or(next.target_port);
-                if target_host != next.target_host || target_port != next.target_port {
-                    next.transport.keys.reset_pending_verification();
-                }
-                next.target_host = target_host;
-                next.target_port = target_port;
+                next.update_target(Some(form.target_host), form.target_port);
                 Ok(())
             })
         })();

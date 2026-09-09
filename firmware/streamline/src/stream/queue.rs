@@ -41,26 +41,22 @@ impl<T> PacketQueue<T> {
         (dropped, depth)
     }
 
+    pub fn clear(&self) {
+        self.packets.lock().expect("packet queue poisoned").clear();
+    }
+
     /// Wait up to `timeout` for a packet, returning it and the remaining
     /// depth, or `None` when the queue stayed empty. The bound keeps the
     /// consumer responsive to control requests (a transport quiesce) that
     /// arrive while no audio flows.
     pub fn pop_timeout(&self, timeout: Duration) -> Option<(T, usize)> {
-        let mut packets = self.packets.lock().expect("packet queue poisoned");
-        loop {
-            if let Some(packet) = packets.pop_front() {
-                return Some((packet, packets.len()));
-            }
-            let (guard, waited) = self
-                .ready
-                .wait_timeout(packets, timeout)
-                .expect("packet queue poisoned");
-            packets = guard;
-            if waited.timed_out() {
-                let packet = packets.pop_front()?;
-                return Some((packet, packets.len()));
-            }
-        }
+        let packets = self.packets.lock().expect("packet queue poisoned");
+        let (mut packets, _) = self
+            .ready
+            .wait_timeout_while(packets, timeout, |packets| packets.is_empty())
+            .expect("packet queue poisoned");
+        let packet = packets.pop_front()?;
+        Some((packet, packets.len()))
     }
 }
 

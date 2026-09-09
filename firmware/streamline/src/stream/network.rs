@@ -1,40 +1,22 @@
-//! Network policy: drain the queue and retry each packet while it stays
-//! fresh, accounting reconnects, errors, TLS handshake failures, and stale
-//! drops.
-
-use std::{sync::Arc, time::Duration};
-
-use crate::packet::AudioPacket;
+//! Send queued PCM only while its capture timestamp and control state permit it.
 
 use super::{
     effects::{Clock, Delay, PacketSink},
     queue::{PacketQueue, QUEUE_DEPTH},
     status::StreamStatus,
 };
+use crate::{
+    packet::AudioPacket,
+    protocol::{FRAMES_PER_PACKET, SAMPLE_RATE_HZ},
+};
+use std::{sync::Arc, time::Duration};
 
-/// Back off this long after a send failure before retrying the same target.
 const SEND_ERROR_BACKOFF_MS: u32 = 250;
-
-/// How long one queue wait may block before the engine rechecks for a
-/// transport quiesce, bounding how long an idle connection outlives the
-/// request that asked for its buffers.
 const CONTROL_POLL_MS: u32 = 100;
-
-/// A successful send at least this slow is a stall worth accounting: the queue
-/// absorbs roughly 170 ms of backlog before dropping audio, so stalls surface
-/// in the counters and the log while they are still absorbable — naming the
-/// culprit (a stalling link) before loss starts, and distinguishing it from
-/// throughput or transport failures after.
 const SEND_STALL_MS: u64 = 100;
+const MAX_PACKET_AGE_MS: u64 =
+    QUEUE_DEPTH as u64 * FRAMES_PER_PACKET as u64 * 1000 / SAMPLE_RATE_HZ as u64;
 
-/// Retry a packet only while it is at most this many packets behind the
-/// capture sequence: the same latency bound the drop-oldest queue enforces.
-/// Past it the packet is stale audio, and a reconnect must resume from
-/// current samples instead of replaying the outage.
-const MAX_IN_FLIGHT_AGE_PACKETS: u32 = QUEUE_DEPTH as u32;
-
-/// Drain the queue forever, sending each packet in order and honoring
-/// transport quiesce requests between packets.
 pub fn run(
     mut sink: impl PacketSink,
     queue: Arc<PacketQueue<AudioPacket>>,
@@ -47,8 +29,10 @@ pub fn run(
     }
 }
 
-/// One engine iteration: yield the connection while a quiesce is in force,
-/// otherwise wait briefly for a packet and send it.
+fn sending_allowed(status: &StreamStatus) -> bool {
+    status.streaming_enabled() && !status.transport_quiesce_requested()
+}
+
 fn step(
     sink: &mut impl PacketSink,
     queue: &PacketQueue<AudioPacket>,
@@ -56,16 +40,13 @@ fn step(
     delay: &impl Delay,
     clock: &impl Clock,
 ) {
-    if status.transport_quiesce_requested() {
-        // Idempotent: repeated steps during one quiesce disconnect a sink
-        // that is already closed. The queue is left alone; capture stops
-        // enqueuing too, and packets from before the pause age out via the
-        // stale bound once streaming resumes.
+    if !sending_allowed(status) {
         sink.disconnect();
-        // Acknowledge only here, after the connection is closed and from the
-        // one branch that cannot reach a send. A waiter that observes this
-        // knows no reconnect can race its download.
-        status.acknowledge_transport_quiesced();
+        queue.clear();
+        status.set_queue_depth(0);
+        if status.transport_quiesce_requested() {
+            status.acknowledge_transport_quiesced();
+        }
         delay.delay_ms(CONTROL_POLL_MS);
         return;
     }
@@ -78,10 +59,6 @@ fn step(
     send_packet(sink, &packet, status, delay, clock);
 }
 
-/// Retry one packet while it stays within the latency bound, so a brief
-/// network stall never drops audio but a long outage never replays it. The
-/// capture sequence keeps advancing through idle input and sustained stalls,
-/// so packet age tracks wall time even when nothing else is enqueued.
 fn send_packet(
     sink: &mut impl PacketSink,
     packet: &AudioPacket,
@@ -89,406 +66,209 @@ fn send_packet(
     delay: &impl Delay,
     clock: &impl Clock,
 ) {
-    loop {
-        // A quiesce abandons the in-flight packet: reconnect attempts would
-        // reallocate the very buffers the quiesce exists to free.
-        if status.transport_quiesce_requested() {
-            return;
-        }
-        if status.sequence().wrapping_sub(packet.sequence()) > MAX_IN_FLIGHT_AGE_PACKETS {
+    let ready =
+        || sending_allowed(status) && packet.age_ms(clock.monotonic_millis()) < MAX_PACKET_AGE_MS;
+    if !ready() {
+        if sending_allowed(status) {
             status.record_stale_drop();
-            return;
         }
-        let started = clock.monotonic_millis();
-        match sink.send(packet.as_bytes()) {
-            Ok(reconnected) => {
-                let elapsed = clock.monotonic_millis().saturating_sub(started);
-                if elapsed >= SEND_STALL_MS {
-                    status.record_send_stall(elapsed);
-                    log::warn!("PCM send stalled for {elapsed} ms");
-                }
-                status.record_sent(packet.payload_bytes(), reconnected);
-                return;
+        return;
+    }
+    let started = clock.monotonic_millis();
+    match sink.send(packet.as_bytes(), ready) {
+        Ok(Some(reconnected)) => {
+            let elapsed = clock.monotonic_millis().saturating_sub(started);
+            if elapsed >= SEND_STALL_MS {
+                status.record_send_stall(elapsed);
+                log::warn!("PCM send stalled for {elapsed} ms");
             }
-            Err(failure) => {
-                status.record_network_error(failure.secure_handshake);
-                delay.delay_ms(SEND_ERROR_BACKOFF_MS);
+            status.record_sent(packet.payload_bytes(), reconnected);
+        }
+        Ok(None) => {
+            if sending_allowed(status) {
+                status.record_stale_drop();
             }
+        }
+        Err(failure) => {
+            status.record_network_error(failure.secure_handshake);
+            // Backoff exceeds the packet age budget; resume with fresh queued audio.
+            delay.delay_ms(SEND_ERROR_BACKOFF_MS);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, collections::VecDeque};
+    use super::*;
+    use crate::{protocol::PAYLOAD_BYTES, stream::SendFailed};
+    use std::{cell::Cell, rc::Rc};
 
-    use super::{
-        send_packet, step, MAX_IN_FLIGHT_AGE_PACKETS, SEND_ERROR_BACKOFF_MS, SEND_STALL_MS,
-    };
-    use crate::{
-        packet::AudioPacket,
-        protocol::PAYLOAD_BYTES,
-        stream::{
-            effects::{Clock, Delay, PacketSink, SendFailed},
-            queue::PacketQueue,
-            status::StreamStatus,
-        },
-    };
-
-    struct FakeSink {
-        results: VecDeque<Result<bool, SendFailed>>,
-        disconnects: usize,
+    #[derive(Clone, Default)]
+    struct Time(Rc<Cell<u64>>);
+    impl Clock for Time {
+        fn monotonic_millis(&self) -> u64 {
+            self.0.get()
+        }
+    }
+    impl Delay for Time {
+        fn delay_ms(&self, millis: u32) {
+            self.0.set(self.0.get() + u64::from(millis));
+        }
     }
 
-    impl PacketSink for FakeSink {
-        fn send(&mut self, _bytes: &[u8]) -> Result<bool, SendFailed> {
-            self.results.pop_front().expect("no more scripted sends")
+    struct Sink<'a> {
+        time: Time,
+        connect_ms: u32,
+        write_ms: u32,
+        calls: usize,
+        writes: usize,
+        disconnects: usize,
+        failure: Option<bool>,
+        control: Option<(&'a StreamStatus, bool)>,
+    }
+    impl PacketSink for Sink<'_> {
+        fn send(
+            &mut self,
+            _: &[u8],
+            ready: impl FnOnce() -> bool,
+        ) -> Result<Option<bool>, SendFailed> {
+            self.calls += 1;
+            self.time.delay_ms(self.connect_ms);
+            if let Some((status, quiesce)) = self.control {
+                if quiesce {
+                    status.request_transport_quiesce();
+                } else {
+                    status.set_streaming_enabled(false);
+                }
+            }
+            if !ready() {
+                return Ok(None);
+            }
+            if let Some(secure_handshake) = self.failure {
+                return Err(SendFailed { secure_handshake });
+            }
+            self.writes += 1;
+            self.time.delay_ms(self.write_ms);
+            Ok(Some(true))
         }
-
         fn disconnect(&mut self) {
             self.disconnects += 1;
         }
     }
-
-    impl FakeSink {
-        fn scripted<const N: usize>(results: [Result<bool, SendFailed>; N]) -> Self {
-            Self {
-                results: VecDeque::from(results),
-                disconnects: 0,
-            }
+    fn sink(time: &Time) -> Sink<'_> {
+        Sink {
+            time: time.clone(),
+            connect_ms: 0,
+            write_ms: 0,
+            calls: 0,
+            writes: 0,
+            disconnects: 0,
+            failure: None,
+            control: None,
         }
     }
-
-    #[derive(Default)]
-    struct RecordingDelay {
-        waits: RefCell<Vec<u32>>,
-    }
-
-    impl Delay for RecordingDelay {
-        fn delay_ms(&self, millis: u32) {
-            self.waits.borrow_mut().push(millis);
-        }
-    }
-
-    /// Advances a scripted number of milliseconds every time it is read, so a
-    /// test controls exactly how long each send appears to take.
-    #[derive(Default)]
-    struct SteppingClock {
-        now: RefCell<u64>,
-        step: u64,
-    }
-
-    impl SteppingClock {
-        fn stepping(step: u64) -> Self {
-            Self {
-                now: RefCell::new(0),
-                step,
-            }
-        }
-    }
-
-    impl Clock for SteppingClock {
-        fn monotonic_millis(&self) -> u64 {
-            let mut now = self.now.borrow_mut();
-            *now += self.step;
-            *now
-        }
-    }
-
-    fn packet() -> AudioPacket {
-        AudioPacket::from_pcm(0, &[0_u8; PAYLOAD_BYTES])
-    }
-
-    fn io_error() -> Result<bool, SendFailed> {
-        Err(SendFailed {
-            secure_handshake: false,
-        })
+    fn packet(at: u64) -> AudioPacket {
+        AudioPacket::from_pcm(0, at, &[0; PAYLOAD_BYTES])
     }
 
     #[test]
-    fn the_first_connect_is_not_counted_as_a_reconnect() {
+    fn expired_audio_is_dropped_even_when_capture_stops() {
+        let time = Time::default();
         let status = StreamStatus::default();
-        let mut sink = FakeSink::scripted([Ok(true)]);
-
-        send_packet(
-            &mut sink,
-            &packet(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::default(),
-        );
-
-        let snapshot = status.snapshot();
-        assert_eq!(snapshot.packets, 1);
-        assert_eq!(snapshot.bytes, PAYLOAD_BYTES as u64);
-        assert_eq!(snapshot.reconnects, 0);
+        let mut sink = sink(&time);
+        time.delay_ms(MAX_PACKET_AGE_MS as u32);
+        send_packet(&mut sink, &packet(0), &status, &time, &time);
+        assert_eq!(sink.calls, 0);
+        assert_eq!(status.snapshot().stale_drops, 1);
+        assert_eq!(status.snapshot().sequence, 0);
     }
 
     #[test]
-    fn send_failures_retry_with_backoff_and_a_later_reconnect_is_counted() {
+    fn connection_setup_cannot_send_an_expired_packet() {
+        let time = Time::default();
         let status = StreamStatus::default();
-        let delay = RecordingDelay::default();
+        let mut sink = sink(&time);
+        sink.connect_ms = 2_000;
+        send_packet(&mut sink, &packet(0), &status, &time, &time);
+        assert_eq!(sink.calls, 1);
+        assert_eq!(sink.writes, 0);
+        assert_eq!(status.snapshot().stale_drops, 1);
+    }
 
-        // The first packet lands on the initial connection.
-        send_packet(
-            &mut FakeSink::scripted([Ok(true)]),
-            &packet(),
-            &status,
-            &delay,
-            &SteppingClock::default(),
-        );
-        // The second fails twice, backs off after each, then reconnects.
-        send_packet(
-            &mut FakeSink::scripted([io_error(), io_error(), Ok(true)]),
-            &packet(),
-            &status,
-            &delay,
-            &SteppingClock::default(),
-        );
+    #[test]
+    fn control_changes_during_connection_setup_cancel_the_write() {
+        for quiesce in [false, true] {
+            let time = Time::default();
+            let status = StreamStatus::default();
+            status.mark_transport_present();
+            let mut sink = sink(&time);
+            sink.control = Some((&status, quiesce));
+            send_packet(&mut sink, &packet(0), &status, &time, &time);
+            assert_eq!(sink.writes, 0);
+            assert_eq!(status.snapshot().stale_drops, 0);
+            assert!(!status.transport_quiesced());
+        }
+    }
 
+    #[test]
+    fn failed_packets_are_not_replayed_after_backoff() {
+        for secure in [false, true] {
+            let time = Time::default();
+            let status = StreamStatus::default();
+            status.mark_transport_present();
+            let mut sink = sink(&time);
+            sink.failure = Some(secure);
+            send_packet(&mut sink, &packet(0), &status, &time, &time);
+            assert_eq!(sink.calls, 1);
+            assert_eq!(status.snapshot().network_errors, 1);
+            assert_eq!(status.snapshot().tls_handshake_failures, u64::from(secure));
+            assert!(!status.transport_quiesced());
+            assert_eq!(time.monotonic_millis(), u64::from(SEND_ERROR_BACKOFF_MS));
+        }
+    }
+
+    #[test]
+    fn successful_sends_account_payload_reconnects_and_stalls() {
+        let time = Time::default();
+        let status = StreamStatus::default();
+        let mut sink = sink(&time);
+        send_packet(&mut sink, &packet(0), &status, &time, &time);
+        assert_eq!(status.snapshot().reconnects, 0);
+        sink.write_ms = SEND_STALL_MS as u32;
+        send_packet(&mut sink, &packet(0), &status, &time, &time);
         let snapshot = status.snapshot();
         assert_eq!(snapshot.packets, 2);
-        assert_eq!(snapshot.network_errors, 2);
+        assert_eq!(snapshot.bytes, 2 * PAYLOAD_BYTES as u64);
         assert_eq!(snapshot.reconnects, 1);
-        assert_eq!(snapshot.tls_handshake_failures, 0);
-        assert_eq!(delay.waits.into_inner(), vec![SEND_ERROR_BACKOFF_MS; 2]);
-    }
-
-    #[test]
-    fn a_stale_packet_is_dropped_without_a_send_attempt() {
-        let status = StreamStatus::default();
-        for _ in 0..MAX_IN_FLIGHT_AGE_PACKETS + 2 {
-            status.next_sequence();
-        }
-        // An empty script panics on any send, proving none was attempted.
-        let mut sink = FakeSink::scripted([]);
-
-        send_packet(
-            &mut sink,
-            &packet(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::default(),
-        );
-
-        let snapshot = status.snapshot();
-        assert_eq!(snapshot.stale_drops, 1);
-        assert_eq!(snapshot.packets, 0);
-        assert_eq!(snapshot.network_errors, 0);
-    }
-
-    /// Fails every send and advances the capture sequence as a side effect,
-    /// modeling wall time passing while the transport is down.
-    struct FailingAdvancingSink<'a> {
-        status: &'a StreamStatus,
-        advance_per_send: u32,
-    }
-
-    impl PacketSink for FailingAdvancingSink<'_> {
-        fn send(&mut self, _bytes: &[u8]) -> Result<bool, SendFailed> {
-            for _ in 0..self.advance_per_send {
-                self.status.next_sequence();
-            }
-            Err(SendFailed {
-                secure_handshake: false,
-            })
-        }
-
-        fn disconnect(&mut self) {}
-    }
-
-    #[test]
-    fn a_packet_that_ages_past_the_bound_mid_retry_is_dropped() {
-        let status = StreamStatus::default();
-        let delay = RecordingDelay::default();
-        let mut sink = FailingAdvancingSink {
-            status: &status,
-            advance_per_send: 20,
-        };
-
-        send_packet(
-            &mut sink,
-            &packet(),
-            &status,
-            &delay,
-            &SteppingClock::default(),
-        );
-
-        let snapshot = status.snapshot();
-        // Ages 0 and 20 retried; at 40 the packet crossed the 32-packet
-        // bound and was dropped instead of replayed.
-        assert_eq!(snapshot.network_errors, 2);
-        assert_eq!(snapshot.stale_drops, 1);
-        assert_eq!(snapshot.packets, 0);
-        assert_eq!(delay.waits.into_inner(), vec![SEND_ERROR_BACKOFF_MS; 2]);
-    }
-
-    #[test]
-    fn tls_handshake_failures_are_counted_apart_from_io_errors() {
-        let status = StreamStatus::default();
-        let mut sink = FakeSink::scripted([
-            Err(SendFailed {
-                secure_handshake: true,
-            }),
-            Ok(false),
-        ]);
-
-        send_packet(
-            &mut sink,
-            &packet(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::default(),
-        );
-
-        let snapshot = status.snapshot();
-        assert_eq!(snapshot.network_errors, 1);
-        assert_eq!(snapshot.tls_handshake_failures, 1);
-        assert_eq!(snapshot.packets, 1);
-        assert_eq!(snapshot.reconnects, 0);
-    }
-
-    #[test]
-    fn a_slow_successful_send_is_accounted_as_a_stall() {
-        let status = StreamStatus::default();
-        let mut sink = FakeSink::scripted([Ok(false)]);
-
-        send_packet(
-            &mut sink,
-            &packet(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::stepping(SEND_STALL_MS),
-        );
-
-        let snapshot = status.snapshot();
-        assert_eq!(snapshot.packets, 1);
         assert_eq!(snapshot.send_stalls, 1);
         assert_eq!(snapshot.longest_send_stall_ms, SEND_STALL_MS);
     }
 
     #[test]
-    fn a_send_faster_than_the_stall_bound_is_not_a_stall() {
-        let status = StreamStatus::default();
-        let mut sink = FakeSink::scripted([Ok(false)]);
-
-        send_packet(
-            &mut sink,
-            &packet(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::stepping(SEND_STALL_MS / 2),
-        );
-
-        let snapshot = status.snapshot();
-        assert_eq!(snapshot.packets, 1);
-        assert_eq!(snapshot.send_stalls, 0);
-        assert_eq!(snapshot.longest_send_stall_ms, 0);
-    }
-
-    /// The acknowledgement is what an installer waits on, so an ordinary send
-    /// failure must never look like one: the sender reconnects after a
-    /// failure, and a waiter fooled into starting its download would race
-    /// that reconnect for the buffers it just freed.
-    #[test]
-    fn a_send_failure_never_acknowledges_a_quiesce() {
-        let status = StreamStatus::default();
-        status.mark_transport_present();
-
-        send_packet(
-            &mut FakeSink::scripted([io_error(), Ok(true)]),
-            &packet(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::default(),
-        );
-
-        assert!(!status.transport_quiesced());
-        assert_eq!(status.snapshot().network_errors, 1);
-    }
-
-    /// A stale acknowledgement from an earlier install must not satisfy the
-    /// next one, which would let a download start against a live transport.
-    #[test]
-    fn a_new_request_discards_the_previous_acknowledgement() {
-        let status = StreamStatus::default();
-        status.mark_transport_present();
-        status.request_transport_quiesce();
-        step(
-            &mut FakeSink::scripted([]),
-            &PacketQueue::new(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::default(),
-        );
-        assert!(status.transport_quiesced());
-
-        status.end_transport_quiesce();
-        status.request_transport_quiesce();
-
-        assert!(!status.transport_quiesced());
-    }
-
-    #[test]
-    fn a_quiesced_step_disconnects_the_sink_and_acknowledges_the_release() {
-        let status = StreamStatus::default();
-        status.mark_transport_present();
-        status.request_transport_quiesce();
-        let queue = PacketQueue::new();
-        queue.push_drop_oldest(packet());
-        // An empty script panics on any send, proving the queue is left alone.
-        let mut sink = FakeSink::scripted([]);
-        let delay = RecordingDelay::default();
-
-        step(
-            &mut sink,
-            &queue,
-            &status,
-            &delay,
-            &SteppingClock::default(),
-        );
-
-        assert_eq!(sink.disconnects, 1);
-        assert!(status.transport_quiesced());
-        // The step backed off instead of spinning on the control flag.
-        assert_eq!(delay.waits.borrow().len(), 1);
-    }
-
-    #[test]
-    fn streaming_resumes_after_a_quiesce_ends() {
-        let status = StreamStatus::default();
-        status.request_transport_quiesce();
-        let queue = PacketQueue::new();
-        queue.push_drop_oldest(packet());
-        let mut sink = FakeSink::scripted([Ok(true)]);
-        let delay = RecordingDelay::default();
-        let clock = SteppingClock::default();
-
-        step(&mut sink, &queue, &status, &delay, &clock);
-        status.end_transport_quiesce();
-        step(&mut sink, &queue, &status, &delay, &clock);
-
-        assert_eq!(status.snapshot().packets, 1);
-    }
-
-    #[test]
-    fn an_in_flight_packet_is_abandoned_when_a_quiesce_arrives() {
-        let status = StreamStatus::default();
-        status.request_transport_quiesce();
-        // An empty script panics on any send, proving none was attempted.
-        let mut sink = FakeSink::scripted([]);
-
-        send_packet(
-            &mut sink,
-            &packet(),
-            &status,
-            &RecordingDelay::default(),
-            &SteppingClock::default(),
-        );
-
-        let snapshot = status.snapshot();
-        assert_eq!(snapshot.packets, 0);
-        assert_eq!(snapshot.network_errors, 0);
-        assert_eq!(snapshot.stale_drops, 0);
+    fn pause_and_quiesce_discard_queued_audio_and_release_the_connection() {
+        for quiesce in [false, true] {
+            let time = Time::default();
+            let status = StreamStatus::default();
+            status.mark_transport_present();
+            let queue = PacketQueue::new();
+            queue.push_drop_oldest(packet(0));
+            if quiesce {
+                status.request_transport_quiesce();
+            } else {
+                status.set_streaming_enabled(false);
+            }
+            let mut sink = sink(&time);
+            step(&mut sink, &queue, &status, &time, &time);
+            assert_eq!(sink.calls, 0);
+            assert_eq!(sink.disconnects, 1);
+            assert!(queue.pop_timeout(Duration::ZERO).is_none());
+            assert_eq!(status.transport_quiesced(), quiesce);
+            status.end_transport_quiesce();
+            status.set_streaming_enabled(true);
+            let now = time.monotonic_millis();
+            queue.push_drop_oldest(packet(now));
+            step(&mut sink, &queue, &status, &time, &time);
+            assert_eq!(sink.writes, 1);
+        }
     }
 }

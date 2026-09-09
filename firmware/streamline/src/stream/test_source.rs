@@ -21,8 +21,8 @@ impl<S> TestSource<S> {
 }
 
 impl<S: PcmSource> PcmSource for TestSource<S> {
-    fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ReadFailed> {
-        let read = self.source.read(buffer)?;
+    fn read(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<usize, ReadFailed> {
+        let read = self.source.read(buffer, timeout_ms)?;
         let samples = buffer.get_mut(..read).ok_or(ReadFailed)?;
         for byte in samples {
             let sample: i16 = if self.position < PERIOD_BYTES / 2 {
@@ -43,7 +43,7 @@ mod tests {
 
     struct ClockedSource(usize);
     impl PcmSource for ClockedSource {
-        fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ReadFailed> {
+        fn read(&mut self, buffer: &mut [u8], _timeout_ms: u32) -> Result<usize, ReadFailed> {
             Ok(self.0.min(buffer.len()))
         }
     }
@@ -54,7 +54,7 @@ mod tests {
         let mut pcm = Vec::new();
         for _ in 0..64 {
             let mut buffer = [0_u8; 8];
-            let read = source.read(&mut buffer).ok().unwrap();
+            let read = source.read(&mut buffer, 20).ok().unwrap();
             assert_eq!(read, 3);
             pcm.extend_from_slice(&buffer[..read]);
         }
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn idle_read_produces_no_synthetic_samples() {
         let mut source = TestSource::new(ClockedSource(0));
-        assert_eq!(source.read(&mut [0; 16]).ok(), Some(0));
+        assert_eq!(source.read(&mut [0; 16], 20).ok(), Some(0));
     }
 
     #[test]
@@ -77,7 +77,7 @@ mod tests {
         let mut detector = crate::play::PlayDetector::new();
         let mut buffer = [0; crate::protocol::PAYLOAD_BYTES];
         for _ in 0..1_000 {
-            source.read(&mut buffer).ok().unwrap();
+            source.read(&mut buffer, 20).ok().unwrap();
             let levels = crate::levels::LevelStats::analyze(&buffer);
             assert_eq!(levels.clipped, 0);
             detector.update(levels);

@@ -369,6 +369,7 @@ pub trait PcmConnector {
 pub struct ReconnectingSender<C: PcmConnector> {
     connector: C,
     stream: Option<C::Stream>,
+    new_connection: bool,
 }
 
 impl<C: PcmConnector> ReconnectingSender<C> {
@@ -376,6 +377,7 @@ impl<C: PcmConnector> ReconnectingSender<C> {
         Self {
             connector,
             stream: None,
+            new_connection: false,
         }
     }
 
@@ -383,27 +385,33 @@ impl<C: PcmConnector> ReconnectingSender<C> {
     /// The next send reconnects.
     pub fn disconnect(&mut self) {
         self.stream = None;
+        self.new_connection = false;
     }
 
     /// Connect lazily and discard a failed stream so the next call retries the
     /// same selected profile. The connector has no fallback profile to try.
-    pub fn send_all(&mut self, bytes: &[u8]) -> Result<bool, C::Error> {
-        let connected = if self.stream.is_none() {
+    pub fn send_all(
+        &mut self,
+        bytes: &[u8],
+        ready: impl FnOnce() -> bool,
+    ) -> Result<Option<bool>, C::Error> {
+        if self.stream.is_none() {
             self.stream = Some(self.connector.connect()?);
-            true
-        } else {
-            false
-        };
+            self.new_connection = true;
+        }
+        if !ready() {
+            return Ok(None);
+        }
         if let Err(error) = self
             .stream
             .as_mut()
             .expect("connected above")
             .send_all(bytes)
         {
-            self.stream = None;
+            self.disconnect();
             return Err(error);
         }
-        Ok(connected)
+        Ok(Some(std::mem::take(&mut self.new_connection)))
     }
 }
 
@@ -632,10 +640,26 @@ mod tests {
         ]);
         let mut sender = ReconnectingSender::new(connector);
 
-        assert_eq!(sender.send_all(b"one"), Ok(true));
-        assert_eq!(sender.send_all(b"two"), Err("disconnected"));
-        assert_eq!(sender.send_all(b"three"), Ok(true));
+        assert_eq!(sender.send_all(b"one", || true), Ok(Some(true)));
+        assert_eq!(sender.send_all(b"two", || true), Err("disconnected"));
+        assert_eq!(sender.send_all(b"three", || true), Ok(Some(true)));
         assert_eq!(*attempts.borrow(), 2);
+    }
+
+    #[test]
+    fn admission_runs_after_connect_and_retains_an_unused_connection() {
+        let (connector, attempts) = connector([Ok(VecDeque::from([Ok(()), Err("second write")]))]);
+        let mut sender = ReconnectingSender::new(connector);
+        assert_eq!(
+            sender.send_all(b"expired", || {
+                assert_eq!(*attempts.borrow(), 1);
+                false
+            }),
+            Ok(None)
+        );
+        assert_eq!(sender.send_all(b"fresh", || true), Ok(Some(true)));
+        assert_eq!(sender.send_all(b"next", || true), Err("second write"));
+        assert_eq!(*attempts.borrow(), 1);
     }
 
     #[test]
@@ -646,9 +670,9 @@ mod tests {
         ]);
         let mut sender = ReconnectingSender::new(connector);
 
-        assert_eq!(sender.send_all(b"one"), Ok(true));
+        assert_eq!(sender.send_all(b"one", || true), Ok(Some(true)));
         sender.disconnect();
-        assert_eq!(sender.send_all(b"two"), Ok(true));
+        assert_eq!(sender.send_all(b"two", || true), Ok(Some(true)));
         assert_eq!(*attempts.borrow(), 2);
     }
 
@@ -661,9 +685,15 @@ mod tests {
         ]);
         let mut sender = ReconnectingSender::new(connector);
 
-        assert_eq!(sender.send_all(b"frame"), Err("authentication failed"));
-        assert_eq!(sender.send_all(b"frame"), Err("unsupported TLS version"));
-        assert_eq!(sender.send_all(b"frame"), Ok(true));
+        assert_eq!(
+            sender.send_all(b"frame", || true),
+            Err("authentication failed")
+        );
+        assert_eq!(
+            sender.send_all(b"frame", || true),
+            Err("unsupported TLS version")
+        );
+        assert_eq!(sender.send_all(b"frame", || true), Ok(Some(true)));
         assert_eq!(*attempts.borrow(), 3);
     }
 

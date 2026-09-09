@@ -80,17 +80,17 @@ impl TcpClient {
             sender: ReconnectingSender::new(AdapterConnector(target)),
         }
     }
-
-    fn send_all(&mut self, bytes: &[u8]) -> std::result::Result<bool, TcpSendError> {
-        self.sender.send_all(bytes)
-    }
 }
 
 impl PacketSink for TcpClient {
     /// Send one packet, logging any failure here at the device edge and marking
     /// TLS handshake rejections so the pipeline can count them separately.
-    fn send(&mut self, bytes: &[u8]) -> std::result::Result<bool, SendFailed> {
-        self.send_all(bytes).map_err(|error| {
+    fn send(
+        &mut self,
+        bytes: &[u8],
+        ready: impl FnOnce() -> bool,
+    ) -> std::result::Result<Option<bool>, SendFailed> {
+        self.sender.send_all(bytes, ready).map_err(|error| {
             let secure_handshake = error.is_secure_handshake();
             log::warn!("TCP stream error: {error:#}");
             SendFailed { secure_handshake }

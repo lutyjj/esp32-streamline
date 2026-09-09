@@ -17,16 +17,22 @@ pub struct SendFailed {
 pub trait PcmSource {
     /// Fill the start of `buffer` and return the byte count. A read may return
     /// fewer bytes than the buffer holds, including zero; the capture engine
-    /// owns coalescing them into whole packets. A failure returns
+    /// owns coalescing them into whole packets. Each driver wait is bounded by `timeout_ms`. A failure returns
     /// [`ReadFailed`].
-    fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ReadFailed>;
+    fn read(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<usize, ReadFailed>;
 }
 
 /// One framed packet sent over the transport selected at boot.
 pub trait PacketSink {
-    /// Send one packet. `Ok(true)` reports a freshly established connection, so
-    /// the pipeline can count reconnects; `Err` reports a failure to retry.
-    fn send(&mut self, bytes: &[u8]) -> Result<bool, SendFailed>;
+    /// Send one packet. `Ok(Some(true))` reports a freshly established connection, so
+    /// the pipeline can count reconnects; `Err` reports a failed send.
+    /// `ready` is checked after connection setup, before any packet bytes are written.
+    /// `Ok(None)` retains the connection without sending the rejected packet.
+    fn send(
+        &mut self,
+        bytes: &[u8],
+        ready: impl FnOnce() -> bool,
+    ) -> Result<Option<bool>, SendFailed>;
 
     /// Close any open connection, freeing its socket and TLS buffers. The next
     /// send reconnects.
@@ -38,7 +44,7 @@ pub trait Delay {
     fn delay_ms(&self, millis: u32);
 }
 
-/// Monotonic time used to measure how long a send held the pipeline.
+/// Shared monotonic time for capture timestamps and transport deadlines.
 pub trait Clock {
     fn monotonic_millis(&self) -> u64;
 }

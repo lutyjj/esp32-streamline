@@ -45,17 +45,33 @@ source admission.
   stream into dropping packets
 - radio: Wi-Fi power save off, so round-trip time stays low enough that the
   send window sustains the capture bitrate
+- capture reads: 20 ms per DMA wait; failures back off for 10 ms
+- DMA: six buffers of 240 stereo frames, or 30 ms at 48 kHz
 - queue: 32 fixed-capacity packets; on pressure, discard the oldest packet
+- send admission: discard packets aged 170 ms or more, checking again after
+  connection setup; timestamps include partial assembly and the DMA allowance
+- pause: stop enqueueing and admitting sends, then close the connection and
+  clear queued audio; an already-started write may finish
 - packet: 24-byte header plus up to 1,024 PCM bytes, coalesced into one write
 - `TCP_NODELAY` on both transports: each packet is one sub-MSS write on the
   capture clock, and Nagle would hold every write for the previous one's
-  acknowledgement — a packet per round trip instead of per capture interval,
-  which the queue drops as the difference
+  acknowledgement. This would limit throughput to one packet per round trip
+  and force the queue to drop excess capture packets
 - cleartext connect/write deadline: 250 ms
 - TLS handshake and socket deadline: 2 seconds through ESP-TLS
 - a successful send slower than 100 ms counts as a send stall
   (`send_stalls_total` and `longest_send_stall_ms` in `/api/status` metrics)
-  and logs a warning — the early signature of a stalling radio link
+  and logs a warning to help diagnose a stalling radio link
+
+Capture measures elapsed time between complete packets. Beyond the DMA
+allowance, it advances the sequence by estimated missing packet intervals
+and discards partial audio while preserving stereo frame alignment. This is
+a timing estimate, not an exact DMA overrun count. Two seconds without a
+complete packet clears playing status, including when reads return fragments.
+
+The packet age limit governs admission to a socket write; socket buffering
+and write duration can add delivery latency. A failed send discards that
+packet and backs off for 250 ms before processing the queue.
 
 The firmware chooses the transport once while composing the network task.
 Cleartext uses Rust `std::net` over lwIP. TLS uses ESP-TLS only in the adapter;

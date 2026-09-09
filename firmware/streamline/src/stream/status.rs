@@ -71,7 +71,7 @@ impl StreamStatus {
         self.totals.lock().expect("stream totals poisoned")
     }
 
-    /// Pause or resume enqueuing captured audio. Capture and level analysis
+    /// Pause or resume capture enqueueing and transport admission. Capture and level analysis
     /// continue either way, so the meters stay live while paused.
     pub fn set_streaming_enabled(&self, enabled: bool) {
         self.paused.store(!enabled, Ordering::Relaxed);
@@ -179,21 +179,19 @@ impl StreamStatus {
     /// Take the next packet sequence number. Idle packets consume one too, so a
     /// gap tells the bridge how much time passed while the input was silent.
     pub(crate) fn next_sequence(&self) -> u32 {
-        self.sequence.fetch_add(1, Ordering::Relaxed)
+        self.advance_sequence(1)
     }
 
-    /// The sequence number the capture task will hand out next. The network
-    /// task compares it against an in-flight packet to bound retry age.
-    pub(crate) fn sequence(&self) -> u32 {
-        self.sequence.load(Ordering::Relaxed)
+    pub(crate) fn advance_sequence(&self, packets: u32) -> u32 {
+        self.sequence.fetch_add(packets, Ordering::Relaxed)
     }
 
     pub(crate) fn record_queue_drop(&self) {
         self.totals().queue_drops += 1;
     }
 
-    /// Account one packet discarded because retrying it outlived the queue's
-    /// latency bound.
+    /// Account one packet discarded because its capture age exceeded the
+    /// send admission deadline.
     pub(crate) fn record_stale_drop(&self) {
         self.totals().stale_drops += 1;
     }
@@ -337,5 +335,16 @@ mod tests {
         let snapshot = status.snapshot();
         assert_eq!(snapshot.send_stalls, 3);
         assert_eq!(snapshot.longest_send_stall_ms, 900);
+    }
+    #[test]
+    fn each_quiesce_request_requires_a_new_acknowledgement() {
+        let status = StreamStatus::default();
+        status.mark_transport_present();
+        status.request_transport_quiesce();
+        status.acknowledge_transport_quiesced();
+        assert!(status.transport_quiesced());
+        status.end_transport_quiesce();
+        status.request_transport_quiesce();
+        assert!(!status.transport_quiesced());
     }
 }

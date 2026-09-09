@@ -24,19 +24,16 @@ const TASK_STACK_BYTES: usize = 8_192;
 const CAPTURE_PRIORITY: u8 = 7;
 const NETWORK_PRIORITY: u8 = 6;
 
-/// The FreeRTOS delay the engines back off with after a failure.
-struct FreeRtosDelay;
+#[derive(Clone, Copy)]
+struct SystemClock(std::time::Instant);
 
-impl Delay for FreeRtosDelay {
+impl Delay for SystemClock {
     fn delay_ms(&self, millis: u32) {
         FreeRtos::delay_ms(millis);
     }
 }
 
-/// Monotonic milliseconds for the network engine's send-stall accounting.
-struct MonotonicClock(std::time::Instant);
-
-impl Clock for MonotonicClock {
+impl Clock for SystemClock {
     fn monotonic_millis(&self) -> u64 {
         self.0.elapsed().as_millis() as u64
     }
@@ -52,10 +49,16 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
     let status = Arc::new(StreamStatus::default());
     let queue = target.is_some().then(|| Arc::new(PacketQueue::new()));
 
+    let clock = SystemClock(std::time::Instant::now());
     let capture_status = Arc::clone(&status);
     let capture_queue = queue.clone();
     let capture_task = spawn_pinned(c"capture", CAPTURE_PRIORITY, move || {
-        CaptureEngine::new().run(capture, capture_queue, capture_status, FreeRtosDelay)
+        CaptureEngine::new(Capture::BUFFERED_FRAMES).run(
+            capture,
+            capture_queue,
+            capture_status,
+            clock,
+        )
     })?;
 
     if let (Some(target), Some(queue)) = (target, queue) {
@@ -65,13 +68,7 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
         status.mark_transport_present();
         let network_status = Arc::clone(&status);
         let network_task = spawn_pinned(c"network", NETWORK_PRIORITY, move || {
-            stream::run_network(
-                TcpClient::new(target),
-                queue,
-                network_status,
-                FreeRtosDelay,
-                MonotonicClock(std::time::Instant::now()),
-            )
+            stream::run_network(TcpClient::new(target), queue, network_status, clock, clock)
         })?;
         network_task.commit();
     }

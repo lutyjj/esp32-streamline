@@ -10,15 +10,17 @@ import dataclasses
 import hashlib
 import http.server
 import json
-import os
+import re
+import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
-from conftest import ADMIN_KEY, API_TIMEOUT, BOOT_TIMEOUT, EmulatedDevice
+from conftest import ADMIN_KEY, API_TIMEOUT, CONSOLE_READY, EmulatedDevice
 
 from streamline_tools.device.api import wait_for_api
 
@@ -32,6 +34,41 @@ _OTA_1_OFFSET = "0x210000"
 _OTA_URL_CANARY = "ota-url-private-canary"
 
 
+def test_http_connections_during_startup_do_not_abort(
+    boot_device: Callable[..., EmulatedDevice],
+) -> None:
+    # Start clients before waiting for the server's serial readiness markers.
+    device = boot_device()
+    address = urlsplit(device.api.base_url)
+    assert address.hostname is not None and address.port is not None
+    stop = threading.Event()
+
+    def connect_and_close() -> None:
+        while not stop.is_set():
+            try:
+                with socket.create_connection(
+                    (str(address.hostname), int(address.port or 80)), timeout=0.2
+                ) as connection:
+                    connection.sendall(b"GET /api/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            stop.wait(0.01)
+
+    clients = [threading.Thread(target=connect_and_close) for _ in range(4)]
+    for client in clients:
+        client.start()
+    try:
+        device.dut.expect_exact("management listener initialized", timeout=120)
+        device.dut.expect_exact("setup console started", timeout=120)
+        device.dut.expect_exact(CONSOLE_READY, timeout=120)
+    finally:
+        stop.set()
+        for client in clients:
+            client.join()
+    ready = wait_for_api(device.api.fetch, API_TIMEOUT)
+    assert ready.passed, ready.detail
+
+
 @dataclasses.dataclass(frozen=True)
 class ServedOtaImage:
     download_url: str
@@ -40,6 +77,8 @@ class ServedOtaImage:
     forged_url: str
     sha256: str
     forged_sha256: str
+    management_failure_url: str
+    management_failure_sha256: str
     stall_started: threading.Event
     release_stall: threading.Event
 
@@ -127,12 +166,51 @@ def _assert_ota_url_absent_from_serial(device: EmulatedDevice) -> None:
 
 
 def test_fresh_boot_reaches_setup_console(boot_device: Callable[..., EmulatedDevice]) -> None:
-    device = boot_device()
-    device.dut.expect_exact("using board descriptor '", timeout=BOOT_TIMEOUT)
+    device = boot_device(until="using board descriptor '")
     device.dut.expect_exact("emulated ethernet up", timeout=30)
     device.dut.expect_exact("setup console started", timeout=30)
+    device.dut.expect_exact(CONSOLE_READY, timeout=30)
     _expect_api_up(device)
     assert _mode(device) == "setup"
+
+
+def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
+    boot_device: Callable[..., EmulatedDevice],
+) -> None:
+    """Emulated: needs a device on a fresh unprovisioned flash."""
+    setup_boot = boot_device(until=("setup console started", CONSOLE_READY))
+    _expect_api_up(setup_boot)
+    assert _mode(setup_boot) == "setup"
+
+    # A settings write that commissioning does not gate applies to the running
+    # configuration instead of failing on the Wi-Fi credentials it never sent.
+    code, body = setup_boot.api.post_form("/api/settings/name", {"name": "staged-name"})
+    assert code == 200, f"setup-mode rename was answered with HTTP {code}: {body[:200]!r}"
+    code, body = setup_boot.api.fetch("/api/settings")
+    assert code == 200
+    assert json.loads(body)["device_name"] == "staged-name"
+
+    # A transport key binds to a bridge and must survive the reboot that
+    # activates it, so it names that precondition rather than staging.
+    code, body = setup_boot.api.post_form("/api/transport/keys/stage", {})
+    assert code == 503, f"setup-mode key staging was answered with HTTP {code}: {body[:200]!r}"
+
+    # Commissioning carries the staged name into the first persisted generation.
+    code, body = setup_boot.api.post_form(
+        "/api/settings/wifi",
+        {"ssid": "qemu-smoke-lab", "password": "qemu-test-password", "admin_key": ADMIN_KEY},
+    )
+    assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
+    setup_boot.dut.qemu.wait(timeout=60)
+    provisioned = boot_device(
+        flash=setup_boot.flash,
+        admin_key=ADMIN_KEY,
+        until=("StreamLine provisioned", CONSOLE_READY),
+    )
+    _expect_api_up(provisioned)
+    code, body = provisioned.api.fetch("/api/settings")
+    assert code == 200
+    assert json.loads(body)["device_name"] == "staged-name"
 
 
 def test_provisioning_persists_across_reboot(provisioned_device: EmulatedDevice) -> None:
@@ -143,6 +221,38 @@ def test_provisioning_persists_across_reboot(provisioned_device: EmulatedDevice)
     assert code == 200
     version = json.loads(body)["firmware_version"]
     assert isinstance(version, str) and version
+
+
+def test_profile_snapshots_survive_repeated_nvs_replacement_and_reboot(
+    provisioned_device: EmulatedDevice,
+    boot_device: Callable[..., EmulatedDevice],
+) -> None:
+    # Reboot and flash-capacity pressure require a disposable commissioned device.
+    code, body = provisioned_device.api.fetch("/api/audio-profiles")
+    assert code == 200
+    catalog = json.loads(body)
+    code, body = provisioned_device.api.fetch("/api/settings")
+    assert code == 200
+    settings = json.loads(body)
+    audio = {key: settings[key] for key in ("input_line", "input_gain", "adc_attenuation_db")}
+    catalog["profiles"] = [{"id": str(index) + "x" * 31, "name": "🎵" * 32, "audio": audio} for index in range(8)]
+    for generation in range(32):
+        catalog["profiles"][0]["name"] = str(generation) + "🎵" * 30
+        code, body = provisioned_device.api.post_form(
+            "/api/settings/audio-profiles", {"catalog": json.dumps(catalog, ensure_ascii=False)}
+        )
+        assert code == 200, (generation, code, body[:200])
+    provisioned_device.dut.qemu.terminate()
+    rebooted = boot_device(
+        flash=provisioned_device.flash,
+        admin_key=ADMIN_KEY,
+        until=("StreamLine provisioned", CONSOLE_READY),
+    )
+    _expect_api_up(rebooted)
+    code, body = rebooted.api.fetch("/api/audio-profiles")
+    assert code == 200
+    assert json.loads(body) == catalog
+    assert rebooted.api.post_form("/api/unlock", {})[0] == 200
 
 
 def test_provisioned_device_gates_writes_behind_the_key(provisioned_device: EmulatedDevice) -> None:
@@ -215,8 +325,11 @@ def test_led_role_assignment_persists_and_is_reversible(
     code, _ = provisioned_device.api.post_form("/api/restart", {})
     assert code == 200
     provisioned_device.dut.qemu.wait(timeout=60)
-    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    rebooted = boot_device(
+        flash=provisioned_device.flash,
+        admin_key=ADMIN_KEY,
+        until=("StreamLine provisioned", CONSOLE_READY),
+    )
     _expect_api_up(rebooted)
     assert _led_role(rebooted, led_id) == "off"
 
@@ -251,8 +364,11 @@ def test_button_action_assignment_persists_and_is_reversible(
     code, _ = provisioned_device.api.post_form("/api/restart", {})
     assert code == 200
     provisioned_device.dut.qemu.wait(timeout=60)
-    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    rebooted = boot_device(
+        flash=provisioned_device.flash,
+        admin_key=ADMIN_KEY,
+        until=("StreamLine provisioned", CONSOLE_READY),
+    )
     _expect_api_up(rebooted)
     assert _button_action(rebooted, button_id) == "toggle_stream"
 
@@ -275,34 +391,47 @@ def test_stream_pause_is_unavailable_without_audio_capture(
     assert json.loads(body)["stream"]["enabled"] is True
 
 
-def test_factory_reset_returns_to_setup(
+def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
     provisioned_device: EmulatedDevice, boot_device: Callable[..., EmulatedDevice]
 ) -> None:
     code, body = provisioned_device.api.post_form("/api/factory-reset", {})
     assert code == 200, f"factory reset was answered with HTTP {code}: {body[:200]!r}"
-    assert json.loads(body)["rebooting"] is True
+    acknowledgement = json.loads(body)
+    code, _ = provisioned_device.api.post_form("/api/settings/name", {"name": "must-not-survive"})
+    assert code == 503, "writes must stop as soon as reset commits"
+    assert acknowledgement["rebooting"] is True
+    # The response repeats the commissioning credentials — their only
+    # appearance in the API.
+    password = acknowledgement["setup_network"]["password"]
+    # The generated shape: four dash-joined groups from the unambiguous
+    # alphabet, inside WPA2-Personal's 8..=63 passphrase bounds.
+    assert re.fullmatch(r"([a-km-np-z2-9]{4}-){3}[a-km-np-z2-9]{4}", password)
 
     provisioned_device.dut.qemu.wait(timeout=60)
-    wiped = boot_device(flash=provisioned_device.flash)
-    wiped.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
+    wiped = boot_device(flash=provisioned_device.flash, until=("setup console started", CONSOLE_READY))
     _expect_api_up(wiped)
     assert _mode(wiped) == "setup"
+    # The password is device identity: a second reset answers with the same
+    # credential, so a pre-flashed unit's label stays true across resets.
+    code, body = wiped.api.post_form("/api/factory-reset", {})
+    assert code == 200, f"factory reset on the wiped device answered HTTP {code}"
+    assert json.loads(body)["setup_network"]["password"] == password
 
 
 @pytest.fixture
 def served_ota_image() -> Iterator[ServedOtaImage]:
-    """The OTA application image served over HTTP as the guest reaches it:
-    a (URL, sha256) pair. Skips when the image was not built."""
-    source = os.environ.get("STREAMLINE_QEMU_OTA_IMAGE", "")
-    if not source:
-        pytest.skip("STREAMLINE_QEMU_OTA_IMAGE not set; build it with: make -C firmware qemu-artifacts")
-    payload = Path(source).read_bytes()
+    """Serve signed and invalid OTA images through guest-reachable HTTP URLs."""
+    payload = Path("/ota.bin").read_bytes()
     digest = hashlib.sha256(payload).hexdigest()
     forged = _forge_signature(payload)
     forged_digest = hashlib.sha256(forged).hexdigest()
+    failure = Path("/failure.bin").read_bytes()
 
     stall_started = threading.Event()
     release_stall = threading.Event()
+    # The redirect target, known once the server has bound its port and read
+    # by the handler only at request time.
+    asset_url = ""
 
     class OtaImageHandler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -310,7 +439,17 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
             if path == "/unavailable.bin":
                 self.send_error(503)
                 return
-            body = forged if path == "/forged.bin" else payload
+            if path == "/release/streamline-qemu-ota.bin":
+                # GitHub's `releases/latest/download/` answers with a redirect
+                # to the asset host; installs must follow it. The target is
+                # the fixture's own, never built from request input, which no
+                # response header may carry.
+                self.send_response(302)
+                self.send_header("Location", asset_url)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            body = {"/forged.bin": forged, "/management-failure.bin": failure}.get(path, payload)
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -333,14 +472,21 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://{_SLIRP_HOST_ALIAS}:{server.server_address[1]}"
     query = f"?token={_OTA_URL_CANARY}"
+    # Carrying the canary across the hop keeps the privacy assertions covering
+    # the URL the device actually downloads from.
+    asset_url = f"{base}/streamline-qemu-ota.bin{query}"
     try:
         yield ServedOtaImage(
-            download_url=f"{base}/streamline-qemu-ota.bin{query}",
+            # The canonical URL redirects like a GitHub release asset, so every
+            # install that uses it also proves redirect-following.
+            download_url=f"{base}/release/streamline-qemu-ota.bin{query}",
             unavailable_url=f"{base}/unavailable.bin{query}",
             stalled_url=f"{base}/stalled.bin{query}",
             forged_url=f"{base}/forged.bin{query}",
             sha256=digest,
             forged_sha256=forged_digest,
+            management_failure_url=f"{base}/management-failure.bin",
+            management_failure_sha256=hashlib.sha256(failure).hexdigest(),
             stall_started=stall_started,
             release_stall=release_stall,
         )
@@ -365,13 +511,55 @@ def test_ota_install_boots_from_the_other_slot(
     provisioned_device.dut.qemu.wait(timeout=180)
     _assert_ota_url_absent_from_serial(provisioned_device)
 
-    updated = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    updated.dut.expect_exact(f"Loaded app from partition at offset {_OTA_1_OFFSET}", timeout=BOOT_TIMEOUT)
-    updated.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    updated = boot_device(
+        flash=provisioned_device.flash,
+        admin_key=ADMIN_KEY,
+        until=(f"Loaded app from partition at offset {_OTA_1_OFFSET}", "StreamLine provisioned", CONSOLE_READY),
+    )
     _expect_api_up(updated)
     assert _mode(updated) == "provisioned"
     status = _assert_ota_url_private(updated)
     assert "installed custom image" in status["diagnostics"]["last_ota"]
+
+    code, body = updated.api.post_form("/api/restart", {})
+    assert code == 200, f"restart returned HTTP {code}: {body[:200]!r}"
+    updated.dut.qemu.wait(timeout=60)
+    confirmed = boot_device(
+        flash=updated.flash,
+        admin_key=ADMIN_KEY,
+        until=(f"Loaded app from partition at offset {_OTA_1_OFFSET}", CONSOLE_READY),
+    )
+    _expect_api_up(confirmed)
+
+
+def test_failed_management_startup_reboots_and_rolls_back_with_diagnostics(
+    provisioned_device: EmulatedDevice,
+    boot_device: Callable[..., EmulatedDevice],
+    served_ota_image: ServedOtaImage,
+) -> None:
+    code, body = provisioned_device.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.management_failure_url, "sha256": served_ota_image.management_failure_sha256},
+    )
+    assert code == 202, f"OTA returned HTTP {code}: {body[:200]!r}"
+    provisioned_device.dut.qemu.wait(timeout=180)
+
+    failed = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
+    failed.dut.expect_exact(f"Loaded app from partition at offset {_OTA_1_OFFSET}", timeout=120)
+    failed.dut.expect_exact("firmware startup failed:", timeout=120)
+    failed.dut.qemu.wait(timeout=30)
+
+    recovered = boot_device(
+        flash=failed.flash,
+        admin_key=ADMIN_KEY,
+        until=("Loaded app from partition at offset 0x20000", CONSOLE_READY),
+    )
+    _expect_api_up(recovered)
+    code, body = recovered.api.fetch("/api/status")
+    assert code == 200
+    diagnostic = json.loads(body)["diagnostics"]["last_ota"]
+    assert "management startup failed" in diagnostic
+    assert "returned HTTP 404" in diagnostic
 
 
 def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(
@@ -455,8 +643,11 @@ def test_ota_interruption_persists_only_a_redacted_recovery_note(
     served_ota_image.release_stall.set()
     _assert_ota_url_absent_from_serial(provisioned_device)
 
-    rebooted = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    rebooted.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    rebooted = boot_device(
+        flash=provisioned_device.flash,
+        admin_key=ADMIN_KEY,
+        until=("StreamLine provisioned", CONSOLE_READY),
+    )
     _expect_api_up(rebooted)
     status = _assert_ota_url_private(rebooted)
     assert "installing custom image (did not finish)" in status["diagnostics"]["last_ota"]

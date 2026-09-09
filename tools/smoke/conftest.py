@@ -12,7 +12,7 @@ are skipped on hardware targets.
 import os
 import shutil
 import socket
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,7 +26,15 @@ from streamline_tools.device.flash_image import pad_flash_image
 from streamline_tools.secret_input import read_secret_fd
 
 BOOT_TIMEOUT = 120.0
-API_TIMEOUT = 60.0
+# The serial line that means the API can answer. The mode lines report which
+# boot this is and are logged well before the HTTP server exists, so polling
+# on one of those races the server's own registration.
+CONSOLE_READY = "console ready"
+# Bounded like BOOT_TIMEOUT rather than tighter: under parallel workers
+# (SMOKE_JOBS) concurrent emulator boots dilate the gap between the serial
+# boot marker and a listening HTTP port, and the serial expectation has
+# already proven the device alive.
+API_TIMEOUT = 120.0
 # Synthetic commissioning credential; it exists only inside throwaway
 # emulated flash copies.
 # The canonical admin-key shape: exactly 48 lowercase hex characters. Built
@@ -90,10 +98,15 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
     booting a second QEMU process on the same flash file. Every QEMU this
     factory started is terminated at test teardown so leftover emulators
     cannot starve later tests.
+
+    Pass `until` to return only once the guest has printed that marker, or
+    every marker of a sequence in order. End on [`CONSOLE_READY`] before touching the API.
+    Callers own every later expectation, so a boot sequence stays asserted in
+    its test.
     """
     booted: list[EmulatedDevice] = []
 
-    def _boot(flash: Path | None = None, admin_key: str | None = None) -> EmulatedDevice:
+    def _start(flash: Path | None, admin_key: str | None) -> EmulatedDevice:
         if flash is None:
             flash = tmp_path / f"flash-{len(list(tmp_path.glob('flash-*.bin')))}.bin"
             shutil.copy(padded_image, flash)
@@ -122,6 +135,22 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
         booted.append(device)
         return device
 
+    def _await(device: EmulatedDevice, markers: Sequence[str]) -> None:
+        for marker in markers:
+            device.dut.expect_exact(marker, timeout=BOOT_TIMEOUT)
+
+    def _boot(
+        flash: Path | None = None,
+        admin_key: str | None = None,
+        until: str | Sequence[str] | None = None,
+    ) -> EmulatedDevice:
+        if until is None:
+            return _start(flash, admin_key)
+        markers = [until] if isinstance(until, str) else list(until)
+        device = _start(flash, admin_key)
+        _await(device, markers)
+        return device
+
     yield _boot
     for device in booted:
         device.dut.qemu.terminate()
@@ -132,19 +161,17 @@ def provisioned_device(boot_device: Callable[..., EmulatedDevice]) -> EmulatedDe
     """An emulated device commissioned with `ADMIN_KEY` and rebooted into
     provisioned mode. Its API carries the key; act as a stranger with
     `dataclasses.replace(device.api, admin_key=None)`."""
-    setup_boot = boot_device()
-    setup_boot.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
+    setup_boot = boot_device(until=("setup console started", CONSOLE_READY))
     ready = wait_for_api(setup_boot.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
-        {"ssid": "qemu-smoke-lab", "admin_secret": ADMIN_KEY},
+        {"ssid": "qemu-smoke-lab", "password": "qemu-test-password", "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
     setup_boot.dut.qemu.wait(timeout=60)
 
-    device = boot_device(flash=setup_boot.flash, admin_key=ADMIN_KEY)
-    device.dut.expect_exact("StreamLine provisioned", timeout=BOOT_TIMEOUT)
+    device = boot_device(flash=setup_boot.flash, admin_key=ADMIN_KEY, until=("StreamLine provisioned", CONSOLE_READY))
     ready = wait_for_api(device.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
     return device
@@ -162,9 +189,7 @@ def device_api(request: pytest.FixtureRequest) -> DeviceApi:
         api = DeviceApi(base_url=url)
     else:
         boot: Callable[..., EmulatedDevice] = request.getfixturevalue("boot_device")
-        device = boot()
-        device.dut.expect_exact("setup console started", timeout=BOOT_TIMEOUT)
-        api = device.api
+        api = boot(until=("setup console started", CONSOLE_READY)).api
     ready = wait_for_api(api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
     return api

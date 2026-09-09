@@ -10,7 +10,7 @@ use crate::{
     health::{HealthReport, Severity},
     indicator,
     levels::CLIP_THRESHOLD_ABS,
-    metrics,
+    metrics, protocol,
     telemetry::{
         AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
         StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
@@ -19,7 +19,7 @@ use crate::{
 
 use super::super::{
     responses::{body_writer, json_response},
-    ApiState, ContractServer, Mode,
+    ApiState, ContractServer,
 };
 
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
@@ -81,7 +81,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         Ok(store) => (store.last_fallback(), store.last_ota()),
         Err(_) => (String::new(), String::new()),
     };
-    let config = state.config.lock().expect("configuration lock poisoned");
+    let config = state.lock_config();
     let passthrough = state
         .analog_passthrough
         .lock()
@@ -92,20 +92,22 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         .as_ref()
         .map(|stream| stream.snapshot())
         .unwrap_or_default();
-    let (mode, wifi_status) = match state.mode {
-        Mode::Setup | Mode::Recovery => ("setup", "ap"),
-        Mode::Provisioned => ("provisioned", "connected"),
+    let (mode, wifi_status) = if state.mode.setup_network_active() {
+        ("setup", "ap")
+    } else {
+        ("provisioned", "connected")
     };
     let ota = state.ota.snapshot();
-    let rollback = &state.rollback;
+    let rollback = crate::adapters::ota::rollback_target();
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
+        firmware_variant: crate::telemetry::FirmwareVariant::current(),
         device_name: config.device_name.clone(),
         mode,
         config_source: "nvs",
         web_server: true,
         configuration_writable: true,
-        auth_required: !config.admin_secret.is_empty(),
+        auth_required: !config.admin_key.is_empty(),
         wifi: WifiTelemetry {
             hostname: state.hostname.clone(),
             ssid: config.ssid.clone(),
@@ -123,9 +125,9 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             input_line: config.audio.input_line,
             input_gain: config.audio.input_gain,
             adc_attenuation_db: config.audio.adc_attenuation_db,
-            sample_rate_hz: 48_000,
-            channels: 2,
-            bits_per_sample: 16,
+            sample_rate_hz: protocol::SAMPLE_RATE_HZ,
+            channels: protocol::CHANNELS,
+            bits_per_sample: protocol::BITS_PER_SAMPLE,
             clip_threshold_abs: CLIP_THRESHOLD_ABS,
             peak_abs_left: metrics.peak_left,
             peak_abs_right: metrics.peak_right,
@@ -174,6 +176,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             rollback_available: rollback.is_some(),
             rollback_version: rollback.clone().unwrap_or_default(),
             signed_updates: crate::adapters::ota::SIGNED_UPDATES,
+            signing_key_sha256: crate::adapters::ota::signing_key_sha256().to_owned(),
         },
         status_indicator_visible: config.shows_status_indicator(state.board.as_ref()),
     }
@@ -211,6 +214,7 @@ impl<'a> api::StatusResponse<'a> {
         );
         Self {
             firmware_version: snapshot.firmware_version,
+            firmware_variant: snapshot.firmware_variant,
             device_name: &snapshot.device_name,
             mode: snapshot.mode,
             config_source: snapshot.config_source,
@@ -224,7 +228,7 @@ impl<'a> api::StatusResponse<'a> {
                 status: snapshot.wifi.status,
                 sta_ip: &snapshot.wifi.sta_ip,
                 ap_ip: &snapshot.wifi.ap_ip,
-                rssi: snapshot.wifi.rssi_dbm,
+                rssi_dbm: snapshot.wifi.rssi_dbm,
             },
             target: api::TargetStatus {
                 target_host: &snapshot.target.host,
@@ -235,7 +239,7 @@ impl<'a> api::StatusResponse<'a> {
                 input_line: snapshot.audio.input_line,
                 input_gain: snapshot.audio.input_gain,
                 adc_attenuation_db: snapshot.audio.adc_attenuation_db,
-                sample_rate: snapshot.audio.sample_rate_hz,
+                sample_rate_hz: snapshot.audio.sample_rate_hz,
                 channels: snapshot.audio.channels,
                 bits_per_sample: snapshot.audio.bits_per_sample,
             },
@@ -249,10 +253,10 @@ impl<'a> api::StatusResponse<'a> {
             },
             metrics: api::MetricsStatus {
                 sequence: snapshot.stream.sequence,
-                packets: snapshot.stream.packets_total,
-                bytes: snapshot.stream.bytes_total,
-                read_errors: snapshot.stream.read_errors_total,
-                short_reads: snapshot.stream.short_reads_total,
+                packets_total: snapshot.stream.packets_total,
+                bytes_total: snapshot.stream.bytes_total,
+                read_errors_total: snapshot.stream.read_errors_total,
+                short_reads_total: snapshot.stream.short_reads_total,
                 queue_depth: snapshot.stream.queue_depth,
                 queue_drops_total: snapshot.stream.queue_drops_total,
                 stale_drops_total: snapshot.stream.stale_drops_total,
@@ -300,6 +304,7 @@ impl<'a> api::StatusResponse<'a> {
                 rollback_available: snapshot.ota.rollback_available,
                 rollback_version: &snapshot.ota.rollback_version,
                 signed_updates: snapshot.ota.signed_updates,
+                signing_key_sha256: &snapshot.ota.signing_key_sha256,
             },
             indicator: api::IndicatorStatus {
                 available: snapshot.status_indicator_visible,

@@ -45,6 +45,43 @@ struct PolledButton {
     detector: PressDetector,
 }
 
+/// How long the boot-time probe lets the pull settle before sampling.
+const PROBE_SETTLE_MS: u32 = 10;
+
+/// Whether the board's first button is held right now. Sampled once at boot,
+/// before the setup AP starts: a held button is the physical-presence signal
+/// that opens the AP for one boot when the password is unavailable (a worn
+/// label, a lost note). The pin driver is dropped before the poll task
+/// claims it. A board without buttons has no override.
+pub fn setup_override_held(board: &board::Board) -> bool {
+    let Some(spec) = board.buttons.first() else {
+        return false;
+    };
+    let pull = button_pull(spec.gpio, spec.active_low);
+    match PinDriver::input(pins::input_pin(spec.gpio), pull) {
+        Ok(input) => {
+            FreeRtos::delay_ms(PROBE_SETTLE_MS);
+            input.is_low() == spec.active_low
+        }
+        Err(error) => {
+            log::warn!("setup-override button probe failed: {error:#}");
+            false
+        }
+    }
+}
+
+/// The pull a button pin needs: internal pulls live on the output-capable
+/// pads; input-only pins (GPIO 34–39) rely on the board's own resistor.
+fn button_pull(gpio: u8, active_low: bool) -> Pull {
+    if !board::is_output_gpio(gpio) {
+        Pull::Floating
+    } else if active_low {
+        Pull::Up
+    } else {
+        Pull::Down
+    }
+}
+
 /// Start polling the board's buttons. A board with no buttons starts no task.
 pub fn start(state: Arc<ApiState>) -> Result<()> {
     if state.board.buttons.is_empty() {
@@ -52,15 +89,7 @@ pub fn start(state: Arc<ApiState>) -> Result<()> {
     }
     let mut buttons = Vec::with_capacity(state.board.buttons.len());
     for spec in &state.board.buttons {
-        // Internal pulls live on the output-capable pads; input-only pins
-        // (GPIO 34–39) rely on the board's own resistor.
-        let pull = if !board::is_output_gpio(spec.gpio) {
-            Pull::Floating
-        } else if spec.active_low {
-            Pull::Up
-        } else {
-            Pull::Down
-        };
+        let pull = button_pull(spec.gpio, spec.active_low);
         buttons.push(PolledButton {
             id: spec.id.clone(),
             active_low: spec.active_low,
@@ -92,11 +121,21 @@ fn spawn_action(state: &Arc<ApiState>, action: ButtonAction) {
     if action == ButtonAction::None {
         return;
     }
+    let Some(lease) = state.button_action.try_acquire() else {
+        log::warn!("button action ignored: another action is running");
+        return;
+    };
     let state = Arc::clone(state);
     let spawned = std::thread::Builder::new()
         .name("button-action".to_owned())
         .stack_size(ACTION_STACK_BYTES)
-        .spawn(move || execute(&state, action));
+        .spawn(move || {
+            let _lease = lease;
+            let _control = state.control.lock().expect("control lock poisoned");
+            if !state.restart.is_pending() {
+                execute(&state, action);
+            }
+        });
     if let Err(error) = spawned {
         log::warn!(
             "button action '{}' could not start: {error}",
@@ -177,7 +216,7 @@ fn execute(state: &Arc<ApiState>, action: ButtonAction) {
     }
 }
 
-/// Apply an audio-mutating action through the same validate-persist-apply
+/// Apply an audio-mutating action through the same validate-apply-commit
 /// flow as `POST /api/settings/audio`. A press that would not change anything
 /// — a step already at its limit — writes nothing, so a held button at the
 /// end of a range cannot wear flash.

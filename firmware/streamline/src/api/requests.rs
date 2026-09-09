@@ -9,10 +9,11 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct WifiSettingsRequest {
-    /// Wi-Fi network name. Empty names are rejected.
+    /// Wi-Fi network name: 1 to 32 UTF-8 bytes, without NUL.
     #[cfg_attr(feature = "api-spec", schema(min_length = 1))]
     pub ssid: String,
-    /// Wi-Fi password. Empty preserves the stored password.
+    /// WPA2 password: 8 to 63 bytes or a 64-digit hexadecimal PSK, without NUL.
+    /// Empty preserves the stored password; first commissioning requires one.
     #[serde(default)]
     pub password: String,
     /// Optional bridge host set during first commissioning.
@@ -24,7 +25,7 @@ pub struct WifiSettingsRequest {
     /// stored key.
     #[serde(default)]
     #[cfg_attr(feature = "api-spec", schema(pattern = "^$|^[0-9a-f]{48}$"))]
-    pub admin_secret: String,
+    pub admin_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,7 +138,7 @@ pub struct AdminKeySettingsRequest {
         feature = "api-spec",
         schema(min_length = 48, max_length = 48, pattern = "^[0-9a-f]{48}$")
     )]
-    pub admin_secret: String,
+    pub admin_key: String,
 }
 
 #[derive(Debug, Deserialize)]

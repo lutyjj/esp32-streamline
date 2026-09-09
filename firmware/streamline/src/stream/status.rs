@@ -49,6 +49,21 @@ pub struct StreamStatus {
     /// streaming — flipped by `POST /api/stream` and the `toggle_stream`
     /// button action.
     paused: AtomicBool,
+    /// Transport quiesce: while set, capture stops enqueuing and the network
+    /// task closes its connection, freeing the socket and TLS buffers a
+    /// firmware install needs. Requested by the OTA worker; cleared by it to
+    /// resume streaming after a failed install.
+    transport_quiesce: AtomicBool,
+    /// Whether a PCM sender exists at all. A device with no bridge target runs
+    /// capture without a network task, so it holds no transport buffers and
+    /// nothing is ever there to release. Set by [`crate::runtime`] beside the
+    /// decision that spawns the sender.
+    transport_present: AtomicBool,
+    /// The network task's acknowledgement that it has released the transport
+    /// and will not reconnect while the request stands. Only the network task
+    /// writes it, and only from inside its quiesced branch, so it cannot be
+    /// confused with an ordinary disconnect between two sends.
+    transport_quiesced: AtomicBool,
 }
 
 impl StreamStatus {
@@ -65,6 +80,52 @@ impl StreamStatus {
     /// Whether captured packets are currently allowed onto the wire.
     pub fn streaming_enabled(&self) -> bool {
         !self.paused.load(Ordering::Relaxed)
+    }
+
+    /// Ask the pipeline to release the PCM transport: capture stops enqueuing
+    /// and the network task closes its connection, freeing its buffers. Wait
+    /// for [`Self::transport_quiesced`] before relying on those buffers being
+    /// free. Clearing the acknowledgement here means a stale one from an
+    /// earlier request can never satisfy this one.
+    pub fn request_transport_quiesce(&self) {
+        self.transport_quiesced.store(false, Ordering::Relaxed);
+        self.transport_quiesce.store(true, Ordering::Release);
+    }
+
+    /// Let the pipeline reconnect and stream again after a quiesce.
+    pub fn end_transport_quiesce(&self) {
+        self.transport_quiesce.store(false, Ordering::Relaxed);
+    }
+
+    /// Whether a transport quiesce is in force. Acquire pairs with the
+    /// release in [`Self::request_transport_quiesce`], so a task that observes
+    /// the request also observes the cleared acknowledgement before it.
+    pub(crate) fn transport_quiesce_requested(&self) -> bool {
+        self.transport_quiesce.load(Ordering::Acquire)
+    }
+
+    /// Record that a PCM sender exists, so a quiesce must wait for it.
+    pub fn mark_transport_present(&self) {
+        self.transport_present.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether the transport is released and will stay released. A device with
+    /// no sender has nothing to release, so it is vacuously quiesced — without
+    /// this, an install on a bridge-less device would wait for an
+    /// acknowledgement no task exists to give.
+    pub fn transport_quiesced(&self) -> bool {
+        !self.transport_present.load(Ordering::Relaxed)
+            || self.transport_quiesced.load(Ordering::Acquire)
+    }
+
+    /// The network task's acknowledgement, recorded once it has closed the
+    /// connection and only while it stays inside its quiesced branch.
+    ///
+    /// Release, paired with the acquire in [`Self::transport_quiesced`]: the
+    /// waiter is about to reuse the heap the closed connection returned, so
+    /// the close must be visible to it, not merely have happened.
+    pub(crate) fn acknowledge_transport_quiesced(&self) {
+        self.transport_quiesced.store(true, Ordering::Release);
     }
 
     /// Ask the capture task to restart play detection from scratch. Called
@@ -237,6 +298,32 @@ mod tests {
         let snapshot = status.snapshot();
         assert_eq!(snapshot.packets, 2);
         assert_eq!(snapshot.bytes, u64::from(u32::MAX) + 10);
+    }
+
+    /// A device with no bridge target runs capture without a network task, so
+    /// there is no transport to release. An install there must proceed at once
+    /// rather than wait for an acknowledgement nothing exists to give.
+    #[test]
+    fn a_device_without_a_sender_is_already_quiesced() {
+        let status = StreamStatus::default();
+
+        assert!(status.transport_quiesced());
+        status.request_transport_quiesce();
+        assert!(status.transport_quiesced());
+    }
+
+    /// With a sender, only the sender's own acknowledgement counts.
+    #[test]
+    fn a_sender_must_acknowledge_before_the_transport_counts_as_released() {
+        let status = StreamStatus::default();
+        status.mark_transport_present();
+
+        assert!(!status.transport_quiesced());
+        status.request_transport_quiesce();
+        assert!(!status.transport_quiesced());
+
+        status.acknowledge_transport_quiesced();
+        assert!(status.transport_quiesced());
     }
 
     #[test]

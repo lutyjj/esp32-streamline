@@ -32,13 +32,15 @@ lives in git.
 Prefer a clean break to a compatibility layer: a shim, deprecated alias,
 path-preserving re-export, dual-format reader, or version fallback is a second
 definition that obscures which shape is current and tends to outlive its
-purpose. Change every caller and delete the old shape in one change, and
-convert stored state with a one-off migration rather than teaching the code to
-read both forms. This holds after release; the only thing that forces keeping
-an old shape is a consumer the change cannot reach, such as a released artifact
-or a separate repository, which gets an explicit versioned migration, not a
-silent layer. This is the code counterpart to "Write for the present, not the
-past".
+purpose. Change every caller and delete the old shape in one change. The
+project has no external users, so nothing creates a compatibility obligation:
+not a published release, not a flashed device, not stored state. Delete the
+old shape outright; whatever still holds it re-commissions or gets reflashed,
+and a device whose stored state no reader accepts is unconfigured. No
+dual-format readers, no deprecation aliases, no versioned migrations. Taking
+on a real compatibility obligation is the owner's explicit decision once
+external users exist, not a default this file grants. This is the code
+counterpart to "Write for the present, not the past".
 
 ## Keep logic testable; push hardware to the edges
 
@@ -103,7 +105,7 @@ When components share a wire format or API shape, define it once and derive
 every representation that tooling supports. The Rust `api` module generates
 `docs/openapi.json`; the firmware adapter uses its routes and DTOs, and the
 console generates its client types from the artifact, which also carries the
-canonical example device (the `StatusResponse` and `ConfigResponse` schema
+canonical example device (the `StatusResponse` and `SettingsResponse` schema
 examples) that client fixtures derive from instead of hand-writing device
 state. Run `make firmware-openapi` after a contract change. `docs/pcm-protocol.md` owns the
 PCM frame that `src/protocol.rs` and the bridge's `protocol.py` implement
@@ -159,14 +161,28 @@ prose too — a `README.md`, `docs/` page, or contract table that now describes
 the old behavior is part of the change, not a follow-up. Grep the docs for the
 names and paths the change touches before calling it ready.
 
-## Prove firmware on a device
+## Prove firmware where it can fail
 
-A firmware change is ready only after the new image ran on real hardware,
-installed over the custom OTA path: the console's developer install under
-System → Firmware, or `POST /api/ota/update` with `url` and `sha256`.
-Serial flashing is for repartitioning, bootloader work, and recovery. Your
-device's address and admin key live in the gitignored root `.env`
-(see `.env.example`).
+Prove a firmware change on the target that can actually show it failing, and
+prefer the cheaper one. The QEMU smoke (`make tools-smoke-qemu`) is sufficient
+when the changed behavior runs there, which covers boot and mode selection,
+provisioning and factory reset, the HTTP API and its authentication, NVS
+persistence across reboots, and OTA install, rollback, and signature
+rejection. A change that one of those exercises does not need hardware.
+
+Real hardware is required when the change depends on what the emulator does
+not have: the audio codec and I2S capture, Wi-Fi and its fallback, LEDs and
+buttons, the PCM transport to a bridge, or heap and timing behavior under a
+live network. Memory and TLS faults are the clearest case. The OTA download
+that exhausted the heap mid-transfer passed every emulated run and failed only
+on a device, because nothing in QEMU reproduces a megabyte of real TLS records
+landing on a fragmented heap.
+
+Install a hardware proof over the custom OTA path: the console's developer
+install under System → Firmware, or `POST /api/ota/update` with `url` and
+`sha256`. Serial flashing is for repartitioning, bootloader work, and
+recovery. Your device's address and admin key live in the gitignored root
+`.env` (see `.env.example`).
 
 ## Keep lab details out of public artifacts
 

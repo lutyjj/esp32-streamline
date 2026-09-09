@@ -8,13 +8,14 @@
 //! `bridge-test` proves the parser accepts every valid frame and rejects every
 //! invalid one.
 
-use std::fmt::Write as _;
-
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{
-    PacketHeader, BITS_PER_SAMPLE, BYTES_PER_FRAME, CHANNELS, FRAMES_PER_PACKET, HEADER_LEN, MAGIC,
-    PAYLOAD_BYTES, SAMPLE_RATE_HZ, VERSION,
+use crate::{
+    hex,
+    protocol::{
+        PacketHeader, BITS_PER_SAMPLE, BYTES_PER_FRAME, CHANNELS, FRAMES_PER_PACKET, HEADER_LEN,
+        MAGIC, PAYLOAD_BYTES, SAMPLE_RATE_HZ, VERSION,
+    },
 };
 
 /// Wire constants both implementations must share.
@@ -106,7 +107,7 @@ fn valid_frame(name: &str, sequence: u32) -> ValidFrame {
         sequence,
         frames: FRAMES_PER_PACKET,
         payload_bytes: PAYLOAD_BYTES as u32,
-        frame_hex: hex(&frame),
+        frame_hex: hex::encode(&frame),
     }
 }
 
@@ -155,7 +156,7 @@ fn short_frame(name: &str, frames: u32) -> InvalidFrame {
     InvalidFrame {
         name: name.to_owned(),
         reason: "frame".to_owned(),
-        frame_hex: hex(&frame),
+        frame_hex: hex::encode(&frame),
     }
 }
 
@@ -168,7 +169,7 @@ fn corrupt(name: &str, reason: &str, edit: impl Fn(&mut Vec<u8>)) -> InvalidFram
     InvalidFrame {
         name: name.to_owned(),
         reason: reason.to_owned(),
-        frame_hex: hex(&frame),
+        frame_hex: hex::encode(&frame),
     }
 }
 
@@ -182,21 +183,13 @@ fn bad_payload_size(name: &str, payload_bytes: usize) -> InvalidFrame {
     InvalidFrame {
         name: name.to_owned(),
         reason: "payload".to_owned(),
-        frame_hex: hex(&frame),
+        frame_hex: hex::encode(&frame),
     }
 }
 
 /// Deterministic filler so a regenerated corpus is byte-stable.
 fn payload(len: usize) -> impl Iterator<Item = u8> {
     (0..len).map(|i| i as u8)
-}
-
-fn hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        let _ = write!(out, "{byte:02x}");
-    }
-    out
 }
 
 #[cfg(test)]

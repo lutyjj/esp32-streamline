@@ -12,17 +12,16 @@ use crate::{
 };
 
 use super::super::{
-    auth::authorized_for,
-    persistence::{lock_config, save_configuration},
     requests::form,
-    responses::{json_response, mutation_error, reboot_response, unauthorized},
+    responses::{json_response, mutation_error, reboot_response},
+    writes::{persist_configuration, update_configuration},
     ApiState, ContractServer,
 };
 
 pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     let state = Arc::clone(state);
     server.handler(api::SETTINGS, move |request| {
-        respond_config(request, &state)
+        respond_settings(request, &state)
     })
 }
 
@@ -30,20 +29,17 @@ pub(super) fn register_network_writes(
     server: &mut ContractServer<'_>,
     state: &Arc<ApiState>,
 ) -> Result<()> {
-    // Mutating endpoints require the admin key once one is provisioned (see
-    // `authorized_for`); an unconfigured device accepts setup writes so the first
-    // key can be set. Wi-Fi and the stream target are separate nouns: each write
-    // validates and persists only its own fields, so a malformed target host
-    // cannot fail a Wi-Fi save and a Wi-Fi save cannot smuggle in half-typed
-    // target edits.
+    // The route table gates every mutating endpoint behind the admin key once
+    // one is provisioned; an unconfigured device accepts setup writes so the
+    // first key can be set. Wi-Fi and the stream target are separate nouns:
+    // each write validates and applies only its own fields, so a malformed
+    // target host cannot fail a Wi-Fi save and a Wi-Fi save cannot smuggle in
+    // half-typed target edits.
     let state_for_wifi = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_WIFI, move |mut request| {
-        if !authorized_for(&request, &state_for_wifi, api::SET_WIFI) {
-            return unauthorized(request);
-        }
+    server.handler(api::SET_WIFI, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::WifiSettingsRequest = form(&mut request)?;
-            let current = lock_config(&state_for_wifi)?.clone();
+            let current = state_for_wifi.lock_config().clone();
             // Commissioning may set the initial stream target in the same
             // write, because the device reboots onto the home network right
             // after and the two cannot be posted separately. Absent target
@@ -53,14 +49,14 @@ pub(super) fn register_network_writes(
                 current,
                 form.ssid,
                 form.password,
-                form.admin_secret,
+                form.admin_key,
                 form.target_host.map(|value| value.trim().to_owned()),
                 form.target_port,
             );
-            save_configuration(&state_for_wifi, next)
+            persist_configuration(&state_for_wifi, next)
         })();
         match result {
-            Ok(()) => reboot_response(request),
+            Ok(()) => reboot_response(request, &state_for_wifi.restart),
             Err(error) => mutation_error(request, error),
         }
     })?;
@@ -71,27 +67,22 @@ pub(super) fn register_network_writes(
     // next boot; applying it to the running stream without a reboot is deferred
     // (the stream target is fixed when the network task spawns).
     let state_for_target = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_TARGET, move |mut request| {
-        if !authorized_for(&request, &state_for_target, api::SET_TARGET) {
-            return unauthorized(request);
-        }
+    server.handler(api::SET_TARGET, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
-            let current = lock_config(&state_for_target)?.clone();
-            let target_host = form.target_host.trim().to_owned();
-            let target_port = form.target_port.unwrap_or(current.target_port);
-            let mut next = RuntimeConfig {
-                target_host,
-                target_port,
-                ..current
-            };
-            if next.target_host != current.target_host || next.target_port != current.target_port {
-                next.transport.keys.reset_pending_verification();
-            }
-            save_configuration(&state_for_target, next)
+            update_configuration(&state_for_target, |next| {
+                let target_host = form.target_host.trim().to_owned();
+                let target_port = form.target_port.unwrap_or(next.target_port);
+                if target_host != next.target_host || target_port != next.target_port {
+                    next.transport.keys.reset_pending_verification();
+                }
+                next.target_host = target_host;
+                next.target_port = target_port;
+                Ok(())
+            })
         })();
         match result {
-            Ok(()) => reboot_response(request),
+            Ok(()) => reboot_response(request, &state_for_target.restart),
             Err(error) => mutation_error(request, error),
         }
     })
@@ -104,16 +95,14 @@ pub(super) fn register_identity_writes(
     // The friendly device name only labels the console and browser tab, so it
     // applies immediately; no reboot is needed. Blank clears the name.
     let state_for_name = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_NAME, move |mut request| {
-        if !authorized_for(&request, &state_for_name, api::SET_NAME) {
-            return unauthorized(request);
-        }
+    server.handler(api::SET_NAME, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::NameSettingsRequest = form(&mut request)?;
-            let mut next = lock_config(&state_for_name)?.clone();
-            next.device_name = form.name.trim().to_owned();
-            save_configuration(&state_for_name, next.clone())?;
-            refresh_mdns_name(&state_for_name, &next);
+            let named = update_configuration(&state_for_name, |next| {
+                next.device_name = form.name.trim().to_owned();
+                Ok(next.clone())
+            })?;
+            refresh_mdns_name(&state_for_name, &named);
             Ok(())
         })();
         match result {
@@ -122,16 +111,21 @@ pub(super) fn register_identity_writes(
         }
     })?;
 
+    // Rotation, not enrolment: the first admin key arrives with the
+    // commissioning write, which also arms authentication. Staging one here
+    // would lock an unprovisioned caller out of the very Wi-Fi write that
+    // finishes setup, so an uncommissioned device refuses instead.
     let state_for_admin_key = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_ADMIN_KEY, move |mut request| {
-        if !authorized_for(&request, &state_for_admin_key, api::SET_ADMIN_KEY) {
-            return unauthorized(request);
-        }
+    server.handler(api::SET_ADMIN_KEY, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AdminKeySettingsRequest = form(&mut request)?;
-            let mut next = lock_config(&state_for_admin_key)?.clone();
-            next.admin_secret = form.admin_secret;
-            save_configuration(&state_for_admin_key, next)
+            state_for_admin_key
+                .mode
+                .require_commissioned("replacing the admin key")?;
+            update_configuration(&state_for_admin_key, |next| {
+                next.admin_key = form.admin_key;
+                Ok(())
+            })
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
@@ -145,10 +139,7 @@ pub(super) fn register_firmware_write(
     state: &Arc<ApiState>,
 ) -> Result<()> {
     let state = Arc::clone(state);
-    server.handler::<anyhow::Error, _>(api::SET_FIRMWARE, move |mut request| {
-        if !authorized_for(&request, &state, api::SET_FIRMWARE) {
-            return unauthorized(request);
-        }
+    server.handler(api::SET_FIRMWARE, move |mut request| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::FirmwareSettingsRequest = form(&mut request)?;
             let auto_update_schedule = match form.auto_update_schedule {
@@ -156,17 +147,10 @@ pub(super) fn register_firmware_write(
                 api::AutoUpdateScheduleRequest::Daily => AutoUpdateSchedule::Daily,
                 api::AutoUpdateScheduleRequest::Weekly => AutoUpdateSchedule::Weekly,
             };
-            let current = lock_config(&state)?.clone();
-            let next = RuntimeConfig {
-                auto_update_schedule,
-                ..current
-            };
-            if state.mode.has_persisted_configuration() {
-                save_configuration(&state, next)
-            } else {
-                *lock_config(&state)? = next;
+            update_configuration(&state, |next| {
+                next.auto_update_schedule = auto_update_schedule;
                 Ok(())
-            }
+            })
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
@@ -175,7 +159,7 @@ pub(super) fn register_firmware_write(
     })
 }
 
-fn respond_config<C>(
+fn respond_settings<C>(
     request: embedded_svc::http::server::Request<C>,
     state: &ApiState,
 ) -> Result<()>
@@ -183,11 +167,11 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    let config = state.config.lock().expect("configuration lock poisoned");
+    let config = state.lock_config();
     json_response(
         request,
         200,
-        &api::ConfigResponse {
+        &api::SettingsResponse {
             device_name: &config.device_name,
             ssid: &config.ssid,
             target_host: &config.target_host,
@@ -232,12 +216,8 @@ fn refresh_mdns_name(state: &ApiState, config: &RuntimeConfig) {
     let Some(mdns) = &state.mdns else {
         return;
     };
-    match mdns.lock() {
-        Ok(mut advertisement) => {
-            if let Err(error) = advertisement.set_instance_name(config) {
-                log::warn!("could not refresh mDNS instance name: {error:#}");
-            }
-        }
-        Err(_) => log::warn!("could not refresh mDNS instance name: lock poisoned"),
+    let mut advertisement = mdns.lock().expect("mDNS lock poisoned");
+    if let Err(error) = advertisement.set_instance_name(config) {
+        log::warn!("could not refresh mDNS instance name: {error:#}");
     }
 }

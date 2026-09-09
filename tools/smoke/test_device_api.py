@@ -10,8 +10,10 @@ emulator can produce lives in `test_qemu_device.py` behind the `emulated` marker
 
 import dataclasses
 import json
+import re
 
 import pytest
+import requests
 
 from streamline_tools.device.api import DeviceApi, api_checks
 
@@ -34,6 +36,14 @@ def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:
     results = api_checks(device_api.fetch)
     failed = [result for result in results if not result.passed]
     assert not failed, failed
+
+
+def test_signed_firmware_reports_its_trusted_key(device_api: DeviceApi) -> None:
+    code, body = device_api.fetch("/api/status")
+    assert code == 200
+    ota = json.loads(body)["ota"]
+    assert ota["signed_updates"]
+    assert re.fullmatch(r"[0-9a-f]{64}", ota["signing_key_sha256"]), ota
 
 
 def test_status_reports_a_valid_mode(device_api: DeviceApi) -> None:
@@ -155,6 +165,49 @@ def test_unlock_accepts_the_key_and_rejects_the_rest(authed_device_api: DeviceAp
     assert code == 401, f"a wrong key was accepted at unlock with HTTP {code}"
 
 
+def test_writes_challenge_with_a_sha256_digest(authed_device_api: DeviceApi) -> None:
+    # The posture: the admin key never rides a request. A bare write gets the
+    # RFC 7616 challenge any standard client (curl --digest, requests) answers.
+    response = requests.post(f"{authed_device_api.base_url}/api/unlock", timeout=10)
+    assert response.status_code == 401, f"a bare unlock answered HTTP {response.status_code}"
+    challenge = response.headers.get("WWW-Authenticate", "")
+    assert challenge.startswith("Digest "), challenge
+    assert 'realm="streamline"' in challenge and "SHA-256" in challenge, challenge
+
+
+def test_coredump_reads_stay_behind_the_admin_key(authed_device_api: DeviceApi) -> None:
+    # A dump is a copy of device memory, so on a provisioned device both
+    # coredump reads require the key, unlike the open reads.
+    stranger = dataclasses.replace(authed_device_api, admin_key=None)
+    for path in ("/api/coredump", "/api/coredump/image"):
+        code, _ = stranger.fetch(path)
+        assert code == 401, f"GET {path} without the key answered HTTP {code}"
+
+
+def test_coredump_status_names_a_coherent_state(authed_device_api: DeviceApi) -> None:
+    # A layout with the coredump partition answers 200 with a present flag; a
+    # layout from before the partition existed answers 503. Both are healthy
+    # states, and erase is idempotent, so this stays safe on a live board.
+    code, body = authed_device_api.fetch("/api/coredump")
+    assert code in (200, 503), f"GET /api/coredump answered HTTP {code}: {body[:200]!r}"
+    if code == 503:
+        image_code, _ = authed_device_api.fetch("/api/coredump/image")
+        assert image_code == 503, f"image endpoint disagrees about availability: HTTP {image_code}"
+        return
+    status = json.loads(body)
+    assert isinstance(status["present"], bool)
+    assert isinstance(status["size_bytes"], int)
+    assert status["present"] == (status["size_bytes"] > 0), status
+    if status["present"]:
+        pytest.skip("device holds a real crash dump; refusing to erase evidence")
+    image_code, _ = authed_device_api.fetch("/api/coredump/image")
+    assert image_code == 404, f"absent dump downloaded with HTTP {image_code}"
+    # Erasing an empty store is the idempotent no-op that proves the endpoint
+    # without destroying anything.
+    erase_code, _ = authed_device_api.post_form("/api/coredump/erase", {})
+    assert erase_code == 200, f"erase answered HTTP {erase_code}"
+
+
 def test_ota_rejects_a_partial_custom_image_request(authed_device_api: DeviceApi) -> None:
     # A custom install pins content by digest, so a URL without its sha256 must
     # be refused outright — never silently downgraded to a latest-release pull.
@@ -176,3 +229,21 @@ def test_rollback_is_refused_when_no_slot_is_available(authed_device_api: Device
     code, body = authed_device_api.post_form("/api/ota/rollback", {})
     # No stored previous image is a state conflict, not a bad request.
     assert code == 409, f"unavailable rollback was answered with HTTP {code}: {body[:200]!r}"
+
+
+def test_invalid_wifi_credentials_leave_configuration_intact(authed_device_api: DeviceApi) -> None:
+    code, body = authed_device_api.fetch("/api/settings")
+    assert code == 200
+    before = json.loads(body)
+    for fields in [
+        {"ssid": "x" * 33, "password": "test-password"},
+        {"ssid": "é" * 17, "password": "test-password"},
+        {"ssid": "test-network", "password": "x" * 65},
+        {"ssid": "test-network", "password": "short"},
+        {"ssid": "test-network", "password": "abc\0defgh"},
+    ]:
+        code, _ = authed_device_api.post_form("/api/settings/wifi", fields)
+        assert code == 400
+    code, body = authed_device_api.fetch("/api/settings")
+    assert code == 200
+    assert json.loads(body) == before

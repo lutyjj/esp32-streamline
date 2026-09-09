@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import { generateAdminKey, isUnlocked, replaceAdminKey, useAuthEpoch } from '../lib/adminKey';
 import {
-  type DeviceConfig,
   factoryReset,
   otaCheck,
   otaRollback,
   otaUpdate,
   restart as restartDevice,
+  type SettingsResponse,
   setAdminKey,
   setName as setDeviceName,
   setFirmware,
@@ -31,6 +31,7 @@ import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
 import { LedControls } from './LedControls';
+import { LogCard } from './LogCard';
 import { Notice } from './Notice';
 import { ResourceNotice } from './ResourceNotice';
 import { ActionState, TransactButton } from './Transact';
@@ -47,6 +48,7 @@ export function SystemTab() {
       <ButtonsCard />
       <AccessCard />
       <ResetCard />
+      <LogCard />
       <RawStatusCard />
     </>
   );
@@ -85,7 +87,6 @@ function ButtonsCard() {
 function DeviceHealthCard() {
   const s = status.value;
   const sys = s?.system;
-  // Older firmware predates this block; the card simply stays hidden there.
   if (!sys) return null;
 
   const { heap, nvs } = sys;
@@ -136,7 +137,7 @@ function FirmwareCard() {
   const settingsTransact = useTransact();
   const customTransact = useTransact();
   const [autoUpdateSchedule, setAutoUpdateSchedule] =
-    useState<DeviceConfig['auto_update_schedule']>('daily');
+    useState<SettingsResponse['auto_update_schedule']>('daily');
   const [url, setUrl] = useState('');
   const [sha256, setSha256] = useState('');
 
@@ -148,6 +149,7 @@ function FirmwareCard() {
   const latest = ota?.latest_version || '';
   const rows: [string, string][] = [
     ['Installed', `v${s?.firmware_version ?? '—'}`],
+    ['Build', s?.firmware_variant ?? '—'],
     ['Latest release', latest ? `v${latest}` : '—'],
     ['Status', ota ? prettyPhase(ota.phase) : '—'],
     ...(ota?.phase === 'downloading' && ota.bytes_total
@@ -190,7 +192,9 @@ function FirmwareCard() {
             disabled={!writable}
             value={autoUpdateSchedule}
             onChange={(e) =>
-              setAutoUpdateSchedule(e.currentTarget.value as DeviceConfig['auto_update_schedule'])
+              setAutoUpdateSchedule(
+                e.currentTarget.value as SettingsResponse['auto_update_schedule'],
+              )
             }
           >
             <option value="daily">Daily when idle</option>
@@ -279,6 +283,14 @@ function FirmwareCard() {
         <ActionState state={transact.state} />
       </CardFooter>
       <Disclosure title="Developer — install a custom image" className="disclosure-offset">
+        <div class="card-section">
+          <p class="help">
+            Images must use the running firmware’s signing key. Switching between development and
+            release keys requires a full serial flash. Adding a second signature does not switch
+            keys.
+          </p>
+          <Kv rows={[['Signing key SHA-256', ota?.signing_key_sha256 || 'Unavailable']]} />
+        </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -415,7 +427,7 @@ function AccessCard() {
     transact.run(
       async () => {
         const ack = await replaceAdminKey(
-          (secret) => setAdminKey({ admin_secret: secret }),
+          (secret) => setAdminKey({ admin_key: secret }),
           staged,
           remember,
         );
@@ -474,13 +486,22 @@ export function ResetCard() {
 
   // Reset is a handoff, not a reboot wait: the device abandons this network
   // for its setup AP, so the card's last render is the way there.
-  if (resetHandoff.value) {
+  const handoff = resetHandoff.value;
+  if (handoff) {
     return (
       <Card title="Reset">
         <Notice tone="info">
           <strong class="strong">Factory reset done.</strong> {resetHandoffMessage()} Installed
           firmware stays; every setting was erased.
         </Notice>
+        {handoff !== 'unknown' && (
+          <Kv
+            rows={[
+              ['Setup network', handoff.ssid],
+              ['Password', handoff.password],
+            ]}
+          />
+        )}
       </Card>
     );
   }
@@ -510,14 +531,17 @@ export function ResetCard() {
             factory.run(
               async () => {
                 try {
-                  await factoryReset();
+                  const response = await factoryReset();
+                  // The response repeats the setup-network credentials — the
+                  // stable ones a pre-flashed unit's label carries.
+                  beginResetHandoff(response.setup_network);
                 } catch (error) {
                   // A rejection came back over HTTP: inline and retryable.
                   if (error instanceof ApiError) throw error;
                   // A dropped connection is the reset tearing this network
                   // down — the handoff itself, not a failure.
+                  beginResetHandoff();
                 }
-                beginResetHandoff();
                 return undefined;
               },
               { busyText: 'Erasing…', okText: '' },

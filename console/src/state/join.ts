@@ -58,7 +58,7 @@ export async function joinNetwork(req: JoinRequest): Promise<Ack> {
       password: req.password,
       target_host: (req.targetHost ?? '').trim(),
       target_port: Number(req.targetPort ?? status.value?.target?.target_port ?? 39000),
-      admin_secret: setupKey.value,
+      admin_key: setupKey.value,
     });
   } catch (err) {
     // A status came back and it was a rejection: nothing was saved, surface it.

@@ -1,26 +1,20 @@
-//! Failure-atomic persistent application state.
-//!
-//! A generation is written to the inactive key set and becomes visible only
-//! when its marker is switched. Storage implementations make each individual
-//! key durable; this module supplies the missing multi-key commit point.
+//! Bounded, failure-atomic configuration snapshots with committed fallback.
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{config::RuntimeConfig, profiles::AudioProfileCatalog};
 
-pub const STATE_SCHEMA_VERSION: u8 = 1;
-pub const MAX_CONFIG_RECORD_BYTES: usize = 2_048;
-pub const MAX_PROFILE_RECORD_BYTES: usize = 3_840;
-pub const MAX_BOARD_DESCRIPTOR_RECORD_BYTES: usize = crate::board::MAX_DESCRIPTOR_BYTES;
+/// One NVS string fits one page, leaving pages for replacement and Wi-Fi state.
+pub const MAX_STATE_BYTES: usize = 3_840;
+pub const MAX_MARKER_BYTES: usize = 256;
+const COMMIT_KEY: &str = "state_commit";
 
-const ACTIVE_GENERATION_KEY: &str = "active_gen";
-
-/// The complete logical state that moves between durable generations.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PersistentState {
     pub config: Option<RuntimeConfig>,
     pub board_id: Option<String>,
-    /// Canonical JSON for a custom board. A built-in board stores `None`.
     pub board_descriptor: Option<String>,
     pub profiles: Option<AudioProfileCatalog>,
 }
@@ -36,8 +30,7 @@ impl PersistentState {
     }
 }
 
-/// A narrow storage boundary. Implementations must make one `set` durable
-/// before returning successfully.
+/// Each successful set is durable and atomic, including replacement of a key.
 pub trait GenerationStorage {
     type Error;
 
@@ -48,88 +41,61 @@ pub trait GenerationStorage {
 #[derive(Debug, Eq, PartialEq)]
 pub enum StateError<E> {
     Storage(E),
-    InvalidMarker,
-    InvalidRecord(&'static str),
-    OversizedRecord(&'static str),
+    InvalidRecord,
+    OversizedState,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Generation {
+impl<E: std::fmt::Display> std::fmt::Display for StateError<E> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Storage(error) => write!(formatter, "configuration storage failed: {error}"),
+            Self::InvalidRecord => formatter.write_str("invalid configuration snapshot"),
+            Self::OversizedState => write!(
+                formatter,
+                "complete configuration exceeds the {MAX_STATE_BYTES}-byte storage budget"
+            ),
+        }
+    }
+}
+
+impl<E: std::fmt::Debug + std::fmt::Display> std::error::Error for StateError<E> {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+enum Slot {
     A,
     B,
 }
 
-impl Generation {
-    const fn inactive(self) -> Self {
+impl Slot {
+    fn other(self) -> Self {
         match self {
             Self::A => Self::B,
             Self::B => Self::A,
         }
     }
 
-    const fn marker(self) -> &'static str {
+    fn key(self) -> &'static str {
         match self {
-            Self::A => "1:a",
-            Self::B => "1:b",
+            Self::A => "state_a",
+            Self::B => "state_b",
         }
     }
+}
 
-    fn parse_marker(marker: &str) -> Option<Self> {
-        match marker {
-            "1:a" => Some(Self::A),
-            "1:b" => Some(Self::B),
-            _ => None,
-        }
-    }
-
-    const fn config_key(self) -> &'static str {
-        match self {
-            Self::A => "gen_a_config",
-            Self::B => "gen_b_config",
-        }
-    }
-
-    const fn board_key(self) -> &'static str {
-        match self {
-            Self::A => "gen_a_board",
-            Self::B => "gen_b_board",
-        }
-    }
-
-    const fn descriptor_key(self) -> &'static str {
-        match self {
-            Self::A => "gen_a_desc",
-            Self::B => "gen_b_desc",
-        }
-    }
-
-    const fn profiles_key(self) -> &'static str {
-        match self {
-            Self::A => "gen_a_profiles",
-            Self::B => "gen_b_profiles",
-        }
-    }
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Snapshot {
+    slot: Slot,
+    sha256: String,
 }
 
 #[derive(Deserialize, Serialize)]
-struct ConfigRecord {
-    version: u8,
-    config: Option<RuntimeConfig>,
+#[serde(deny_unknown_fields)]
+struct Commit {
+    active: Snapshot,
+    previous: Option<Snapshot>,
 }
 
-#[derive(Deserialize, Serialize)]
-struct BoardRecord {
-    version: u8,
-    board_id: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct ProfilesRecord {
-    version: u8,
-    profiles: Option<AudioProfileCatalog>,
-}
-
-/// Reads and writes complete generations through one active marker.
 pub struct StateStore<S> {
     storage: S,
 }
@@ -146,136 +112,69 @@ impl<S> StateStore<S> {
 
 impl<S: GenerationStorage> StateStore<S> {
     pub fn load(&self) -> Result<Option<PersistentState>, StateError<S::Error>> {
-        let Some(marker) = self
-            .storage
-            .get(ACTIVE_GENERATION_KEY)
-            .map_err(StateError::Storage)?
-        else {
-            return Ok(None);
-        };
-        let generation = Generation::parse_marker(&marker).ok_or(StateError::InvalidMarker)?;
-        self.read_generation(generation).map(Some)
+        Ok(self.committed()?.map(|(_, state)| state))
     }
 
-    /// Write every record to the inactive generation, then switch the one
-    /// marker readers consult. An error leaves the previous active generation
-    /// selected, so callers must update memory only after this returns `Ok`.
     pub fn save(&self, state: &PersistentState) -> Result<(), StateError<S::Error>> {
-        let inactive = match self
-            .storage
-            .get(ACTIVE_GENERATION_KEY)
-            .map_err(StateError::Storage)?
-        {
-            None => Generation::A,
-            Some(marker) => Generation::parse_marker(&marker)
-                .ok_or(StateError::InvalidMarker)?
-                .inactive(),
-        };
-        let config = encode(
-            "configuration",
-            &ConfigRecord {
-                version: STATE_SCHEMA_VERSION,
-                config: state.config.clone(),
-            },
-            MAX_CONFIG_RECORD_BYTES,
-        )?;
-        let board = encode(
-            "board",
-            &BoardRecord {
-                version: STATE_SCHEMA_VERSION,
-                board_id: state.board_id.clone(),
-            },
-            MAX_CONFIG_RECORD_BYTES,
-        )?;
-        let profiles = encode(
-            "profiles",
-            &ProfilesRecord {
-                version: STATE_SCHEMA_VERSION,
-                profiles: state.profiles.clone(),
-            },
-            MAX_PROFILE_RECORD_BYTES,
-        )?;
-        let descriptor = state.board_descriptor.as_deref().unwrap_or_default();
-        if descriptor.len() > MAX_BOARD_DESCRIPTOR_RECORD_BYTES {
-            return Err(StateError::OversizedRecord("board descriptor"));
+        let encoded = serde_json::to_string(state).map_err(|_| StateError::InvalidRecord)?;
+        if encoded.len() > MAX_STATE_BYTES {
+            return Err(StateError::OversizedState);
         }
-
+        let current = self.committed()?;
+        let slot = current
+            .as_ref()
+            .map_or(Slot::A, |(snapshot, _)| snapshot.slot.other());
+        let commit = Commit {
+            active: Snapshot {
+                slot,
+                sha256: checksum(&encoded),
+            },
+            // Reset must never restore the credentials it deliberately removed.
+            previous: current
+                .filter(|(_, previous)| state.config.is_some() && previous.config.is_some())
+                .map(|(snapshot, _)| snapshot),
+        };
+        let marker = serde_json::to_string(&commit).map_err(|_| StateError::InvalidRecord)?;
         self.storage
-            .set(inactive.config_key(), &config)
+            .set(slot.key(), &encoded)
             .map_err(StateError::Storage)?;
         self.storage
-            .set(inactive.board_key(), &board)
-            .map_err(StateError::Storage)?;
-        self.storage
-            .set(inactive.descriptor_key(), descriptor)
-            .map_err(StateError::Storage)?;
-        self.storage
-            .set(inactive.profiles_key(), &profiles)
-            .map_err(StateError::Storage)?;
-        self.storage
-            .set(ACTIVE_GENERATION_KEY, inactive.marker())
+            .set(COMMIT_KEY, &marker)
             .map_err(StateError::Storage)
     }
 
-    fn read_generation(
-        &self,
-        generation: Generation,
-    ) -> Result<PersistentState, StateError<S::Error>> {
-        let config = self.required(generation.config_key(), "configuration")?;
-        let board = self.required(generation.board_key(), "board")?;
-        let descriptor = self
-            .storage
-            .get(generation.descriptor_key())
-            .map_err(StateError::Storage)?
-            .ok_or(StateError::InvalidRecord("board descriptor"))?;
-        let profiles = self.required(generation.profiles_key(), "profiles")?;
-        let config: ConfigRecord = decode("configuration", &config)?;
-        let board: BoardRecord = decode("board", &board)?;
-        let profiles: ProfilesRecord = decode("profiles", &profiles)?;
-        if config.version != STATE_SCHEMA_VERSION
-            || board.version != STATE_SCHEMA_VERSION
-            || profiles.version != STATE_SCHEMA_VERSION
-        {
-            return Err(StateError::InvalidRecord("state schema"));
+    fn committed(&self) -> Result<Option<(Snapshot, PersistentState)>, StateError<S::Error>> {
+        let Some(marker) = self.storage.get(COMMIT_KEY).map_err(StateError::Storage)? else {
+            return Ok(None);
+        };
+        if marker.len() > MAX_MARKER_BYTES {
+            return Ok(None);
         }
-        if descriptor.len() > MAX_BOARD_DESCRIPTOR_RECORD_BYTES {
-            return Err(StateError::OversizedRecord("board descriptor"));
+        let Ok(commit) = serde_json::from_str::<Commit>(&marker) else {
+            return Ok(None);
+        };
+        for snapshot in std::iter::once(commit.active).chain(commit.previous) {
+            let Some(value) = self
+                .storage
+                .get(snapshot.slot.key())
+                .map_err(StateError::Storage)?
+            else {
+                continue;
+            };
+            if value.len() > MAX_STATE_BYTES || checksum(&value) != snapshot.sha256 {
+                continue;
+            }
+            if let Ok(state) = serde_json::from_str(&value) {
+                return Ok(Some((snapshot, state)));
+            }
         }
-        Ok(PersistentState {
-            config: config.config,
-            board_id: board.board_id,
-            board_descriptor: (!descriptor.is_empty()).then_some(descriptor),
-            profiles: profiles.profiles,
-        })
-    }
-
-    fn required(&self, key: &str, record: &'static str) -> Result<String, StateError<S::Error>> {
-        self.storage
-            .get(key)
-            .map_err(StateError::Storage)?
-            .ok_or(StateError::InvalidRecord(record))
+        Ok(None)
     }
 }
 
-fn encode<T: Serialize, E>(
-    record: &'static str,
-    value: &T,
-    maximum: usize,
-) -> Result<String, StateError<E>> {
-    let encoded = serde_json::to_string(value).map_err(|_| StateError::InvalidRecord(record))?;
-    if encoded.len() > maximum {
-        return Err(StateError::OversizedRecord(record));
-    }
-    Ok(encoded)
+fn checksum(value: &str) -> String {
+    crate::hex::encode(&Sha256::digest(value.as_bytes()))
 }
-
-fn decode<T: for<'de> Deserialize<'de>, E>(
-    record: &'static str,
-    value: &str,
-) -> Result<T, StateError<E>> {
-    serde_json::from_str(value).map_err(|_| StateError::InvalidRecord(record))
-}
-
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, collections::BTreeMap};
@@ -285,7 +184,8 @@ mod tests {
         board,
         config::{AudioSettings, AutoUpdateSchedule},
         profiles::{AudioProfile, AUDIO_PROFILE_SCHEMA_VERSION},
-        transport::{RandomBytes, TransportMode},
+        random::RandomBytes,
+        transport::TransportMode,
     };
 
     struct Sequence(u8);
@@ -360,7 +260,7 @@ mod tests {
                 target_host: "bridge.local".to_owned(),
                 target_port: 39_000,
                 transport: Default::default(),
-                admin_secret: crate::config::TEST_ADMIN_SECRET.to_owned(),
+                admin_key: crate::config::TEST_ADMIN_KEY.to_owned(),
                 device_name: name.to_owned(),
                 auto_update_schedule: AutoUpdateSchedule::Daily,
                 audio: AudioSettings {
@@ -419,7 +319,7 @@ mod tests {
         let values = initial_store.into_inner().values();
         let after = state("after");
 
-        for boundary in 1..=5 {
+        for boundary in 1..=2 {
             let storage = FakeStorage::from_values(values.clone(), boundary);
             let store = StateStore::new(storage);
             assert_eq!(store.save(&after), Err(StateError::Storage("interrupted")));
@@ -545,7 +445,7 @@ mod tests {
             initial_store.save(before).expect("save starting state");
             let values = initial_store.into_inner().values();
 
-            for boundary in 1..=5 {
+            for boundary in 1..=2 {
                 let store = StateStore::new(FakeStorage::from_values(values.clone(), boundary));
                 assert_eq!(store.save(after), Err(StateError::Storage("interrupted")));
                 assert_eq!(
@@ -560,7 +460,7 @@ mod tests {
     #[test]
     fn first_generation_stays_unconfigured_until_its_marker_commits() {
         let next = state("first");
-        for boundary in 1..=5 {
+        for boundary in 1..=2 {
             let store = StateStore::new(FakeStorage::interrupted_after(boundary));
             assert_eq!(store.save(&next), Err(StateError::Storage("interrupted")));
             assert_eq!(store.load(), Ok(None), "boundary {boundary}");
@@ -575,7 +475,7 @@ mod tests {
         store.save(&configured).expect("configured state");
         let values = store.into_inner().values();
 
-        for boundary in 1..=5 {
+        for boundary in 1..=2 {
             let store = StateStore::new(FakeStorage::from_values(values.clone(), boundary));
             assert_eq!(
                 store.save(&PersistentState::empty()),
@@ -590,54 +490,78 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_marker_is_an_error_not_a_guess() {
+    fn corrupt_active_falls_back_and_next_save_preserves_that_fallback() {
         let store = StateStore::new(FakeStorage::default());
-        store.save(&state("first")).expect("state saves");
-        let mut values = store.into_inner().values();
-        values.insert(ACTIVE_GENERATION_KEY.to_owned(), "9:z".to_owned());
-
-        let corrupted = StateStore::new(FakeStorage::from_values(values, usize::MAX));
-        assert_eq!(corrupted.load(), Err(StateError::InvalidMarker));
+        let before = state("before");
+        store.save(&before).unwrap();
+        store.save(&state("after")).unwrap();
+        store
+            .storage
+            .values
+            .borrow_mut()
+            .insert("state_b".into(), "{}".into());
+        assert_eq!(store.load(), Ok(Some(before.clone())));
+        let values = store.into_inner().values();
+        for boundary in 1..=2 {
+            let store = StateStore::new(FakeStorage::from_values(values.clone(), boundary));
+            assert!(store.save(&state("retry")).is_err());
+            assert_eq!(store.load(), Ok(Some(before.clone())));
+        }
     }
 
     #[test]
-    fn missing_record_in_the_active_generation_is_an_error() {
+    fn an_uncommitted_snapshot_cannot_become_fallback() {
         let store = StateStore::new(FakeStorage::default());
-        store.save(&state("first")).expect("state saves");
-        let mut values = store.into_inner().values();
-        let config_key = values
-            .keys()
-            .find(|key| key.contains("config"))
-            .expect("a config record exists")
-            .clone();
-        values.remove(&config_key);
-
-        let truncated = StateStore::new(FakeStorage::from_values(values, usize::MAX));
-        assert_eq!(
-            truncated.load(),
-            Err(StateError::InvalidRecord("configuration"))
-        );
+        store.save(&state("first")).unwrap();
+        store.save(&state("second")).unwrap();
+        let store = StateStore::new(FakeStorage::from_values(store.into_inner().values(), 2));
+        assert!(store.save(&state("uncommitted")).is_err());
+        store
+            .storage
+            .values
+            .borrow_mut()
+            .insert("state_b".into(), "{}".into());
+        assert_eq!(store.load(), Ok(None));
     }
 
     #[test]
-    fn oversized_descriptor_is_rejected_before_any_write() {
+    fn commissioning_does_not_retain_an_unauthenticated_fallback() {
         let store = StateStore::new(FakeStorage::default());
-        store.save(&state("first")).expect("state saves");
-        let before = StateStore::new(FakeStorage::from_values(
-            store.into_inner().values(),
-            usize::MAX,
-        ));
+        store.save(&PersistentState::empty()).unwrap();
+        store.save(&state("configured")).unwrap();
+        store
+            .storage
+            .values
+            .borrow_mut()
+            .insert("state_b".into(), "{}".into());
+        assert_eq!(store.load(), Ok(None));
+    }
 
-        let mut oversized = state("second");
-        oversized.board_descriptor = Some("x".repeat(MAX_BOARD_DESCRIPTOR_RECORD_BYTES + 1));
-        assert_eq!(
-            before.save(&oversized),
-            Err(StateError::OversizedRecord("board descriptor"))
-        );
-        assert_eq!(
-            before.load(),
-            Ok(Some(state("first"))),
-            "a rejected save must leave the active generation untouched"
-        );
+    #[test]
+    fn corrupt_reset_does_not_resurrect_credentials() {
+        let store = StateStore::new(FakeStorage::default());
+        store.save(&state("configured")).unwrap();
+        store.save(&PersistentState::empty()).unwrap();
+        store
+            .storage
+            .values
+            .borrow_mut()
+            .insert("state_b".into(), "{}".into());
+        assert_eq!(store.load(), Ok(None));
+    }
+
+    #[test]
+    fn whole_snapshot_limit_is_checked_before_any_write() {
+        let store = StateStore::new(FakeStorage::default());
+        let mut candidate = state("boundary");
+        candidate.board_descriptor = Some(String::new());
+        let overhead = serde_json::to_string(&candidate).unwrap().len();
+        candidate.board_descriptor = Some("x".repeat(MAX_STATE_BYTES - overhead));
+        store.save(&candidate).unwrap();
+        assert_eq!(store.load(), Ok(Some(candidate.clone())));
+        let before = store.storage.values();
+        candidate.board_descriptor.as_mut().unwrap().push('x');
+        assert_eq!(store.save(&candidate), Err(StateError::OversizedState));
+        assert_eq!(store.storage.values(), before);
     }
 }

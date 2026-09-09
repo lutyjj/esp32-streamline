@@ -17,12 +17,22 @@ import type {
 } from '../generated/api';
 import type {
   AudioProfileCatalog,
-  BoardCatalog,
-  DeviceConfig,
-  DeviceStatus,
+  BoardCatalogResponse,
+  BootLog,
+  LogsResponse,
+  SettingsResponse,
+  StatusResponse,
   TransportKeyResponse,
 } from '../lib/api';
-import { deviceConfig, deviceStatus } from './fixtures';
+
+/** One captured line as the fake device holds it before rendering to text. */
+interface MockLogLine {
+  sequence: number;
+  text: string;
+}
+
+import { DIGEST_USERNAME, digestResponse, parseDigestFields } from '../lib/digest';
+import { deviceConfig, deviceStatus, setupNetwork } from './fixtures';
 
 /**
  * The admin key the fake device accepts once provisioned: the canonical
@@ -34,6 +44,9 @@ export const MOCK_ADMIN_KEY = 'a'.repeat(48);
 /** The version an install lands on, so update recovery reads as applied. */
 const MOCK_UPDATED_VERSION = '0.5.0-mock';
 
+/** The realm the firmware names in every digest challenge. */
+const DIGEST_REALM = 'streamline';
+
 /**
  * Where in the journey the fake device starts: `steady` is a provisioned,
  * streaming device; `first-boot` is an unconfigured one on its setup network.
@@ -43,20 +56,53 @@ export type DeviceScenario = 'steady' | 'first-boot';
 /** Deterministic peak-level sweep, one step per status poll. */
 const PEAK_STEPS = [30800, 24500, 28100, 21900, 26400, 31200];
 
+/** Lines the fake device's log buffer holds before it evicts the oldest. */
+const MOCK_LOG_CAPACITY = 60;
+
+/** What a boot says before the console can reach it. */
+const BOOT_LOG = [
+  'boot: StreamLine 0.9.0 starting',
+  "board: using board descriptor 'ai-thinker-esp32-audio-kit-v2-2-es8388'",
+  'wifi: joined Study Wi-Fi, rssi -54',
+  'codec: ES8388 ready at 48000 Hz',
+  'httpd: console listening on :80',
+];
+
+/** How the boot before this one ended, so the previous-boot view has content. */
+const PREVIOUS_BOOT_TAIL = [
+  'ota: install requested for 0.9.0',
+  'ota: downloaded 1904832 bytes, sha256 verified',
+  'ota: signature verified, boot slot set',
+  'system: restarting into the new image',
+];
+
 /** A parsed form body: every field arrives as a string. */
 type FormBody = Partial<Record<string, string>>;
 
 export class FakeDevice {
   readonly handlers: HttpHandler[];
-  private status!: DeviceStatus;
-  private config!: DeviceConfig;
+  private status!: StatusResponse;
+  private config!: SettingsResponse;
   private profiles!: AudioProfileCatalog;
   /** The accepted admin key; null while the device has none (setup mode). */
   private adminKey!: string | null;
   private poll = 0;
   private keySerial = 0;
+  /** This boot's captured log, and the one the last restart left behind. */
+  private logLines: MockLogLine[] = [];
+  private logSequence = 0;
+  private logDropped = 0;
+  private logBoot = 0;
+  private previousBootLog: BootLog | null = null;
   /** OTA phases still to play out, one per status poll. */
   private otaSteps: Array<() => void> = [];
+  /** The stored crash dump's bytes; null while none is stored. */
+  private coredump: ArrayBuffer | null = null;
+  /** The setup network's credentials, stable for the device's life. */
+  private setupNetwork = setupNetwork();
+  /** The live digest nonce and its accepted count, as the firmware tracks. */
+  private nonce: { value: string; lastNc: number } | null = null;
+  private nonceSerial = 0;
 
   constructor(scenario: DeviceScenario = 'steady') {
     this.reset(scenario);
@@ -67,6 +113,23 @@ export class FakeDevice {
       this.read('/api/audio-profiles', () => this.profiles),
       this.read('/api/boards', () => this.boards()),
       this.read('/api/openapi.json', () => contract),
+      this.readAuthorized('/api/logs', () => this.nextLogs()),
+      this.readAuthorized('/api/coredump', () => ({
+        present: this.coredump !== null,
+        size_bytes: this.coredump?.byteLength ?? 0,
+      })),
+      http.get('/api/coredump/image', ({ request }) => {
+        const denied = this.deny(request);
+        if (denied) return denied;
+        if (!this.coredump) return reject(404, 'no crash dump is stored');
+        return new HttpResponse(this.coredump, {
+          headers: { 'Content-Type': 'application/octet-stream' },
+        });
+      }),
+      this.write('/api/coredump/erase', () => {
+        this.coredump = null;
+        return { ok: true };
+      }),
       http.get('/api/metrics', () => new HttpResponse(this.metricsText())),
       this.write('/api/unlock', () => ({ ok: true })),
       this.write('/api/settings/wifi', (body) => this.join(body)),
@@ -121,8 +184,8 @@ export class FakeDevice {
         this.activateProfile(body.profile_id ?? ''),
       ),
       this.write('/api/settings/admin-key', (body) => {
-        if (!body.admin_secret) return reject(400, 'admin_secret is required');
-        this.adminKey = body.admin_secret;
+        if (!body.admin_key) return reject(400, 'admin_key is required');
+        this.adminKey = body.admin_key;
         return { ok: true };
       }),
       this.write('/api/settings/firmware', (body) => {
@@ -176,9 +239,11 @@ export class FakeDevice {
         this.status.system.uptime_seconds = 0;
         return { ok: true, rebooting: true };
       }),
+      // Reset erases the configuration but keeps the setup password: it is
+      // device identity, and the response repeats the label credentials.
       this.write('/api/factory-reset', () => {
         this.reset('first-boot');
-        return { ok: true, rebooting: true };
+        return { rebooting: true, setup_network: this.setupNetwork };
       }),
     ];
   }
@@ -192,14 +257,14 @@ export class FakeDevice {
       this.status = deviceStatus({
         mode: 'setup',
         auth_required: false,
-        wifi: { ssid: '', status: 'setup', sta_ip: '', ap_ip: '192.168.71.1', rssi: 0 },
+        wifi: { ssid: '', status: 'setup', sta_ip: '', ap_ip: '192.168.71.1', rssi_dbm: 0 },
         target: { target_host: '' },
         // The contract example streams; an unconfigured device is silent.
         metrics: {
           playing: false,
           sequence: 0,
-          packets: 0,
-          bytes: 0,
+          packets_total: 0,
+          bytes_total: 0,
           peak_abs_left: 0,
           peak_abs_right: 0,
           rms_left: 0,
@@ -211,6 +276,7 @@ export class FakeDevice {
     }
     this.status.ota.rollback_available = false;
     this.config.led_roles = [{ id: 'status', role: 'status' }];
+    this.resetLog(scenario);
     this.profiles = {
       board_id: this.status.capabilities.board_id,
       schema_version: 1,
@@ -225,14 +291,84 @@ export class FakeDevice {
   }
 
   /**
+   * GET behind the admin key, for a read that returns more than the device
+   * publishes openly. Same challenge the firmware gives a missing key.
+   */
+  private readAuthorized(path: string, body: () => JsonBodyType): HttpHandler {
+    return http.get(path, ({ request }) => {
+      const denied = this.deny(request);
+      if (denied) return denied;
+      return HttpResponse.json(body());
+    });
+  }
+
+  /**
+   * 401 with a fresh digest challenge, the header shape the firmware sends.
+   * Minting invalidates the previous nonce, as the firmware's bounded nonce
+   * table eventually does.
+   */
+  private challenge(): Response {
+    this.nonceSerial += 1;
+    this.nonce = { value: `mock-nonce-${this.nonceSerial}`, lastNc: 0 };
+    return HttpResponse.json(
+      { error: 'unauthorized' },
+      {
+        status: 401,
+        headers: {
+          'WWW-Authenticate': `Digest realm="${DIGEST_REALM}", qop="auth", algorithm=SHA-256, nonce="${this.nonce.value}"`,
+        },
+      },
+    );
+  }
+
+  /**
+   * The firmware's digest admin check: verify the RFC 7616 response over the
+   * live nonce and a strictly increasing count. Null when authorized; an
+   * unprovisioned device (no key) accepts everything.
+   */
+  private deny(request: Request): Response | null {
+    if (!this.adminKey) return null;
+    const fields = parseDigestFields(request.headers.get('authorization'));
+    if (!fields) return this.challenge();
+    const url = new URL(request.url);
+    const uri = url.pathname + url.search;
+    const nc = fields.get('nc') ?? '';
+    const count = Number.parseInt(nc, 16);
+    if (
+      fields.get('username') !== DIGEST_USERNAME ||
+      fields.get('realm') !== DIGEST_REALM ||
+      fields.get('uri') !== uri ||
+      !this.nonce ||
+      fields.get('nonce') !== this.nonce.value ||
+      !Number.isFinite(count) ||
+      count <= this.nonce.lastNc
+    ) {
+      return this.challenge();
+    }
+    const expected = digestResponse(
+      DIGEST_USERNAME,
+      DIGEST_REALM,
+      this.adminKey,
+      request.method,
+      uri,
+      this.nonce.value,
+      nc,
+      fields.get('cnonce') ?? '',
+    );
+    if (fields.get('response') !== expected) return this.challenge();
+    this.nonce.lastNc = count;
+    return null;
+  }
+
+  /**
    * POST: writes require the admin key once the device has one, exactly as
-   * `deviceFetch` sends it. The result may be an error `HttpResponse`.
+   * `deviceFetch` answers the challenge. The result may be an error
+   * `HttpResponse`.
    */
   private write(path: string, apply: (body: FormBody) => JsonBodyType | Response): HttpHandler {
     return http.post(path, async ({ request }) => {
-      if (this.adminKey && request.headers.get('authorization') !== `Bearer ${this.adminKey}`) {
-        return reject(401, 'unauthorized — unlock settings with the admin key');
-      }
+      const denied = this.deny(request);
+      if (denied) return denied;
       const form = await request.formData().catch(() => null);
       const body: FormBody = form
         ? Object.fromEntries([...form.entries()].map(([key, value]) => [key, String(value)]))
@@ -243,7 +379,7 @@ export class FakeDevice {
   }
 
   /** One status poll: audio moves while playing, and pending OTA phases advance. */
-  private nextStatus(): DeviceStatus {
+  private nextStatus(): StatusResponse {
     const metrics = this.status.metrics;
     if (metrics.playing) {
       const peak = PEAK_STEPS[this.poll % PEAK_STEPS.length];
@@ -251,8 +387,8 @@ export class FakeDevice {
       // A pause keeps capture and the meters running but nothing on the wire,
       // exactly like the firmware's capture gate.
       if (this.status.stream.enabled) {
-        metrics.packets += 100;
-        metrics.bytes += 176400;
+        metrics.packets_total += 100;
+        metrics.bytes_total += 176400;
       }
       metrics.peak_abs_left = peak;
       metrics.peak_abs_right = peak - 900;
@@ -272,7 +408,7 @@ export class FakeDevice {
   private join(body: FormBody): JsonBodyType | Response {
     const ssid = (body.ssid ?? '').trim();
     if (!ssid) return reject(400, 'ssid must not be empty');
-    if (body.admin_secret) this.adminKey = body.admin_secret;
+    if (body.admin_key) this.adminKey = body.admin_key;
     this.config.ssid = ssid;
     if (body.target_host) {
       this.config.target_host = body.target_host;
@@ -285,7 +421,7 @@ export class FakeDevice {
       status: 'connected',
       sta_ip: '192.0.2.10',
       ap_ip: '',
-      rssi: -55,
+      rssi_dbm: -55,
     });
     this.status.target.target_host = this.config.target_host;
     this.status.target.target_port = this.config.target_port;
@@ -323,7 +459,7 @@ export class FakeDevice {
     return { ok: true };
   }
 
-  private boards(): BoardCatalog {
+  private boards(): BoardCatalogResponse {
     return {
       boards: [this.status.capabilities],
       selected_board: this.status.capabilities,
@@ -373,6 +509,7 @@ export class FakeDevice {
     ota.bytes_total = 1500000;
     ota.bytes_written = 0;
     ota.phase = 'downloading';
+    ota.message = 'audio paused while the update installs';
     this.otaSteps = [
       () => {
         ota.bytes_written = 750000;
@@ -408,11 +545,69 @@ export class FakeDevice {
     return { ok: true, rebooting: true };
   }
 
+  /**
+   * Start this boot's log. A provisioned device has restarted at least once,
+   * so it can show the boot before this one; a first-boot device cannot.
+   */
+  private resetLog(scenario: DeviceScenario): void {
+    this.logLines = [];
+    this.logSequence = 0;
+    this.logDropped = 0;
+    // Each run of the fake device counts on from the last, exactly as the
+    // firmware carries its boot id across a restart.
+    this.logBoot += 1;
+    for (const text of BOOT_LOG) this.appendLog(text);
+    this.previousBootLog =
+      scenario === 'steady'
+        ? {
+            boot: this.logBoot - 1,
+            first_sequence: 12,
+            dropped: 12,
+            text: [...this.logLines.map((line) => line.text), ...PREVIOUS_BOOT_TAIL]
+              .map((line) => `${line}\n`)
+              .join(''),
+          }
+        : null;
+  }
+
+  private appendLog(text: string): void {
+    this.logLines.push({
+      sequence: this.logSequence,
+      text: `I (${this.logSequence * 137}) ${text}`,
+    });
+    this.logSequence += 1;
+    if (this.logLines.length > MOCK_LOG_CAPACITY) {
+      this.logDropped += this.logLines.length - MOCK_LOG_CAPACITY;
+      this.logLines = this.logLines.slice(-MOCK_LOG_CAPACITY);
+    }
+  }
+
+  /**
+   * One read of the device log. The device keeps logging between reads, so
+   * each read adds a line and a follower sees the log move.
+   */
+  private nextLogs(): LogsResponse {
+    this.appendLog(
+      this.status.metrics.playing
+        ? `stream: sent ${this.status.metrics.packets_total} packets`
+        : 'capture: input silent, stream paused',
+    );
+    return {
+      current: {
+        boot: this.logBoot,
+        first_sequence: this.logSequence - this.logLines.length,
+        dropped: this.logDropped,
+        text: this.logLines.map((line) => `${line.text}\n`).join(''),
+      },
+      previous: this.previousBootLog,
+    };
+  }
+
   private metricsText(): string {
     const metrics = this.status.metrics;
     return [
-      `streamline_packets_total ${metrics.packets}`,
-      `streamline_bytes_total ${metrics.bytes}`,
+      `streamline_stream_packets_total ${metrics.packets_total}`,
+      `streamline_stream_bytes_total ${metrics.bytes_total}`,
       `streamline_playing ${metrics.playing ? 1 : 0}`,
       '',
     ].join('\n');

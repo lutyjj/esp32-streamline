@@ -25,9 +25,9 @@ The bridge host should:
 
 ## Protocol Choice
 
-The device sends raw PCM with a small fixed header. The wire format is
-transport-agnostic — [pcm-protocol.md](pcm-protocol.md) defines it — and the
-transport is a persistent TCP connection (Rust `std::net` over lwIP). TCP
+The device sends raw PCM with a small fixed header defined in
+[pcm-protocol.md](pcm-protocol.md). The transport is a persistent TCP
+connection (Rust `std::net` over lwIP). TCP
 gives ordered, recoverable delivery, and the split capture/network task design
 keeps a network stall from blocking I2S capture.
 [tcp-transport.md](tcp-transport.md) states the runtime contract.
@@ -248,8 +248,8 @@ analog path. The console calls this feature **Analog passthrough** and exposes
 no firmware volume control; listening volume belongs to connected equipment.
 
 Named audio profiles group the input, gain, and attenuation settings behind a
-versioned board-bound model. The device keeps up to eight short profile records
-in NVS and applies a selected profile live. The waveform does not identify the
+versioned board-bound model. The device keeps up to eight profiles
+in its configuration snapshot and applies a selected profile live. The waveform does not identify the
 source. An external selector that knows the source state can call the same
 activation API as the console. [Audio profiles](audio-profiles.md) owns the
 contract.
@@ -290,20 +290,20 @@ what a client cannot:
 - **toggle_stream** pauses or resumes streaming to the bridge, the same flip
   as `POST /api/stream`. Capture and the level meters keep running; paused
   packets consume sequence numbers so the bridge sees an honest timeline gap.
-  The state is runtime-only — a reboot resumes streaming — and `/api/status`
-  reports it under `stream.enabled`.
+  `/api/status` reports this runtime state under `stream.enabled`. A reboot
+  resumes streaming.
 - **cycle_input** selects the next advertised input line through the same flow
   as `POST /api/settings/audio`, returning to custom settings.
 - **gain_up** and **gain_down** walk the input gain across the board's
-  advertised range in eight steps — on the official codec's nine-notch 3 dB
-  PGA map, one notch per press. **attenuation_up** and **attenuation_down**
+  advertised range in eight steps. The official codec's nine-notch 3 dB
+  PGA map advances one notch per press. **attenuation_up** and **attenuation_down**
   step the ADC attenuation 3 dB per press; more attenuation is quieter. All
   four clamp at the range ends, write nothing when already at a limit, and go
   through the same `POST /api/settings/audio` flow.
 - **restart** and **factory_reset** mirror `POST /api/restart` and
-  `POST /api/factory-reset`. Factory reset is assignable — a physical way back
-  to first-time setup when the device is unreachable — but never a descriptor
-  default, because a simple press has no confirmation step.
+  `POST /api/factory-reset`. Assigning factory reset gives an unreachable
+  device a physical path to setup. It cannot be a descriptor default because
+  a simple press has no confirmation step.
 - **none** ignores the press.
 
 A button with no assignment fires its descriptor `default_action`.
@@ -314,8 +314,8 @@ reports each button under `capabilities.buttons` and the effective action under
 
 A poll task debounces every button through an edge detector that fires exactly
 once per released-to-pressed transition and stays silent about the boot-time
-level, so a button held at power-on — or a line an emulator pins at a constant
-level — never fires. Internal pull resistors are enabled where the pin has
+level. A button held at power-on or a line pinned at a constant level never
+fires. Internal pull resistors are enabled where the pin has
 them; input-only pins (GPIO 34–39) rely on the board's own resistor.
 
 The official ES8388 preset maps its six keys: KEY1 (GPIO36) toggles streaming,
@@ -325,8 +325,8 @@ input-capable GPIO.
 
 The firmware exports read-only runtime state as JSON at `/api/status` and as
 Prometheus text at `/api/metrics`. Both endpoints read the same in-memory
-identity, network, and streaming counters, plus device-resource headroom —
-RAM, NVS storage, uptime, and task count — sampled on demand.
+identity, network, and streaming counters. Both sample RAM, NVS storage,
+uptime, and task count on demand.
 
 ## HTTP API Shape
 
@@ -338,7 +338,10 @@ It contains no independent route strings or form-field map.
 A host-only `utoipa` feature generates [the OpenAPI 3.1 contract](openapi.json)
 from the Rust module. `make firmware-openapi` refreshes the checked-in artifact;
 `make firmware-openapi-check` fails when it is stale. The device serves the same
-artifact at `GET /api/openapi.json`.
+artifact at `GET /api/openapi.json`. The firmware stores this artifact and the
+embedded console gzipped and serves both with `Content-Encoding: gzip`.
+The pair occupies 194 KB raw or 50 KB compressed. Browsers and HTTP
+client libraries decompress transparently; raw `curl` needs `--compressed`.
 
 The console runs Orval before lint, test, and build. Orval generates types and
 operation-named Fetch functions from the contract. The hand-written
@@ -347,8 +350,11 @@ replaceable transport used by tests. TypeScript rejects an unknown operation,
 form field, or response shape. The console's API tab renders the served contract,
 so integrations and the UI inspect the same document.
 
-Endpoint paths use nouns for state and verbs for actions. Reads are open. Every
-write requires the admin key ([security.md](security.md)). Responses carry
+Endpoint paths use nouns for state and verbs for actions. Every write requires
+the admin key ([security.md](security.md)). Reads are open where they return
+facts chosen for publication; `/api/logs` and the `/api/coredump` reads are the
+exceptions, because they return whatever the firmware logged or held in memory
+when it crashed. Responses carry
 `rebooting: true` when a change restarts the device, so clients react to the
 response instead of assuming.
 
@@ -358,14 +364,14 @@ Espressif's QEMU fork emulates the ESP32 but no Wi-Fi PHY, I2S, or codec, so
 the production image can boot under emulation only until Wi-Fi bring-up. The
 `qemu` cargo feature builds a variant that reaches the network through the
 emulated OpenCores Ethernet MAC (`-nic user,model=open_eth`) and skips audio
-bring-up; everything else — bootloader, partition table, NVS, board
-resolution, the HTTP API, the embedded console — is the shared code the
-hardware image runs. `make -C firmware qemu-artifacts` builds it, and
+bring-up. It shares the hardware image's bootloader, partition table, NVS,
+board resolution, HTTP API, and embedded console.
+`make -C firmware qemu-artifacts` builds it, and
 `make tools-smoke-qemu` runs the emulated-device test suite against it.
 
 Two limits bound what emulation can prove. Radio, capture, and codec behavior
 exist only on hardware, so the device smoke stays the release gate. And a
-software restart is out of contract under QEMU — the emulated NIC survives a
+software restart is out of contract under QEMU: the emulated NIC survives a
 warm CPU reset that real hardware would clear, and its stale interrupt
-crashes the next boot — so the test suite runs QEMU with `-no-reboot` and
+crashes the next boot. The test suite runs QEMU with `-no-reboot` and
 treats each boot as one process over the persistent flash file.

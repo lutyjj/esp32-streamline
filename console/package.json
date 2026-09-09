@@ -4,23 +4,24 @@
   "version": "0.4.0",
   "type": "module",
   "dependencies": {
-    "@preact/signals": "^2.10.0",
+    "@noble/hashes": "^2.3.0",
+    "@preact/signals": "^2.11.1",
     "esp-web-tools": "10.4.0",
-    "preact": "^10.28.0"
+    "preact": "^10.29.8"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.5",
-    "@playwright/test": "1.61.1",
+    "@biomejs/biome": "2.5.10",
+    "@playwright/test": "1.62.1",
     "@preact/preset-vite": "^2.10.6",
-    "happy-dom": "^20.11.1",
+    "happy-dom": "^20.11.6",
     "msw": "^2.15.0",
-    "orval": "8.22.0",
+    "orval": "8.26.0",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5",
+    "vite": "^8.2.2",
     "vite-plugin-singlefile": "^2.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "overrides": {
-    "js-yaml": "^4.3.0"
+    "js-yaml": "^4.3.2"
   }
 }

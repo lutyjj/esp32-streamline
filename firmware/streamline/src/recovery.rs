@@ -15,7 +15,7 @@ pub fn setup_baseline(board: &Board, persisted: Option<RuntimeConfig>) -> Runtim
         target_host: String::new(),
         target_port: DEFAULT_PORT,
         transport: Default::default(),
-        admin_secret: String::new(),
+        admin_key: String::new(),
         device_name: String::new(),
         auto_update_schedule: AutoUpdateSchedule::Daily,
         audio: AudioSettings {
@@ -35,7 +35,7 @@ pub fn replace_wifi(
     current: RuntimeConfig,
     ssid: String,
     password: String,
-    admin_secret: String,
+    admin_key: String,
     target_host: Option<String>,
     target_port: Option<u16>,
 ) -> RuntimeConfig {
@@ -49,10 +49,10 @@ pub fn replace_wifi(
         target_host: target_host.unwrap_or(current.target_host),
         target_port: target_port.unwrap_or(current.target_port),
         transport: current.transport,
-        admin_secret: if admin_secret.is_empty() {
-            current.admin_secret
+        admin_key: if admin_key.is_empty() {
+            current.admin_key
         } else {
-            admin_secret
+            admin_key
         },
         device_name: current.device_name,
         auto_update_schedule: current.auto_update_schedule,
@@ -92,7 +92,7 @@ mod tests {
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
             transport: Default::default(),
-            admin_secret: crate::config::TEST_ADMIN_SECRET.to_owned(),
+            admin_key: crate::config::TEST_ADMIN_KEY.to_owned(),
             device_name: "Studio".to_owned(),
             auto_update_schedule: AutoUpdateSchedule::Weekly,
             audio: AudioSettings {
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn first_setup_uses_descriptor_defaults_and_no_key() {
         let baseline = setup_baseline(&board(), None);
-        assert_eq!(baseline.admin_secret, "");
+        assert_eq!(baseline.admin_key, "");
         assert_eq!(baseline.audio.input_line, board().default_line());
         assert_eq!(baseline.target_port, 39_000);
     }
@@ -139,7 +139,7 @@ mod tests {
         );
         assert_eq!(after.ssid, "new-wifi");
         assert_eq!(after.password, before.password);
-        assert_eq!(after.admin_secret, before.admin_secret);
+        assert_eq!(after.admin_key, before.admin_key);
         assert_eq!(after.target_host, before.target_host);
         assert_eq!(after.target_port, before.target_port);
         assert_eq!(after.audio, before.audio);
@@ -151,6 +151,37 @@ mod tests {
         );
         assert_eq!(after.led_roles, before.led_roles);
         assert_eq!(after.button_actions, before.button_actions);
+    }
+
+    #[test]
+    fn commissioning_carries_staged_settings_into_the_first_persisted_configuration() {
+        let board = board();
+        let mut staged = setup_baseline(&board, None);
+        staged.device_name = "Studio".to_owned();
+        staged.auto_update_schedule = AutoUpdateSchedule::Weekly;
+        staged.audio.input_gain = 3;
+        staged
+            .led_roles
+            .insert(board.leds[0].id.clone(), crate::led::LedRole::Off);
+        assert_eq!(staged.validate_staged(&board), Ok(()));
+
+        let commissioned = replace_wifi(
+            staged.clone(),
+            "home-wifi".to_owned(),
+            "home-password".to_owned(),
+            crate::config::TEST_ADMIN_KEY.to_owned(),
+            None,
+            None,
+        );
+
+        assert_eq!(commissioned.validate(&board), Ok(()));
+        assert_eq!(commissioned.device_name, staged.device_name);
+        assert_eq!(
+            commissioned.auto_update_schedule,
+            staged.auto_update_schedule
+        );
+        assert_eq!(commissioned.audio, staged.audio);
+        assert_eq!(commissioned.led_roles, staged.led_roles);
     }
 
     #[test]

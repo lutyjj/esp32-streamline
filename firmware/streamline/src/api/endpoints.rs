@@ -63,7 +63,7 @@ macro_rules! endpoint {
         #[utoipa::path(
             $verb,
             path = $path,
-            security(("bearer_auth" = [])),
+            security(("digest_auth" = [])),
             $($contract)*
         )]
         fn $operation() {}
@@ -86,7 +86,7 @@ macro_rules! endpoint {
         #[utoipa::path(
             $verb,
             path = $path,
-            security(("bearer_auth" = [])),
+            security(("digest_auth" = [])),
             $($contract)*
             responses(
                 (status = $success, body = $body),
@@ -135,6 +135,63 @@ endpoint!(
     responses((status = 200, content_type = "text/plain", body = String))
 );
 endpoint!(
+    LOGS,
+    get_logs,
+    Get,
+    get,
+    "/api/logs",
+    authenticated,
+    summary = "Read the device log this boot and the one before it",
+    responses(
+        (status = 200, body = LogsResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 503, body = ErrorResponse)
+    )
+);
+endpoint!(
+    COREDUMP,
+    get_coredump,
+    Get,
+    get,
+    "/api/coredump",
+    authenticated,
+    summary = "Read whether a crash dump is stored",
+    responses(
+        (status = 200, body = CoredumpResponse),
+        (status = 401, body = ErrorResponse),
+        (status = 503, body = ErrorResponse)
+    )
+);
+endpoint!(
+    COREDUMP_IMAGE,
+    get_coredump_image,
+    Get,
+    get,
+    "/api/coredump/image",
+    authenticated,
+    summary = "Download the stored crash dump for off-device analysis",
+    responses(
+        (status = 200, content_type = "application/octet-stream", body = Vec<u8>),
+        (status = 401, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 503, body = ErrorResponse)
+    )
+);
+endpoint!(
+    COREDUMP_ERASE,
+    post_coredump_erase,
+    Post,
+    post,
+    "/api/coredump/erase",
+    authenticated,
+    summary = "Erase the stored crash dump",
+    responses(
+        (status = 200, body = Ack),
+        (status = 401, body = ErrorResponse),
+        (status = 503, body = ErrorResponse)
+    )
+);
+endpoint!(
     SETTINGS,
     get_settings,
     Get,
@@ -142,7 +199,7 @@ endpoint!(
     "/api/settings",
     public,
     summary = "Read device settings",
-    responses((status = 200, body = ConfigResponse))
+    responses((status = 200, body = SettingsResponse))
 );
 endpoint!(
     AUDIO_PROFILES,
@@ -460,6 +517,7 @@ endpoint!(
     summary = "Verify the admin key",
     responses(
         (status = 200, body = Ack),
+        (status = 503, body = ErrorResponse),
         (status = 401, body = ErrorResponse)
     )
 );
@@ -473,6 +531,7 @@ endpoint!(
     summary = "Restart the device",
     responses(
         (status = 200, body = Ack),
+        (status = 503, body = ErrorResponse),
         (status = 401, body = ErrorResponse)
     )
 );
@@ -485,7 +544,8 @@ endpoint!(
     authenticated,
     summary = "Factory-reset the device",
     responses(
-        (status = 200, body = Ack),
+        (status = 200, body = FactoryResetResponse),
+        (status = 503, body = ErrorResponse),
         (status = 401, body = ErrorResponse),
         (status = 500, body = ErrorResponse)
     )
@@ -495,6 +555,10 @@ pub const ENDPOINTS: &[Endpoint] = &[
     STATUS,
     HEALTH,
     METRICS,
+    LOGS,
+    COREDUMP,
+    COREDUMP_IMAGE,
+    COREDUMP_ERASE,
     SETTINGS,
     AUDIO_PROFILES,
     BOARDS,
@@ -536,7 +600,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_status, get_health, get_metrics, get_logs, get_coredump, get_coredump_image, post_coredump_erase, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]
@@ -552,8 +616,8 @@ mod spec {
                 .as_mut()
                 .expect("components")
                 .add_security_scheme(
-                    "bearer_auth",
-                    SecurityScheme::Http(Http::new(HttpAuthScheme::Bearer)),
+                    "digest_auth",
+                    SecurityScheme::Http(Http::new(HttpAuthScheme::Digest)),
                 );
         }
     }
@@ -583,20 +647,20 @@ mod spec {
         }
         let schemas = &json["components"]["schemas"];
         assert_eq!(
-            schemas["WifiSettingsRequest"]["properties"]["admin_secret"]["pattern"],
-            format!("^$|{}", crate::config::ADMIN_SECRET_PATTERN)
+            schemas["WifiSettingsRequest"]["properties"]["admin_key"]["pattern"],
+            format!("^$|{}", crate::config::ADMIN_KEY_PATTERN)
         );
         assert_eq!(
-            schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["pattern"],
-            crate::config::ADMIN_SECRET_PATTERN
+            schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["pattern"],
+            crate::config::ADMIN_KEY_PATTERN
         );
         assert_eq!(
-            schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["minLength"],
-            crate::config::ADMIN_SECRET_HEX_CHARS
+            schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["minLength"],
+            crate::config::ADMIN_KEY_HEX_CHARS
         );
         assert_eq!(
-            schemas["AdminKeySettingsRequest"]["properties"]["admin_secret"]["maxLength"],
-            crate::config::ADMIN_SECRET_HEX_CHARS
+            schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["maxLength"],
+            crate::config::ADMIN_KEY_HEX_CHARS
         );
         assert_eq!(
             schemas["NameSettingsRequest"]["properties"]["name"]["maxLength"],
@@ -632,8 +696,8 @@ mod spec {
             crate::api::examples::status()
         );
         assert_eq!(
-            schemas["ConfigResponse"]["example"],
-            crate::api::examples::config()
+            schemas["SettingsResponse"]["example"],
+            crate::api::examples::settings()
         );
         document
     }

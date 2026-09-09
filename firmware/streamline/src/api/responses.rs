@@ -2,8 +2,6 @@
 //! endpoints.
 
 use serde::Serialize;
-#[cfg(feature = "api-spec")]
-use serde_json::json;
 
 use crate::{board::Board, health::HealthReport};
 
@@ -52,10 +50,35 @@ pub struct ErrorResponse<'a> {
     pub error: &'a str,
 }
 
+/// The setup network's join credentials. The password is a secret with no
+/// read endpoint; it appears only inside the factory-reset response, the
+/// one moment the owner is deliberately heading back to commissioning.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "api-spec",
+    schema(example = json!({"ssid": "esp32-streamline-1AA8B2", "password": "abcd-efgh-ijkm-npqr"}))
+)]
+pub struct SetupNetworkResponse<'a> {
+    pub ssid: &'a str,
+    pub password: &'a str,
+}
+
+/// Factory-reset acknowledgment carrying the commissioning credentials. The
+/// setup password is device identity — stable across resets, matching a
+/// pre-flashed unit's label — and this response shows it before the device
+/// leaves the network.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct FactoryResetResponse<'a> {
+    pub rebooting: bool,
+    pub setup_network: SetupNetworkResponse<'a>,
+}
+
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::config())))]
-pub struct ConfigResponse<'a> {
+#[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::settings())))]
+pub struct SettingsResponse<'a> {
     pub device_name: &'a str,
     pub ssid: &'a str,
     pub target_host: &'a str,
@@ -121,6 +144,7 @@ pub struct BoardCatalogResponse<'a> {
 #[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::status())))]
 pub struct StatusResponse<'a> {
     pub firmware_version: &'a str,
+    pub firmware_variant: crate::telemetry::FirmwareVariant,
     pub device_name: &'a str,
     #[cfg_attr(feature = "api-spec", schema(inline))]
     pub mode: &'a str,
@@ -329,7 +353,7 @@ pub struct WifiStatus<'a> {
     pub status: &'a str,
     pub sta_ip: &'a str,
     pub ap_ip: &'a str,
-    pub rssi: i32,
+    pub rssi_dbm: i32,
 }
 
 #[derive(Serialize)]
@@ -346,7 +370,7 @@ pub struct AudioStatus {
     pub input_line: u8,
     pub input_gain: u8,
     pub adc_attenuation_db: u8,
-    pub sample_rate: u32,
+    pub sample_rate_hz: u32,
     pub channels: u8,
     pub bits_per_sample: u8,
 }
@@ -355,10 +379,10 @@ pub struct AudioStatus {
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct MetricsStatus {
     pub sequence: u32,
-    pub packets: u64,
-    pub bytes: u64,
-    pub read_errors: u64,
-    pub short_reads: u64,
+    pub packets_total: u64,
+    pub bytes_total: u64,
+    pub read_errors_total: u64,
+    pub short_reads_total: u64,
     pub queue_depth: u32,
     pub queue_drops_total: u64,
     pub stale_drops_total: u64,
@@ -392,6 +416,8 @@ pub struct OtaStatus<'a> {
     /// the vendor key it trusts. Always true on a signed release build; false on
     /// an unsigned self-build.
     pub signed_updates: bool,
+    /// SHA-256 of signature block 0's public key; empty if unreadable.
+    pub signing_key_sha256: &'a str,
 }
 
 #[derive(Serialize)]
@@ -415,6 +441,83 @@ pub struct StreamControlStatus {
 pub struct IndicatorStatus {
     pub available: bool,
     pub state: &'static str,
+}
+
+/// The stored crash dump's status, as `GET /api/coredump` returns it.
+///
+/// A panic writes an ELF core dump to its flash partition, where it survives
+/// the reboot and any rollback. `GET /api/coredump/image` downloads the bytes
+/// for `espcoredump.py`; `POST /api/coredump/erase` clears them.
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct CoredumpResponse {
+    /// Whether the partition holds a valid dump from an earlier panic.
+    pub present: bool,
+    /// Size of the stored ELF image in bytes; `0` when none is stored.
+    pub size_bytes: u32,
+}
+
+/// The device's captured log, as `GET /api/logs` returns it.
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct LogsResponse {
+    pub current: BootLog,
+    /// The boot before this one. `null` after a power cycle, which clears the
+    /// memory the lines were held in, and on a device that has not restarted
+    /// since it started capturing.
+    pub previous: Option<BootLog>,
+}
+
+/// The lines one boot produced, as much of them as the buffer holds.
+///
+/// The lines arrive as one block rather than an object each. A log is text,
+/// the device keeps it as text, and a structure per line costs flash the image
+/// does not have to spare; `first_sequence` still names every line for a
+/// reader that wants to track them individually.
+#[derive(Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+pub struct BootLog {
+    /// Identifies the run of the firmware these lines came from. A poller
+    /// compares it to tell more lines from a restart that began counting
+    /// again, which sequence numbers alone cannot express.
+    pub boot: u32,
+    /// Position of the first line within the boot, counted from zero. Each
+    /// following line is one higher.
+    pub first_sequence: u64,
+    /// Lines this boot produced that the buffer has already discarded. A
+    /// non-zero count means `text` starts later than the boot did.
+    pub dropped: u64,
+    /// The held lines, oldest first, separated by newlines.
+    pub text: String,
+}
+
+impl LogsResponse {
+    /// Copy both buffers into a response.
+    ///
+    /// Owned rather than borrowed because the caller holds the capture lock
+    /// while this runs and every task that logs waits behind it: one copy of
+    /// the stored block per boot, then the lock is free before the response
+    /// reaches the socket.
+    pub fn from_buffers<const CURRENT: usize, const PREVIOUS: usize>(
+        current: &crate::logs::LogBuffer<CURRENT>,
+        previous: Option<&crate::logs::LogBuffer<PREVIOUS>>,
+    ) -> Self {
+        Self {
+            current: BootLog::from_buffer(current),
+            previous: previous.map(BootLog::from_buffer),
+        }
+    }
+}
+
+impl BootLog {
+    fn from_buffer<const N: usize>(buffer: &crate::logs::LogBuffer<N>) -> Self {
+        Self {
+            boot: buffer.boot(),
+            first_sequence: buffer.first_sequence(),
+            dropped: buffer.dropped(),
+            text: buffer.text().into_owned(),
+        }
+    }
 }
 
 #[cfg(test)]

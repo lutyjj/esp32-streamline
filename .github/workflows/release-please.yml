@@ -45,5 +45,6 @@ jobs:
       attestations: write
       pages: write
     uses: ./.github/workflows/release.yml
+    secrets: inherit
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}

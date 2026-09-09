@@ -4,6 +4,8 @@ use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::{hex, random::RandomBytes};
+
 pub const CONTRACT_VERSION: u8 = 1;
 pub const DEFAULT_PORT: u16 = 39_000;
 pub const PSK_BYTES: usize = 32;
@@ -48,7 +50,7 @@ impl TransportPsk {
     }
 
     pub fn hex(&self) -> String {
-        encode_hex(&self.0)
+        hex::encode(&self.0)
     }
 }
 
@@ -110,7 +112,7 @@ impl KeySlot {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct TransportKeys {
     slot_a: Option<TransportKey>,
     slot_b: Option<TransportKey>,
@@ -153,7 +155,7 @@ impl TransportKeys {
         random.fill(&mut id_random);
         random.fill(&mut psk);
         let key = TransportKey {
-            id: format!("{KEY_ID_PREFIX}{}", encode_hex(&id_random)),
+            id: format!("{KEY_ID_PREFIX}{}", hex::encode(&id_random)),
             psk: TransportPsk::new(psk),
         };
         if self.active().is_some_and(|active| active.id() == key.id()) {
@@ -288,7 +290,7 @@ impl TransportKeys {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct TransportSettings {
     pub contract_version: u8,
     pub mode: TransportMode,
@@ -321,10 +323,6 @@ impl TransportSettings {
     pub fn requires_restart_to(&self, next: &Self) -> bool {
         self.mode != next.mode
     }
-}
-
-pub trait RandomBytes {
-    fn fill(&mut self, output: &mut [u8]);
 }
 
 /// Hardware/network edge used only to prove a staged key before activation.
@@ -379,6 +377,12 @@ impl<C: PcmConnector> ReconnectingSender<C> {
             connector,
             stream: None,
         }
+    }
+
+    /// Drop the open stream, closing its connection and freeing its buffers.
+    /// The next send reconnects.
+    pub fn disconnect(&mut self) {
+        self.stream = None;
     }
 
     /// Connect lazily and discard a failed stream so the next call retries the
@@ -491,16 +495,6 @@ fn valid_key_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-fn encode_hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut encoded = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        encoded.push(HEX[usize::from(byte >> 4)] as char);
-        encoded.push(HEX[usize::from(byte & 0x0f)] as char);
-    }
-    encoded
-}
-
 fn decode_hex(text: &str) -> Option<[u8; PSK_BYTES]> {
     fn nibble(byte: u8) -> Option<u8> {
         match byte {
@@ -538,13 +532,16 @@ mod tests {
 
     struct Verifier(Result<(), &'static str>);
 
+    type SendScript = VecDeque<Result<(), &'static str>>;
+    type ConnectResult = Result<SendScript, &'static str>;
+
     #[derive(Clone)]
     struct FakeConnector {
         attempts: Rc<RefCell<usize>>,
-        results: Rc<RefCell<VecDeque<Result<VecDeque<Result<(), &'static str>>, &'static str>>>>,
+        results: Rc<RefCell<VecDeque<ConnectResult>>>,
     }
 
-    struct FakeStream(VecDeque<Result<(), &'static str>>);
+    struct FakeStream(SendScript);
 
     impl PcmStream<&'static str> for FakeStream {
         fn send_all(&mut self, _bytes: &[u8]) -> Result<(), &'static str> {
@@ -567,7 +564,7 @@ mod tests {
     }
 
     fn connector(
-        results: impl IntoIterator<Item = Result<VecDeque<Result<(), &'static str>>, &'static str>>,
+        results: impl IntoIterator<Item = ConnectResult>,
     ) -> (FakeConnector, Rc<RefCell<usize>>) {
         let attempts = Rc::new(RefCell::new(0));
         (
@@ -638,6 +635,20 @@ mod tests {
         assert_eq!(sender.send_all(b"one"), Ok(true));
         assert_eq!(sender.send_all(b"two"), Err("disconnected"));
         assert_eq!(sender.send_all(b"three"), Ok(true));
+        assert_eq!(*attempts.borrow(), 2);
+    }
+
+    #[test]
+    fn disconnect_closes_the_stream_and_the_next_send_reconnects() {
+        let (connector, attempts) = connector([
+            Ok(VecDeque::from([Ok(()), Ok(())])),
+            Ok(VecDeque::from([Ok(())])),
+        ]);
+        let mut sender = ReconnectingSender::new(connector);
+
+        assert_eq!(sender.send_all(b"one"), Ok(true));
+        sender.disconnect();
+        assert_eq!(sender.send_all(b"two"), Ok(true));
         assert_eq!(*attempts.borrow(), 2);
     }
 
@@ -729,14 +740,15 @@ mod tests {
 
     #[test]
     fn stale_pending_markers_and_wrong_persisted_key_ids_fail_validation() {
-        let stale: TransportKeys =
-            serde_json::from_str(r#"{"pending":"a","pending_verified":true}"#)
-                .expect("decodable stale state");
+        let stale: TransportKeys = serde_json::from_str(
+            r#"{"slot_a":null,"slot_b":null,"active":null,"pending":"a","pending_verified":true}"#,
+        )
+        .expect("decodable stale state");
         assert_eq!(stale.validate(), Err(TransportError::InvalidKeyState));
 
         let psk = "00".repeat(PSK_BYTES);
         let invalid: TransportKeys = serde_json::from_str(&format!(
-            r#"{{"slot_a":{{"id":"wrong-id","psk":"{psk}"}},"active":"a"}}"#
+            r#"{{"slot_a":{{"id":"wrong-id","psk":"{psk}"}},"slot_b":null,"active":"a","pending":null,"pending_verified":false}}"#
         ))
         .expect("decodable invalid id");
         assert_eq!(invalid.validate(), Err(TransportError::InvalidKeyId));

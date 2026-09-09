@@ -23,7 +23,7 @@ describe('ApiTab', () => {
           '/api/settings/name': {
             post: {
               summary: 'Set device name',
-              security: [{ bearer_auth: [] }],
+              security: [{ digest_auth: [] }],
               requestBody: {
                 content: {
                   'application/x-www-form-urlencoded': {
@@ -88,7 +88,7 @@ describe('curl example disposition for every served operation', () => {
 
       if (entry.op.security) {
         // Double quotes, so a real shell expands the environment token.
-        expect(command).toContain('-H "Authorization: Bearer $STREAMLINE_ADMIN_KEY"');
+        expect(command).toContain('--digest -u "admin:$STREAMLINE_ADMIN_KEY"');
       } else {
         expect(command).not.toContain('Authorization');
       }

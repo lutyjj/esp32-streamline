@@ -50,7 +50,11 @@ export function WebFlasher() {
           <h2 id="setup-heading">Continue on the setup network</h2>
           <ol class="flasher-list">
             <li>
-              Join <code>esp32-streamline-XXXX</code> after the board restarts.
+              Open <strong>Logs &amp; console</strong> after installing: the board prints its setup
+              network&apos;s name and Wi-Fi password when it starts.
+            </li>
+            <li>
+              Join <code>esp32-streamline-XXXX</code> with that password.
             </li>
             <li>
               Open <code>http://192.168.71.1/</code>.

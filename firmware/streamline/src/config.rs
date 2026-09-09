@@ -20,16 +20,16 @@ pub const MAX_DEVICE_NAME_CHARS: usize = 32;
 /// Admin keys are generated, never composed by hand: exactly 24 random bytes
 /// rendered as lowercase hexadecimal. One exact shape keeps runtime
 /// validation, the OpenAPI schema, and every client in agreement.
-pub const ADMIN_SECRET_HEX_CHARS: usize = 48;
+pub const ADMIN_KEY_HEX_CHARS: usize = 48;
 /// The canonical admin-key shape as the OpenAPI schema declares it.
-pub const ADMIN_SECRET_PATTERN: &str = "^[0-9a-f]{48}$";
+pub const ADMIN_KEY_PATTERN: &str = "^[0-9a-f]{48}$";
 /// A valid admin key for tests across modules, in the canonical form.
 #[cfg(test)]
-pub(crate) const TEST_ADMIN_SECRET: &str = "0123456789abcdef0123456789abcdef0123456789abcdef";
+pub(crate) const TEST_ADMIN_KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef";
 
-/// Whether an admin secret is in the canonical generated form.
-pub fn is_canonical_admin_secret(secret: &str) -> bool {
-    secret.len() == ADMIN_SECRET_HEX_CHARS
+/// Whether an admin key is in the canonical generated form.
+pub fn is_canonical_admin_key(secret: &str) -> bool {
+    secret.len() == ADMIN_KEY_HEX_CHARS
         && secret
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
@@ -62,17 +62,6 @@ impl AutoUpdateSchedule {
             Self::Disabled => "disabled",
             Self::Daily => "daily",
             Self::Weekly => "weekly",
-        }
-    }
-
-    /// Decode the optional NVS value. Absence means the default for devices
-    /// provisioned before this setting existed; unknown future values fail
-    /// closed if older firmware boots the same NVS.
-    pub const fn from_storage(value: Option<u8>) -> Self {
-        match value {
-            None | Some(1) => Self::Daily,
-            Some(2) => Self::Weekly,
-            Some(0) | Some(_) => Self::Disabled,
         }
     }
 
@@ -134,6 +123,14 @@ impl<'a> NetworkSettings<'a> {
         if self.ssid.is_empty() {
             return Err(ConfigError::MissingSsid);
         }
+        if self.ssid.len() > 32 || self.ssid.contains('\0') {
+            return Err(ConfigError::MalformedSsid);
+        }
+        self.validate_target()
+    }
+
+    /// The stream target's own rules, which hold before an SSID exists.
+    pub fn validate_target(self) -> Result<Self, ConfigError> {
         if self.target_host.contains(':') || self.target_host.contains('/') {
             return Err(ConfigError::MalformedTargetHost);
         }
@@ -147,6 +144,8 @@ impl<'a> NetworkSettings<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigError {
     MissingSsid,
+    MalformedSsid,
+    MalformedWifiPassword,
     MalformedTargetHost,
     InvalidTargetPort,
     InvalidInputLine,
@@ -155,7 +154,7 @@ pub enum ConfigError {
     UnsupportedAnalogPassthrough,
     UnknownLed,
     UnknownButton,
-    MalformedAdminSecret,
+    MalformedAdminKey,
     DeviceNameTooLong,
     InvalidTransport(TransportError),
 }
@@ -166,6 +165,7 @@ pub enum ConfigError {
 /// adapters translate it only at their boundary, so validation can be tested
 /// on the host and used by both the setup HTTP service and boot path.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RuntimeConfig {
     pub ssid: String,
     pub password: String,
@@ -174,14 +174,11 @@ pub struct RuntimeConfig {
     /// not stream.
     pub target_host: String,
     pub target_port: u16,
-    /// Versioned PCM transport policy and write-only per-device keys. Missing
-    /// on installations created before secure transport and therefore
-    /// defaults to cleartext without invalidating their configuration.
-    #[serde(default)]
+    /// PCM transport policy and write-only per-device keys.
     pub transport: TransportSettings,
     /// Admin key required on the mutating HTTP API. Set during commissioning
     /// and write-only: it is persisted but never returned through the API.
-    pub admin_secret: String,
+    pub admin_key: String,
     /// Friendly name that tells devices apart in the console and browser tab.
     /// Empty means unnamed; clients fall back to the device's address.
     pub device_name: String,
@@ -189,31 +186,50 @@ pub struct RuntimeConfig {
     pub auto_update_schedule: AutoUpdateSchedule,
     pub audio: AudioSettings,
     /// Whether the selected board's local analog output should be active.
-    #[serde(default)]
     pub analog_passthrough_enabled: bool,
     /// Per-LED role assignments keyed by board LED id. A LED absent here uses
-    /// its descriptor default role. Missing on installations provisioned before
-    /// LED control existed, so it defaults to empty.
-    #[serde(default)]
+    /// its descriptor default role.
     pub led_roles: BTreeMap<String, LedRole>,
     /// Per-button action assignments keyed by board button id. A button absent
-    /// here fires its descriptor default action. Missing on installations
-    /// provisioned before button control existed, so it defaults to empty.
-    #[serde(default)]
+    /// here fires its descriptor default action.
     pub button_actions: BTreeMap<String, ButtonAction>,
 }
 
 impl RuntimeConfig {
+    /// Every rule a durable configuration satisfies.
     pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
+        self.network().validate()?;
+        let password = self.password.as_bytes();
+        if self.password.contains('\0')
+            || !((8..=63).contains(&password.len())
+                || (password.len() == 64 && password.iter().all(u8::is_ascii_hexdigit)))
+        {
+            return Err(ConfigError::MalformedWifiPassword);
+        }
+        if !is_canonical_admin_key(&self.admin_key) {
+            return Err(ConfigError::MalformedAdminKey);
+        }
+        self.validate_device_settings(board)
+    }
+
+    /// The rules that hold before commissioning. The SSID and the admin key
+    /// stay blank until the commissioning write supplies them, so a setup-mode
+    /// write is checked against everything else (see
+    /// [`crate::mode::ConfigWrite::Stage`]).
+    pub fn validate_staged(&self, board: &Board) -> Result<(), ConfigError> {
+        self.network().validate_target()?;
+        self.validate_device_settings(board)
+    }
+
+    fn network(&self) -> NetworkSettings<'_> {
         NetworkSettings {
             ssid: &self.ssid,
             target_host: &self.target_host,
             target_port: self.target_port,
         }
-        .validate()?;
-        if !is_canonical_admin_secret(&self.admin_secret) {
-            return Err(ConfigError::MalformedAdminSecret);
-        }
+    }
+
+    fn validate_device_settings(&self, board: &Board) -> Result<(), ConfigError> {
         if self.device_name.chars().count() > MAX_DEVICE_NAME_CHARS {
             return Err(ConfigError::DeviceNameTooLong);
         }
@@ -275,7 +291,7 @@ impl RuntimeConfig {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{AudioSettings, AutoUpdateSchedule, ConfigError, NetworkSettings};
+    use super::{AudioSettings, AutoUpdateSchedule, ConfigError, NetworkSettings, RuntimeConfig};
     use crate::board::{
         self, Board, Button, CodecSpec, I2cPins, I2sPins, InputOption, Led, PinMap,
     };
@@ -402,11 +418,11 @@ mod tests {
     fn sample_runtime_config() -> super::RuntimeConfig {
         super::RuntimeConfig {
             ssid: "studio".to_owned(),
-            password: "secret".to_owned(),
+            password: "test-password".to_owned(),
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
             transport: Default::default(),
-            admin_secret: super::TEST_ADMIN_SECRET.to_owned(),
+            admin_key: super::TEST_ADMIN_KEY.to_owned(),
             device_name: String::new(),
             auto_update_schedule: AutoUpdateSchedule::Daily,
             audio: AudioSettings {
@@ -426,17 +442,55 @@ mod tests {
     }
 
     #[test]
-    fn persisted_configuration_without_local_output_intent_defaults_off() {
-        let mut value = serde_json::to_value(sample_runtime_config()).expect("serializable config");
-        value
-            .as_object_mut()
-            .expect("config object")
-            .remove("analog_passthrough_enabled");
+    fn a_staged_configuration_waives_only_what_commissioning_supplies() {
+        let mut config = sample_runtime_config();
+        config.ssid = String::new();
+        config.admin_key = String::new();
 
-        let decoded: super::RuntimeConfig =
-            serde_json::from_value(value).expect("compatible persisted config");
+        assert_eq!(
+            config.validate(&default_board()),
+            Err(ConfigError::MissingSsid)
+        );
+        assert_eq!(config.validate_staged(&default_board()), Ok(()));
+    }
 
-        assert!(!decoded.analog_passthrough_enabled);
+    #[test]
+    fn a_staged_configuration_still_rejects_every_other_bad_value() {
+        let staged = || {
+            let mut config = sample_runtime_config();
+            config.ssid = String::new();
+            config.admin_key = String::new();
+            config
+        };
+
+        let mut malformed_target = staged();
+        malformed_target.target_host = "bridge.local:39000".to_owned();
+        let mut long_name = staged();
+        long_name.device_name = "x".repeat(super::MAX_DEVICE_NAME_CHARS + 1);
+        let mut unknown_led = staged();
+        unknown_led
+            .led_roles
+            .insert("no-such-led".to_owned(), LedRole::On);
+        let mut unknown_button = staged();
+        unknown_button
+            .button_actions
+            .insert("no-such-button".to_owned(), ButtonAction::Restart);
+        let mut bad_audio = staged();
+        bad_audio.audio.input_line = 99;
+
+        for (config, expected) in [
+            (malformed_target, ConfigError::MalformedTargetHost),
+            (long_name, ConfigError::DeviceNameTooLong),
+            (unknown_led, ConfigError::UnknownLed),
+            (unknown_button, ConfigError::UnknownButton),
+            (bad_audio, ConfigError::InvalidInputLine),
+        ] {
+            assert_eq!(
+                config.validate_staged(&default_board()),
+                Err(expected),
+                "{expected:?}"
+            );
+        }
     }
 
     #[test]
@@ -471,24 +525,53 @@ mod tests {
     }
 
     #[test]
-    fn accepts_only_the_canonical_admin_secret_shape() {
+    fn accepts_only_the_canonical_admin_key_shape() {
         let mut config = sample_runtime_config();
         assert_eq!(config.validate(&default_board()), Ok(()));
 
         for invalid in [
             String::new(),
             "short".to_owned(),
-            super::TEST_ADMIN_SECRET.to_uppercase(),
-            super::TEST_ADMIN_SECRET[..47].to_owned(),
-            format!("{}0", super::TEST_ADMIN_SECRET),
-            format!("{}g", &super::TEST_ADMIN_SECRET[..47]),
-            format!("{}é", &super::TEST_ADMIN_SECRET[..47]),
+            super::TEST_ADMIN_KEY.to_uppercase(),
+            super::TEST_ADMIN_KEY[..47].to_owned(),
+            format!("{}0", super::TEST_ADMIN_KEY),
+            format!("{}g", &super::TEST_ADMIN_KEY[..47]),
+            format!("{}é", &super::TEST_ADMIN_KEY[..47]),
         ] {
-            config.admin_secret = invalid.clone();
+            config.admin_key = invalid.clone();
             assert_eq!(
                 config.validate(&default_board()),
-                Err(ConfigError::MalformedAdminSecret),
+                Err(ConfigError::MalformedAdminKey),
                 "must reject {invalid:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn persisted_configuration_requires_the_current_fields() {
+        let value = serde_json::to_value(sample_runtime_config()).unwrap();
+        for field in [
+            "transport",
+            "analog_passthrough_enabled",
+            "led_roles",
+            "button_actions",
+        ] {
+            let mut incomplete = value.clone();
+            incomplete.as_object_mut().unwrap().remove(field);
+            assert!(
+                serde_json::from_value::<RuntimeConfig>(incomplete).is_err(),
+                "{field}"
+            );
+        }
+        for field in ["contract_version", "mode", "keys"] {
+            let mut incomplete = value.clone();
+            incomplete["transport"]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(
+                serde_json::from_value::<RuntimeConfig>(incomplete).is_err(),
+                "{field}"
             );
         }
     }
@@ -502,18 +585,9 @@ mod tests {
         ] {
             assert_eq!(AutoUpdateSchedule::parse(name), Some(schedule));
             assert_eq!(schedule.as_str(), name);
-            assert_eq!(AutoUpdateSchedule::from_storage(Some(stored)), schedule);
             assert_eq!(schedule as u8, stored);
         }
-        assert_eq!(
-            AutoUpdateSchedule::from_storage(None),
-            AutoUpdateSchedule::Daily
-        );
         assert_eq!(AutoUpdateSchedule::parse("0 3 * * *"), None);
-        assert_eq!(
-            AutoUpdateSchedule::from_storage(Some(3)),
-            AutoUpdateSchedule::Disabled
-        );
     }
 
     #[test]
@@ -612,38 +686,40 @@ mod tests {
         assert_eq!(config.button_action(&button), ButtonAction::None);
     }
 
-    #[test]
-    fn persisted_configuration_without_button_actions_defaults_empty() {
-        let mut value = serde_json::to_value(sample_runtime_config()).expect("serializable config");
-        value
-            .as_object_mut()
-            .expect("config object")
-            .remove("button_actions");
-
-        let decoded: super::RuntimeConfig =
-            serde_json::from_value(value).expect("compatible persisted config");
-
-        assert!(decoded.button_actions.is_empty());
-    }
-
-    #[test]
-    fn persisted_configuration_without_led_roles_defaults_empty() {
-        let mut value = serde_json::to_value(sample_runtime_config()).expect("serializable config");
-        value
-            .as_object_mut()
-            .expect("config object")
-            .remove("led_roles");
-
-        let decoded: super::RuntimeConfig =
-            serde_json::from_value(value).expect("compatible persisted config");
-
-        assert!(decoded.led_roles.is_empty());
-    }
-
     fn default_board() -> Board {
         let catalog = board::builtin_catalog().expect("valid catalog");
         board::resolve(&catalog, None)
             .expect("default board")
             .clone()
+    }
+    #[test]
+    fn wifi_credentials_match_the_driver_byte_bounds() {
+        let board = default_board();
+        let mut config = sample_runtime_config();
+        for ssid in ["x".repeat(32), "é".repeat(16)] {
+            config.ssid = ssid;
+            assert_eq!(config.validate(&board), Ok(()));
+        }
+        for ssid in ["x".repeat(33), "é".repeat(17), "a\0b".into()] {
+            config.ssid = ssid;
+            assert_eq!(config.validate(&board), Err(ConfigError::MalformedSsid));
+        }
+        config.ssid = "studio".into();
+        for password in ["x".repeat(8), "x".repeat(63), "a".repeat(64)] {
+            config.password = password;
+            assert_eq!(config.validate(&board), Ok(()));
+        }
+        for password in [
+            "x".repeat(7),
+            "x".repeat(64),
+            "a".repeat(65),
+            "abc\0defgh".into(),
+        ] {
+            config.password = password;
+            assert_eq!(
+                config.validate(&board),
+                Err(ConfigError::MalformedWifiPassword)
+            );
+        }
     }
 }

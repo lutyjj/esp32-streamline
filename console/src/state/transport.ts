@@ -4,11 +4,11 @@ import { signal } from '@preact/signals';
 import {
   type Ack,
   activateTransportKey,
-  type DeviceConfig,
   discardTransportKey,
   recoverTransport,
   retireTransportKey,
   rollbackTransportKey,
+  type SettingsResponse,
   setTransportMode,
   stageTransportKey,
   type TransportKeyResponse,
@@ -123,7 +123,7 @@ export class TransportController {
     return undefined;
   }
 
-  useCleartext(config: DeviceConfig): Promise<Ack> {
+  useCleartext(config: SettingsResponse): Promise<Ack> {
     return this.api.configure({
       contract_version: config.transport.contract_version,
       mode: 'cleartext',

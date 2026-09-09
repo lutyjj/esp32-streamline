@@ -1,6 +1,74 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.11.2](https://github.com/lutyjj/esp32-streamline/compare/v0.11.1...v0.11.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* **console:** keep the lint gate silent and e2e-proof ([e3fe7e4](https://github.com/lutyjj/esp32-streamline/commit/e3fe7e40bc2117cdc18b33f69d6b1336603d4fb3))
+* **firmware:** drop the storage layout that predates generations ([c9d1200](https://github.com/lutyjj/esp32-streamline/commit/c9d12000a57c41ba8842b2fad28f5fa88bc7bbd0))
+* **firmware:** give setup-mode settings writes one policy ([0d1c0ff](https://github.com/lutyjj/esp32-streamline/commit/0d1c0ff574541949cfa676ab5f441ee305b20b4e))
+* **firmware:** open setup when stored state cannot be decoded ([cc26f11](https://github.com/lutyjj/esp32-streamline/commit/cc26f11d5f3cde3d85adf21a487b9e8fb3452703))
+* **firmware:** report console readiness only once the API can answer ([b1b0647](https://github.com/lutyjj/esp32-streamline/commit/b1b0647aae4460a6665a38ddf1834d04197cfb87))
+
+## [0.11.1](https://github.com/lutyjj/esp32-streamline/compare/v0.11.0...v0.11.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **console:** stop the browser prompting for credentials on unlock ([0389158](https://github.com/lutyjj/esp32-streamline/commit/038915808f1666724f8c317c12c0fa2abc524650))
+* **firmware:** hold one TLS receive buffer for the whole OTA download ([741ca6a](https://github.com/lutyjj/esp32-streamline/commit/741ca6a449b21a1c8fa394f79c1f791996d1d747)), closes [#373](https://github.com/lutyjj/esp32-streamline/issues/373)
+
+## [0.11.0](https://github.com/lutyjj/esp32-streamline/compare/v0.10.0...v0.11.0) (2026-07-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **firmware:** prove the admin key with digest auth and make the setup password device identity
+
+### Features
+
+* **firmware:** prove the admin key with digest auth and make the setup password device identity ([d58ed51](https://github.com/lutyjj/esp32-streamline/commit/d58ed5120913e4433785bc25e9d02efb5a6a18f2))
+
+
+### Bug Fixes
+
+* **ci:** inherit secrets when release-please chains to publish ([#369](https://github.com/lutyjj/esp32-streamline/issues/369)) ([d0fe186](https://github.com/lutyjj/esp32-streamline/commit/d0fe186255a89865599893f6065f262906f1b081))
+* **firmware:** make the OTA quiesce handshake explicit and stop regenerating the setup password on a read error ([799a0ed](https://github.com/lutyjj/esp32-streamline/commit/799a0ede8d11be92c928130419513c19ea0b3b8e))
+* **firmware:** make the OTA quiesce handshake explicit; stop regenerating the setup password on a read error ([#370](https://github.com/lutyjj/esp32-streamline/issues/370)) ([799a0ed](https://github.com/lutyjj/esp32-streamline/commit/799a0ede8d11be92c928130419513c19ea0b3b8e))
+* **tools:** keep pytest away from the admin-key descriptor in smoke-device ([29d4b14](https://github.com/lutyjj/esp32-streamline/commit/29d4b14e0037991959c6ed195cfb754bb9390d7e))
+
+
+### Performance Improvements
+
+* **tools:** run the QEMU smoke suite in parallel with SMOKE_JOBS ([08524a1](https://github.com/lutyjj/esp32-streamline/commit/08524a12022b48f1c41fbf2b806d76f02e119cfe))
+
+## [0.10.0](https://github.com/lutyjj/esp32-streamline/compare/v0.9.0...v0.10.0) (2026-07-31)
+
+
+### Features
+
+* **console:** read the device log from System ([7007672](https://github.com/lutyjj/esp32-streamline/commit/7007672a2fb95839cab64df3473b702caedf0c89))
+* **firmware:** capture a panic's core dump and serve it over the API ([c9554d4](https://github.com/lutyjj/esp32-streamline/commit/c9554d48592098ecb500c0eb56c1262a590bbaa1))
+* **firmware:** open the setup AP for one boot when a button is held at power-on ([ef4fcba](https://github.com/lutyjj/esp32-streamline/commit/ef4fcba71f0934b64c76407b5605784d2a527b99))
+* **firmware:** protect the setup AP with a per-device WPA2 password ([32f5910](https://github.com/lutyjj/esp32-streamline/commit/32f5910a9f5ec16e725e59ec1f824ee30094043e))
+* **firmware:** report OTA signature enforcement and name rejections ([167b63d](https://github.com/lutyjj/esp32-streamline/commit/167b63d95add1c2b56a3873426464a91b70cefe3))
+* **firmware:** serve the device log at /api/logs ([d8cd049](https://github.com/lutyjj/esp32-streamline/commit/d8cd049f8705f9cd0c2af4cac6b12f748d5a40b7))
+* **firmware:** shrink the OTA image by 192 KB ([bb16232](https://github.com/lutyjj/esp32-streamline/commit/bb162320b10dd250a7dee0ee13291c9dba7e26ab))
+* **firmware:** store the embedded console and OpenAPI artifact gzipped ([5061547](https://github.com/lutyjj/esp32-streamline/commit/5061547f0969e1fbfcee5d80a3c92425a568b522))
+* **firmware:** verify vendor RSA-3072 signatures on OTA images ([3c8aef1](https://github.com/lutyjj/esp32-streamline/commit/3c8aef1689ed07d53e4e3d012b2e7d3feda87016))
+* **tools:** attribute firmware flash bytes with make firmware-size-report ([3612722](https://github.com/lutyjj/esp32-streamline/commit/361272238a1c83506bf1890c00d0ac59857216bf))
+
+
+### Bug Fixes
+
+* **firmware:** package the two-slot OTA table in the full image ([824790f](https://github.com/lutyjj/esp32-streamline/commit/824790ffdd88c4a15b9d9fc6b06d0e5a48e5dff3))
+* **firmware:** pause streaming during an OTA install so it cannot panic ([#366](https://github.com/lutyjj/esp32-streamline/issues/366)) ([62a2bb5](https://github.com/lutyjj/esp32-streamline/commit/62a2bb51b510066d13d17d791601170a9330f8af)), closes [#335](https://github.com/lutyjj/esp32-streamline/issues/335)
+* **firmware:** treat the log hook as a stream, not a line at a time ([07eeaec](https://github.com/lutyjj/esp32-streamline/commit/07eeaec7413ed3bfa99f48419ccffac7ab1beec0))
+* **firmware:** use dynamic mbedTLS buffers so the update check survives streaming ([36bff18](https://github.com/lutyjj/esp32-streamline/commit/36bff188d5ac48d2910f383be9af1f0d2143a491)), closes [#334](https://github.com/lutyjj/esp32-streamline/issues/334)
+* identify the boot a log line belongs to ([1a142ad](https://github.com/lutyjj/esp32-streamline/commit/1a142ad481cca92afa7cbc5dc7eafb8b4deadf74))
+
 ## [0.9.0](https://github.com/lutyjj/esp32-streamline/compare/v0.8.1...v0.9.0) (2026-07-23)
 
 

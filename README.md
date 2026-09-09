@@ -12,9 +12,12 @@ HTTP consumer can read it too.
 
 - **Dumb device architecture** — the ESP32 captures and moves packets. Encoding,
   buffering, and syncing live on the bridge. See [design notes](docs/design.md).
-- **Zero-config commissioning** — an unconfigured device opens a setup AP. A
-  small web console joins Wi-Fi, then handles the stream target and audio
-  levels. A per-device admin key gates every write; reads stay open.
+- **Zero-config commissioning** — an unconfigured device opens a setup AP,
+  WPA2-protected by a password it generates once and prints on its serial
+  log. A small web console joins Wi-Fi, then handles the stream target and
+  audio levels. A per-device admin key gates every write through digest
+  authentication, so the key never crosses the network; reads stay open,
+  apart from the device log and crash dumps.
 - **Signal-gated streaming** — the device streams while the input plays and
   pauses on sustained silence, so an idle input costs no bandwidth.
 - **Local analog output** — supported boards can send the selected input
@@ -171,14 +174,20 @@ trusted LAN; neither is an internet-facing service.
 
 ### 3. Configure the device
 
-1. Join the `esp32-streamline-XXXX` Wi-Fi network. The operating system should
+1. Read the setup network's password from the flasher's **Logs & console**
+   view (or `espflash monitor`) — the board prints its SSID and password when
+   it starts. Pre-provisioned boards carry both on a label. No password at
+   hand? Hold the board's first key (KEY1 on the Audio Kit) while plugging it
+   in: the setup network starts open for that one boot.
+2. Join the `esp32-streamline-XXXX` Wi-Fi network with that password. The
+   operating system should
    offer or open the setup console; if it does not, open `http://192.168.71.1/`.
-2. Enter your Wi-Fi credentials and continue to the generated admin key.
-3. **Save the generated admin key.** The device never shows it again. The key
+3. Enter your Wi-Fi credentials and continue to the generated admin key.
+4. **Save the generated admin key.** The device never shows it again. The key
    unlocks every later settings change; lose it and you must reflash.
-4. Join. The device reboots onto your network and advertises its console as
+5. Join. The device reboots onto your network and advertises its console as
    `http://streamline-xxxx.local/`.
-5. Open the station console, then set the bridge host in **Network** and
+6. Open the station console, then set the bridge host in **Network** and
    calibrate from **Audio**. Save a source profile when several players need
    different input levels.
 
@@ -220,8 +229,14 @@ make bridge-up                            # run the bridge from source
 Flashing runs on the host because Docker Desktop on macOS cannot reliably
 expose serial devices. Install the tool once: `cargo install espflash`.
 
+A device already on the network needs none of that to be read: it serves its
+own log, this boot and the one before it, at `GET /api/logs`, and the crash
+dump a panic leaves behind at `GET /api/coredump/image`. See
+[diagnostics](docs/diagnostics.md).
+
 Docs: [architecture](docs/architecture.md) ·
 [bridge reference](docs/bridge.md) ·
+[diagnostics](docs/diagnostics.md) ·
 [lossless recordings](docs/recordings.md) ·
 [design](docs/design.md) ·
 [user journey](docs/user-journey.md) ·

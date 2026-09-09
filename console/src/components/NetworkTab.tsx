@@ -109,7 +109,7 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
           setup
             ? 'Not configured yet — join the device to your home network.'
             : s
-              ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi} dBm · ${s.wifi.sta_ip}`
+              ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi_dbm} dBm · ${s.wifi.sta_ip}`
               : '—'
         }
       >
@@ -239,6 +239,19 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
       </Card>
 
       {!setup && !noBridge.value && <TransportCard targetDirty={targetDirty} />}
+
+      {!setup && (
+        <Card
+          title="Setup network"
+          lead="If the device ever loses this Wi-Fi it broadcasts its own protected network."
+        >
+          <p class="lead">
+            Its password never changes: it is on a pre-flashed device’s label and in the flasher’s
+            log. Without it, hold the board’s first key while powering on to open the network for
+            one boot.
+          </p>
+        </Card>
+      )}
     </CardStack>
   );
 }

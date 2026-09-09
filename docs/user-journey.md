@@ -24,7 +24,8 @@ start](../README.md#quick-start); this document owns only the experience.
   PCM PSK appear exactly once, with copy affordances, and never through a read
   API.
 - **Reads are open, writes are locked.** Anyone on the LAN can watch status;
-  every change requires the unlock window. Locked controls look locked and
+  every change requires the unlock window. The device log is the one read
+  behind the same lock, because it repeats whatever the firmware said. Locked controls look locked and
   say how to unlock. [security.md](security.md) owns the trust model.
 
 ## Stage 1: flash
@@ -39,7 +40,12 @@ Exit: the board broadcasts its own `esp32-streamline-XXXX` network.
 
 ## Stage 2: first contact
 
-Entry: the user joins the setup network, usually on a phone. The operating
+Entry: the user joins the setup network, usually on a phone, with the WPA2
+password the device generated — the flasher's log view and `espflash monitor`
+print it beside the SSID, and a pre-provisioned board carries both on its
+label. A missing or wrong password never strands the owner: holding the
+board's first button while power is applied starts the network open for that
+one boot, so physical possession always commissions. The operating
 system offers the setup console or opens it after detecting the captive
 network. If the prompt does not appear, `http://192.168.71.1/` opens the same
 console. The console recognizes an unconfigured device and opens first-run
@@ -183,6 +189,8 @@ Promise:
 
 - Updating is automatic by default, configurable as daily or weekly, waits for
   idle audio, and can be disabled. Manual checks and installs remain available.
+  An install pauses audio streaming for its duration and narrates the pause;
+  a failed install resumes the stream on its own.
   Progress is a visible log, and the device either
   confirms the new version or rolls back by itself. A rollback is narrated
   too (the console names the version still running rather than claiming a
@@ -195,7 +203,12 @@ Promise:
   It keeps retrying the saved Wi-Fi in the background, so a router still
   booting after a power cut needs no user action. The setup network stays
   reachable throughout as an escape hatch, and its indicator reads
-  reconnecting, not first-run. An owner who opens that setup network sees a
+  reconnecting, not first-run. The fallback network keeps the same WPA2
+  password the device has had since first boot — the one on a pre-flashed
+  unit's label and in the flasher's log, which no reset changes, so those
+  sources stay true for the device's life. A factory reset repeats it before
+  the device leaves, and a button held at power-on opens the network for one
+  boot when the password is lost. An owner who opens that setup network sees a
   recovery form, not first-run onboarding: the saved settings are prefilled,
   the form states the device is already provisioned, and the unlock sits
   inline, because a recovery write requires the admin key. The form retains

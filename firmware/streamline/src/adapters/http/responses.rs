@@ -6,28 +6,43 @@ use serde::Serialize;
 
 use crate::{api, mutation::MutationError};
 
-pub(super) fn reboot_response<C>(request: embedded_svc::http::server::Request<C>) -> Result<()>
+/// Hand off to the reserved restart worker before writing the response.
+/// A disconnected client cannot cancel a committed configuration change.
+pub(super) fn reboot_response<C>(
+    request: embedded_svc::http::server::Request<C>,
+    restart: &crate::restart::Restart,
+) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    json_response(request, 200, &api::Ack::rebooting())?;
-    // Restart from a detached task so this handler returns and the server
-    // completes the chunked response. Restarting inside the handler leaves
-    // the terminating chunk unsent, and every client that reads the body to
-    // its end then hangs until the reboot kills the connection.
-    std::thread::spawn(|| {
-        esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
-        unsafe { esp_idf_svc::sys::esp_restart() };
-    });
-    Ok(())
+    reboot_response_with(request, restart, &api::Ack::rebooting())
 }
 
-pub(super) fn respond<C>(
+pub(super) fn reboot_response_with<C>(
+    request: embedded_svc::http::server::Request<C>,
+    restart: &crate::restart::Restart,
+    body: &impl Serialize,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    restart.request();
+    json_response(request, 200, body)
+}
+
+/// Serve a body that build.rs stored gzipped (the embedded console and the
+/// OpenAPI artifact), declared with `Content-Encoding: gzip`. Browsers and
+/// HTTP client libraries decompress transparently; raw `curl` needs
+/// `--compressed`. The encoding is unconditional because no identity copy
+/// exists in flash — storing one would return the 144 KB the compression
+/// reclaims.
+pub(super) fn respond_gzip<C>(
     request: embedded_svc::http::server::Request<C>,
     code: u16,
     content_type: &str,
-    body: &str,
+    body: &[u8],
 ) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
@@ -39,10 +54,11 @@ where
             None,
             &[
                 ("Content-Type", content_type),
+                ("Content-Encoding", "gzip"),
                 ("Cache-Control", "no-store"),
             ],
         )?
-        .write_all(body.as_bytes())?;
+        .write_all(body)?;
     Ok(())
 }
 
@@ -72,7 +88,7 @@ where
 /// with the reason if one is already in progress.
 pub(super) fn ota_accepted<C>(
     request: embedded_svc::http::server::Request<C>,
-    spawned: anyhow::Result<()>,
+    spawned: Result<(), MutationError>,
 ) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
@@ -80,16 +96,40 @@ where
 {
     match spawned {
         Ok(()) => json_response(request, 202, &api::Ack::started()),
-        Err(error) => error_response(request, 409, &error.to_string()),
+        Err(error) => mutation_error(request, error),
     }
 }
 
-pub(super) fn unauthorized<C>(request: embedded_svc::http::server::Request<C>) -> Result<()>
+/// Answer a request that failed the admin-key check: `401` carrying the
+/// digest challenge a client answers on its retry.
+pub(super) fn unauthorized<C>(
+    request: embedded_svc::http::server::Request<C>,
+    challenge: &str,
+) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    error_response(request, 401, "unauthorized")
+    let mut writer = std::io::BufWriter::with_capacity(
+        BODY_BUFFER_BYTES,
+        StdWriter(request.into_response(
+            401,
+            None,
+            &[
+                ("Content-Type", "application/json"),
+                ("Cache-Control", "no-store"),
+                ("WWW-Authenticate", challenge),
+            ],
+        )?),
+    );
+    serde_json::to_writer(
+        &mut writer,
+        &api::ErrorResponse {
+            error: "unauthorized",
+        },
+    )?;
+    std::io::Write::flush(&mut writer)?;
+    Ok(())
 }
 
 /// Answer a failed mutation with the status its category earns: invalid input
@@ -104,6 +144,17 @@ where
     C::Error: std::error::Error + Send + Sync + 'static,
 {
     error_response(request, error.status(), error.message())
+}
+
+pub(super) fn not_found<C>(
+    request: embedded_svc::http::server::Request<C>,
+    message: &str,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    error_response(request, 404, message)
 }
 
 pub(super) fn unavailable<C>(

@@ -109,15 +109,16 @@ test: image
 		-c 'printf "%s\n" "{\"max_sources\": 3, \"recordings_enabled\": true, \"api_token\": \"test-bridge-api-token\"}" > /data/options.json && chown 0:0 /data/options.json && chmod 600 /data/options.json'; \
 	printf '%s\n' \
 		'#!/bin/sh' \
+		'set -eu' \
 		'test "$$#" -eq 6' \
 		'test "$$1" = "--transport-state-file"' \
 		'test "$$2" = "/data/transport.json"' \
 		'test "$$3" = "--recordings-dir"' \
 		'test "$$4" = "/data/recordings"' \
 		'test "$$5" = "--max-sources"' \
-		'test "$$6" = "3"' \
+		'test "$$6" = "$${EXPECT_MAX_SOURCES:-3}"' \
 		'test "$$STREAMLINE_API_TOKEN" = "test-bridge-api-token"' \
-		'mkdir "$$4"' \
+		'mkdir -p "$$4"' \
 		'test -w "$$4"' \
 		'touch "$$2"' \
 		'test -w "$$2"' \
@@ -127,7 +128,15 @@ test: image
 		-v "$$volume:/data" \
 		-v "$$stub_dir:/test-bin:ro" \
 		-e PATH="/test-bin:/opt/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
-		"$(IMAGE):$(VERSION)"
+		"$(IMAGE):$(VERSION)"; \
+	if $(CONTAINER) run --rm --platform $(PLATFORM) \
+		-v "$$volume:/data" \
+		-v "$$stub_dir:/test-bin:ro" \
+		-e EXPECT_MAX_SOURCES=4 \
+		-e PATH="/test-bin:/opt/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
+		"$(IMAGE):$(VERSION)"; then \
+		echo "add-on test accepted an incorrect max-sources argument" >&2; exit 1; \
+	fi
 
 # Own the published images end to end: build both architectures with verified
 # version/arch/revision labels, write-once push each versioned tag, and print

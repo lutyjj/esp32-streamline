@@ -33,7 +33,7 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
-.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze smoke-qemu smoke-device
+.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze size-report smoke-qemu smoke-device
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
@@ -68,28 +68,49 @@ analyze: image
 	$(CONTAINER) run --rm $(INPUT_MOUNTS) $(IMAGE) \
 		streamline-analyze --reference "$(abspath $(REF))" --capture "$(abspath $(CAP))"
 
+# Attribute the built firmware ELF's flash bytes to ESP-IDF components, radio
+# blobs, and Rust crates (issue #355), reading the firmware build tree through
+# a read-only /repo mount. `make firmware-size-report` builds the ELF first
+# and forwards here.
+size-report: image
+	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" $(IMAGE) streamline-size-report
+
 qemu-image:
 	$(CONTAINER) build -f Dockerfile --target qemu-runner -t $(QEMU_IMAGE) .
 
 # Run the emulated-device pytest suite against the QEMU image variant: boot,
 # API over the emulated network, provisioning persistence, key gating,
 # factory reset, and the OTA slot switch. Build the images first:
-# `make -C firmware qemu-artifacts`. The OTA image is optional; without it
-# the OTA test skips.
+# `make -C firmware qemu-artifacts`. All images are required for the OTA proofs.
 OTA_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-ota.bin
+FAILURE_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-fail-management-ota.bin
+# Parallel pytest-xdist workers for the emulated suite. Each test boots its
+# own QEMU, so the suite parallelizes cleanly; bound the count to what the
+# host can spare, because oversubscription reproduces the "no healthy
+# response" setup flake. Empty runs serially; CI uses two workers.
+SMOKE_JOBS ?=
 smoke-qemu: qemu-image
 	@test -f "$(FLASH_IMAGE)" || (echo "FLASH_IMAGE=$(FLASH_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
+	@test -f "$(OTA_IMAGE)" || (echo "OTA_IMAGE=$(OTA_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
+	@test -f "$(FAILURE_IMAGE)" || (echo "FAILURE_IMAGE=$(FAILURE_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
+	mkdir -p .smoke-qemu
 	$(CONTAINER) run --rm -v "$(abspath $(FLASH_IMAGE)):/flash.bin:ro" \
-		$(if $(wildcard $(OTA_IMAGE)),-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" -e STREAMLINE_QEMU_OTA_IMAGE=/ota.bin) \
+		-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" \
+		-v "$(abspath $(FAILURE_IMAGE)):/failure.bin:ro" \
+		-v "$(CURDIR)/.smoke-qemu:/evidence" \
 		-v "$(CURDIR):/workspace" -w /workspace \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_QEMU_IMAGE=/flash.bin \
-		$(QEMU_IMAGE) pytest smoke -v
+		$(QEMU_IMAGE) pytest smoke -v $(if $(SMOKE_JOBS),-n $(SMOKE_JOBS)) \
+			--basetemp=/evidence/pytest --root-logdir=/evidence/serial
 
 # Reset the USB-connected board, sanity-check its boot over serial, then run
 # the same device-agnostic API suite the QEMU run uses against the live
 # board. Serial and espflash are host resources, so the boot capture runs
 # with the system python3, like `make firmware-capture`; the API suite runs
-# in the pytest runner image and skips emulated-only tests.
+# in the pytest runner image and skips emulated-only tests. `--capture=sys`
+# keeps pytest away from file descriptor 0: default fd-capture nulls it, and
+# the admin key rides in on that descriptor — without this the authenticated
+# tests silently skip as "key unavailable".
 smoke-device: qemu-image
 	PYTHONPATH=src python3 -m streamline_tools.smoke device --port "$(PORT)" \
 		$(if $(DEVICE),--url "http://$(DEVICE)")
@@ -97,4 +118,4 @@ smoke-device: qemu-image
 		-v "$(CURDIR):/workspace" -w /workspace \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_SMOKE_TARGET="http://$(DEVICE)" \
 		-e STREAMLINE_ADMIN_KEY_FD=0 \
-		$(QEMU_IMAGE) pytest smoke -v,@echo "DEVICE is unset: skipping the API contract suite")
+		$(QEMU_IMAGE) pytest smoke -v --capture=sys,@echo "DEVICE is unset: skipping the API contract suite")

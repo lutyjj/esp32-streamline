@@ -56,12 +56,34 @@ test('an out-of-band streaming pause is named and recoverable', async ({ page })
   await page.goto('/');
   await unlock(page);
 
+  // An external API client answers the digest challenge with nothing but
+  // standard web crypto (`crypto.subtle` exists here because the e2e server
+  // is a secure localhost origin) — proof the API needs no custom client.
   await page.evaluate(async (key) => {
-    await fetch('/api/stream', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}` },
-      body: new URLSearchParams({ enabled: 'false' }),
-    });
+    const hex = (buffer: ArrayBuffer) =>
+      [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const sha256 = async (text: string) =>
+      hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+    const pause = () =>
+      new Request('/api/stream', {
+        method: 'POST',
+        body: new URLSearchParams({ enabled: 'false' }),
+      });
+
+    const challenged = await fetch(pause());
+    const header = challenged.headers.get('WWW-Authenticate') ?? '';
+    const nonce = /nonce="([^"]+)"/.exec(header)?.[1] ?? '';
+    const realm = /realm="([^"]+)"/.exec(header)?.[1] ?? '';
+    const ha1 = await sha256(`admin:${realm}:${key}`);
+    const ha2 = await sha256('POST:/api/stream');
+    const response = await sha256(`${ha1}:${nonce}:00000001:e2e:auth:${ha2}`);
+    const answered = pause();
+    answered.headers.set(
+      'Authorization',
+      `Digest username="admin", realm="${realm}", nonce="${nonce}", uri="/api/stream", ` +
+        `response="${response}", qop=auth, nc=00000001, cnonce="e2e", algorithm=SHA-256`,
+    );
+    await fetch(answered);
   }, mockAdminKey);
 
   // The next status poll names the state in the tile and the callout.

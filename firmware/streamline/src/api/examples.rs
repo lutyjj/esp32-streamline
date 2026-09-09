@@ -33,6 +33,7 @@ pub fn status() -> Value {
     });
     let status = StatusResponse {
         firmware_version: FIRMWARE_VERSION,
+        firmware_variant: crate::telemetry::FirmwareVariant::Standard,
         device_name: "",
         mode: "provisioned",
         config_source: "nvs",
@@ -46,7 +47,7 @@ pub fn status() -> Value {
             status: "connected",
             sta_ip: DEVICE_IP,
             ap_ip: "",
-            rssi: -55,
+            rssi_dbm: -55,
         },
         target: TargetStatus {
             target_host: BRIDGE_HOST,
@@ -57,7 +58,7 @@ pub fn status() -> Value {
             input_line: 2,
             input_gain: 0,
             adc_attenuation_db: 9,
-            sample_rate: 44100,
+            sample_rate_hz: 44100,
             channels: 2,
             bits_per_sample: 16,
         },
@@ -69,10 +70,10 @@ pub fn status() -> Value {
         stream: StreamControlStatus { enabled: true },
         metrics: MetricsStatus {
             sequence: 1,
-            packets: 56000,
-            bytes: 9_856_000,
-            read_errors: 0,
-            short_reads: 0,
+            packets_total: 56000,
+            bytes_total: 9_856_000,
+            read_errors_total: 0,
+            short_reads_total: 0,
             queue_depth: 0,
             queue_drops_total: 0,
             stale_drops_total: 0,
@@ -120,6 +121,7 @@ pub fn status() -> Value {
             rollback_available: false,
             rollback_version: "",
             signed_updates: true,
+            signing_key_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         },
         indicator: IndicatorStatus {
             available: true,
@@ -131,10 +133,10 @@ pub fn status() -> Value {
 }
 
 /// The same device's stored settings, as `GET /api/settings` reports them.
-pub fn config() -> Value {
+pub fn settings() -> Value {
     let catalog = crate::board::builtin_catalog().expect("valid built-in catalog");
     let board = crate::board::resolve(&catalog, None).expect("default board");
-    let config = ConfigResponse {
+    let settings = SettingsResponse {
         device_name: "",
         ssid: SSID,
         target_host: BRIDGE_HOST,
@@ -170,5 +172,5 @@ pub fn config() -> Value {
         auto_update_schedule: AutoUpdateScheduleRequest::Daily,
         config_source: "nvs",
     };
-    serde_json::to_value(&config).expect("serializable config example")
+    serde_json::to_value(&settings).expect("serializable settings example")
 }

@@ -2,7 +2,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AudioTab } from '../src/components/AudioTab';
-import { type DeviceStatus, setTransport } from '../src/lib/api';
+import { type StatusResponse, setTransport } from '../src/lib/api';
 import { deviceStatus } from '../src/mocks/fixtures';
 import { refresh, status } from '../src/state/device';
 
@@ -16,7 +16,7 @@ function jsonResponse(body: unknown): Response {
 }
 
 /** Answer the next status poll with a device holding these audio levels. */
-function pollWith(audio: Partial<DeviceStatus['audio']>): void {
+function pollWith(audio: Partial<StatusResponse['audio']>): void {
   setTransport((request) => {
     if (request.method === 'GET' && request.url.endsWith('/api/status')) {
       return Promise.resolve(jsonResponse(deviceStatus({ auth_required: false, audio })));

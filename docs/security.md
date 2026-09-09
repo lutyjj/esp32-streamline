@@ -1,20 +1,28 @@
 # Security Notes
 
 StreamLine is a single-owner appliance for a trusted home LAN. Mutating HTTP
-endpoints require a per-device **admin key** (bearer token); reads are open.
-Traffic is plain HTTP, so the key is only as private as the LAN. Keep the device
-on a trusted segment; do not expose its HTTP port or setup AP to untrusted networks.
+endpoints require a per-device **admin key**, proven by RFC 7616 digest
+authentication (SHA-256), so the key itself never crosses the network and a
+captured exchange authorizes nothing later. Reads are open except the device
+log and crash dumps. Traffic is plain HTTP: request and response bodies are
+readable in transit. Keep the device on a trusted segment; do not expose its
+HTTP port or setup AP to untrusted networks.
 
 This file is the current security posture: the attack surface, the controls in
-place, and the standing items we track or have accepted.
+place, and the standing items we track or have accepted. The posture matches
+or exceeds comparable local-control firmware (Shelly's digest model; ESPHome,
+Tasmota, and WLED authenticate with cleartext credentials or a PIN) while
+staying cloud-free.
 
 ## Attack surface
 
 | Surface | State | Risk |
 |---|---|---|
-| HTTP writes (`:80`) | Admin-key gated once provisioned | No key, no control (config, target, reset) |
+| HTTP writes (`:80`) | Digest-authenticated once provisioned; nonce counts kill replay | No key, no control (config, target, reset); capturing traffic yields nothing that authorizes a later write |
 | HTTP reads (`:80`) | Open; never returns secrets | Status and metrics readable, no control |
-| Setup AP | Open; writes open only until an admin key is set | Brief window at first commissioning |
+| Device log (`/api/logs`) | Admin-key gated | Owner-only; returns the network name, bridge host, and addresses the firmware logged. Never contains keys. See [diagnostics](diagnostics.md). |
+| Crash dump (`/api/coredump`, `/api/coredump/image`) | Admin-key gated | Owner-only; a dump copies task memory at a panic and can contain secrets. See [diagnostics](diagnostics.md#crash-dumps). |
+| Setup AP | WPA2 with a per-device password minted at first boot; writes open only until an admin key is set | Joining needs the password from the device's serial log, the flasher, or its label. The password is device identity: no reset changes it, no read API returns it, and the factory-reset response is its only API appearance. A button held at power-on starts the AP open for one boot, providing physical recovery from a lost password. |
 | OTA update (`/api/ota/update`) | Admin-key gated; vendor RSA-3072 signature verified before commit, plus SHA-256 and auto-rollback | Owner-only; only firmware signed by the trusted key installs |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; pinned by the admin SHA-256 and verified against the trusted signing key | Owner-only; a forged image is rejected even when its digest matches, so the URL may be plain HTTP |
 | PCM stream (`:39000`) | Explicit cleartext TCP or TLS 1.3 PSK mode | Cleartext permits LAN capture and impersonation; TLS authenticates the source and protects audio |
@@ -27,25 +35,49 @@ place, and the standing items we track or have accepted.
 
 ## Authentication
 
-- Mutating endpoints (`/api/settings/wifi`, `/api/settings/target`,
-  `/api/settings/audio`, `/api/settings/analog-passthrough`,
-  `/api/settings/name`, `/api/settings/admin-key`,
-  `/api/settings/board`, `/api/settings/audio-profiles`,
-  `/api/settings/audio-profile`, `/api/settings/firmware`, `/api/restart`,
-  `/api/factory-reset`, `/api/ota/check`, `/api/ota/update`,
-  `/api/ota/rollback`, `/api/settings/transport`, and `/api/transport/*`) and the no-op key
-  check (`/api/unlock`) require the
-  admin key as a bearer token, checked with a constant-time compare. Reads are
-  open and never return secrets.
-- The key rides in a custom `Authorization` header, not a cookie or Basic Auth, so
-  the API is CSRF-safe: a cross-origin request triggers a CORS preflight the device
-  never approves. Cookies/Basic Auth would be sent by the browser automatically.
+- Mutating endpoints (`/api/settings/*`, `/api/restart`, `/api/factory-reset`,
+  `/api/ota/*`, `/api/transport/*`, `/api/stream`) and the no-op key check
+  (`/api/unlock`) require the admin key through **RFC 7616 digest
+  authentication**: the device answers an unauthenticated write with a 401
+  challenge (`realm="streamline"`, `algorithm=SHA-256`, `qop=auth`), and the
+  client proves possession by hashing the key with the challenge nonce, a
+  strictly increasing nonce count, and the request's method and URI. The
+  device tracks each nonce's count and expires nonces after an hour, so a
+  captured exchange cannot be replayed, either byte-identical or redirected at a
+  different endpoint. Responses are compared constant-time. Standard clients
+  need no custom code: `curl --digest -u "admin:$STREAMLINE_ADMIN_KEY"`,
+  Python `requests.auth.HTTPDigestAuth`, and the console's own client all
+  speak it.
+- Reads are open and never return secrets, with two exceptions behind the
+  same digest gate: `/api/logs` returns what the firmware logged, which names
+  the joined network and the hosts the device reached, and the
+  `/api/coredump` reads return a panic's copy of task memory, which can hold
+  anything the firmware held. No log line carries a key, password, or PSK.
+- Credentials ride in a script-set `Authorization` header, not a cookie, so
+  the API is CSRF-safe: a cross-origin request triggers a CORS preflight the
+  device never approves, and no browser attaches the digest response
+  automatically.
 - The key is generated by the browser during commissioning as 24 random bytes
-  encoded as hex and stored write-only in NVS. An unprovisioned device accepts
-  setup writes until the first key is set; after that every write requires it.
+  encoded as hex and stored write-only in NVS. It crosses the wire exactly
+  once, over the WPA2-protected setup link; afterwards only digest proofs do.
+  An unprovisioned device accepts setup writes until the first key is set;
+  after that every write requires it.
 - The web UI keeps the key in session storage by default, with explicit opt-in
   browser storage. Unlocking settings lasts 15 minutes. A lost key means
-  reflashing to recover — there is no remote reset without the key.
+  reflashing to recover. There is no remote reset without the key.
+
+## Control-plane transport
+
+The console and API stay plain HTTP by decision, not omission. A LAN device
+cannot serve a certificate a browser trusts: a self-signed certificate warns
+on every first visit and trains owners to click through warnings, a
+Plex-style public-CA arrangement is a permanent DNS-and-certificate cloud
+commitment this cloud-free product refuses, and a local CA is worse UX than
+the warning. Every comparable product's local UI (Shelly, ESPHome, Tasmota,
+WLED) makes the same call. Digest authentication removes the credential from
+the wire; body confidentiality on the home LAN is the accepted residue (see
+Tracked items). Terminate TLS at a reverse proxy with a real certificate
+before exposing the console beyond the LAN.
 
 ## Firmware signing
 
@@ -55,13 +87,18 @@ makes the OTA path authenticity-against-forgery, not only
 integrity-against-corruption: a swapped release asset, a redirected
 custom-install URL, or a man-in-the-middle past TLS is rejected even when its
 SHA-256 matches. Release images are signed with the maintainer's key, held only
-in a CI secret; developer builds use a key generated on demand into a gitignored
+in a CI secret; local developer builds use a key generated on demand into a gitignored
 file, so no signing key lives in the repository. Without hardware Secure Boot
 the guarantee covers the network path, not boot-time or physical-flash tampering;
 Secure Boot v2 is the roadmap step that closes that gap.
 [docs/ota.md](ota.md#firmware-signing) owns the mechanism and the key model.
 
 ## PCM transport
+
+TLS 1.3 PSK authenticates encrypted PCM connections. OTA installs pause the
+transport to release its socket and TLS buffers. Release checks keep audio
+running and retry a failed fetch once. The [OTA reference](ota.md#update-flow)
+owns these resource and retry policies.
 
 Encrypted PCM uses the exact TLS 1.3 profile in the
 [transport contract](tcp-transport.md). The PSK authenticates one device; the
@@ -76,7 +113,8 @@ does not negotiate TLS. Secure firmware never retries cleartext. Switching
 modes requires a coordinated bridge and device cutover with a short expected
 interruption.
 
-Device and bridge key mutations require different bearer credentials. The
+Device and bridge key mutations require different credentials (the device's
+digest-proven admin key; the bridge's bearer token). The
 device generates a PCM PSK from the ESP32 random source and reveals it only in
 the stage or recovery response. Device state transitions are failure-atomic.
 The bridge bounds its key map and publishes it with durable atomic replacement.
@@ -108,9 +146,10 @@ check: it validates the image against the `sha256` the caller supplies from
 | Item | Tracking | Notes |
 |---|---|---|
 | Cleartext PCM mode | owner-controlled | It provides no confidentiality or source authentication. Use it only when encryption is not enabled or during explicit recovery. |
-| Admin key travels over plain HTTP | by design | PCM transport encryption does not protect the HTTP API. Terminate TLS at a reverse proxy with a real certificate before exposure beyond the LAN. |
+| HTTP bodies readable in transit on the LAN | by design | Digest keeps the credential off the wire, but request bodies stay cleartext, and an active man-in-the-middle can tamper with a body (`auth-int` is not implemented). The home Wi-Fi password normally crosses only the WPA2-encrypted setup link at commissioning. See [Control-plane transport](#control-plane-transport). |
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
-| Open setup AP during commissioning | by design | Accepts writes only until the first admin key is set — a brief, physically proximate window. |
+| Button-held boot opens the setup AP for one boot | by design | Physical presence substitutes for the password: an attacker in radio range cannot press the button. The window is one boot and closes on restart. |
+| Setup password appears once in the factory-reset response | by design | The response returns the label credential when the owner resets the device for commissioning. No read endpoint returns it, and rotation means a full flash erase. |
 | Bridge WAV stream is unauthenticated | by design | Front it with an authenticating reverse proxy before sharing beyond a trusted LAN. |
 | Home Assistant recordings are working data, not backup data | by design | Recordings survive restarts and updates, but restore or uninstall removes them. Download every WAV that must be retained. |
 
@@ -127,7 +166,7 @@ check: it validates the image against the `sha256` the caller supplies from
   mode, device-key enrollment, and recordings. The bridge console keeps it in
   browser session storage and sends it as a bearer token; the API never
   returns it. The token rides plain HTTP, so a LAN token holder can switch the
-  listener to cleartext or enroll a key — the device never downgrades itself,
+  listener to cleartext or enroll a key. The device never downgrades itself,
   so a forced bridge downgrade stops audio rather than exposing it. Keep the
   token as private as the LAN and rotate it by changing the deployment value.
 - Encrypted source identity comes from the authenticated device key id. The
@@ -142,8 +181,8 @@ check: it validates the image against the `sha256` the caller supplies from
   limit is disconnected without allocating another worker. The 4096-byte body
   ceiling counts every received chunk, so a chunked or length-lying request
   meets the same 413 before authentication or parsing. The request-timeout
-  option is a progress deadline at every phase — header read, body read, and
-  response write — so a stalled client releases its connection slot instead of
+  option sets a progress deadline for header reads, body reads, and response
+  writes, so a stalled client releases its connection slot instead of
   holding it open.
 - The recording page uses a per-response Content Security Policy nonce. It has
   no cross-origin permissions, cookies, third-party scripts, or persistent

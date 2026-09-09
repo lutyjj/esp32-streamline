@@ -115,6 +115,15 @@ jobs:
           cargo-cache-path: ${{ env.FIRMWARE_CARGO_CACHE_PATH }}
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
+      - name: Build firmware and prove reproducibility
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          make firmware-build \
+            CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
+          make firmware-repro-check VERSION="$VERSION" \
+            CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
+
       # The maintainer's RSA-3072 key signs the release images so the firmware
       # accepts them over the air (issue #337); the device rejects any image the
       # key did not sign. The private key exists only in the FIRMWARE_SIGNING_KEY
@@ -124,20 +133,16 @@ jobs:
         env:
           FIRMWARE_SIGNING_KEY: ${{ secrets.FIRMWARE_SIGNING_KEY }}
         run: |
+          umask 077
           test -n "$FIRMWARE_SIGNING_KEY" || { echo "FIRMWARE_SIGNING_KEY secret is not set" >&2; exit 1; }
           printf '%s\n' "$FIRMWARE_SIGNING_KEY" > firmware/streamline/.release_signing_key.pem
 
-      # Reproducibility is proven on the unsigned compiled outputs; the signed
-      # images differ by the RSA-PSS signature block alone. repro-check rebuilds
-      # from a clean target and never touches the signed artifacts in dist.
-      - name: Build firmware artifacts and prove reproducibility
+      - name: Package signed firmware
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          make firmware-artifacts VERSION="$VERSION" \
+          make firmware-package VERSION="$VERSION" \
             SIGNING_KEY=.release_signing_key.pem \
-            CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
-          make firmware-repro-check VERSION="$VERSION" \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
 
       - name: Shred the firmware signing key
@@ -163,7 +168,7 @@ jobs:
           upload-artifact: false
 
       - name: Attest firmware provenance
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/firmware/*
 
@@ -176,7 +181,7 @@ jobs:
           sbom-path: dist/firmware/streamline-${{ steps.version.outputs.value }}.spdx.json
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c # v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

@@ -23,18 +23,24 @@ use streamline_firmware::adapters::{
 use streamline_firmware::{
     adapters::{
         buttons, codec,
-        http::{self, ApiState, Mode},
+        http::{self, ApiState},
+        logs,
         mdns::MdnsAdvertisement,
         nvs::ConfigStore,
-        ota, status_light, time, wifi,
+        ota,
+        random::EspRandom,
+        status_light, time, wifi,
     },
     analog_passthrough::AnalogPassthroughState,
     board::{self, Board},
     config::RuntimeConfig,
     health::{BootFacts, HealthReport},
     identity,
+    mode::Mode,
     profiles::AudioProfileCatalog,
-    recovery, stream,
+    recovery,
+    setup_network::SetupNetwork,
+    stream,
     transport::KeyVerifier,
     update,
 };
@@ -42,10 +48,23 @@ use streamline_firmware::{
 #[cfg(not(feature = "qemu"))]
 use streamline_firmware::{analog_passthrough::AnalogPassthroughRoute, reconnect, runtime};
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(error) = run() {
+        log::error!("firmware startup failed: {error:#}");
+        unsafe { esp_idf_svc::sys::esp_restart() };
+    }
+}
+
+fn run() -> Result<()> {
     // Required by esp-idf-sys to link runtime patches on an ESP-IDF target.
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
+    // Before anything else logs: this both starts the capture and rescues the
+    // previous boot's lines, which a reset leaves in place only until they are
+    // written over.
+    logs::install();
+    // Cache image metadata before HTTP requests can trigger flash verification.
+    ota::signing_key_sha256();
 
     let peripherals = Peripherals::take()?;
     let event_loop = EspSystemEventLoop::take()?;
@@ -69,25 +88,31 @@ fn main() -> Result<()> {
     } else {
         None
     };
-    let audio_profiles = match persisted.as_ref() {
-        Some(config) => store
+    let audio_profiles = if persisted.is_some() {
+        store
             .lock()
             .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
-            .load_audio_profiles(board.as_ref(), config.audio)?,
-        None => AudioProfileCatalog::empty(board.as_ref()),
+            .load_audio_profiles(board.as_ref())?
+    } else {
+        AudioProfileCatalog::empty(board.as_ref())
     };
-    if persisted.is_some() {
-        match store
-            .lock()
-            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
-            .migrate_legacy(board.as_ref())
-        {
-            Ok(()) => {}
-            Err(error) => log::warn!("could not migrate legacy configuration: {error:#}"),
-        }
-    }
     let mdns_hostname = wifi::mdns_hostname()?;
     let local_hostname = identity::local_hostname(&mdns_hostname);
+    // The setup network's credentials exist in every mode: the AP serves them
+    // when it runs, and the factory-reset response shows them. Minted once at
+    // first boot and kept in NVS for the device's life, so a pre-flashed
+    // unit's label stays true; only a full flash erase mints a fresh one.
+    let setup_network = SetupNetwork {
+        ssid: identity::setup_ssid(&wifi::device_suffix()?),
+        password: store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("configuration lock poisoned"))?
+            .ensure_setup_network_password(&mut EspRandom)?,
+    };
+
+    // Finish the HTTP callback registry before any interface accepts connections.
+    let server = http::bind().map_err(|error| management_startup_error(&store, error))?;
+    log::info!("management listener initialized");
 
     // The network is the one seam between the hardware image and the QEMU
     // image; exactly one `network_boot` variant below compiles into each,
@@ -99,6 +124,7 @@ fn main() -> Result<()> {
         &store,
         &board,
         persisted,
+        &setup_network,
     )?;
     // The composition root holds the network link for the life of the process.
     // On hardware the recovery boot loop drives station retries through it; the
@@ -108,21 +134,11 @@ fn main() -> Result<()> {
     #[cfg(feature = "qemu")]
     let _network = network;
 
-    // Reaching the home network with the console up is the signal an
-    // over-the-air image booted correctly; confirm the slot so the rollback
-    // watchdog accepts it. A device that fell back to the setup AP stays in
-    // pending-verify and reverts to the previous firmware on the next reboot.
     if mode == Mode::Provisioned {
         if let Err(error) = time::start() {
             log::warn!("SNTP initialization failed: {error:#}");
         }
-        ota::mark_current_valid();
     }
-
-    // Rollback availability is fixed until the next OTA install, which reboots,
-    // so read the inactive slot once here rather than on every status poll and
-    // metrics scrape.
-    let rollback = ota::rollback_target();
 
     let mdns = if mode == Mode::Provisioned {
         match MdnsAdvertisement::start(&mdns_hostname, &config) {
@@ -141,6 +157,9 @@ fn main() -> Result<()> {
     #[cfg(feature = "qemu")]
     let key_verifier: Option<Arc<dyn KeyVerifier>> = None;
     let state = Arc::new(ApiState {
+        control: Mutex::new(()),
+        restart: Default::default(),
+        button_action: Default::default(),
         mode,
         hostname: local_hostname,
         config: Arc::new(Mutex::new(config)),
@@ -153,9 +172,10 @@ fn main() -> Result<()> {
         codec,
         analog_passthrough: Arc::new(Mutex::new(analog_passthrough)),
         mdns,
-        ota: Arc::new(ota::OtaProgress::default()),
+        ota: Arc::new(update::progress::OtaProgress::default()),
         health,
-        rollback,
+        setup_network,
+        auth: Mutex::new(streamline_firmware::auth::DigestAuthenticator::default()),
     });
     #[cfg(not(feature = "qemu"))]
     let captive_portal_address = match mode {
@@ -173,7 +193,7 @@ fn main() -> Result<()> {
     if let Err(error) = status_light::start(
         Arc::clone(&state.board),
         Arc::clone(&state.config),
-        mode == Mode::Setup,
+        mode.setup_network_active(),
         state.health.status,
         state.stream.clone(),
     ) {
@@ -182,7 +202,14 @@ fn main() -> Result<()> {
     if let Err(error) = buttons::start(Arc::clone(&state)) {
         log::warn!("buttons unavailable: {error:#}");
     }
-    let _server = http::start(Arc::clone(&state), captive_portal_address)?;
+    let server = streamline_firmware::boot_health::start(
+        mode,
+        || http::start(server, Arc::clone(&state), captive_portal_address),
+        http::probe,
+        ota::mark_current_valid,
+    );
+    let _server = server.map_err(|error| management_startup_error(&state.store, error))?;
+    log::info!("console ready");
     #[cfg(not(feature = "qemu"))]
     let _dns_responder = match captive_portal_address {
         Some(address) => match DnsResponder::start(address) {
@@ -205,6 +232,15 @@ fn main() -> Result<()> {
         FreeRtos::delay_ms(1_000);
         match mode {
             Mode::Provisioned => {
+                if state.restart.is_pending() {
+                    continue;
+                }
+                #[cfg(not(feature = "qemu"))]
+                if !wifi::station_connected(&network)
+                    && reconnect_timer.take_due(booted_at.elapsed())
+                {
+                    wifi::reconnect_station(&mut network);
+                }
                 let schedule = state
                     .config
                     .lock()
@@ -221,8 +257,10 @@ fn main() -> Result<()> {
                         Arc::clone(&state.ota),
                         Arc::clone(&state.store),
                         ota::Source::LatestRelease,
+                        state.stream.clone(),
                     ) {
                         log::warn!("automatic firmware update check could not start: {error:#}");
+                        auto_update_timer.start_failed(booted_at.elapsed());
                     }
                 }
             }
@@ -240,7 +278,10 @@ fn main() -> Result<()> {
                         log::info!(
                             "recovery: home network reachable; confirming slot and rejoining"
                         );
-                        ota::mark_current_valid();
+                        for endpoint in streamline_firmware::boot_health::PROBES {
+                            http::probe(endpoint)?;
+                        }
+                        ota::mark_current_valid()?;
                         unsafe { esp_idf_svc::sys::esp_restart() };
                     }
                 }
@@ -248,6 +289,16 @@ fn main() -> Result<()> {
             _ => {}
         }
     }
+}
+
+fn management_startup_error(store: &Mutex<ConfigStore>, error: anyhow::Error) -> anyhow::Error {
+    if let Ok(store) = store.lock() {
+        let _ = store.save_last_ota(&format!(
+            "v{}: management startup failed: {error:#}",
+            env!("CARGO_PKG_VERSION")
+        ));
+    }
+    error
 }
 
 /// What every `network_boot` variant delivers: the live network link, which
@@ -272,23 +323,20 @@ fn network_boot(
     store: &Arc<Mutex<ConfigStore>>,
     board: &Arc<Board>,
     persisted: Option<RuntimeConfig>,
+    setup_network: &SetupNetwork,
 ) -> Result<NetworkBoot> {
-    let suffix = wifi::device_suffix()?;
     let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
     let state = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
-            // Wi-Fi is up, so the device is reachable on the home network and
-            // stays provisioned. A bridge target that will not resolve or audio
-            // that will not initialize is a fault to surface through the health
-            // check, not a reason to drop to the setup AP — that recovery is for
-            // no network. Staying provisioned also lets `mark_current_valid`
-            // confirm the slot, so an audio fault can never trigger a rollback.
+            // A reachable management plane keeps this boot provisioned.
+            // Audio faults surface through health; bridge DNS belongs to the
+            // reconnecting sender and cannot disable its task at boot.
             Ok(()) => {
-                let target = match resolve_target(&config) {
+                let target = match configured_target(&config) {
                     Ok(target) => target,
                     Err(error) => {
                         log::warn!(
-                            "TCP target resolution failed: {error:#}; \
+                            "TCP target configuration failed: {error:#}; \
                              staying provisioned without a stream"
                         );
                         None
@@ -329,11 +377,11 @@ fn network_boot(
                 let (codec, analog_passthrough) =
                     start_recovery_local_output(peripherals.i2c0, board.as_ref(), &config);
                 let (mode, config, stream, _, _, health) =
-                    start_setup(&mut wifi, &suffix, board.as_ref(), Some(config))?;
+                    start_setup(&mut wifi, setup_network, board.as_ref(), Some(config))?;
                 (mode, config, stream, codec, analog_passthrough, health)
             }
         },
-        None => start_setup(&mut wifi, &suffix, board.as_ref(), None)?,
+        None => start_setup(&mut wifi, setup_network, board.as_ref(), None)?,
     };
     Ok((wifi, state))
 }
@@ -352,6 +400,8 @@ fn network_boot(
     _store: &Arc<Mutex<ConfigStore>>,
     board: &Arc<Board>,
     persisted: Option<RuntimeConfig>,
+    // No radio under emulation; the credentials still exist for the API.
+    _setup_network: &SetupNetwork,
 ) -> Result<NetworkBoot> {
     let ethernet = openeth::start(peripherals.mac, event_loop)?;
     let state = match persisted {
@@ -415,11 +465,11 @@ fn note_fallback(store: &Arc<Mutex<ConfigStore>>, reason: &str) {
 /// The stream target for a provisioned boot: `None` when no bridge is
 /// configured yet, so capture runs without a network task.
 #[cfg(not(feature = "qemu"))]
-fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
+fn configured_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
     if config.target_host.is_empty() {
         return Ok(None);
     }
-    TargetAddress::resolve(config).map(Some)
+    TargetAddress::from_config(config).map(Some)
 }
 
 /// Audio bring-up outcome: every live handle that came up, plus the single fact
@@ -429,7 +479,7 @@ fn resolve_target(config: &RuntimeConfig) -> Result<Option<TargetAddress>> {
 #[cfg(not(feature = "qemu"))]
 struct AudioOutcome {
     stream: Option<Arc<stream::StreamStatus>>,
-    codec: Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    codec: Option<Arc<Mutex<codec::DeviceCodec<'static>>>>,
     analog_passthrough: AnalogPassthroughState,
     /// `Ok` when the codec answered and the capture task started; `Err(reason)`
     /// otherwise, phrased for a person reading the health check.
@@ -492,7 +542,7 @@ fn start_codec(
     i2c_pins: I2cBusPins<'static>,
     board: &Board,
     config: &RuntimeConfig,
-) -> Result<(codec::CodecControl<'static>, AnalogPassthroughState)> {
+) -> Result<(codec::DeviceCodec<'static>, AnalogPassthroughState)> {
     let mut codec = codec::configure(i2c0, i2c_pins, &board.codec, config.audio)?;
     let route = board
         .analog_passthrough
@@ -516,7 +566,7 @@ fn start_recovery_local_output(
     board: &Board,
     config: &RuntimeConfig,
 ) -> (
-    Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    Option<Arc<Mutex<codec::DeviceCodec<'static>>>>,
     AnalogPassthroughState,
 ) {
     if !config.analog_passthrough_enabled {
@@ -551,7 +601,7 @@ impl AudioOutcome {
     }
 
     fn degraded(
-        codec: codec::CodecControl<'static>,
+        codec: codec::DeviceCodec<'static>,
         analog_passthrough: AnalogPassthroughState,
         reason: String,
     ) -> Self {
@@ -568,7 +618,7 @@ type SetupState = (
     Mode,
     RuntimeConfig,
     Option<Arc<stream::StreamStatus>>,
-    Option<Arc<Mutex<codec::CodecControl<'static>>>>,
+    Option<Arc<Mutex<codec::DeviceCodec<'static>>>>,
     AnalogPassthroughState,
     Arc<HealthReport>,
 );
@@ -576,17 +626,38 @@ type SetupState = (
 #[cfg(not(feature = "qemu"))]
 fn start_setup(
     wifi: &mut wifi::WifiController<'_>,
-    suffix: &str,
+    setup_network: &SetupNetwork,
     board: &Board,
     persisted: Option<RuntimeConfig>,
 ) -> Result<SetupState> {
+    // The physical-presence escape hatch: the board's first button, held
+    // while power is applied, starts this boot's AP open — for the owner
+    // whose label wore off or note went missing. Sampled before the AP
+    // starts, and only for this boot.
+    let protection = if buttons::setup_override_held(board) {
+        wifi::ApProtection::OpenThisBoot
+    } else {
+        wifi::ApProtection::Wpa2
+    };
     // A provisioned device that fell back runs the station beside the AP so it
     // can rejoin its home network on its own; a first-run device is AP-only.
-    let ssid = match persisted.as_ref() {
-        Some(config) => wifi::start_recovery_ap(wifi, suffix, config)?,
-        None => wifi::start_setup_ap(wifi, suffix)?,
+    match persisted.as_ref() {
+        Some(config) => wifi::start_recovery_ap(wifi, setup_network, protection, config)?,
+        None => wifi::start_setup_ap(wifi, setup_network, protection)?,
     };
-    log::info!("setup AP started: {ssid}");
+    // The one place a DIY build reads its setup password: `espflash monitor`
+    // and the WebFlasher's log view both show this line.
+    log::info!(
+        "setup network ready: SSID \"{}\" password \"{}\" — join it and open http://192.168.71.1/",
+        setup_network.ssid,
+        setup_network.password
+    );
+    if protection == wifi::ApProtection::OpenThisBoot {
+        log::warn!(
+            "setup network is OPEN for this boot: a button was held at power-on; \
+             the next restart protects it again"
+        );
+    }
     Ok((
         if persisted.is_some() {
             Mode::Recovery

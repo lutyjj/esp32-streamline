@@ -27,6 +27,10 @@ pub trait PacketSink {
     /// Send one packet. `Ok(true)` reports a freshly established connection, so
     /// the pipeline can count reconnects; `Err` reports a failure to retry.
     fn send(&mut self, bytes: &[u8]) -> Result<bool, SendFailed>;
+
+    /// Close any open connection, freeing its socket and TLS buffers. The next
+    /// send reconnects.
+    fn disconnect(&mut self);
 }
 
 /// A blocking delay used to back off after a failure.

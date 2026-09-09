@@ -33,17 +33,17 @@ enum TransportSecurity {
     TlsPsk(TransportKey),
 }
 
-/// A resolved bridge endpoint and the exact transport selected at boot.
+/// A configured bridge endpoint, resolved again for each connection attempt.
 #[derive(Clone)]
 pub struct TargetAddress {
-    socket: SocketAddr,
+    host: String,
+    port: u16,
     security: TransportSecurity,
 }
 
 impl TargetAddress {
-    pub fn resolve(config: &RuntimeConfig) -> Result<Self> {
+    pub fn from_config(config: &RuntimeConfig) -> Result<Self> {
         let port = config.target_port;
-        let socket = resolve_socket(&config.target_host, port)?;
         let security = match config.transport.mode {
             TransportMode::Cleartext => TransportSecurity::Cleartext,
             TransportMode::TlsPsk => TransportSecurity::TlsPsk(
@@ -55,7 +55,11 @@ impl TargetAddress {
                     .ok_or_else(|| anyhow!("secure PCM transport has no active key"))?,
             ),
         };
-        Ok(Self { socket, security })
+        Ok(Self {
+            host: config.target_host.clone(),
+            port,
+            security,
+        })
     }
 }
 
@@ -91,6 +95,10 @@ impl PacketSink for TcpClient {
             log::warn!("TCP stream error: {error:#}");
             SendFailed { secure_handshake }
         })
+    }
+
+    fn disconnect(&mut self) {
+        self.sender.disconnect();
     }
 }
 
@@ -139,10 +147,11 @@ impl PcmConnector for AdapterConnector {
     type Stream = Connection;
 
     fn connect(&mut self) -> std::result::Result<Self::Stream, Self::Error> {
+        let socket = resolve_socket(&self.0.host, self.0.port).map_err(TcpSendError::io)?;
         match &self.0.security {
             TransportSecurity::Cleartext => {
-                let stream = TcpStream::connect_timeout(&self.0.socket, CLEARTEXT_TIMEOUT)
-                    .with_context(|| format!("TCP connect to {} failed", self.0.socket))
+                let stream = TcpStream::connect_timeout(&socket, CLEARTEXT_TIMEOUT)
+                    .with_context(|| format!("TCP connect to {} failed", socket))
                     .map_err(TcpSendError::io)?;
                 stream.set_nodelay(true).map_err(TcpSendError::io)?;
                 stream
@@ -150,7 +159,7 @@ impl PcmConnector for AdapterConnector {
                     .map_err(TcpSendError::io)?;
                 Ok(Connection::Cleartext(stream))
             }
-            TransportSecurity::TlsPsk(key) => TlsConnection::connect(self.0.socket, key.clone())
+            TransportSecurity::TlsPsk(key) => TlsConnection::connect(socket, key.clone())
                 .map(Connection::Tls)
                 .map_err(TcpSendError::handshake),
         }
@@ -183,12 +192,14 @@ impl TlsConnection {
             key_size: key.psk().as_bytes().len(),
             hint: identity.as_ptr(),
         });
-        let mut config = sys::esp_tls_cfg_t::default();
-        config.timeout_ms = TLS_TIMEOUT_MS;
-        config.psk_hint_key = &*psk;
-        config.ciphersuites_list = TLS_CIPHERSUITES.as_ptr();
-        config.tls_version = sys::esp_tls_proto_ver_t_ESP_TLS_VER_TLS_1_3;
-        config.addr_family = sys::esp_tls_addr_family_ESP_TLS_AF_INET;
+        let config = sys::esp_tls_cfg_t {
+            timeout_ms: TLS_TIMEOUT_MS,
+            psk_hint_key: &*psk,
+            ciphersuites_list: TLS_CIPHERSUITES.as_ptr(),
+            tls_version: sys::esp_tls_proto_ver_t_ESP_TLS_VER_TLS_1_3,
+            addr_family: sys::esp_tls_addr_family_ESP_TLS_AF_INET,
+            ..Default::default()
+        };
         let handle = unsafe { sys::esp_tls_init() };
         if handle.is_null() {
             return Err(anyhow!("cannot allocate ESP-TLS handle"));

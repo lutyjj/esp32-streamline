@@ -24,7 +24,7 @@ use esp_idf_svc::{
     wifi::{BlockingWifi, EspWifi},
 };
 
-use crate::{config::RuntimeConfig, identity};
+use crate::{config::RuntimeConfig, identity, setup_network::SetupNetwork};
 
 pub type WifiController<'d> = BlockingWifi<EspWifi<'d>>;
 
@@ -108,11 +108,28 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
     }
 }
 
-/// Start the physical-presence setup network as an open AP: initial
-/// configuration has no pre-shared secret to authenticate against. The AP runs
+/// Which protection the setup access point starts with.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApProtection {
+    /// WPA2 with the device-generated password: the default, anchoring
+    /// commissioning to possession of the board or its label.
+    Wpa2,
+    /// Open, for one boot: the physical-presence escape hatch a held button
+    /// selects when the password is unavailable. The next boot without the
+    /// button locks the network again.
+    OpenThisBoot,
+}
+
+/// Start the physical-presence setup network. Joining it requires the
+/// password from the device's serial log, the flasher, or its label — or a
+/// button held at power-on, which starts it open for this boot. The AP runs
 /// only in setup and recovery, never while the device is on its home network.
-pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<String> {
-    start_ap(wifi, suffix, None)
+pub fn start_setup_ap(
+    wifi: &mut WifiController<'_>,
+    network: &SetupNetwork,
+    protection: ApProtection,
+) -> Result<()> {
+    start_ap(wifi, network, protection, None)
 }
 
 /// Start the setup AP alongside a station that keeps retrying the saved Wi-Fi.
@@ -122,23 +139,28 @@ pub fn start_setup_ap(wifi: &mut WifiController<'_>, suffix: &str) -> Result<Str
 /// or not the station associates.
 pub fn start_recovery_ap(
     wifi: &mut WifiController<'_>,
-    suffix: &str,
+    network: &SetupNetwork,
+    protection: ApProtection,
     config: &RuntimeConfig,
-) -> Result<String> {
-    start_ap(wifi, suffix, Some(config))
+) -> Result<()> {
+    start_ap(wifi, network, protection, Some(config))
 }
 
 fn start_ap(
     wifi: &mut WifiController<'_>,
-    suffix: &str,
+    network: &SetupNetwork,
+    protection: ApProtection,
     station: Option<&RuntimeConfig>,
-) -> Result<String> {
-    let ssid = format!("esp32-streamline-{suffix}");
+) -> Result<()> {
+    let (auth_method, password) = match protection {
+        ApProtection::Wpa2 => (AuthMethod::WPA2Personal, network.password.as_str()),
+        ApProtection::OpenThisBoot => (AuthMethod::None, ""),
+    };
     let access_point = AccessPointConfiguration {
-        ssid: ssid.as_str().try_into()?,
+        ssid: network.ssid.as_str().try_into()?,
         ssid_hidden: false,
-        auth_method: AuthMethod::None,
-        password: "".try_into()?,
+        auth_method,
+        password: password.try_into()?,
         channel: 1,
         ..Default::default()
     };
@@ -153,7 +175,7 @@ fn start_ap(
     if let Err(error) = advertise_setup_dns() {
         log::warn!("setup DHCP DNS advertisement unavailable: {error:#}");
     }
-    Ok(ssid)
+    Ok(())
 }
 
 /// Wait for the soft-AP interface to obtain its address before advertising DNS.
@@ -175,25 +197,30 @@ fn wait_access_point_ready(wifi: &mut WifiController<'_>, ap_only: bool) -> Resu
     Err(anyhow!("setup AP address did not come up"))
 }
 
+/// Association and DHCP must both be live; a cached lease is not connectivity.
+pub fn station_connected(wifi: &WifiController<'_>) -> bool {
+    wifi.is_connected().unwrap_or(false) && station_ip().is_some()
+}
+
 /// Drive one station association attempt without tearing down the setup AP.
 ///
-/// The combined AP-and-station configuration is already set by
-/// [`start_recovery_ap`], so this only initiates association and reports whether
+/// The station configuration is already set at boot, so this initiates
+/// association in provisioned or recovery mode and reports whether
 /// the station obtained an address. A failure leaves the AP up for the next
 /// attempt; success means the home network is reachable again.
 pub fn reconnect_station(wifi: &mut WifiController<'_>) -> bool {
     // A prior attempt may have associated but leased an address only after its
     // poll window closed; if the station now holds one, the network is back and
     // there is no need to reconnect an already-connected station.
-    if station_ip().is_some() {
+    if station_connected(wifi) {
         return true;
     }
     if let Err(error) = wifi.connect() {
-        log::info!("recovery Wi-Fi retry did not associate: {error}");
+        log::info!("Wi-Fi retry did not associate: {error}");
         return false;
     }
     for _ in 0..STATION_READY_POLLS {
-        if station_ip().is_some() {
+        if station_connected(wifi) {
             return true;
         }
         FreeRtos::delay_ms(STATION_READY_POLL_INTERVAL_MS);

@@ -9,9 +9,13 @@
 
 use std::time::Duration;
 
+mod check;
+pub use check::check_release;
+pub mod progress;
+
 use sha2::{Digest, Sha256};
 
-use crate::config::AutoUpdateSchedule;
+use crate::{config::AutoUpdateSchedule, hex};
 
 /// The application image published for over-the-air updates. Its filename
 /// carries the release version, so one `SHA256SUMS` entry yields everything the
@@ -28,6 +32,7 @@ pub const AUTO_UPDATE_INITIAL_DELAY: Duration = Duration::from_secs(10 * 60);
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct AutoUpdateTimer {
     last_attempt: Option<Duration>,
+    retry_at: Option<Duration>,
 }
 
 impl AutoUpdateTimer {
@@ -42,15 +47,21 @@ impl AutoUpdateTimer {
         let Some(interval) = schedule.interval() else {
             return false;
         };
-        let due_at = self
+        let scheduled = self
             .last_attempt
             .map(|last| last.saturating_add(interval))
             .unwrap_or(AUTO_UPDATE_INITIAL_DELAY);
+        let due_at = self.retry_at.unwrap_or(scheduled);
         if !audio_idle || now < due_at {
             return false;
         }
         self.last_attempt = Some(now);
+        self.retry_at = None;
         true
+    }
+
+    pub fn start_failed(&mut self, now: Duration) {
+        self.retry_at = Some(now.saturating_add(Duration::from_secs(60)));
     }
 }
 
@@ -287,7 +298,7 @@ pub fn install_verified(
     }
 
     progress.verifying();
-    let actual = hex_lower(&hasher.finalize());
+    let actual = hex::encode(&hasher.finalize());
     if actual != expected_sha256 {
         return Err(InstallError::Checksum {
             expected: expected_sha256.to_owned(),
@@ -295,16 +306,6 @@ pub fn install_verified(
         });
     }
     Ok(())
-}
-
-/// Render bytes as a lowercase hex string for digest comparison.
-pub fn hex_lower(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(char::from_digit((byte >> 4) as u32, 16).unwrap());
-        out.push(char::from_digit((byte & 0x0f) as u32, 16).unwrap());
-    }
-    out
 }
 
 #[cfg(test)]
@@ -578,6 +579,28 @@ mod tests {
         ));
         assert!(timer.take_due(
             AUTO_UPDATE_INITIAL_DELAY + Duration::from_secs(24 * 60 * 60),
+            AutoUpdateSchedule::Daily,
+            true
+        ));
+    }
+
+    #[test]
+    fn failed_automatic_start_retries_after_one_minute_when_enabled_and_idle() {
+        let mut timer = AutoUpdateTimer::default();
+        let now = AUTO_UPDATE_INITIAL_DELAY;
+        assert!(timer.take_due(now, AutoUpdateSchedule::Daily, true));
+        timer.start_failed(now);
+        assert!(!timer.take_due(
+            now + Duration::from_secs(59),
+            AutoUpdateSchedule::Daily,
+            true
+        ));
+        let retry = now + Duration::from_secs(60);
+        assert!(!timer.take_due(retry, AutoUpdateSchedule::Disabled, true));
+        assert!(!timer.take_due(retry, AutoUpdateSchedule::Daily, false));
+        assert!(timer.take_due(retry, AutoUpdateSchedule::Daily, true));
+        assert!(!timer.take_due(
+            retry + Duration::from_secs(60),
             AutoUpdateSchedule::Daily,
             true
         ));

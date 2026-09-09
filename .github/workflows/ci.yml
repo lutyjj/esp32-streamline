@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [mainline]
   workflow_dispatch:
+    inputs:
+      sign_firmware:
+        description: Sign this revision for testing on release-key devices (no release publication)
+        type: boolean
+        default: false
+      test_source:
+        description: Replace captured PCM with a test tone in the signed hardware image
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -69,7 +78,7 @@ jobs:
   firmware:
     name: Firmware (clippy · test · release build)
     needs: changes
-    if: ${{ needs.changes.outputs.firmware == 'true' || needs.changes.outputs.qemu_smoke == 'true' }}
+    if: ${{ needs.changes.outputs.firmware == 'true' || needs.changes.outputs.qemu_smoke == 'true' || inputs.sign_firmware }}
     runs-on: ubuntu-latest
     env:
       CONTAINER_USER: 0:0
@@ -89,10 +98,44 @@ jobs:
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
       - name: Check
-        if: ${{ needs.changes.outputs.firmware == 'true' }}
+        if: ${{ needs.changes.outputs.firmware == 'true' || inputs.sign_firmware }}
         run: |
           make firmware-check \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
+
+      - name: Build hardware image for manual signing
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_firmware }}
+        run: |
+          make firmware-build FEATURES="${{ inputs.test_source && 'test-source' || '' }}" \
+            CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
+
+      - name: Sign the requested test image
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_firmware }}
+        env:
+          FIRMWARE_SIGNING_KEY: ${{ secrets.FIRMWARE_SIGNING_KEY }}
+        run: |
+          umask 077
+          key=firmware/streamline/.release_signing_key.pem
+          trap 'shred -u "$key" 2>/dev/null || rm -f "$key"' EXIT
+          test -n "$FIRMWARE_SIGNING_KEY"
+          printf '%s\n' "$FIRMWARE_SIGNING_KEY" > "$key"
+          unset FIRMWARE_SIGNING_KEY
+          make -C firmware package VERSION=dev SIGNING_KEY=.release_signing_key.pem \
+            CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
+
+      - name: Upload signed test image
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_firmware }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed-firmware-${{ github.sha }}
+          overwrite: true
+          path: |
+            dist/firmware/streamline-dev-ota.bin
+            dist/firmware/streamline-dev-full.bin
+            dist/firmware/streamline-dev.elf
+            dist/firmware/SHA256SUMS
+          retention-days: 3
+          if-no-files-found: error
 
       # The QEMU image variant must keep compiling, and the smoke job below
       # needs its images. Built here because this job owns the warm toolchain
@@ -113,6 +156,9 @@ jobs:
           path: |
             dist/firmware/streamline-qemu-full.bin
             dist/firmware/streamline-qemu-ota.bin
+            dist/firmware/streamline-qemu-fail-management-ota.bin
+            dist/firmware/streamline-qemu.elf
+            dist/firmware/streamline-qemu-fail-management.elf
           retention-days: 3
           if-no-files-found: error
 
@@ -155,6 +201,15 @@ jobs:
       # workers at once), so leave half the CPUs for QEMU itself. Drop back
       # to serial (remove SMOKE_JOBS) if the setup flake climbs.
       - run: make tools-smoke-qemu SMOKE_JOBS=2
+      - name: Preserve failed QEMU state
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qemu-failure-${{ github.sha }}-${{ github.run_attempt }}
+          path: tools/.smoke-qemu/
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: warn
 
   api-contract:
     name: Device API contract

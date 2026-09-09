@@ -10,6 +10,7 @@ emulator can produce lives in `test_qemu_device.py` behind the `emulated` marker
 
 import dataclasses
 import json
+import re
 
 import pytest
 import requests
@@ -35,6 +36,14 @@ def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:
     results = api_checks(device_api.fetch)
     failed = [result for result in results if not result.passed]
     assert not failed, failed
+
+
+def test_signed_firmware_reports_its_trusted_key(device_api: DeviceApi) -> None:
+    code, body = device_api.fetch("/api/status")
+    assert code == 200
+    ota = json.loads(body)["ota"]
+    assert ota["signed_updates"]
+    assert re.fullmatch(r"[0-9a-f]{64}", ota["signing_key_sha256"]), ota
 
 
 def test_status_reports_a_valid_mode(device_api: DeviceApi) -> None:
@@ -220,3 +229,21 @@ def test_rollback_is_refused_when_no_slot_is_available(authed_device_api: Device
     code, body = authed_device_api.post_form("/api/ota/rollback", {})
     # No stored previous image is a state conflict, not a bad request.
     assert code == 409, f"unavailable rollback was answered with HTTP {code}: {body[:200]!r}"
+
+
+def test_invalid_wifi_credentials_leave_configuration_intact(authed_device_api: DeviceApi) -> None:
+    code, body = authed_device_api.fetch("/api/settings")
+    assert code == 200
+    before = json.loads(body)
+    for fields in [
+        {"ssid": "x" * 33, "password": "test-password"},
+        {"ssid": "é" * 17, "password": "test-password"},
+        {"ssid": "test-network", "password": "x" * 65},
+        {"ssid": "test-network", "password": "short"},
+        {"ssid": "test-network", "password": "abc\0defgh"},
+    ]:
+        code, _ = authed_device_api.post_form("/api/settings/wifi", fields)
+        assert code == 400
+    code, body = authed_device_api.fetch("/api/settings")
+    assert code == 200
+    assert json.loads(body) == before

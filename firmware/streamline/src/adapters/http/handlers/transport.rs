@@ -43,7 +43,7 @@ fn register_settings(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
             })
         });
         match result {
-            Ok(true) => reboot_response(request),
+            Ok(true) => reboot_response(request, &state.restart),
             Ok(false) => json_response(request, 200, &api::Ack::ok()),
             Err(error) => mutation_error(request, error),
         }
@@ -92,7 +92,7 @@ fn register_activate(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
             next.transport.mode = TransportMode::TlsPsk;
             Ok(())
         }) {
-            Ok(()) => reboot_response(request),
+            Ok(()) => reboot_response(request, &state.restart),
             Err(error) => mutation_error(request, error),
         },
     )
@@ -116,7 +116,7 @@ fn register_rollback(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> 
     server.handler(
         api::TRANSPORT_KEY_ROLLBACK,
         move |request| match mutate_keys(&state, |next| Ok(next.transport.keys.rollback_key()?)) {
-            Ok(()) => reboot_response(request),
+            Ok(()) => reboot_response(request, &state.restart),
             Err(error) => mutation_error(request, error),
         },
     )

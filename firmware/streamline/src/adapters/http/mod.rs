@@ -19,7 +19,7 @@ use embedded_svc::http::Method;
 use esp_idf_svc::http::server::{Configuration, EspHttpConnection, EspHttpServer};
 
 use crate::{
-    adapters::{codec::CodecControl, mdns::MdnsAdvertisement, nvs::ConfigStore, ota::OtaProgress},
+    adapters::{codec::DeviceCodec, mdns::MdnsAdvertisement, nvs::ConfigStore},
     analog_passthrough::AnalogPassthroughState,
     api::{self, Endpoint, HttpMethod},
     board,
@@ -30,6 +30,7 @@ use crate::{
     setup_network::SetupNetwork,
     stream::StreamStatus,
     transport::KeyVerifier,
+    update::progress::OtaProgress,
 };
 
 // Stored gzipped (build.rs compresses them into OUT_DIR) and served with
@@ -38,6 +39,10 @@ const INDEX_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.html.gz"
 const OPENAPI_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/openapi.json.gz"));
 
 pub struct ApiState {
+    /// Serializes complete control operations across HTTP and physical buttons.
+    pub control: Mutex<()>,
+    pub restart: Arc<crate::restart::Restart>,
+    pub button_action: crate::task_start::TaskSlot,
     pub mode: Mode,
     pub hostname: String,
     pub board_catalog: Arc<Vec<board::Board>>,
@@ -49,7 +54,7 @@ pub struct ApiState {
     pub key_verifier: Option<Arc<dyn KeyVerifier>>,
     /// Live codec control for immediate audio and local-output changes. It also
     /// stays available in network recovery when persisted local output is on.
-    pub codec: Option<Arc<Mutex<CodecControl<'static>>>>,
+    pub codec: Option<Arc<Mutex<DeviceCodec<'static>>>>,
     pub analog_passthrough: Arc<Mutex<AnalogPassthroughState>>,
     pub mdns: Option<Arc<Mutex<MdnsAdvertisement>>>,
     pub ota: Arc<OtaProgress>,
@@ -61,6 +66,41 @@ pub struct ApiState {
     pub setup_network: SetupNetwork,
     /// Digest-authentication nonce state (see [`crate::auth`]).
     pub auth: Mutex<crate::auth::DigestAuthenticator>,
+}
+
+pub fn probe(endpoint: Endpoint) -> Result<()> {
+    use crate::adapters::download::{HttpGet, TlsRxBuffer};
+
+    let path = if cfg!(feature = "qemu-fail-management") {
+        "/api/missing-management-probe"
+    } else {
+        endpoint.path
+    };
+    let mut response = HttpGet::get(&format!("http://127.0.0.1{path}"), TlsRxBuffer::PerRecord)?;
+    if response.status() != 200 {
+        bail!(
+            "management probe {} returned HTTP {}",
+            endpoint.path,
+            response.status()
+        );
+    }
+    let mut buffer = [0_u8; 512];
+    let mut received = 0;
+    let started = std::time::Instant::now();
+    loop {
+        let read = response.read(&mut buffer)?;
+        received += read;
+        if received > 65_536 || started.elapsed() > std::time::Duration::from_secs(10) {
+            bail!(
+                "management probe {} exceeded its response budget",
+                endpoint.path
+            );
+        }
+        if read == 0 {
+            break;
+        }
+    }
+    Ok(())
 }
 
 /// Shared-state access for every handler, read and write alike.
@@ -136,8 +176,12 @@ impl<'a> ContractServer<'a> {
         let state = Arc::clone(&self.state);
         self.inner
             .fn_handler(endpoint.path, method(endpoint), move |request| {
+                let _control = state.control.lock().expect("control lock poisoned");
                 if let Err(challenge) = auth::authorized_for(&request, &state, endpoint) {
                     return responses::unauthorized(request, &challenge);
+                }
+                if endpoint.method == HttpMethod::Post && state.restart.is_pending() {
+                    return responses::unavailable(request, "device is restarting");
                 }
                 handler(request)
             })?;
@@ -161,22 +205,40 @@ impl<'a> ContractServer<'a> {
     }
 }
 
-pub fn start(
-    state: Arc<ApiState>,
-    captive_portal_address: Option<Ipv4Addr>,
-) -> Result<EspHttpServer<'static>> {
-    let captive_portal_enabled = captive_portal_address.is_some();
-    let mut server = EspHttpServer::new(&Configuration {
+/// Initialize the listener before any network interface can accept traffic.
+pub fn bind() -> Result<EspHttpServer<'static>> {
+    esp_idf_svc::netif::NetifStack::initialize()?;
+    Ok(EspHttpServer::new(&Configuration {
         // Authenticated transport-key writes serialize a complete atomic state
         // generation before returning the one-time credential. Keep that work
         // on the HTTP task without approaching FreeRTOS's stack guard.
         stack_size: 16_384,
         // One slot per API endpoint, the `/` console handler, and the optional
         // setup fallback, so a new route never silently overflows the table.
-        max_uri_handlers: api::ENDPOINTS.len() + 1 + usize::from(captive_portal_enabled),
-        uri_match_wildcard: captive_portal_enabled,
+        max_uri_handlers: api::ENDPOINTS.len() + 2,
+        uri_match_wildcard: true,
         ..Default::default()
-    })?;
+    })?)
+}
+
+pub fn start(
+    mut server: EspHttpServer<'static>,
+    state: Arc<ApiState>,
+    captive_portal_address: Option<Ipv4Addr>,
+) -> Result<EspHttpServer<'static>> {
+    let restart = Arc::clone(&state.restart);
+    crate::adapters::task::prepare(
+        esp_idf_svc::hal::task::thread::ThreadSpawnConfiguration {
+            stack_size: 3072,
+            ..Default::default()
+        },
+        move || {
+            restart.wait();
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
+            unsafe { esp_idf_svc::sys::esp_restart() };
+        },
+    )?
+    .commit();
     server.fn_handler("/", Method::Get, move |request| {
         responses::respond_gzip(request, 200, "text/html; charset=utf-8", INDEX_GZ)
     })?;

@@ -517,6 +517,7 @@ endpoint!(
     summary = "Verify the admin key",
     responses(
         (status = 200, body = Ack),
+        (status = 503, body = ErrorResponse),
         (status = 401, body = ErrorResponse)
     )
 );
@@ -530,6 +531,7 @@ endpoint!(
     summary = "Restart the device",
     responses(
         (status = 200, body = Ack),
+        (status = 503, body = ErrorResponse),
         (status = 401, body = ErrorResponse)
     )
 );
@@ -543,6 +545,7 @@ endpoint!(
     summary = "Factory-reset the device",
     responses(
         (status = 200, body = FactoryResetResponse),
+        (status = 503, body = ErrorResponse),
         (status = 401, body = ErrorResponse),
         (status = 500, body = ErrorResponse)
     )

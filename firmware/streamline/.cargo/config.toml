@@ -14,5 +14,4 @@ build-std-features = []
 
 [env]
 MCU = "esp32"
-ESP_IDF_VERSION = "v5.5.3"
 ESP_IDF_TOOLS_INSTALL_DIR = "workspace"

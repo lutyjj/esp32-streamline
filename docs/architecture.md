@@ -48,6 +48,11 @@ context the official Home Assistant builder validates for each published
 architecture. These are deliberate build-time dependencies, not shared runtime
 state.
 
+The firmware Dockerfile pins the official ESP-IDF source and provides it through
+`IDF_PATH`. Cargo pins the Rust bindings, including upstream revisions needed by
+that SDK. Validate these pins together with the firmware build and QEMU smoke;
+network, TLS, and audio changes also need the hardware proof in `AGENTS.md`.
+
 ## Firmware boundaries
 
 The Rust library separates portable application logic from ESP-IDF integration:
@@ -63,10 +68,17 @@ Core modules may define narrow traits that adapters implement. Core code does no
 
 1. The firmware opens NVS and resolves a built-in or custom board descriptor.
 2. It loads configuration validated against that descriptor.
-3. A configured device attempts station Wi-Fi. Without valid configuration it starts the setup AP. A configured device that cannot reach Wi-Fi starts the setup AP beside a station that keeps retrying the saved network, so it rejoins on its own once the network returns.
-4. In provisioned mode, the firmware starts audio capture even when no bridge target exists. It starts the TCP sender only when a target exists.
-5. The HTTP server exposes status and configuration in both modes. An empty admin key permits first commissioning; a stored key gates every write.
-6. Startup health records whether audio initialized and whether a bridge target exists. It does not control OTA rollback.
+3. The HTTP listener and its callback registry initialize before any network interface starts accepting connections.
+4. A configured device attempts station Wi-Fi. Without valid configuration it starts the setup AP. A configured device that cannot reach Wi-Fi starts the setup AP beside a station that keeps retrying the saved network, so it rejoins on its own once the network returns.
+5. In provisioned mode, the firmware starts audio capture even when no bridge target exists. It starts the TCP sender only when a target exists. Each connection attempt resolves that target again, so DNS failure or an address change can recover without a reboot. A lost station connection triggers periodic association retries while audio keeps running.
+6. The HTTP server exposes status and configuration after its routes are registered. An empty admin key permits first commissioning; a stored key gates every write. Provisioned firmware is confirmed only after management probes succeed.
+7. Startup health records whether audio initialized and whether a bridge target exists. It does not control OTA rollback.
+
+Management startup reserves one restart worker before registering API handlers.
+A successful rebooting mutation signals that worker before sending its response;
+a disconnected client cannot cancel the reboot. Further HTTP and button writes
+are refused until restart. Configuration validates the station driver's SSID
+and WPA2 password limits before committing Wi-Fi settings.
 
 The [user journey](user-journey.md) owns the visible behavior of these states. The [security model](security.md) owns who may call each surface.
 
@@ -77,8 +89,15 @@ The selected board descriptor supplies codec identity, GPIO wiring, input labels
 On a board that advertises local output, the codec can route the selected input
 directly to that output without converting it to PCM. This route is independent
 of the I2S capture, signal gate, and network sender. The application core owns
-desired, active, and fault state behind a codec-control interface; the hardware
-adapter owns register order, muting, and fail-close behavior.
+desired, active, and fault state behind a codec-control interface. Portable codec
+drivers own register order, muting, settling, and rollback. The hardware adapter
+binds their register bus to ESP-IDF I2C with a bounded write timeout.
+
+HTTP and physical-button operations share one control lock across validation,
+hardware application, persistence, and publication to readers. Button admission
+permits one transient action worker; it releases the slot on spawn failure or
+completion. This bounds stack use while preventing stale configuration copies
+from overwriting concurrent changes.
 
 For each captured packet, portable code computes levels and updates the signal gate. The firmware increments the sequence while idle but sends packets only while the gate reports playback and streaming is not paused (`POST /api/stream` or a button assigned to it). A bounded drop-oldest queue prevents a stalled network from blocking capture. The [PCM protocol](pcm-protocol.md) owns the bytes; the [PCM transport record](tcp-transport.md) owns mode selection, key lifecycle, task placement, timeouts, and reconnect behavior.
 
@@ -124,7 +143,7 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 
 | State | Owner | Lifetime |
 |---|---|---|
-| Wi-Fi, target, transport mode and keys, audio, admin key, board selection, audio profile catalog | Firmware NVS adapter | Across reboots and firmware updates; the adapter commits a complete inactive generation, then switches one active marker; factory reset selects an empty generation; a generation the running firmware cannot decode means the device is unconfigured and opens setup |
+| Wi-Fi, target, transport mode and keys, audio, admin key, board selection, audio profile catalog | Firmware state core and NVS adapter | Across reboots; one commit marker selects complete checksummed snapshots; factory reset commits an empty snapshot without a fallback |
 | Stream counters and level state | Firmware runtime | One boot |
 | OTA progress | Firmware OTA worker | One boot; final diagnostic note persists in NVS |
 | Bridge source pipelines and client queues | Bridge process | One bridge process |
@@ -134,6 +153,22 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 | Built console, firmware images, release notes | Build and release automation | Generated artifact; never source state |
 
 Persistent and cross-boundary values enter business logic only after parsing and validation. Secrets never appear in read APIs, build artifacts, logs, issues, or documentation examples.
+
+The complete serialized configuration snapshot is limited to 3,840 UTF-8 bytes,
+including JSON escaping, custom board descriptors, and profiles. A save checks
+that limit before writing. The 24 KB NVS partition holds two snapshot strings,
+the commit marker, setup credentials, diagnostics, and ESP-IDF Wi-Fi state;
+replacement and garbage collection need spare pages.
+
+The state core writes the inactive snapshot, then atomically replaces a marker
+containing its SHA-256 and the previous committed snapshot's SHA-256. A corrupt
+active snapshot falls back only to that named, checksum-valid predecessor.
+An interrupted write cannot become a fallback. The marker defines ordering,
+so no revision counter can wrap. An unreadable marker or two unreadable
+snapshots leave the device unconfigured; storage I/O errors fail boot.
+Factory reset removes the fallback reference so corruption cannot restore
+erased credentials. Stored shapes must match the current firmware; no
+compatibility reader or migration runs at boot.
 
 ## Contract ownership
 

@@ -94,7 +94,8 @@ smoke-qemu: qemu-image
 	@test -f "$(OTA_IMAGE)" || (echo "OTA_IMAGE=$(OTA_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	@test -f "$(FAILURE_IMAGE)" || (echo "FAILURE_IMAGE=$(FAILURE_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	mkdir -p .smoke-qemu
-	$(CONTAINER) run --rm -v "$(abspath $(FLASH_IMAGE)):/flash.bin:ro" \
+	$(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" -e HOME=/tmp \
+		-v "$(abspath $(FLASH_IMAGE)):/flash.bin:ro" \
 		-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" \
 		-v "$(abspath $(FAILURE_IMAGE)):/failure.bin:ro" \
 		-v "$(CURDIR)/.smoke-qemu:/evidence" \

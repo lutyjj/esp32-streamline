@@ -20,9 +20,9 @@ staying cloud-free.
 |---|---|---|
 | HTTP writes (`:80`) | Digest-authenticated once provisioned; nonce counts kill replay | No key, no control (config, target, reset); capturing traffic yields nothing that authorizes a later write |
 | HTTP reads (`:80`) | Open; never returns secrets | Status and metrics readable, no control |
-| Device log (`/api/logs`) | Admin-key gated | Owner-only; returns the network name, bridge host, and addresses the firmware logged. Never contains keys — see [diagnostics](diagnostics.md) |
-| Crash dump (`/api/coredump`, `/api/coredump/image`) | Admin-key gated | Owner-only; a dump is a copy of task memory at the moment of a panic and can hold anything the firmware held — see [diagnostics](diagnostics.md#crash-dumps) |
-| Setup AP | WPA2 with a per-device password minted at first boot; writes open only until an admin key is set | Joining needs the password from the device's serial log, the flasher, or its label, so commissioning is anchored to possession of the board. The password is device identity: no reset changes it, no read API returns it, and the factory-reset response is its only API appearance. A button held at power-on starts the AP open for one boot — the physical-presence fallback for a lost password |
+| Device log (`/api/logs`) | Admin-key gated | Owner-only; returns the network name, bridge host, and addresses the firmware logged. Never contains keys. See [diagnostics](diagnostics.md). |
+| Crash dump (`/api/coredump`, `/api/coredump/image`) | Admin-key gated | Owner-only; a dump copies task memory at a panic and can contain secrets. See [diagnostics](diagnostics.md#crash-dumps). |
+| Setup AP | WPA2 with a per-device password minted at first boot; writes open only until an admin key is set | Joining needs the password from the device's serial log, the flasher, or its label. The password is device identity: no reset changes it, no read API returns it, and the factory-reset response is its only API appearance. A button held at power-on starts the AP open for one boot, providing physical recovery from a lost password. |
 | OTA update (`/api/ota/update`) | Admin-key gated; vendor RSA-3072 signature verified before commit, plus SHA-256 and auto-rollback | Owner-only; only firmware signed by the trusted key installs |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; pinned by the admin SHA-256 and verified against the trusted signing key | Owner-only; a forged image is rejected even when its digest matches, so the URL may be plain HTTP |
 | PCM stream (`:39000`) | Explicit cleartext TCP or TLS 1.3 PSK mode | Cleartext permits LAN capture and impersonation; TLS authenticates the source and protects audio |
@@ -43,7 +43,7 @@ staying cloud-free.
   client proves possession by hashing the key with the challenge nonce, a
   strictly increasing nonce count, and the request's method and URI. The
   device tracks each nonce's count and expires nonces after an hour, so a
-  captured exchange cannot be replayed — byte-identical or redirected at a
+  captured exchange cannot be replayed, either byte-identical or redirected at a
   different endpoint. Responses are compared constant-time. Standard clients
   need no custom code: `curl --digest -u "admin:$STREAMLINE_ADMIN_KEY"`,
   Python `requests.auth.HTTPDigestAuth`, and the console's own client all
@@ -64,7 +64,7 @@ staying cloud-free.
   after that every write requires it.
 - The web UI keeps the key in session storage by default, with explicit opt-in
   browser storage. Unlocking settings lasts 15 minutes. A lost key means
-  reflashing to recover — there is no remote reset without the key.
+  reflashing to recover. There is no remote reset without the key.
 
 ## Control-plane transport
 
@@ -87,7 +87,7 @@ makes the OTA path authenticity-against-forgery, not only
 integrity-against-corruption: a swapped release asset, a redirected
 custom-install URL, or a man-in-the-middle past TLS is rejected even when its
 SHA-256 matches. Release images are signed with the maintainer's key, held only
-in a CI secret; developer builds use a key generated on demand into a gitignored
+in a CI secret; local developer builds use a key generated on demand into a gitignored
 file, so no signing key lives in the repository. Without hardware Secure Boot
 the guarantee covers the network path, not boot-time or physical-flash tampering;
 Secure Boot v2 is the roadmap step that closes that gap.
@@ -95,15 +95,10 @@ Secure Boot v2 is the roadmap step that closes that gap.
 
 ## PCM transport
 
-TLS 1.3 PSK is the decided encrypted transport, kept after measurement. The
-memory pressure that once argued for replacing it was OTA installs running
-beside a live TLS stream; the install worker now quiesces the transport
-before downloading, which removed that concurrency. Measured on hardware
-(v0.10.0, TLS-PSK configured, capture running): 113 KB free heap, 45 KB
-largest free block, 45.5 KB minimum free since boot including update checks.
-A Noise-based replacement would buy back memory that no longer binds at the
-cost of a second device and bridge implementation; cleartext-only would be a
-downgrade nothing forces.
+TLS 1.3 PSK authenticates encrypted PCM connections. OTA installs pause the
+transport to release its socket and TLS buffers. Release checks keep audio
+running and retry a failed fetch once. The [OTA reference](ota.md#update-flow)
+owns these resource and retry policies.
 
 Encrypted PCM uses the exact TLS 1.3 profile in the
 [transport contract](tcp-transport.md). The PSK authenticates one device; the
@@ -151,10 +146,10 @@ check: it validates the image against the `sha256` the caller supplies from
 | Item | Tracking | Notes |
 |---|---|---|
 | Cleartext PCM mode | owner-controlled | It provides no confidentiality or source authentication. Use it only when encryption is not enabled or during explicit recovery. |
-| HTTP bodies readable in transit on the LAN | by design | Digest keeps the credential off the wire, but request bodies (a Wi-Fi password change, a settings write) stay cleartext, and an active man-in-the-middle can tamper with a body (`auth-int` is not implemented). The routinely sensitive body — the home Wi-Fi password — normally crosses only the WPA2-encrypted setup link at commissioning. See [Control-plane transport](#control-plane-transport). |
+| HTTP bodies readable in transit on the LAN | by design | Digest keeps the credential off the wire, but request bodies stay cleartext, and an active man-in-the-middle can tamper with a body (`auth-int` is not implemented). The home Wi-Fi password normally crosses only the WPA2-encrypted setup link at commissioning. See [Control-plane transport](#control-plane-transport). |
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
 | Button-held boot opens the setup AP for one boot | by design | Physical presence substitutes for the password: an attacker in radio range cannot press the button. The window is one boot and closes on restart. |
-| Setup password appears once in the factory-reset response | by design | The response repeats the label credential over the LAN at the one deliberate moment the owner heads back to commissioning — the same shown-once pattern as the PCM PSK reveal. No read endpoint returns it, and rotation means a full flash erase. |
+| Setup password appears once in the factory-reset response | by design | The response returns the label credential when the owner resets the device for commissioning. No read endpoint returns it, and rotation means a full flash erase. |
 | Bridge WAV stream is unauthenticated | by design | Front it with an authenticating reverse proxy before sharing beyond a trusted LAN. |
 | Home Assistant recordings are working data, not backup data | by design | Recordings survive restarts and updates, but restore or uninstall removes them. Download every WAV that must be retained. |
 
@@ -171,7 +166,7 @@ check: it validates the image against the `sha256` the caller supplies from
   mode, device-key enrollment, and recordings. The bridge console keeps it in
   browser session storage and sends it as a bearer token; the API never
   returns it. The token rides plain HTTP, so a LAN token holder can switch the
-  listener to cleartext or enroll a key — the device never downgrades itself,
+  listener to cleartext or enroll a key. The device never downgrades itself,
   so a forced bridge downgrade stops audio rather than exposing it. Keep the
   token as private as the LAN and rotate it by changing the deployment value.
 - Encrypted source identity comes from the authenticated device key id. The
@@ -186,8 +181,8 @@ check: it validates the image against the `sha256` the caller supplies from
   limit is disconnected without allocating another worker. The 4096-byte body
   ceiling counts every received chunk, so a chunked or length-lying request
   meets the same 413 before authentication or parsing. The request-timeout
-  option is a progress deadline at every phase — header read, body read, and
-  response write — so a stalled client releases its connection slot instead of
+  option sets a progress deadline for header reads, body reads, and response
+  writes, so a stalled client releases its connection slot instead of
   holding it open.
 - The recording page uses a per-response Content Security Policy nonce. It has
   no cross-origin permissions, cookies, third-party scripts, or persistent

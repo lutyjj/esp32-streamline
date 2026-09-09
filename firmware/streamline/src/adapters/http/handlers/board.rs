@@ -72,7 +72,7 @@ pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiSta
             Ok(())
         })();
         match result {
-            Ok(()) => reboot_response(request),
+            Ok(()) => reboot_response(request, &state.restart),
             Err(error) => mutation_error(request, error),
         }
     })

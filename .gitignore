@@ -12,6 +12,7 @@ firmware/streamline/target/
 firmware/streamline/.dev_signing_key.pem
 firmware/streamline/.release_signing_key.pem
 captures/
+tools/.smoke-qemu/
 analysis-data/
 dist/
 node_modules/

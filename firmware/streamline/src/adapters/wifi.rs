@@ -197,25 +197,30 @@ fn wait_access_point_ready(wifi: &mut WifiController<'_>, ap_only: bool) -> Resu
     Err(anyhow!("setup AP address did not come up"))
 }
 
+/// Association and DHCP must both be live; a cached lease is not connectivity.
+pub fn station_connected(wifi: &WifiController<'_>) -> bool {
+    wifi.is_connected().unwrap_or(false) && station_ip().is_some()
+}
+
 /// Drive one station association attempt without tearing down the setup AP.
 ///
-/// The combined AP-and-station configuration is already set by
-/// [`start_recovery_ap`], so this only initiates association and reports whether
+/// The station configuration is already set at boot, so this initiates
+/// association in provisioned or recovery mode and reports whether
 /// the station obtained an address. A failure leaves the AP up for the next
 /// attempt; success means the home network is reachable again.
 pub fn reconnect_station(wifi: &mut WifiController<'_>) -> bool {
     // A prior attempt may have associated but leased an address only after its
     // poll window closed; if the station now holds one, the network is back and
     // there is no need to reconnect an already-connected station.
-    if station_ip().is_some() {
+    if station_connected(wifi) {
         return true;
     }
     if let Err(error) = wifi.connect() {
-        log::info!("recovery Wi-Fi retry did not associate: {error}");
+        log::info!("Wi-Fi retry did not associate: {error}");
         return false;
     }
     for _ in 0..STATION_READY_POLLS {
-        if station_ip().is_some() {
+        if station_connected(wifi) {
             return true;
         }
         FreeRtos::delay_ms(STATION_READY_POLL_INTERVAL_MS);

@@ -5,6 +5,7 @@ SRC := streamline
 TARGET := xtensa-esp32-espidf
 ELF := target/$(TARGET)/release/streamline-firmware
 VERSION ?= dev
+FEATURES ?=
 PORT ?= /dev/cu.usbserial-0001
 # Flash size baked into the release images. Keep in step with
 # CONFIG_ESPTOOLPY_FLASHSIZE in streamline/sdkconfig.defaults, which sizes the
@@ -68,7 +69,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts repro-check ota-size-check ota-size-self-test signature-check signing-key size-report
+.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts package repro-check ota-size-check ota-size-self-test signature-check signing-key size-report
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -90,23 +91,25 @@ lock-check: image
 
 # clippy covers every configuration this crate compiles in, because a lint that
 # skips one is a blind spot the release build never reports. The host passes
-# take the crate core alone and then with the host-only feature bins. The two
-# device passes are the only ones that see the `cfg(espidf)` adapters,
-# `runtime`, and `main.rs`, as the hardware image and as the `qemu` variant;
-# both share the release profile and target directory with `build`, so the
-# feature-keyed `qemu` units cost seconds rather than a second ESP-IDF build.
+# take the crate core alone and then with the host-only feature bins. Device
+# passes cover the `cfg(espidf)` adapters, `runtime`, and `main.rs` in the
+# standard image and each test variant. They share the release profile and
+# target directory with `build`, reusing the ESP-IDF build.
 # Device `#[cfg(test)]` code is the remaining gap: no pass compiles it and no
 # target runs it, so a green lint says nothing about it.
 lint: image console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --locked --lib -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --lib --tests -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --features api-spec,pcm-frame-vectors \
 		--lib --bin streamline-openapi --bin streamline-pcm-frame-vectors -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu-fail-management -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features test-source -- -D warnings
 
 build: image console-asset
-	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET)
+	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET) $(if $(FEATURES),--features $(FEATURES))
 
 # Attribute the built ELF's flash bytes to their owners (issue #355), so a
 # diff's flash cost has a name before the OTA size gate refuses it. The
@@ -195,7 +198,7 @@ signing-key: image
 #      install boots too. The table comes from partitions.csv (the layout applied
 #      at flash time), not the ESP-IDF build's default single-app table.
 define sign_and_package
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); GENPART=$$(find .embuild -name gen_esp32part.py | head -1); REL=target/$(TARGET)/release; "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); GENPART="$$IDF_PATH/components/partition_table/gen_esp32part.py"; REL=target/$(TARGET)/release; "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
 endef
 
 # `-full.bin` is the serial-flash image: it bundles the OTA-capable partition
@@ -205,7 +208,10 @@ endef
 # the inactive slot. Both carry the RSA signature block (see sign_and_package).
 # SHA256SUMS stores basenames so the device can match the `-ota.bin` entry by
 # filename, and hashes the signed bytes it actually serves.
-artifacts: build signing-key
+artifacts: build
+	$(MAKE) package
+
+package: signing-key
 	mkdir -p $(DIST_DIR)/firmware
 	$(call sign_and_package,streamline-$(VERSION))
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-$(VERSION)-ota.bin
@@ -280,5 +286,9 @@ repro-check:
 qemu-artifacts: qemu-build signing-key
 	mkdir -p $(DIST_DIR)/firmware
 	$(call sign_and_package,streamline-qemu)
+	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-qemu.elf
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin
 	$(MAKE) signature-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin
+	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET) --features qemu-fail-management
+	$(call sign_and_package,streamline-qemu-fail-management)
+	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-qemu-fail-management.elf

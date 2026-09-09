@@ -8,26 +8,24 @@
 //! pending-verify until [`mark_current_valid`] confirms it, so a bad image
 //! rolls back instead of bricking the device.
 
-use std::{
-    sync::{
-        atomic::{AtomicU32, AtomicU8, Ordering},
-        Arc, Mutex,
-    },
-    thread,
-};
+use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, bail, Context, Result};
 use esp_idf_svc::{hal::task::thread::ThreadSpawnConfiguration, ota::EspOta, sys};
-use serde::Serialize;
 
 use crate::{
     adapters::{
         download::{HttpGet, TlsRxBuffer},
         nvs::ConfigStore,
-        time,
+        task, time,
     },
+    mutation::MutationError,
     stream::StreamStatus,
-    update::{self, CustomImage, ImageSink, ImageSource, InstallProgress, OtaRelease},
+    update::{
+        self,
+        progress::{OtaProgress, Phase},
+        CustomImage, ImageSink, ImageSource, InstallProgress,
+    },
 };
 
 /// GitHub repository that publishes releases. The `latest/download/` path always
@@ -54,171 +52,30 @@ const MAX_SUMS_BYTES: usize = 8_192;
 /// `false`).
 pub const SIGNED_UPDATES: bool = cfg!(esp_idf_secure_signed_on_update_no_secure_boot);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u8)]
-pub enum Phase {
-    Idle = 0,
-    Checking = 1,
-    UpToDate = 2,
-    Downloading = 3,
-    Verifying = 4,
-    /// Image flashed and verified; the device is about to reboot into it.
-    Installed = 5,
-    Failed = 6,
-    /// A check found a newer release; the user can choose to install it.
-    UpdateAvailable = 7,
-}
-
-impl Phase {
-    fn as_str(self) -> &'static str {
-        match self {
-            Phase::Idle => "idle",
-            Phase::Checking => "checking",
-            Phase::UpToDate => "up-to-date",
-            Phase::Downloading => "downloading",
-            Phase::Verifying => "verifying",
-            Phase::Installed => "installed",
-            Phase::Failed => "failed",
-            Phase::UpdateAvailable => "update-available",
-        }
-    }
-
-    fn from_u8(value: u8) -> Self {
-        match value {
-            1 => Phase::Checking,
-            2 => Phase::UpToDate,
-            3 => Phase::Downloading,
-            4 => Phase::Verifying,
-            5 => Phase::Installed,
-            6 => Phase::Failed,
-            7 => Phase::UpdateAvailable,
-            _ => Phase::Idle,
-        }
-    }
-}
-
-/// Shared, lock-light progress the HTTP status endpoint reads while an update
-/// runs on its own worker thread.
-pub struct OtaProgress {
-    phase: AtomicU8,
-    written: AtomicU32,
-    total: AtomicU32,
-    detail: Mutex<Detail>,
-}
-
-#[derive(Default)]
-struct Detail {
-    latest_version: String,
-    message: String,
-}
-
-#[derive(Serialize)]
-pub struct OtaSnapshot {
-    pub phase: &'static str,
-    pub bytes_written: u32,
-    pub bytes_total: u32,
-    pub latest_version: String,
-    pub message: String,
-    pub busy: bool,
-}
-
-impl Default for OtaProgress {
-    fn default() -> Self {
-        Self {
-            phase: AtomicU8::new(Phase::Idle as u8),
-            written: AtomicU32::new(0),
-            total: AtomicU32::new(0),
-            detail: Mutex::new(Detail::default()),
-        }
-    }
-}
-
-impl OtaProgress {
-    pub fn snapshot(&self) -> OtaSnapshot {
-        let phase = Phase::from_u8(self.phase.load(Ordering::Relaxed));
-        let detail = self.detail.lock().expect("ota detail lock poisoned");
-        OtaSnapshot {
-            phase: phase.as_str(),
-            bytes_written: self.written.load(Ordering::Relaxed),
-            bytes_total: self.total.load(Ordering::Relaxed),
-            latest_version: detail.latest_version.clone(),
-            message: detail.message.clone(),
-            busy: matches!(
-                phase,
-                Phase::Checking | Phase::Downloading | Phase::Verifying
-            ),
-        }
-    }
-
-    /// Reserve the worker: returns `false` if an update is already running.
-    /// Compare-and-swap on the phase makes the reservation atomic, so two
-    /// concurrent trigger requests can never both start a worker.
-    fn begin(&self) -> bool {
-        let mut current = self.phase.load(Ordering::Relaxed);
-        loop {
-            let busy = matches!(
-                Phase::from_u8(current),
-                Phase::Checking | Phase::Downloading | Phase::Verifying
-            );
-            if busy {
-                return false;
-            }
-            match self.phase.compare_exchange(
-                current,
-                Phase::Checking as u8,
-                Ordering::AcqRel,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => break,
-                Err(actual) => current = actual,
-            }
-        }
-        self.written.store(0, Ordering::Relaxed);
-        self.total.store(0, Ordering::Relaxed);
-        self.set_message("");
-        true
-    }
-
-    fn set_phase(&self, phase: Phase) {
-        self.phase.store(phase as u8, Ordering::Relaxed);
-    }
-
-    fn set_progress(&self, written: u32, total: u32) {
-        self.written.store(written, Ordering::Relaxed);
-        self.total.store(total, Ordering::Relaxed);
-    }
-
-    fn set_latest(&self, version: &str) {
-        self.detail
-            .lock()
-            .expect("ota detail lock poisoned")
-            .latest_version = version.to_owned();
-    }
-
-    fn set_message(&self, message: &str) {
-        self.detail
-            .lock()
-            .expect("ota detail lock poisoned")
-            .message = message.to_owned();
-    }
-
-    fn fail(&self, message: String) {
-        log::warn!("OTA update failed: {message}");
-        self.set_message(&message);
-        self.set_phase(Phase::Failed);
-    }
-}
-
 /// Confirm the running slot so the rollback watchdog accepts this image as good.
 ///
 /// Called once the device has booted far enough to be manageable (Wi-Fi and the
 /// console are up). On a slot that is not pending verification this is a
 /// no-op, so the normal boot path can call it unconditionally.
-pub fn mark_current_valid() {
-    match EspOta::new().and_then(|mut ota| ota.mark_running_slot_valid()) {
-        Ok(()) => log::info!("running firmware slot confirmed valid"),
-        Err(error) => log::warn!("could not mark firmware slot valid: {error}"),
-    }
+pub fn mark_current_valid() -> Result<()> {
+    EspOta::new()?.mark_running_slot_valid()?;
+    log::info!("running firmware slot confirmed valid");
+    Ok(())
+}
+
+pub fn signing_key_sha256() -> &'static str {
+    static DIGEST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DIGEST.get_or_init(|| {
+        let mut digests: sys::esp_image_sig_public_key_digests_t = unsafe { core::mem::zeroed() };
+        let result = unsafe {
+            sys::esp_secure_boot_get_signature_blocks_for_running_app(true, &mut digests)
+        };
+        if result == sys::ESP_OK && digests.num_digests > 0 {
+            crate::hex::encode(&digests.key_digests[0])
+        } else {
+            String::new()
+        }
+    })
 }
 
 /// The inactive OTA slot when it holds a valid, bootable image; `None` when
@@ -298,7 +155,7 @@ enum Action {
 /// Check GitHub for a newer release without installing anything. The HTTP
 /// handler returns immediately; callers poll [`OtaProgress::snapshot`] for the
 /// result (`up-to-date` or `update-available`).
-pub fn spawn_check(progress: Arc<OtaProgress>) -> Result<()> {
+pub fn spawn_check(progress: Arc<OtaProgress>) -> Result<(), MutationError> {
     spawn(progress, Action::Check, None, None)
 }
 
@@ -313,7 +170,7 @@ pub fn spawn_update(
     store: Arc<Mutex<ConfigStore>>,
     source: Source,
     stream: Option<Arc<StreamStatus>>,
-) -> Result<()> {
+) -> Result<(), MutationError> {
     spawn(progress, Action::Install(source), Some(store), stream)
 }
 
@@ -322,29 +179,35 @@ fn spawn(
     action: Action,
     store: Option<Arc<Mutex<ConfigStore>>>,
     stream: Option<Arc<StreamStatus>>,
-) -> Result<()> {
-    if !progress.begin() {
-        bail!("an update is already in progress");
-    }
-
-    ThreadSpawnConfiguration {
-        name: Some(c"ota-update"),
-        stack_size: WORKER_STACK_BYTES,
-        ..Default::default()
-    }
-    .set()
-    .context("cannot configure OTA task")?;
-
-    let spawned = thread::Builder::new()
-        .stack_size(WORKER_STACK_BYTES)
-        .spawn(move || run(&progress, action, store.as_deref(), stream.as_deref()))
-        .context("cannot spawn OTA task");
-
-    ThreadSpawnConfiguration::default()
-        .set()
-        .context("cannot restore default task configuration")?;
-
-    spawned.map(drop)
+) -> Result<(), MutationError> {
+    progress.start(|| {
+        let worker_progress = Arc::clone(&progress);
+        let pending = task::prepare(
+            ThreadSpawnConfiguration {
+                name: Some(c"ota-update"),
+                stack_size: WORKER_STACK_BYTES,
+                ..Default::default()
+            },
+            move || {
+                run(
+                    &worker_progress,
+                    action,
+                    store.as_deref(),
+                    stream.as_deref(),
+                )
+            },
+        );
+        match pending {
+            Ok(worker) => {
+                worker.commit();
+                Ok(())
+            }
+            Err(error) => {
+                let message = format!("cannot start OTA worker: {error:#}");
+                Err(MutationError::Unavailable(message))
+            }
+        }
+    })
 }
 
 fn run(
@@ -377,7 +240,13 @@ fn run(
         return progress.fail(error);
     }
     progress.set_message("checking latest release");
-    let release = match check() {
+    let release = match update::check_release(
+        || fetch_checksums().map_err(|error| format!("{error:#}")),
+        || {
+            progress.set_message("retrying release check; audio continues");
+            esp_idf_svc::hal::delay::FreeRtos::delay_ms(1_000);
+        },
+    ) {
         Ok(release) => release,
         Err(error) => return progress.fail(format!("update check failed: {error:#}")),
     };
@@ -495,7 +364,7 @@ fn download_url(asset: &str) -> String {
 
 /// Fetch and parse the latest release's `SHA256SUMS` to learn the OTA image's
 /// filename and expected digest.
-fn check() -> Result<OtaRelease> {
+fn fetch_checksums() -> Result<String> {
     let url = download_url("SHA256SUMS");
     // The check runs beside a live stream; per-record buffers keep it small.
     let mut response = HttpGet::get(&url, TlsRxBuffer::PerRecord)?;
@@ -518,7 +387,7 @@ fn check() -> Result<OtaRelease> {
     }
 
     let text = std::str::from_utf8(&body).context("checksum listing is not UTF-8")?;
-    update::parse_release(text).ok_or_else(|| anyhow!("release has no OTA image"))
+    Ok(text.to_owned())
 }
 
 /// Stream the application image into the inactive slot, verifying its SHA-256

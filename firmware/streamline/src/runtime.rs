@@ -1,17 +1,19 @@
 //! Device task topology: pin the capture and network engines to core 1.
 
 use core::ffi::CStr;
-use std::{sync::Arc, thread};
+use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use esp_idf_svc::hal::{cpu::Core, delay::FreeRtos, task::thread::ThreadSpawnConfiguration};
 
 use crate::{
     adapters::{
         i2s::Capture,
+        task,
         tcp::{TargetAddress, TcpClient},
     },
     stream::{self, CaptureEngine, Clock, Delay, PacketQueue, StreamStatus},
+    task_start::PendingTask,
 };
 
 const TASK_STACK_BYTES: usize = 8_192;
@@ -45,12 +47,14 @@ impl Clock for MonotonicClock {
 /// and captured audio stops at level analysis — the meters and calibration
 /// work before a bridge exists.
 pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<StreamStatus>> {
+    #[cfg(feature = "test-source")]
+    let capture = stream::test_source::TestSource::new(capture);
     let status = Arc::new(StreamStatus::default());
     let queue = target.is_some().then(|| Arc::new(PacketQueue::new()));
 
     let capture_status = Arc::clone(&status);
     let capture_queue = queue.clone();
-    spawn_pinned(c"capture", CAPTURE_PRIORITY, move || {
+    let capture_task = spawn_pinned(c"capture", CAPTURE_PRIORITY, move || {
         CaptureEngine::new().run(capture, capture_queue, capture_status, FreeRtosDelay)
     })?;
 
@@ -60,7 +64,7 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
         // no sender to wait for.
         status.mark_transport_present();
         let network_status = Arc::clone(&status);
-        spawn_pinned(c"network", NETWORK_PRIORITY, move || {
+        let network_task = spawn_pinned(c"network", NETWORK_PRIORITY, move || {
             stream::run_network(
                 TcpClient::new(target),
                 queue,
@@ -69,7 +73,9 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
                 MonotonicClock(std::time::Instant::now()),
             )
         })?;
+        network_task.commit();
     }
+    capture_task.commit();
     Ok(status)
 }
 
@@ -81,26 +87,15 @@ fn spawn_pinned(
     name: &'static CStr,
     priority: u8,
     task: impl FnOnce() + Send + 'static,
-) -> Result<()> {
-    ThreadSpawnConfiguration {
-        name: Some(name),
-        stack_size: TASK_STACK_BYTES,
-        priority,
-        pin_to_core: Some(Core::Core1),
-        ..Default::default()
-    }
-    .set()
-    .context("cannot configure streaming task")?;
-
-    let spawned = thread::Builder::new()
-        .stack_size(TASK_STACK_BYTES)
-        .spawn(task)
-        .context("cannot spawn streaming task");
-
-    // Restore defaults so unrelated threads (e.g. the HTTP server) are unaffected.
-    ThreadSpawnConfiguration::default()
-        .set()
-        .context("cannot restore default task configuration")?;
-
-    spawned.map(drop)
+) -> Result<PendingTask> {
+    task::prepare(
+        ThreadSpawnConfiguration {
+            name: Some(name),
+            stack_size: TASK_STACK_BYTES,
+            priority,
+            pin_to_core: Some(Core::Core1),
+            ..Default::default()
+        },
+        task,
+    )
 }

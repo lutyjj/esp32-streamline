@@ -45,7 +45,7 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ inputs.embuild-cache-path }}
-        key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
+        key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/.cargo/config.toml', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
     - name: Restore firmware Cargo home
       id: cargo
@@ -90,7 +90,7 @@ runs:
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ inputs.embuild-cache-path }}
-        key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
+        key: fw-embuild-v1-${{ hashFiles('firmware/streamline/Cargo.lock', 'firmware/streamline/.cargo/config.toml', 'firmware/streamline/rust-toolchain.toml', 'firmware/streamline/Dockerfile', 'firmware/streamline/sdkconfig.defaults') }}
 
     - name: Save firmware Cargo home
       if: inputs.operation == 'save' && inputs.cargo-cache-hit != 'true'

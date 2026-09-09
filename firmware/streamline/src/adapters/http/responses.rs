@@ -6,46 +6,30 @@ use serde::Serialize;
 
 use crate::{api, mutation::MutationError};
 
-pub(super) fn reboot_response<C>(request: embedded_svc::http::server::Request<C>) -> Result<()>
+/// Hand off to the reserved restart worker before writing the response.
+/// A disconnected client cannot cancel a committed configuration change.
+pub(super) fn reboot_response<C>(
+    request: embedded_svc::http::server::Request<C>,
+    restart: &crate::restart::Restart,
+) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    reboot_response_with(request, &api::Ack::rebooting())
+    reboot_response_with(request, restart, &api::Ack::rebooting())
 }
 
-/// Acknowledge with `body`, then restart. The restart runs on a detached task
-/// so this handler returns and the server completes the chunked response.
-/// Restarting inside the handler leaves the terminating chunk unsent, and
-/// every client that reads the body to its end then hangs until the reboot
-/// kills the connection.
 pub(super) fn reboot_response_with<C>(
     request: embedded_svc::http::server::Request<C>,
+    restart: &crate::restart::Restart,
     body: &impl Serialize,
 ) -> Result<()>
 where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    let worker = crate::adapters::task::prepare(
-        esp_idf_svc::hal::task::thread::ThreadSpawnConfiguration::default(),
-        || {
-            esp_idf_svc::hal::delay::FreeRtos::delay_ms(500);
-            unsafe { esp_idf_svc::sys::esp_restart() };
-        },
-    );
-    let worker = match worker {
-        Ok(worker) => worker,
-        Err(error) => {
-            return mutation_error(
-                request,
-                MutationError::Unavailable(format!("cannot start restart task: {error:#}")),
-            )
-        }
-    };
-    json_response(request, 200, body)?;
-    worker.commit();
-    Ok(())
+    restart.request();
+    json_response(request, 200, body)
 }
 
 /// Serve a body that build.rs stored gzipped (the embedded console and the

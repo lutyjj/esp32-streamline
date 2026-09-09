@@ -34,6 +34,7 @@ pub mod protocol;
 pub mod random;
 pub mod reconnect;
 pub mod recovery;
+pub mod restart;
 pub mod setup_network;
 pub mod state;
 pub mod stream;

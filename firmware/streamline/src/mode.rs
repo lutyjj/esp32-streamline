@@ -38,6 +38,10 @@ pub enum ConfigWrite {
 }
 
 impl Mode {
+    pub const fn setup_network_active(self) -> bool {
+        matches!(self, Self::Setup | Self::Recovery)
+    }
+
     pub const fn config_write(self) -> ConfigWrite {
         match self {
             Self::Setup => ConfigWrite::Stage,
@@ -63,6 +67,13 @@ impl Mode {
 #[cfg(test)]
 mod tests {
     use super::{ConfigWrite, Mode};
+
+    #[test]
+    fn setup_and_recovery_both_show_the_setup_indicator() {
+        assert!(Mode::Setup.setup_network_active());
+        assert!(Mode::Recovery.setup_network_active());
+        assert!(!Mode::Provisioned.setup_network_active());
+    }
 
     #[test]
     fn only_an_uncommissioned_device_stages_its_writes() {

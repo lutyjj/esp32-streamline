@@ -123,6 +123,9 @@ impl<'a> NetworkSettings<'a> {
         if self.ssid.is_empty() {
             return Err(ConfigError::MissingSsid);
         }
+        if self.ssid.len() > 32 || self.ssid.contains('\0') {
+            return Err(ConfigError::MalformedSsid);
+        }
         self.validate_target()
     }
 
@@ -141,6 +144,8 @@ impl<'a> NetworkSettings<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigError {
     MissingSsid,
+    MalformedSsid,
+    MalformedWifiPassword,
     MalformedTargetHost,
     InvalidTargetPort,
     InvalidInputLine,
@@ -194,6 +199,13 @@ impl RuntimeConfig {
     /// Every rule a durable configuration satisfies.
     pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
         self.network().validate()?;
+        let password = self.password.as_bytes();
+        if self.password.contains('\0')
+            || !((8..=63).contains(&password.len())
+                || (password.len() == 64 && password.iter().all(u8::is_ascii_hexdigit)))
+        {
+            return Err(ConfigError::MalformedWifiPassword);
+        }
         if !is_canonical_admin_key(&self.admin_key) {
             return Err(ConfigError::MalformedAdminKey);
         }
@@ -406,7 +418,7 @@ mod tests {
     fn sample_runtime_config() -> super::RuntimeConfig {
         super::RuntimeConfig {
             ssid: "studio".to_owned(),
-            password: "secret".to_owned(),
+            password: "test-password".to_owned(),
             target_host: "bridge.local".to_owned(),
             target_port: 39_000,
             transport: Default::default(),
@@ -679,5 +691,35 @@ mod tests {
         board::resolve(&catalog, None)
             .expect("default board")
             .clone()
+    }
+    #[test]
+    fn wifi_credentials_match_the_driver_byte_bounds() {
+        let board = default_board();
+        let mut config = sample_runtime_config();
+        for ssid in ["x".repeat(32), "é".repeat(16)] {
+            config.ssid = ssid;
+            assert_eq!(config.validate(&board), Ok(()));
+        }
+        for ssid in ["x".repeat(33), "é".repeat(17), "a\0b".into()] {
+            config.ssid = ssid;
+            assert_eq!(config.validate(&board), Err(ConfigError::MalformedSsid));
+        }
+        config.ssid = "studio".into();
+        for password in ["x".repeat(8), "x".repeat(63), "a".repeat(64)] {
+            config.password = password;
+            assert_eq!(config.validate(&board), Ok(()));
+        }
+        for password in [
+            "x".repeat(7),
+            "x".repeat(64),
+            "a".repeat(65),
+            "abc\0defgh".into(),
+        ] {
+            config.password = password;
+            assert_eq!(
+                config.validate(&board),
+                Err(ConfigError::MalformedWifiPassword)
+            );
+        }
     }
 }

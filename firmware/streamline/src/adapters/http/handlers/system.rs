@@ -34,8 +34,10 @@ pub(super) fn register_actions(
     // trip to the power plug. The wrapping closure supplies the higher-ranked
     // connection lifetime `handler` demands, which the bare function item
     // cannot satisfy.
-    #[allow(clippy::redundant_closure)]
-    server.handler(api::RESTART, move |request| reboot_response(request))?;
+    let state_for_restart = Arc::clone(state);
+    server.handler(api::RESTART, move |request| {
+        reboot_response(request, &state_for_restart.restart)
+    })?;
 
     // Factory reset erases the configuration but keeps the setup password:
     // it is device identity, and a pre-flashed unit's label must stay true.
@@ -50,6 +52,7 @@ pub(super) fn register_actions(
         match result {
             Ok(()) => reboot_response_with(
                 request,
+                &state.restart,
                 &api::FactoryResetResponse {
                     rebooting: true,
                     setup_network: api::SetupNetworkResponse {

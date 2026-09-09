@@ -188,6 +188,7 @@ mod tests {
         assert_eq!(result, Err("interrupted"));
         assert_eq!(current, configured());
     }
+
     #[test]
     fn wifi_target_edits_invalidate_only_changed_endpoints() {
         struct Random;

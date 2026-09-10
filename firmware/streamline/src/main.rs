@@ -230,11 +230,11 @@ fn run() -> Result<()> {
     let mut reconnect_timer = reconnect::ReconnectTimer::default();
     loop {
         FreeRtos::delay_ms(1_000);
+        if state.restart.is_pending() {
+            continue;
+        }
         match mode {
             Mode::Provisioned => {
-                if state.restart.is_pending() {
-                    continue;
-                }
                 #[cfg(not(feature = "qemu"))]
                 if !wifi::station_connected(&network)
                     && reconnect_timer.take_due(booted_at.elapsed())
@@ -252,6 +252,10 @@ fn run() -> Result<()> {
                     .map(|stream| !stream.snapshot().playing)
                     .unwrap_or(true);
                 if auto_update_timer.take_due(booted_at.elapsed(), schedule, audio_idle) {
+                    let _control = state.control.lock().expect("control lock poisoned");
+                    if state.restart.is_pending() {
+                        continue;
+                    }
                     log::info!("automatic firmware update check started");
                     if let Err(error) = ota::spawn_update(
                         Arc::clone(&state.ota),
@@ -275,14 +279,26 @@ fn run() -> Result<()> {
                 if reconnect_timer.take_due(booted_at.elapsed()) {
                     log::info!("recovery: retrying the saved Wi-Fi");
                     if wifi::reconnect_station(&mut network) {
-                        log::info!(
-                            "recovery: home network reachable; confirming slot and rejoining"
-                        );
-                        for endpoint in streamline_firmware::boot_health::PROBES {
-                            http::probe(endpoint)?;
+                        let probes = streamline_firmware::boot_health::PROBES
+                            .into_iter()
+                            .try_for_each(http::probe);
+                        if let Err(error) = probes {
+                            log::warn!("recovery: management probe failed: {error:#}");
+                            continue;
                         }
-                        ota::mark_current_valid()?;
-                        unsafe { esp_idf_svc::sys::esp_restart() };
+                        match state.restart.request_when_idle(
+                            &state.control,
+                            &state.ota,
+                            ota::mark_current_valid,
+                        ) {
+                            Ok(true) => log::info!("recovery: rejoining the saved network"),
+                            Ok(false) => {
+                                log::info!("recovery: rejoin deferred while device is busy")
+                            }
+                            Err(error) => {
+                                log::warn!("recovery: slot confirmation failed: {error:#}")
+                            }
+                        }
                     }
                 }
             }

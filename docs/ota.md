@@ -11,6 +11,8 @@ System → Firmware controls the schedule and offers manual checks and installs.
 audio. `POST /api/ota/update` installs it. Both require digest authentication and
 return `202` after reserving their background worker. An active worker returns
 `409`; a worker that cannot start returns `503` and leaves OTA available to retry.
+An installed image keeps the worker reserved and reports `ota.busy: true` until
+the device reboots.
 An automatic attempt that cannot start retries after one minute, still waiting
 for idle audio and respecting the disabled schedule.
 

@@ -196,6 +196,24 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Apply a bridge endpoint edit and invalidate verification tied to another endpoint.
+    pub fn update_target(&mut self, host: Option<String>, port: Option<u16>) {
+        let host = host.map(|value| value.trim().to_owned());
+        if host
+            .as_ref()
+            .is_some_and(|value| value != &self.target_host)
+            || port.is_some_and(|value| value != self.target_port)
+        {
+            self.transport.keys.reset_pending_verification();
+        }
+        if let Some(host) = host {
+            self.target_host = host;
+        }
+        if let Some(port) = port {
+            self.target_port = port;
+        }
+    }
+
     /// Every rule a durable configuration satisfies.
     pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
         self.network().validate()?;

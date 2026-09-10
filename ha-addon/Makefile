@@ -7,6 +7,8 @@ BUILD_ARCH ?= $(DEFAULT_BUILD_ARCH)
 IMAGE := $(BUILD_ARCH)-esp32-streamline-bridge-addon
 PLATFORM := $(if $(filter aarch64,$(BUILD_ARCH)),linux/arm64,linux/amd64)
 CONFIG_VERSION := $(shell sed -n 's/^version: "\([^"]*\)".*/\1/p' config.yaml)
+SLUG := $(shell sed -n 's/^slug: *//p' config.yaml)
+APPARMOR_PROFILE := $(shell sed -n 's/^profile \([^ ]*\).*/\1/p' apparmor.txt)
 REVISION ?= $(shell git -C $(REPO_ROOT) rev-parse HEAD 2>/dev/null || echo unknown)
 
 # `make context` assembles this self-contained add-on tree from the bridge
@@ -32,24 +34,37 @@ ADDON_IMAGE_AARCH64 ?= $(subst {arch},aarch64,$(IMAGE_TEMPLATE))
 # image, and the validator agree on the labels they stamp.
 ADDON_BUILD_ARGS := --build-arg BUILD_VERSION=$(VERSION) --build-arg BUILD_REVISION=$(REVISION)
 
-.PHONY: format lint context validate test image publish check
+# Compiling apparmor.txt with AppArmor's own parser is the only check that a
+# profile the Supervisor rejects never reaches a device, where a broken profile
+# stops the add-on from starting.
+APPARMOR_IMAGE := esp32-streamline-ha-addon-apparmor
+APPARMOR_RUN = $(CONTAINER) run --rm -v "$(CURDIR)/apparmor.txt:/apparmor.txt:ro" $(APPARMOR_IMAGE)
+
+.PHONY: format lint apparmor-image context validate test image publish check
 
 format:
 	@true
 
-lint:
+apparmor-image:
+	$(CONTAINER) build -f Dockerfile.apparmor -t $(APPARMOR_IMAGE) .
+
+lint: apparmor-image
 	@test "$(BUILD_ARCH)" = "amd64" -o "$(BUILD_ARCH)" = "aarch64" || (echo "BUILD_ARCH must be amd64 or aarch64" >&2; exit 2)
 	@test "$(VERSION)" = "$(CONFIG_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(CONFIG_VERSION))" >&2; exit 2)
+	@test "$(APPARMOR_PROFILE)" = "$(SLUG)" || (echo "apparmor.txt declares profile '$(APPARMOR_PROFILE)', which the Supervisor ignores; it must match the slug '$(SLUG)'" >&2; exit 2)
+	@grep -q 'UV_PROJECT_ENVIRONMENT=/opt/venv' Dockerfile || (echo "apparmor.txt grants the virtual environment at /opt/venv; the Dockerfile no longer builds it there" >&2; exit 2)
+	$(APPARMOR_RUN) apparmor_parser --skip-kernel-load --skip-read-cache --warn=all /apparmor.txt
 
 # A standard Home Assistant add-on context: the bridge distribution plus the
-# freshly built console asset and config.yaml, with no reach into the bridge
-# source tree. This is what lets the ecosystem builder consume the add-on
-# unchanged and keeps a build from mutating a sibling component.
+# freshly built console asset, config.yaml, and the AppArmor profile the
+# Supervisor loads, with no reach into the bridge source tree. This is what
+# lets the ecosystem builder consume the add-on unchanged and keeps a build
+# from mutating a sibling component.
 context:
 	$(MAKE) -C ../console build-bridge
 	rm -rf $(BUILD_CONTEXT)
 	mkdir -p $(BUILD_CONTEXT)/src
-	cp Dockerfile config.yaml $(BUILD_CONTEXT)/
+	cp Dockerfile config.yaml apparmor.txt $(BUILD_CONTEXT)/
 	cp ../bridge/pyproject.toml ../bridge/uv.lock $(BUILD_CONTEXT)/
 	cp -R ../bridge/src/streamline_bridge $(BUILD_CONTEXT)/src/
 	cp ../console/dist/bridge/bridge.html $(BUILD_CONTEXT)/src/streamline_bridge/console.html

@@ -1,0 +1,9 @@
+# AppArmor's own policy compiler, the only tool that decides whether the
+# Supervisor can load `apparmor.txt`. Debian bookworm ships apparmor 3.0.8 and
+# Home Assistant OS builds 3.1.7, the same policy language. The image carries no
+# add-on code: `make lint` mounts the profile and compiles it.
+FROM debian:bookworm-slim@sha256:63a496b5d3b99214b39f5ed70eb71a61e590a77979c79cbee4faf991f8c0783e
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends apparmor \
+    && rm -rf /var/lib/apt/lists/*

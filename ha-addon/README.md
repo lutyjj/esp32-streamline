@@ -32,6 +32,14 @@ activate on the device. The coordinated switch briefly interrupts audio. The
 [PCM transport workflow](../docs/tcp-transport.md#enable-encryption) owns
 cutover, credential replacement, and recovery.
 
+## Confinement
+
+The Supervisor loads `apparmor.txt` under the add-on slug and confines the
+bridge to it. The profile lets the bridge run the bundled Python interpreter,
+write `/data` and `/tmp`, and open TCP sockets; it denies everything else,
+including host namespaces, privileged capabilities, and the Supervisor API.
+Home Assistant rates the add-on 8 of 8.
+
 ## Use
 
 Point each ESP32 device at the Home Assistant host on port `39000`. Music

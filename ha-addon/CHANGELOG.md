@@ -1,6 +1,33 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.12.0](https://github.com/lutyjj/esp32-streamline/compare/v0.11.2...v0.12.0) (2026-09-10)
+
+
+### Features
+
+* sign development firmware through an explicit CI dispatch ([5380810](https://github.com/lutyjj/esp32-streamline/commit/53808103b6c86c89d741bd77c3049d4895a0cc0d))
+
+
+### Bug Fixes
+
+* apply codec changes before committing configuration ([965743c](https://github.com/lutyjj/esp32-streamline/commit/965743cadaef623d15b368ba8e0980602354ad8d))
+* **console:** handle OTA poll failures against current state ([633bc5c](https://github.com/lutyjj/esp32-streamline/commit/633bc5c560d6d92f52c56789675bc3b65fb11bdc))
+* **console:** preserve reloads during active resource reads ([018a3bf](https://github.com/lutyjj/esp32-streamline/commit/018a3bf726fee8012d2a329a345d42179c43a32e))
+* **deps:** refresh packages rejected by the security audit ([0bc2d8d](https://github.com/lutyjj/esp32-streamline/commit/0bc2d8dfba1248cb2c0488d2a5c543bb3217fb1c))
+* **firmware:** bound capture outages and packet send admission ([b8b999e](https://github.com/lutyjj/esp32-streamline/commit/b8b999e2a09ecb92dc3a30f0a774ee9d32aac944))
+* **firmware:** defer recovery restart while OTA owns the device ([14125df](https://github.com/lutyjj/esp32-streamline/commit/14125df82caa6d89076fa66edd3b4d4fe198a75f))
+* **firmware:** derive valid discovery names and reject inconsistent boards ([af416da](https://github.com/lutyjj/esp32-streamline/commit/af416dab4e6d68fdf6ee3d1ec4e61f13b1ed9a1a))
+* **firmware:** invalidate key verification on every target edit ([f8d569e](https://github.com/lutyjj/esp32-streamline/commit/f8d569efb24ff3228418e6eef207766dd4c50489))
+* **firmware:** reserve the OTA worker through the reboot delay ([29a588d](https://github.com/lutyjj/esp32-streamline/commit/29a588d1182a473fef669dea2b1412ddb0b1786c))
+* **firmware:** verify crash dumps after scheduler startup ([a8f7874](https://github.com/lutyjj/esp32-streamline/commit/a8f7874f846dd7cdc12b5fb16b63433bff1ee7b9))
+* initialize management listener before network exposure ([59032cf](https://github.com/lutyjj/esp32-streamline/commit/59032cf3224686194f5370fdfb99321bd9a96030))
+* make OTA checks and management startup failure-atomic ([b088ccc](https://github.com/lutyjj/esp32-streamline/commit/b088ccc40459a507b02f076f1c52d42709e6b03f))
+* preserve bounded configuration snapshots across failed saves ([5d59f71](https://github.com/lutyjj/esp32-streamline/commit/5d59f71b0f5bd4de30d515fadb562e1a8eee5e4d))
+* preserve recovery across reboot and network failures ([35cda96](https://github.com/lutyjj/esp32-streamline/commit/35cda96661583bc35a9271304eaebc32bff2ace0))
+* reboot failed OTA startups and prove rollback ([6d5668c](https://github.com/lutyjj/esp32-streamline/commit/6d5668c5507be638a6de6ff2c8713baf6e5dbc50))
+* **tools:** keep QEMU failure evidence readable by the caller ([61846f1](https://github.com/lutyjj/esp32-streamline/commit/61846f1c1a40ca5ce4753710f2894e5a1312f3a1))
+
 ## [0.11.2](https://github.com/lutyjj/esp32-streamline/compare/v0.11.1...v0.11.2) (2026-08-07)
 
 

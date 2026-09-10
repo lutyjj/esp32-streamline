@@ -23,6 +23,13 @@ pub enum Phase {
 }
 
 impl Phase {
+    fn is_busy(self) -> bool {
+        matches!(
+            self,
+            Self::Checking | Self::Downloading | Self::Verifying | Self::Installed
+        )
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             Phase::Idle => "idle",
@@ -111,10 +118,7 @@ impl OtaProgress {
             bytes_total: self.total.load(Ordering::Relaxed),
             latest_version: detail.latest_version.clone(),
             message: detail.message.clone(),
-            busy: matches!(
-                phase,
-                Phase::Checking | Phase::Downloading | Phase::Verifying
-            ),
+            busy: phase.is_busy(),
         }
     }
 
@@ -124,11 +128,7 @@ impl OtaProgress {
     fn begin(&self) -> bool {
         let mut current = self.phase.load(Ordering::Relaxed);
         loop {
-            let busy = matches!(
-                Phase::from_u8(current),
-                Phase::Checking | Phase::Downloading | Phase::Verifying
-            );
-            if busy {
+            if Phase::from_u8(current).is_busy() {
                 return false;
             }
             match self.phase.compare_exchange(
@@ -205,5 +205,37 @@ mod tests {
             Err(MutationError::Conflict(_))
         ));
         assert_eq!(progress.snapshot().phase, "checking");
+    }
+
+    #[test]
+    fn installed_image_keeps_the_worker_reserved_until_reboot() {
+        let progress = OtaProgress::default();
+        progress.start(|| Ok(())).unwrap();
+        progress.set_progress(1024, 1024);
+        progress.set_latest("9.0.0");
+        progress.set_message("Rebooting into the installed image");
+        progress.set_phase(Phase::Installed);
+
+        assert!(matches!(
+            progress.start(|| panic!("another worker started before reboot")),
+            Err(MutationError::Conflict(_))
+        ));
+        let snapshot = progress.snapshot();
+        assert!(snapshot.busy);
+        assert_eq!(snapshot.phase, "installed");
+        assert_eq!((snapshot.bytes_written, snapshot.bytes_total), (1024, 1024));
+        assert_eq!(snapshot.latest_version, "9.0.0");
+        assert_eq!(snapshot.message, "Rebooting into the installed image");
+    }
+
+    #[test]
+    fn completed_checks_release_the_worker_for_another_request() {
+        let progress = OtaProgress::default();
+        for phase in [Phase::UpToDate, Phase::UpdateAvailable] {
+            progress.start(|| Ok(())).unwrap();
+            progress.set_phase(phase);
+            assert!(!progress.snapshot().busy);
+        }
+        progress.start(|| Ok(())).unwrap();
     }
 }

@@ -4,18 +4,18 @@
   "version": "0.4.0",
   "type": "module",
   "dependencies": {
-    "@noble/hashes": "^2.3.0",
+    "@noble/hashes": "^2.4.0",
     "@preact/signals": "^2.11.1",
     "esp-web-tools": "10.4.0",
     "preact": "^10.29.8"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.10",
+    "@biomejs/biome": "2.5.11",
     "@playwright/test": "1.62.1",
     "@preact/preset-vite": "^2.10.6",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.12.0",
     "msw": "^2.15.0",
-    "orval": "8.26.0",
+    "orval": "8.27.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vite-plugin-singlefile": "^2.3.0",

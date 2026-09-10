@@ -204,7 +204,23 @@ systems.
 
 Make is the public command interface. Each component Makefile exposes the verbs that apply to it, and the root Makefile forwards `make <component>-<verb>`. Keep build mechanics behind these targets so local runs and CI execute the same commands.
 
-CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. Device-contract, smoke-harness, QEMU helper, tools-image, and firmware changes run the QEMU suite against images built from the tested commit. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. A single `CI complete` job rolls skipped and executed component checks into the branch-protection status.
+CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. Branch protection requires `CI complete`, which aggregates change detection, component checks, firmware builds, and the device API contract check. It does not wait for advisory jobs.
+
+`QEMU device smoke (advisory)` runs automatically for device-contract,
+smoke-harness, QEMU helper, tools-image, and firmware changes, using images
+built from the tested commit. Its failures remain visible and retain
+[failure artifacts](../tools/README.md#debug-a-failed-emulated-run), but do not block merging.
+Intermittent emulator crashes and boot failures make this suite unsuitable as
+a required check. Host tests do not replace its ESP-IDF, NVS, and OTA
+integration coverage; a passing `CI complete` does not prove those paths work.
+QEMU image compilation remains required. Reassess the advisory policy when
+the [tracked emulator failures](https://github.com/lutyjj/esp32-streamline/issues/430)
+are resolved and repeated runs are reliable.
+
+To request the suite regardless of changed paths, run the **CI** workflow
+manually with `run_qemu` enabled, or use `make smoke-qemu` to build and test
+the images in containers. The QEMU job reports failures without automatic
+retries or expected-failure markers.
 
 release-please owns the release lifecycle: `release-please-config.json` declares every version owner and lockfile, a generated release PR carries the version bump and changelog, and merging it creates the tag and a draft GitHub release. Publication verifies that exact commit, then attaches firmware artifacts with an SPDX SBOM, binds provenance and SBOM attestations to every asset and image digest, verifies them before the release goes public, publishes the release, and pushes bridge and architecture-specific add-on images and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
 

@@ -7,6 +7,10 @@ on:
     branches: [mainline]
   workflow_dispatch:
     inputs:
+      run_qemu:
+        description: Run the advisory QEMU device smoke suite regardless of changed paths
+        type: boolean
+        default: false
       sign_firmware:
         description: Sign this revision for testing on release-key devices (no release publication)
         type: boolean
@@ -78,7 +82,7 @@ jobs:
   firmware:
     name: Firmware (clippy · test · release build)
     needs: changes
-    if: ${{ needs.changes.outputs.firmware == 'true' || needs.changes.outputs.qemu_smoke == 'true' || inputs.sign_firmware }}
+    if: ${{ needs.changes.outputs.firmware == 'true' || needs.changes.outputs.qemu_smoke == 'true' || inputs.run_qemu || inputs.sign_firmware }}
     runs-on: ubuntu-latest
     env:
       CONTAINER_USER: 0:0
@@ -183,11 +187,12 @@ jobs:
   # Boots the QEMU firmware variant and runs the emulated-device test suite:
   # boot, HTTP API, provisioning persistence, key gating, factory reset, and
   # the OTA slot switch. The firmware job supplies images built from the exact
-  # commit selected by the QEMU ownership filter.
+  # commit selected by the QEMU ownership filter or manual dispatch. Failures
+  # remain visible but do not contribute to the required CI complete check.
   qemu-smoke:
-    name: QEMU device smoke
+    name: QEMU device smoke (advisory)
     needs: [changes, firmware]
-    if: ${{ needs.changes.outputs.qemu_smoke == 'true' }}
+    if: ${{ needs.changes.outputs.qemu_smoke == 'true' || inputs.run_qemu }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -232,7 +237,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: make console-e2e
 
-  # Single stable status the whole workflow rolls up into. Mark THIS as the
+  # Single stable status for required checks. Mark THIS as the
   # required check in branch protection: it passes when the relevant jobs pass
   # and treats skipped (unchanged) components as a pass, so path-filtering never
   # leaves a PR stuck waiting on a check that will not report. It needs no edit
@@ -240,17 +245,17 @@ jobs:
   ci-complete:
     name: CI complete
     if: ${{ always() }}
-    needs: [changes, checks, firmware, qemu-smoke, api-contract]
+    needs: [changes, checks, firmware, api-contract]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
       - name: Verify no required job failed
         run: |
-          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }} qemu_smoke=${{ needs.qemu-smoke.result }} api_contract=${{ needs.api-contract.result }}"
+          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} firmware=${{ needs.firmware.result }} api_contract=${{ needs.api-contract.result }}"
           if [ "${{ needs.changes.result }}" != "success" ]; then
             echo "::error::change detection failed"; exit 1
           fi
-          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}" "${{ needs.qemu-smoke.result }}" "${{ needs.api-contract.result }}"; do
+          for r in "${{ needs.checks.result }}" "${{ needs.firmware.result }}" "${{ needs.api-contract.result }}"; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a required job did not pass ($r)"; exit 1 ;;

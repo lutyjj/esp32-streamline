@@ -16,7 +16,7 @@ export interface Resource<T> {
   data: Signal<T | null>;
   state: Signal<ResourceState>;
   error: Signal<string>;
-  /** Load or reload; overlapping calls collapse into the running one. */
+  /** Await fresh data; reloads during a read coalesce into a subsequent read. */
   load(): Promise<void>;
 }
 
@@ -24,24 +24,33 @@ export function resource<T>(name: string, fetch: () => Promise<T>): Resource<T> 
   const data = signal<T | null>(null);
   const state = signal<ResourceState>('loading');
   const error = signal('');
-  let inflight = false;
+  let inflight: Promise<void> | null = null;
+  let requested = false;
 
-  async function load(): Promise<void> {
-    if (inflight) return;
-    inflight = true;
-    if (state.value === 'error') state.value = 'loading';
+  async function drain(): Promise<void> {
     try {
-      data.value = await fetch();
-      state.value = 'ready';
-      error.value = '';
-    } catch (cause) {
-      error.value = errorMessage(cause);
-      // A snapshot that loaded once is still the device's last known truth;
-      // only a resource with nothing to show enters the error state.
-      if (data.value === null) state.value = 'error';
+      while (requested) {
+        requested = false;
+        if (state.value === 'error') state.value = 'loading';
+        try {
+          data.value = await fetch();
+          state.value = 'ready';
+          error.value = '';
+        } catch (cause) {
+          error.value = errorMessage(cause);
+          // Keep a loaded snapshot usable when a refresh fails.
+          if (data.value === null) state.value = 'error';
+        }
+      }
     } finally {
-      inflight = false;
+      inflight = null;
     }
+  }
+
+  function load(): Promise<void> {
+    requested = true;
+    inflight ??= Promise.resolve().then(drain);
+    return inflight;
   }
 
   return { name, data, state, error, load };

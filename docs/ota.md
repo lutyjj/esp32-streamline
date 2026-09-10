@@ -115,7 +115,11 @@ The firmware records a management startup failure in the persistent OTA note
 when storage is available and restarts on a fatal error. A reset before
 confirmation lets the bootloader revert to the previous image. Recovery mode
 confirms only after the saved network returns and the management probes pass,
-before restarting into provisioned mode.
+before restarting into provisioned mode. That automatic restart waits for any
+active OTA operation, including its installed-to-reboot interval. Slot
+confirmation and restart reservation share the control lock with OTA admission;
+management probes run outside that lock. A recovery probe or confirmation
+failure leaves the setup network running for the next retry.
 
 The QEMU smoke installs a signed `qemu-fail-management` image whose management
 probe receives HTTP 404. It verifies the automatic restart, return to the

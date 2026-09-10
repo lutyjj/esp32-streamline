@@ -1,5 +1,44 @@
-import { describe, expect, it } from 'vitest';
-import { customImageProblem, expectedVersion, updateRecovery } from '../src/state/ota';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { deviceStatus } from '../src/mocks/fixtures';
+import { pollFailures, status } from '../src/state/device';
+import {
+  beginOtaSession,
+  customImageProblem,
+  expectedVersion,
+  updateRecovery,
+} from '../src/state/ota';
+import { rebootWait, rebootWaitTick } from '../src/state/rebootWait';
+
+describe('OTA poll failure handling', () => {
+  beforeEach(() => {
+    status.value = deviceStatus({ ota: { phase: 'idle' } });
+    pollFailures.value = 0;
+    rebootWait.value = null;
+    beginOtaSession('Checking');
+  });
+
+  it('does not rearm a completed wait from the same failed poll', () => {
+    status.value = deviceStatus({ ota: { phase: 'downloading' } });
+    pollFailures.value += 1;
+    rebootWaitTick(true);
+    status.value = deviceStatus({ ota: { phase: 'idle' } });
+    rebootWaitTick(false);
+    expect(rebootWait.value).toBeNull();
+  });
+
+  it('does not infer an update reboot from an old installation phase', () => {
+    status.value = deviceStatus({ ota: { phase: 'downloading' } });
+    status.value = deviceStatus({ ota: { phase: 'idle' } });
+    pollFailures.value += 1;
+    expect(rebootWait.value).toBeNull();
+  });
+
+  it('arms a wait when a new failed poll interrupts an active install', () => {
+    status.value = deviceStatus({ ota: { phase: 'verifying' } });
+    pollFailures.value += 1;
+    expect(rebootWait.value).not.toBeNull();
+  });
+});
 
 describe('updateRecovery', () => {
   it('is applied when the version advanced to the release we aimed for', () => {

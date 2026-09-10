@@ -3,7 +3,7 @@
  * change, and reboot expectations when the device goes quiet mid-install.
  */
 
-import { effect, signal } from '@preact/signals';
+import { effect, signal, untracked } from '@preact/signals';
 import { pollFailures, status } from './device';
 import { beginRebootWait, rebootWait } from './rebootWait';
 import { toast } from './toasts';
@@ -20,8 +20,8 @@ export const PHASE_LABELS: Record<string, string> = {
 };
 
 /**
- * Phases while an install is under way. A device that stops answering in one
- * of these is rebooting into the new image.
+ * Phases where a loss of contact interrupts an install. Recovery observation
+ * checks which firmware returns without presuming that installation succeeded.
  */
 export const OTA_INSTALLING_PHASES = ['downloading', 'verifying', 'installed'];
 
@@ -159,10 +159,13 @@ effect(() => {
   if (ota.phase === 'installed' && !rebootWait.value) beginUpdateRebootWait();
 });
 
-/** A device that vanishes mid-install is rebooting into the new image. */
+/** A new failed poll during an install starts recovery observation. */
 effect(() => {
   if (pollFailures.value === 0) return;
-  if (loggedPhase && OTA_INSTALLING_PHASES.includes(loggedPhase) && !rebootWait.value) {
-    beginUpdateRebootWait();
-  }
+  untracked(() => {
+    const phase = status.value?.ota.phase;
+    if (phase && OTA_INSTALLING_PHASES.includes(phase) && !rebootWait.value) {
+      beginUpdateRebootWait();
+    }
+  });
 });

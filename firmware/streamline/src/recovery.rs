@@ -32,35 +32,22 @@ pub fn setup_baseline(board: &Board, persisted: Option<RuntimeConfig>) -> Runtim
 /// Apply a Wi-Fi form without requiring the write-only values again. Missing
 /// target fields preserve their values, as they do outside recovery mode.
 pub fn replace_wifi(
-    current: RuntimeConfig,
+    mut current: RuntimeConfig,
     ssid: String,
     password: String,
     admin_key: String,
     target_host: Option<String>,
     target_port: Option<u16>,
 ) -> RuntimeConfig {
-    RuntimeConfig {
-        ssid,
-        password: if password.is_empty() {
-            current.password
-        } else {
-            password
-        },
-        target_host: target_host.unwrap_or(current.target_host),
-        target_port: target_port.unwrap_or(current.target_port),
-        transport: current.transport,
-        admin_key: if admin_key.is_empty() {
-            current.admin_key
-        } else {
-            admin_key
-        },
-        device_name: current.device_name,
-        auto_update_schedule: current.auto_update_schedule,
-        audio: current.audio,
-        analog_passthrough_enabled: current.analog_passthrough_enabled,
-        led_roles: current.led_roles,
-        button_actions: current.button_actions,
+    current.ssid = ssid;
+    if !password.is_empty() {
+        current.password = password;
     }
+    if !admin_key.is_empty() {
+        current.admin_key = admin_key;
+    }
+    current.update_target(target_host, target_port);
+    current
 }
 
 /// Change memory only after its durable write succeeds. The ESP-IDF HTTP
@@ -200,5 +187,45 @@ mod tests {
 
         assert_eq!(result, Err("interrupted"));
         assert_eq!(current, configured());
+    }
+
+    #[test]
+    fn wifi_target_edits_invalidate_only_changed_endpoints() {
+        struct Random;
+        impl crate::random::RandomBytes for Random {
+            fn fill(&mut self, output: &mut [u8]) {
+                output.fill(7);
+            }
+        }
+        for (host, port, changed) in [
+            (None, None, false),
+            (Some("bridge.local"), Some(39_000), false),
+            (Some("  bridge.local  "), Some(39_000), false),
+            (Some("other-bridge.local"), None, true),
+            (None, Some(39_001), true),
+            (Some(""), None, true),
+        ] {
+            let mut current = configured();
+            current.transport.keys.stage(&mut Random).unwrap();
+            current.transport.keys.mark_pending_verified().unwrap();
+            let mut next = replace_wifi(
+                current,
+                "new-wifi".to_owned(),
+                String::new(),
+                String::new(),
+                host.map(str::to_owned),
+                port,
+            );
+            assert_eq!(next.transport.keys.pending_verified(), !changed);
+            let activation = next.transport.keys.activate();
+            if changed {
+                assert_eq!(
+                    activation,
+                    Err(crate::transport::TransportError::PendingKeyUnverified)
+                );
+            } else {
+                assert_eq!(activation, Ok(()));
+            }
+        }
     }
 }

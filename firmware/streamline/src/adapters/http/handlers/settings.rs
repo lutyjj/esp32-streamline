@@ -4,12 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{
-    api,
-    config::{AutoUpdateSchedule, RuntimeConfig},
-    mutation::MutationError,
-    recovery,
-};
+use crate::{api, config::AutoUpdateSchedule, mutation::MutationError, recovery};
 
 use super::super::{
     requests::form,
@@ -50,7 +45,7 @@ pub(super) fn register_network_writes(
                 form.ssid,
                 form.password,
                 form.admin_key,
-                form.target_host.map(|value| value.trim().to_owned()),
+                form.target_host,
                 form.target_port,
             );
             persist_configuration(&state_for_wifi, next)
@@ -71,13 +66,7 @@ pub(super) fn register_network_writes(
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
             update_configuration(&state_for_target, |next| {
-                let target_host = form.target_host.trim().to_owned();
-                let target_port = form.target_port.unwrap_or(next.target_port);
-                if target_host != next.target_host || target_port != next.target_port {
-                    next.transport.keys.reset_pending_verification();
-                }
-                next.target_host = target_host;
-                next.target_port = target_port;
+                next.update_target(Some(form.target_host), form.target_port);
                 Ok(())
             })
         })();
@@ -100,7 +89,7 @@ pub(super) fn register_identity_writes(
             let form: api::NameSettingsRequest = form(&mut request)?;
             let named = update_configuration(&state_for_name, |next| {
                 next.device_name = form.name.trim().to_owned();
-                Ok(next.clone())
+                Ok(next.device_name.clone())
             })?;
             refresh_mdns_name(&state_for_name, &named);
             Ok(())
@@ -212,12 +201,12 @@ where
     )
 }
 
-fn refresh_mdns_name(state: &ApiState, config: &RuntimeConfig) {
+fn refresh_mdns_name(state: &ApiState, display_name: &str) {
     let Some(mdns) = &state.mdns else {
         return;
     };
     let mut advertisement = mdns.lock().expect("mDNS lock poisoned");
-    if let Err(error) = advertisement.set_instance_name(config) {
+    if let Err(error) = advertisement.set_instance_name(display_name) {
         log::warn!("could not refresh mDNS instance name: {error:#}");
     }
 }

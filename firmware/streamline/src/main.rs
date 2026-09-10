@@ -141,7 +141,7 @@ fn run() -> Result<()> {
     }
 
     let mdns = if mode == Mode::Provisioned {
-        match MdnsAdvertisement::start(&mdns_hostname, &config) {
+        match MdnsAdvertisement::start(&mdns_hostname, &config.device_name) {
             Ok(advertisement) => Some(Arc::new(Mutex::new(advertisement))),
             Err(error) => {
                 log::warn!("mDNS advertisement failed: {error:#}");

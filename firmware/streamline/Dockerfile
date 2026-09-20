@@ -3,8 +3,8 @@
 FROM docker.io/espressif/idf-rust:esp32_latest@sha256:ce1c1dd44d457b94fc3fad2785f97cf3a78b7b9cfff778c41be54d94e6dd5757
 
 USER root
-# ESP-IDF 5.5 with Espressif's DRAM-safe OpenCores interrupt logging fix.
-ARG ESP_IDF_REV=d42d785455789d3a3145fa19ab1068c2b8fc1e70
+# ESP-IDF v5.5.3, pinned to the SDK used for live audio validation.
+ARG ESP_IDF_REV=2c211b236707889e8400c4dc5644dd5c4ee071e0
 RUN git init /opt/streamline-idf \
     && git -C /opt/streamline-idf remote add origin https://github.com/espressif/esp-idf.git \
     && git -C /opt/streamline-idf fetch --depth 1 origin "$ESP_IDF_REV" \

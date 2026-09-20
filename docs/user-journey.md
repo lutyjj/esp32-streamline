@@ -1,242 +1,150 @@
 # The user journey
 
-StreamLine has one journey: from a blank board to music on the network. This
-document is the contract for that journey. Changes to the console or the
-device's user-facing behavior are judged against it (see AGENTS.md, "Design
-for the whole journey"): a change that breaks a stage's promise, strands the
-user, or leaves a wait unexplained is not done, even if its own screen works.
+StreamLine takes an analog source from a blank board to a network player.
+This document owns the experience contract. The [quick start](../README.md#quick-start)
+owns installation commands; [DESIGN.md](../DESIGN.md) owns visual conventions.
 
-The journey has six stages. Each stage names its entry, its promise, and its
-exit. Commands and setup steps live in the [README quick
-start](../README.md#quick-start); this document owns only the experience.
+## Shared promises
 
-## Promises every stage keeps
+- Input activity, device transmission, bridge reception, and player connections
+  are separate facts. Saving a target proves none of them.
+- Failed status reads replace live indicators with an unavailable state.
+  Last-known configuration cannot establish current audio delivery.
+- Every wait names its operation and completion evidence. A timer never proves
+  a network join, successful reboot, or audible playback.
+- Failures explain the next action. Guided tasks offer cancellation or recovery.
+- Generated admin and audio keys have deliberate one-time reveals and copy actions.
+- Locked settings remain readable and offer contextual unlocking. Both consoles
+  use one credential-dialog pattern. Device admin keys and bridge API tokens are
+  separate. [Security](security.md) defines protected reads and writes.
+- Visiting another workspace or settings category preserves edited fields for
+  the page session. Reloading is not draft persistence.
+- Switches represent applied boolean settings. Encryption uses explicit task
+  actions because it coordinates two systems and may interrupt audio.
 
-- **Every wait is narrated.** When the device restarts, installs, or changes
-  networks, the console says what is happening, roughly how long it takes,
-  and how it knows it finished. Silence is never the signal.
-- **Every failure names the next step.** An error states what failed and what
-  the user does about it, in the message itself.
-- **No state without an exit.** Every screen, overlay, and mode offers a way
-  back to a known state: cancelling calibration restores the previous levels,
-  closing onboarding lands in the full console.
-- **Secrets are shown once, deliberately.** The admin key and each generated
-  PCM PSK appear exactly once, with copy affordances, and never through a read
-  API.
-- **Reads are open, writes are locked.** Anyone on the LAN can watch status;
-  every change requires the unlock window. The device log is the one read
-  behind the same lock, because it repeats whatever the firmware said. Locked controls look locked and
-  say how to unlock. [security.md](security.md) owns the trust model.
+## Workspaces
 
-## Stage 1: flash
+| Console | Workspace | Task |
+|---|---|---|
+| Device | Audio | Observe input, adjust levels, calibrate, and apply profiles |
+| Device | Connections | Set the audio destination, Wi-Fi, and encryption |
+| Device | Settings | Configure identity, hardware, access, updates, and diagnostics |
+| Bridge | Listen | Observe sources and copy playback addresses |
+| Bridge | Recordings | Capture a source and retrieve saved WAV files |
+| Bridge | Settings | Configure audio security and understand deployment access |
 
-Entry: a blank or misconfigured board and a USB data cable.
+Device settings separate General, Access, Updates, Maintenance, Diagnostics,
+and Developer API. Phones use bottom primary navigation and a settings-category
+selector. Both preserve visited forms.
 
-Promise: one action, the WebFlasher's "Connect & Install" or the esptool
-one-liner, produces a device with no leftover state that boots straight into
-stage 2.
+## 1. Install and make first contact
 
-Exit: the board broadcasts its own `esp32-streamline-XXXX` network.
+The WebFlasher or documented serial installer writes a board that starts its
+setup network. The flasher log and serial monitor show its generated SSID and
+password. A pre-provisioned board can carry them on its label. Holding the first
+button at power-on opens the setup network for that boot when the password is lost.
 
-## Stage 2: first contact
+Join the setup network and open its captive console, or `http://192.168.71.1/`.
+An unconfigured device opens onboarding. Choose Wi-Fi, preserve the generated
+admin key, then submit the network change. Back retains entered values.
 
-Entry: the user joins the setup network, usually on a phone, with the WPA2
-password the device generated; the flasher's log view and `espflash monitor`
-print it beside the SSID, and a pre-provisioned board carries both on its
-label. A missing or wrong password never strands the owner: holding the
-board's first button while power is applied starts the network open for that
-one boot, so physical possession always commissions. The operating
-system offers the setup console or opens it after detecting the captive
-network. If the prompt does not appear, `http://192.168.71.1/` opens the same
-console. The console recognizes an unconfigured device and opens first-run
-onboarding by itself.
+The setup address and home-network hostname are different browser origins.
+Remembering a key at one address does not transfer it to another. Before joining,
+the owner confirms the key is saved outside this console. The normal Connections
+setup path keeps the same safeguard.
 
-Promise: three steps with one decision each: pick the home Wi-Fi, save the
-generated admin key, join. The key step makes losing the key hard: shown
-once, copy button, remember-on-this-browser on by default. The join step
-explains the handoff before it happens: this network disappears, reconnect
-to your own Wi-Fi, find the device at `http://streamline-xxxx.local/`. The
-device restarts only after it confirms the save; a rejected save shows the
-reason inline where the user can fix it.
+A transport disconnect during joining is an unconfirmed handoff, not success.
+Reconnect to home Wi-Fi, open the advertised device address, and enter the saved
+key there. Reaching that console verifies the join. Closing onboarding exposes
+the Connections forms without hiding the custody requirement.
 
-Exit: the device is on the home network, the user knows its address, and the
-browser that commissioned it can unlock it.
+## 2. Connect a bridge and player
 
-Escape: closing onboarding lands in the normal console, which offers the
-same capability through the Network tab.
+Capture and calibration work before a bridge exists. Audio offers Connect bridge
+when no destination is configured. The guide explains Home Assistant, Docker,
+or an existing installation, then saves the target. Connections also provides
+the host and port form; both use the same API.
 
-## Stage 3: bridge hookup
+After saving, the device distinguishes restarting, quiet input, connecting, and
+sending. Only observed transmission supports Sending audio. Open the bridge
+to verify reception, then copy the playback URL from Listen into an HTTP WAV
+player. The console does not play audio. A connected player does not prove its
+speakers are audible.
 
-Entry: a provisioned device with no stream target. Capture already runs:
-meters move and calibration works before any bridge exists; only streaming
-waits.
+## 3. Set input levels
 
-Promise: an owner who does not know what a bridge is still reaches streaming.
-The Overview raises a **No bridge yet** callout whose **Set up bridge** action
-opens a guided **Bridge setup** wizard. The wizard walks the whole stage: pick
-where the bridge runs (a Home Assistant add-on, Docker, or one already
-running), and it names that choice's install step and the address to enter;
-save the target; then read the Bridge tile, which the wizard narrates from
-restarting to the same **Sending** signal the tile computes, so success is
-observable without leaving the console. Every step stays skippable, and the
-Network tab's plain host-and-port form and the `/api/settings/target` endpoint
-remain the escape hatch: the wizard only sequences them. Cleartext works
-without an encryption decision during first setup.
+Audio places the meter beside input settings. Changes apply when saved;
+the meter describes applied settings while a draft is edited. A clipping warning
+offers calibration. The guide asks the owner to pause the source and play loud
+material. Cancellation restores entry levels and reports restoration failures;
+completion applies the measured result.
 
-The wizard's final step offers encryption and continues straight into the
-guided **Encryption setup** sheet, the same step-dot dialog as calibration,
-so every guided task reads the same way. Its steps mirror the state machine:
-create the bridge credential, enroll it in the bridge console and switch the
-bridge to encrypted there, verify, then activate and restart. Audio keeps
-streaming through enrollment and pauses only between the bridge's switch and
-the device's restart, because each side accepts exactly one protocol. A
-verification failure names its cause and the next step (an unreachable port,
-a bridge still in cleartext, or a credential the bridge does not accept),
-keeps the retry visible, and never changes the device mode.
+Profiles capture applied settings, not unsaved fields. Saving or replacing a
+profile requires saving or deliberately discarding the displayed draft first.
+Selection is separate from profile management. Importing profiles does not apply
+them, and incompatible profiles fail with a reason.
 
-The Network tab's **Stream target** card owns one host and one port. A
-separate **Encryption** card sits beside it (the same heading both consoles
-use) and encourages the owner to turn on encryption while streaming is
-cleartext. Its switch opens the same guide; a setup left mid-way shows a
-"setting up" state with a resume action, and **Recovery** can discard the
-pending credential, so opting in never traps the owner. Closing the sheet
-keeps the staged state and says how to resume. The PSK is masked by default,
-shown only on request, and never available again after the owner dismisses
-it.
+Boards that support analog passthrough expose an immediate switch. It names the
+physical output and fixed line-level route. Input gain, attenuation, calibration,
+and streaming controls do not control output volume.
 
-The bridge console mirrors the device console's lock: one masthead lock chip,
-unlocked by the owner-set bridge API token, gates every bridge change:
-encryption mode, device credentials, and recordings. Reads stay open. A
-deployment without a token says which option to set instead of offering an
-unlock that cannot succeed.
+## 4. Operate and record
 
-Once encryption is active, the card says no routine action is required.
-Credential replacement, rollback, and recovery stay under **Advanced
-security**. Routine PSK rotation is not part of the customer journey.
+Audio distinguishes codec faults, deliberate pauses, quiet input, connection
+attempts, and transmission. Resume reverses a pause. External button or API
+changes update fields the user has not edited. The console never guesses which
+physical source a waveform represents.
 
-Exit: the Bridge tile reads Sending while music plays.
+Settings → General assigns advertised buttons and LEDs. Destructive button
+assignments carry a warning. A console pause is not a persistent shutdown;
+restarting resumes streaming according to firmware policy.
 
-## Stage 4: input setup
+Bridge Listen shows known sources, levels, connection state, playback addresses,
+and reception details. Recordings separates capture from the file library.
+An unseen source must play once for discovery before selection. Start recording
+before the desired passage, observe its state, then stop and save. The active
+session replaces the new-recording form; another recording is an explicit action.
+Finalized files offer download and confirmed deletion. [Recordings](recordings.md)
+owns storage, gaps, limits, and interrupted files.
 
-Entry: the Audio tab's guide, or the clipping callout the Overview raises
-when samples hit full scale.
+A bridge without an API token names the deployment option to configure. It never
+directs the owner to an unavailable unlock action.
 
-Promise: the guide asks only for actions the user can perform (pause the
-source, then play something loud), narrates what it hears, and cannot leave
-the device worse than it found it: cancel restores the entry levels, finish
-applies the measured ones. On a board that advertises analog passthrough,
-the guide's last choice describes the route and offers it; that switch
-applies immediately and is the same control Input settings carries, so
-neither cancel nor finish rewrites it. Streaming continues while the guide
-runs. It refuses to start where it cannot work, and says why. When several
-sources need different levels, the Audio tab saves the applied settings as
-named profiles and switches them live. Importing definitions never changes
-the active levels. A profile from another board is rejected with the reason,
-not partially applied.
+## 5. Enable encrypted audio
 
-Exit: the loudest material plays without clipping, and the result is stated
-in dB and already applied.
+Connections → Encrypted audio offers Set up encryption or Resume setup. Generate
+and preserve a credential, enroll it under bridge Settings → Audio security,
+require encryption there, verify from the device, then activate and restart.
 
-## Stage 5: steady state
+The bridge mode affects every connected device. Switching the bridge before device
+activation pauses cleartext audio. Failed verification does not activate the
+device credential. Closing the guide retains staged progress; discarding a staged
+credential does not restore the bridge mode. Recovery explicitly requires restoring
+cleartext on the bridge when abandoning that transition.
 
-Entry: streaming works. The device lives here for months.
+Active encryption needs no routine intervention. Advanced security contains key
+replacement, rollback, and lost-key recovery. The generated secret is unavailable
+after dismissal. [TCP transport](tcp-transport.md) owns the protocol and API sequence.
 
-Promise: the Overview answers "is everything fine?" in one glance: status,
-signal, Wi-Fi, bridge. A device that came up without its audio codec says so
-here: the Status reads Fault, not a false Idle, with the fix named. Streaming
-follows the music, playing on signal and pausing on sustained silence, with no
-user action. Nothing asks for attention unless something needs it; every
-unprompted banner is real (clipping, a device unreachable, a codec that did
-not start) and is dismissible or resolves itself.
+## 6. Maintain and recover
 
-Source switching is explicit and observable: the Audio tab names the active
-profile or says `Custom settings`. An external automation can activate the same
-profile through the API when it knows the physical selector state. StreamLine
-never guesses the source from overlapping waveform characteristics.
+Settings → Updates owns scheduling, checks, installation, rollback, and developer
+installs. Updates narrate interruption and recovery. A failed install does not
+claim completion. [OTA](ota.md) owns verification and rollback behavior.
 
-Board buttons act without the console: System → Buttons assigns each advertised
-key a press action (start/stop streaming, switch input, restart, factory
-reset) and warns in place when one press is destructive. A press never leaves
-a mystery: pausing streaming turns the Overview status to **Paused** with a
-callout that explains the state and offers **Resume**; a press that switches
-input or steps the gain or attenuation moves the Audio tab's controls to match
-within a poll, so the console never shows a level the device has left behind;
-and a reboot always resumes streaming on its own.
+Settings → Diagnostics exposes health, the protected device log, and raw status.
+Settings → Developer API exposes the machine interface. Settings → Maintenance
+contains restart and confirmed factory reset.
 
-When the selected board advertises a local analog output, Input settings
-carries one **Analog passthrough** switch below its base fields, naming the
-physical jack and the fixed line-level analog route. The switch is the state;
-a codec fault surfaces as a callout that names the fault and how to retry.
-Input gain, ADC attenuation, calibration, silence detection, and streaming do
-not act as output-volume controls. Boards without the capability show no
-passthrough control.
+A provisioned device that loses Wi-Fi exposes a recovery form on its setup network,
+not first-run commissioning. Unlock requires the admin key. Blank write-only
+password fields retain stored values. Changing Wi-Fi leaves audio, target,
+profiles, identity, board, and update schedule intact. The device keeps retrying
+its saved network. Its setup password survives resets; physical boot recovery
+remains available when that password is lost.
 
-Optional lossless recording is a bridge-hosted task. The bridge page lets the
-owner choose a source, start before playing it, observe whether audio has
-arrived, stop and finalize, then download or delete the file. It calls the
-bridge recording API and never asks the device console to manage host storage.
-An interrupted capture remains available with its failure reason and gap
-counters. [Lossless recordings](recordings.md) owns this flow.
+A codec fault leaves network management reachable. Factory reset returns to
+commissioning. Lost admin access requires the documented physical recovery or
+reflash path; a read endpoint cannot recover a secret.
 
-Exit: none. Maintenance interrupts and returns here.
-
-## Stage 6: maintenance and recovery
-
-Entry: an update exists, a setting changes, the network changes, or access
-is lost.
-
-Promise:
-
-- Updating is automatic by default, configurable as daily or weekly, waits for
-  idle audio, and can be disabled. Manual checks and installs remain available.
-  An install pauses audio streaming for its duration and narrates the pause;
-  a failed install resumes the stream on its own.
-  Progress is a visible log, and the device either
-  confirms the new version or rolls back by itself. A rollback is narrated
-  too (the console names the version still running rather than claiming a
-  success), and when the device holds a previous image, one button rolls
-  back to it deliberately. [ota.md](ota.md) owns the mechanism.
-- Any change that restarts the device is narrated through to recovery, and
-  an overdue recovery says what to check instead of spinning forever.
-- A device that cannot reach its Wi-Fi falls back to its own setup network,
-  so it is never unreachable, and rejoins on its own once the network returns.
-  It keeps retrying the saved Wi-Fi in the background, so a router still
-  booting after a power cut needs no user action. The setup network stays
-  reachable throughout as an escape hatch, and its indicator reads
-  reconnecting, not first-run. The fallback network keeps the same WPA2
-  password the device has had since first boot, including the one on a pre-flashed
-  unit's label and in the flasher's log, which no reset changes, so those
-  sources stay true for the device's life. A factory reset repeats it before
-  the device leaves, and a button held at power-on opens the network for one
-  boot when the password is lost. An owner who opens that setup network sees a
-  recovery form, not first-run onboarding: the saved settings are prefilled,
-  the form states the device is already provisioned, and the unlock sits
-  inline, because a recovery write requires the admin key. The form retains
-  the write-only password and admin key when their fields stay blank.
-  Replacing the Wi-Fi credentials does not change the target, audio settings,
-  profiles, local-output intent, name, board, or update schedule. A device
-  without valid saved configuration re-enters stage 2 with clean descriptor
-  defaults.
-- A fault that appears after the network is up (an audio codec that will
-  not start) keeps the device on the home network and reachable, showing
-  the fault and its fix, rather than dropping to the setup network. Only a
-  lost network re-enters stage 2.
-- Factory reset demands explicit confirmation, states exactly what it
-  erases, and lands in stage 2.
-- A lost admin key means reflashing (stage 1). The README states this where
-  the key is introduced; the console must not pretend otherwise.
-- A lost PCM key keeps the HTTP console reachable. **Recover lost key** saves
-  explicit cleartext for the next boot, reveals one replacement key, and then
-  offers **Restart into cleartext**. The owner can provision and verify the
-  replacement before activating encryption again. Key rollback and the
-  prominent cleartext action remain visible exits during ordinary rotation.
-
-Exit: back to stage 5, or deliberately back to an earlier stage.
-
-## Using this document
-
-For any change to the console or the device's visible behavior, find the
-stages it touches and check their promises plus the cross-cutting list. A
-change that cannot keep a promise either fixes the seam in the same PR or
-files an issue naming the promise it breaks. When the intended experience
-itself changes, this document changes in the same PR.
+Any change to a stage updates this contract and tests its cross-screen consequences.

@@ -1,56 +1,32 @@
-import { useState } from 'preact/hooks';
-import { Button } from '../components/Button';
-import { Card, CardFooter } from '../components/Card';
-import { Chip, type Tone } from '../components/Chip';
-import { ConfirmButton } from '../components/ConfirmButton';
+import { useEffect, useState } from 'preact/hooks';
+import { PageHeading } from '../components/ConsoleNavigation';
+import { ConsoleShell } from '../components/ConsoleShell';
 import { EmptyState } from '../components/EmptyState';
 import { LockChip, type LockState } from '../components/LockChip';
-import { MeterRow } from '../components/Meter';
 import { Notice } from '../components/Notice';
-import { LoadFailure } from '../components/ResourceNotice';
-import { SectionHead } from '../components/SectionHead';
-import { ThemeSwitch } from '../components/ThemeSwitch';
+import { SettingsWorkspace } from '../components/SettingsWorkspace';
 import { Toasts } from '../components/Toasts';
-import { Toggle } from '../components/Toggle';
 import { UnlockPanel } from '../components/UnlockPanel';
-import type { RecordingSnapshot, SourceSnapshot, TransportSnapshot } from '../generated/bridge';
-import { dbfs } from '../lib/format';
 import { toast } from '../state/toasts';
-import { bridgeBase } from './http';
+import { Recordings } from './Recordings';
+import { IncomingSource } from './Sources';
 import { bridge } from './state';
-
-/** Lifecycle and recording states share the console's status tones. */
-function stateTone(state: string): Tone {
-  switch (state) {
-    case 'connected':
-    case 'complete':
-      return 'good';
-    case 'recording':
-      return 'bad';
-    case 'waiting-for-audio':
-    case 'interrupted':
-      return 'warn';
-    default:
-      return 'neutral';
-  }
-}
-
-function StateChip({ state }: { state: string }) {
-  return (
-    <Chip tone={stateTone(state)} dot>
-      {state.replaceAll('-', ' ')}
-    </Chip>
-  );
-}
+import { Transport } from './Transport';
 
 export function BridgeApp() {
+  const [view, setView] = useState(() => bridgeView());
+  useEffect(() => {
+    const change = () => setView(bridgeView());
+    window.addEventListener('hashchange', change);
+    return () => window.removeEventListener('hashchange', change);
+  }, []);
   const status = bridge.status.value;
   const access = bridge.access.value;
   const [panelOpen, setPanelOpen] = useState(false);
 
   const chip: { state: LockState; text: string; sub: string } =
     access === 'checking'
-      ? { state: 'neutral', text: 'Checking…', sub: '' }
+      ? { state: 'neutral', text: bridge.unreachable.value ? 'Unavailable' : 'Checking…', sub: '' }
       : access === 'no-token'
         ? { state: 'neutral', text: 'No API token', sub: '· set api_token to manage' }
         : access === 'unlocked'
@@ -68,60 +44,139 @@ export function BridgeApp() {
   }
 
   return (
-    <main class="wrap bridge-console">
-      <header class="masthead">
-        <div>
-          <h1 class="wordmark">
-            Stream<span>Line</span>
-          </h1>
-          <div class="devname">Bridge console</div>
-          <div class="chips">
-            <Chip tone={bridge.unreachable.value ? 'bad' : status ? 'good' : 'neutral'} dot>
-              {status
-                ? bridge.unreachable.value
-                  ? `v${status.bridge_version} — unreachable, last seen ${Math.max(1, Math.round((Date.now() - bridge.statusAt.value) / 1000))}s ago`
-                  : `v${status.bridge_version}`
-                : 'Checking…'}
-            </Chip>
+    <ConsoleShell
+      items={BRIDGE_NAVIGATION}
+      current={view}
+      locked={access !== 'unlocked'}
+      onUnlock={
+        access === 'locked'
+          ? () => {
+              setPanelOpen(true);
+              window.scrollTo({ top: 0 });
+            }
+          : undefined
+      }
+      header={
+        <header class="masthead">
+          <div>
+            <div class="console-identity">Bridge console</div>
+            <span class="identity-detail">
+              {bridge.unreachable.value
+                ? 'Unavailable'
+                : status
+                  ? `Version ${status.bridge_version}`
+                  : 'Connecting…'}
+            </span>
           </div>
-        </div>
-        <div class="masthead-actions">
-          <ThemeSwitch />
-          <LockChip
-            state={chip.state}
-            text={chip.text}
-            sub={chip.sub}
-            onClick={onLockClick}
-            expanded={access === 'locked' && panelOpen}
-            controls="bridge-unlock-panel"
-          />
-        </div>
-      </header>
+          <div class="masthead-actions">
+            <LockChip
+              state={chip.state}
+              text={chip.text}
+              sub={chip.sub}
+              onClick={onLockClick}
+              expanded={access === 'locked' && panelOpen}
+              controls="bridge-unlock-panel"
+            />
+          </div>
+        </header>
+      }
+    >
       {access === 'locked' && panelOpen && <BridgeUnlock onDone={() => setPanelOpen(false)} />}
-      {bridge.error.value && <Notice tone="error">{bridge.error.value}</Notice>}
-      <section class="bridge-group">
-        <SectionHead title="Sources" note="Live · updates every second" />
-        <p class="grouplead">Devices streaming PCM to this bridge.</p>
-        <div class="bridge-list">
-          {status &&
-          Object.entries(status.sources).filter(([ip]) => ip !== 'pending').length > 0 ? (
-            Object.entries(status.sources)
-              .filter(([ip]) => ip !== 'pending')
-              .map(([ip, source]) => <SourceCard key={ip} ip={ip} source={source} />)
-          ) : (
-            <EmptyState>
-              {status && status.transport.mode === 'tls-psk' && status.transport.key_ids.length
-                ? `No audio right now. ${status.transport.key_ids.length === 1 ? 'The enrolled device appears' : `${status.transport.key_ids.length} enrolled devices appear`} here while their audio plays.`
-                : `No device is streaming. A StreamLine device connects only while audio plays — point it at this bridge (TCP port ${status?.transport.port ?? 39000}) and start playback.`}
-            </EmptyState>
-          )}
-        </div>
-      </section>
-      <Transport />
-      <Recordings />
+      {bridge.error.value && !(panelOpen && access === 'locked') && (
+        <Notice tone="error">{bridge.error.value}</Notice>
+      )}
+      <div>
+        <section class="view active" hidden={view !== 'sources'}>
+          <PageHeading label={BRIDGE_NAVIGATION[0].label} />
+          <section class="bridge-group">
+            {bridge.unreachable.value && (
+              <Notice tone="warn">
+                Bridge unavailable. Sources below are last-known information, not live readings.
+              </Notice>
+            )}
+            <div class="bridge-list">
+              {status &&
+              Object.entries(status.sources).filter(([ip]) => ip !== 'pending').length > 0 ? (
+                Object.entries(status.sources)
+                  .filter(([ip]) => ip !== 'pending')
+                  .map(([ip, source]) => <IncomingSource key={ip} ip={ip} source={source} />)
+              ) : (
+                <EmptyState>
+                  {status && status.transport.mode === 'tls-psk' && status.transport.key_ids.length
+                    ? `No audio right now. ${status.transport.key_ids.length === 1 ? 'The enrolled device appears' : `${status.transport.key_ids.length} enrolled devices appear`} here while their audio plays.`
+                    : `Connect your device to this bridge on TCP port ${status?.transport.port ?? 39000}, then play audio. Its source and playback URL will appear here.`}
+                </EmptyState>
+              )}
+            </div>
+          </section>
+        </section>
+        <section class="view active" hidden={view !== 'settings'}>
+          <PageHeading {...BRIDGE_NAVIGATION[2]} />
+          <SettingsWorkspace
+            label="Bridge settings"
+            sections={[
+              {
+                id: 'security',
+                label: 'Audio security',
+                content: <Transport />,
+              },
+              {
+                id: 'service',
+                label: 'Service & access',
+                content: (
+                  <div class="service-details">
+                    <h3>Console access</h3>
+                    <p>
+                      {access === 'no-token'
+                        ? 'Set api_token in the bridge configuration, then restart to enable changes from this console.'
+                        : 'Use your bridge API token to unlock changes. The device admin key is a separate credential.'}
+                    </p>
+                    <h3>Bridge service</h3>
+                    <p>
+                      Version {status?.bridge_version ?? 'unavailable'}. The audio listener uses TCP
+                      port {status?.transport.port ?? 'unavailable'}.
+                    </p>
+                    <p>
+                      Recording storage and listener settings are configured where the bridge is
+                      deployed.
+                    </p>
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </section>
+        <section class="view active" hidden={view !== 'recordings'}>
+          <PageHeading {...BRIDGE_NAVIGATION[1]} />
+          <Recordings />
+        </section>
+      </div>
       <Toasts />
-    </main>
+    </ConsoleShell>
   );
+}
+
+const BRIDGE_NAVIGATION = [
+  {
+    view: 'sources',
+    label: 'Listen',
+    description: 'Connect your player to incoming audio.',
+  },
+  {
+    view: 'recordings',
+    label: 'Recordings',
+    description: 'Capture a source, stop when you are finished, and keep the WAV.',
+  },
+  {
+    view: 'settings',
+    label: 'Settings',
+    description: 'Manage access and encryption for every device using this bridge.',
+  },
+] as const;
+
+function bridgeView() {
+  const candidate = window.location.hash.replace(/^#\//, '');
+  return BRIDGE_NAVIGATION.find(({ view }) => view === candidate)?.view ?? 'sources';
 }
 
 function BridgeUnlock({ onDone }: { onDone: () => void }) {
@@ -135,7 +190,7 @@ function BridgeUnlock({ onDone }: { onDone: () => void }) {
       toast('Bridge unlocked', 'ok');
       onDone();
     } catch {
-      // The controller surfaces the reason in the page banner.
+      // The shared unlock panel renders the controller's rejection.
     } finally {
       setBusy(false);
     }
@@ -143,421 +198,15 @@ function BridgeUnlock({ onDone }: { onDone: () => void }) {
 
   return (
     <UnlockPanel
+      onClose={onDone}
       id="bridge-unlock-panel"
       secret={token}
       onSecret={setToken}
       onUnlock={unlock}
       busy={busy}
+      error={bridge.error.value}
       placeholder="bridge API token"
       autoComplete="current-password"
     />
   );
-}
-
-function Transport() {
-  const status = bridge.status.value?.transport;
-  const access = bridge.access.value;
-  if (!status) return null;
-  const secure = status.mode === 'tls-psk';
-  return (
-    <section class="bridge-group">
-      <div class="section-head">
-        <h2>Encryption</h2>
-        <span class="eyebrow">
-          {secure ? 'Encrypted · TLS 1.3' : 'Cleartext'} · PCM port {status.port}
-        </span>
-      </div>
-      <p class="grouplead">
-        {secure
-          ? 'Only devices with an enrolled credential can stream. Cleartext connections are rejected.'
-          : 'Any device on the network can stream to this port unencrypted.'}
-      </p>
-      {!status.configurable ? (
-        <EmptyState>
-          Encryption control is off. Run the bridge with a transport state file
-          (--transport-state-file), then restart it.
-        </EmptyState>
-      ) : access === 'no-token' ? (
-        <EmptyState>
-          Set api_token in the bridge configuration (or STREAMLINE_API_TOKEN), then restart the
-          bridge to manage encryption here.
-        </EmptyState>
-      ) : (
-        <TransportWorkspace status={status} unlocked={access === 'unlocked'} />
-      )}
-    </section>
-  );
-}
-
-function TransportWorkspace({
-  status,
-  unlocked,
-}: {
-  status: TransportSnapshot;
-  unlocked: boolean;
-}) {
-  const secure = status.mode === 'tls-psk';
-  const [busy, setBusy] = useState(false);
-  return (
-    <div class="cardstack">
-      <Card
-        title="Device credentials"
-        lead={
-          unlocked
-            ? 'Add the one-time credential from the device console. Enroll it before switching to encrypted, so audio only pauses while the device follows.'
-            : 'Select Locked in the header to unlock this bridge, then enroll device credentials and switch encryption.'
-        }
-      >
-        {unlocked && <CredentialForm />}
-        <div class="bridge-list transport-key-list">
-          {status.key_ids.length ? (
-            status.key_ids.map((id) => (
-              <div class="transport-key" key={id}>
-                <code>{id}</code>
-                {unlocked && (
-                  <ConfirmButton
-                    label="Remove"
-                    confirmLabel="Remove"
-                    onConfirm={() => void bridge.removeTransportKey(id)}
-                  />
-                )}
-              </div>
-            ))
-          ) : (
-            <div class="empty">No device credential is enrolled.</div>
-          )}
-        </div>
-        <div class="transport-mode">
-          <Toggle
-            checked={secure}
-            disabled={!unlocked || busy}
-            onChange={async (enabled) => {
-              setBusy(true);
-              try {
-                if (await bridge.setEncryption(enabled)) {
-                  toast(
-                    enabled
-                      ? 'Encrypted mode on — devices must verify and activate'
-                      : 'Cleartext mode on',
-                    'ok',
-                  );
-                }
-              } finally {
-                setBusy(false);
-              }
-            }}
-            label="Encrypt incoming audio"
-            description={
-              secure
-                ? 'Turning this off drops encrypted devices and accepts unencrypted audio again.'
-                : 'Turning this on pauses audio from every device until it verifies and activates its credential.'
-            }
-          />
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function CredentialForm() {
-  const [keyId, setKeyId] = useState('');
-  const [psk, setPsk] = useState('');
-  const [busy, setBusy] = useState(false);
-  return (
-    <form
-      class="formgrid"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        setBusy(true);
-        try {
-          if (await bridge.provisionTransportKey(keyId.trim(), psk.trim())) {
-            setKeyId('');
-            setPsk('');
-            toast('Credential enrolled', 'ok');
-          }
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <div class="field">
-        <label for="transport-key-id">Credential ID</label>
-        <input
-          id="transport-key-id"
-          type="text"
-          class="credential-input"
-          value={keyId}
-          pattern="eli1-[0-9a-f]{32}"
-          autocomplete="off"
-          onInput={(event) => setKeyId(event.currentTarget.value)}
-          required
-        />
-      </div>
-      <div class="field">
-        <label for="transport-psk">PSK</label>
-        <input
-          id="transport-psk"
-          class="credential-input"
-          type="password"
-          value={psk}
-          pattern="[0-9a-f]{64}"
-          autocomplete="new-password"
-          onInput={(event) => setPsk(event.currentTarget.value)}
-          required
-        />
-      </div>
-      <CardFooter compact>
-        <Button kind="primary" type="submit" busy={busy}>
-          Enroll credential
-        </Button>
-      </CardFooter>
-    </form>
-  );
-}
-
-export function SourceCard({ ip, source }: { ip: string; source: SourceSnapshot }) {
-  const listeners = `${source.clients} listener${source.clients === 1 ? '' : 's'}`;
-  const streamUrl = new URL(`${bridgeBase()}/streamline.wav`, window.location.origin);
-  streamUrl.searchParams.set('source', ip);
-  return (
-    <Card className="source-card">
-      <div class="source-head">
-        <h3>{ip}</h3>
-        <StateChip state={source.lifecycle.state} />
-      </div>
-      <div class="meta">
-        <span>{formatBytes(source.bytes)} received</span>
-        <span>{listeners}</span>
-        <span>{source.lost ? `${source.lost} lost` : 'clean'}</span>
-        <span>up {formatDuration(source.uptime_seconds)}</span>
-      </div>
-      <div class="bridge-meter">
-        <div class="meter-head">
-          <span>Live level</span>
-          <span>RMS · peak marker</span>
-        </div>
-        <MeterRow label="L" rms={source.levels.rms_left} peak={source.levels.peak_left} />
-        <MeterRow label="R" rms={source.levels.rms_right} peak={source.levels.peak_right} />
-        <div class="meterfoot">
-          RMS {dbfs(source.levels.rms_left)} / {dbfs(source.levels.rms_right)} dBFS
-        </div>
-      </div>
-      <div class="streamrow">
-        <span class="streamlabel">Stream URL</span>
-        <code class="stream">{streamUrl.toString()}</code>
-      </div>
-    </Card>
-  );
-}
-
-function Recordings() {
-  const access = bridge.access.value;
-  const capabilities = bridge.capabilities.value;
-  if (!capabilities) {
-    if (!bridge.capabilitiesError.value) return null;
-    return (
-      <section class="bridge-group">
-        <SectionHead title="Recordings" note="unavailable" />
-        <LoadFailure
-          name="recording capabilities"
-          error={bridge.capabilitiesError.value}
-          onRetry={() => void bridge.loadCapabilities()}
-        />
-      </section>
-    );
-  }
-  return (
-    <section class="bridge-group">
-      <SectionHead
-        title="Recordings"
-        note={!capabilities.enabled ? 'off' : access === 'unlocked' ? 'unlocked' : 'locked'}
-      />
-      {!capabilities.enabled ? (
-        <EmptyState>
-          Recording is off. Turn on recordings in the bridge configuration, then restart the bridge.
-        </EmptyState>
-      ) : access !== 'unlocked' ? (
-        <EmptyState>
-          Recordings are locked. Select Locked in the header to unlock, then manage them.
-        </EmptyState>
-      ) : (
-        <RecordingWorkspace />
-      )}
-    </section>
-  );
-}
-
-function RecordingWorkspace() {
-  const data = bridge.recordings.value;
-  const capabilities = bridge.capabilities.value;
-  const sources = Object.keys(bridge.status.value?.sources || {}).filter(
-    (source) => source !== 'pending',
-  );
-  const [source, setSource] = useState(sources[0] || '');
-  const [title, setTitle] = useState('');
-  const selectedSource = sources.includes(source) ? source : sources[0] || '';
-  if (!data) {
-    if (!bridge.recordingsError.value) return <EmptyState>Loading recordings…</EmptyState>;
-    return (
-      <LoadFailure
-        name="recordings"
-        error={bridge.recordingsError.value}
-        onRetry={() => void bridge.refreshRecordings()}
-      />
-    );
-  }
-  // The capability contract sizes the estimate and the limits; nothing here
-  // hardcodes what the bridge already declares.
-  const perMinute = capabilities ? formatBytes(capabilities.format.bytes_per_second * 60) : '';
-  return (
-    <div class="cardstack">
-      {data && bridge.recordingsError.value && (
-        <Notice tone="warn">
-          Showing the last loaded list — refresh failed: {bridge.recordingsError.value}.{' '}
-          <Button onClick={() => void bridge.refreshRecordings()}>Refresh</Button>
-        </Notice>
-      )}
-      <Card
-        title="New recording"
-        lead={`Start first, then play the source.${perMinute ? ` WAV uses about ${perMinute} per minute.` : ''} ${formatBytes(data.storage.free_bytes)} free.`}
-      >
-        <form
-          onSubmit={async (event) => {
-            event.preventDefault();
-            const outcome = await bridge.startRecording({ source: selectedSource, title });
-            if (outcome === 'done' || outcome === 'refresh-failed') setTitle('');
-          }}
-        >
-          <div class="formgrid">
-            <div class="field">
-              <label for="rec-source">Source</label>
-              <select
-                id="rec-source"
-                value={selectedSource}
-                onChange={(event) => setSource(event.currentTarget.value)}
-                required
-              >
-                {sources.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div class="field">
-              <label for="rec-title">Title</label>
-              <input
-                id="rec-title"
-                type="text"
-                value={title}
-                maxlength={capabilities?.limits.max_title_chars ?? 80}
-                onInput={(event) => setTitle(event.currentTarget.value)}
-                required
-              />
-            </div>
-          </div>
-          <CardFooter>
-            <Button kind="primary" type="submit" disabled={!selectedSource}>
-              Start recording
-            </Button>
-            <span class="actionstate">{formatBytes(data.storage.free_bytes)} free</span>
-          </CardFooter>
-        </form>
-      </Card>
-      <RecordingList title="Active" items={data.active} />
-      <RecordingList title="Saved" items={data.saved} />
-    </div>
-  );
-}
-
-function RecordingList({ title, items }: { title: string; items: RecordingSnapshot[] }) {
-  return (
-    <Card title={title}>
-      <div class="bridge-list">
-        {items.length ? (
-          items.map((item) => <RecordingCard key={item.id} item={item} />)
-        ) : (
-          <EmptyState>No {title.toLowerCase()} recordings.</EmptyState>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-/** States whose recording is still in progress; stopping applies to these. */
-const ACTIVE_STATES: readonly string[] = ['waiting-for-audio', 'recording', 'finalizing'];
-
-function RecordingCard({ item }: { item: RecordingSnapshot }) {
-  // Every affordance derives from the recording's own state and file, not
-  // from which list happened to render it.
-  const active = ACTIVE_STATES.includes(item.state);
-  const stoppable = item.state === 'waiting-for-audio' || item.state === 'recording';
-  const downloadable = !active && Boolean(item.file_name);
-  return (
-    <article class="recording">
-      <div>
-        <StateChip state={item.state} />
-        <h3>{item.title}</h3>
-        <div class="meta">
-          <span>{item.source}</span>
-          <span>{formatDuration(item.duration_seconds)}</span>
-          <span>{formatBytes(item.bytes)}</span>
-          <span>{item.gap_packets ? `${item.gap_packets} silent gaps` : 'No timeline gaps'}</span>
-          {item.duplicate_packets > 0 && <span>{item.duplicate_packets} duplicate packets</span>}
-        </div>
-        {item.error && <div class="meta err">{item.error}</div>}
-      </div>
-      <div class="actions">
-        {stoppable && (
-          <Button kind="danger" onClick={() => void bridge.stopRecording(item.id)}>
-            Stop and save
-          </Button>
-        )}
-        {!active && (
-          <>
-            {downloadable && (
-              <Button
-                onClick={async () => {
-                  const ticket = await bridge.downloadTicket(item.id);
-                  if (!ticket) return;
-                  const link = document.createElement('a');
-                  link.href = `${bridgeBase()}${ticket.url}`;
-                  link.download = item.file_name || `${item.title}.wav`;
-                  link.click();
-                }}
-              >
-                Download WAV
-              </Button>
-            )}
-            <ConfirmButton
-              label="Delete"
-              confirmLabel="Delete"
-              onConfirm={() => void bridge.deleteRecording(item.id)}
-            />
-          </>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function formatBytes(bytes: number): string {
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
-}
-
-function formatDuration(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const rest = total % 60;
-  return hours
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
-    : `${minutes}:${String(rest).padStart(2, '0')}`;
 }

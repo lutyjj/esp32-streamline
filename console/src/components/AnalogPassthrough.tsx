@@ -45,7 +45,7 @@ export function AnalogPassthroughToggle({
         description={`Also send the selected input to ${capability.label} through a direct analog path, at fixed line level. Streaming continues either way; changes apply immediately.`}
       />
       {status.fault && (
-        <p class="callout bad card-subsection-callout">
+        <p class="callout bad section-subsection-callout">
           {status.fault}{' '}
           {status.enabled
             ? 'Turn analog passthrough off, then on again to retry.'
@@ -71,7 +71,7 @@ export function AnalogPassthrough({
 }) {
   if (!capability) return null;
   return (
-    <fieldset class="card-subsection" disabled={!writable || !provisioned}>
+    <fieldset class="section-subsection" disabled={!writable || !provisioned}>
       <AnalogPassthroughToggle
         capability={capability}
         status={status}

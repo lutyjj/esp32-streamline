@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'preact/hooks';
-import { ApiTab } from './components/ApiTab';
 import { AudioTab } from './components/AudioTab';
 import { BridgeWizard } from './components/BridgeWizard';
+import { PageHeading } from './components/ConsoleNavigation';
+import { ConsoleShell } from './components/ConsoleShell';
 import { InputWizard } from './components/InputWizard';
 import { Masthead } from './components/Masthead';
 import { NetworkTab } from './components/NetworkTab';
 import { Notice } from './components/Notice';
 import { OnboardingOverlay } from './components/OnboardingOverlay';
-import { OverviewTab } from './components/OverviewTab';
 import { SystemTab } from './components/SystemTab';
 import { Toasts } from './components/Toasts';
 import { TransportWizard } from './components/TransportWizard';
@@ -19,18 +19,22 @@ import {
   type ConsoleView,
   navigateTo,
   useConsoleView,
-  viewHref,
 } from './state/navigation';
 import { toast } from './state/toasts';
 import { setupWizardRequested } from './state/transport';
 
 export function App() {
   const view = useConsoleView();
+  const [visited, setVisited] = useState<ConsoleView[]>([view]);
+  useEffect(() => {
+    setVisited((items) => (items.includes(view) ? items : [...items, view]));
+  }, [view]);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [bridgeWizardOpen, setBridgeWizardOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingSeen, setOnboardingSeen] = useState(false);
   const writable = useWritable();
+  const [unlockOpen, setUnlockOpen] = useState(false);
 
   // An unconfigured device goes straight into first-run onboarding, once.
   const setup = setupMode.value;
@@ -40,11 +44,6 @@ export function App() {
       setOnboardingOpen(true);
     }
   }, [setup, onboardingSeen]);
-
-  // The lock state gates whole cards through CSS (`body.locked .gated`).
-  useEffect(() => {
-    document.body.classList.toggle('locked', !writable);
-  }, [writable]);
 
   function openWizard() {
     if (status.value?.mode !== 'provisioned') {
@@ -66,53 +65,49 @@ export function App() {
     setBridgeWizardOpen(true);
   }
 
-  /** Clip-callout action: land on the audio tab; calibrate when unlocked. */
-  function calibrateFromCallout() {
-    navigateTo('audio');
-    if (writable) openWizard();
-  }
-
   function activeView(selected: ConsoleView) {
     switch (selected) {
-      case 'overview':
-        return <OverviewTab onCalibrate={calibrateFromCallout} onSetupBridge={openBridgeWizard} />;
       case 'audio':
-        return <AudioTab onCalibrate={openWizard} />;
-      case 'network':
+        return <AudioTab onCalibrate={openWizard} onSetupBridge={openBridgeWizard} />;
+      case 'connections':
         return <NetworkTab onSetupBridge={openBridgeWizard} />;
-      case 'system':
+      case 'settings':
         return <SystemTab />;
-      case 'api':
-        return <ApiTab />;
     }
   }
 
   return (
-    <main class="wrap">
-      <Masthead />
-
+    <ConsoleShell
+      items={CONSOLE_NAVIGATION}
+      current={view}
+      locked={!writable}
+      onUnlock={() => {
+        setUnlockOpen(true);
+        window.scrollTo({ top: 0 });
+      }}
+      header={<Masthead panelOpen={unlockOpen} onPanelOpen={setUnlockOpen} />}
+    >
       {handoff.value ? (
         <Notice tone="warn">{handoffMessage()}</Notice>
       ) : (
         unreachable.value && <Notice tone="warn">Device unreachable — retrying…</Notice>
       )}
 
-      <nav class="tabs" aria-label="Console">
-        {CONSOLE_NAVIGATION.map(({ view: destination, label }) => (
-          <a
-            id={`nav-${destination}`}
-            key={destination}
-            href={viewHref(destination)}
-            aria-current={view === destination ? 'page' : undefined}
+      <div>
+        {CONSOLE_NAVIGATION.filter(
+          ({ view: destination }) => destination === view || visited.includes(destination),
+        ).map((destination) => (
+          <section
+            class="view active"
+            hidden={destination.view !== view}
+            aria-labelledby={`nav-${destination.view}`}
+            key={destination.view}
           >
-            {label}
-          </a>
+            <PageHeading label={destination.label} description={destination.description} />
+            {activeView(destination.view)}
+          </section>
         ))}
-      </nav>
-
-      <section class="view active" aria-labelledby={`nav-${view}`} key={view}>
-        {activeView(view)}
-      </section>
+      </div>
 
       {wizardOpen && <InputWizard onClose={() => setWizardOpen(false)} />}
       {bridgeWizardOpen && <BridgeWizard onClose={() => setBridgeWizardOpen(false)} />}
@@ -127,12 +122,12 @@ export function App() {
         <OnboardingOverlay
           onClose={() => {
             setOnboardingOpen(false);
-            navigateTo('network');
+            navigateTo('connections');
           }}
         />
       )}
 
       <Toasts />
-    </main>
+    </ConsoleShell>
   );
 }

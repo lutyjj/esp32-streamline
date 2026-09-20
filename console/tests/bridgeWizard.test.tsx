@@ -59,7 +59,9 @@ describe('BridgeWizard', () => {
     click(host, 'Continue');
 
     expect(labels(host)).not.toContain('Save & connect');
-    expect(host.textContent).toContain('Bridge tile reads Sending');
+    expect(host.textContent).toContain(
+      'The device is sending audio. Check reception in the bridge console.',
+    );
   });
 
   it('continues straight into the guided encryption setup', () => {

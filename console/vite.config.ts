@@ -8,6 +8,26 @@ const buildTarget = process.env.STREAMLINE_BUILD || 'device';
 const webflasherDir =
   process.env.STREAMLINE_WEBFLASHER_DIR || resolve(import.meta.dirname, '../webflasher');
 
+// The font and its license travel together in every self-contained console.
+const fontLicense = readFileSync(
+  resolve(import.meta.dirname, 'node_modules/@fontsource-variable/nunito-sans/LICENSE'),
+  'utf8',
+);
+const embeddedFontLicense: Plugin = {
+  name: 'embedded-font-license',
+  transformIndexHtml: {
+    order: 'post',
+    handler: () => [
+      {
+        tag: 'script',
+        attrs: { type: 'text/plain', id: 'font-license' },
+        children: fontLicense,
+        injectTo: 'body',
+      },
+    ],
+  },
+};
+
 // The dev server's public dir is the read-only WebFlasher mount, so the MSW
 // worker script is served from the installed msw package instead.
 function mockWorkerScript(): Plugin {
@@ -43,7 +63,7 @@ const proxy = bridge
 // The dev server proxies the API to a real device (`make dev DEVICE=<ip>`)
 // or serves the fake device beside a real bridge (`make dev-mock`).
 export default defineConfig({
-  plugins: [preact(), viteSingleFile(), mockWorkerScript()],
+  plugins: [preact(), viteSingleFile(), mockWorkerScript(), embeddedFontLicense],
   publicDir: webflasherDir,
   // Replaced statically so production builds drop the mock branch entirely.
   define: {

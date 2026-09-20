@@ -1,6 +1,5 @@
 /**
- * A pill of mutually exclusive options, one lit. Shared by the masthead theme
- * switch and the per-LED role picker. Backed by radios so a keyboard and a
+ * Mutually exclusive options with one selected. Backed by radios so a keyboard and a
  * screen reader treat it as one control; `disabled` locks the whole group.
  */
 export function Segmented<T extends string>({

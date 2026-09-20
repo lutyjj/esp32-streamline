@@ -73,13 +73,13 @@ describe('ThemeSwitch', () => {
     const host = document.createElement('div');
     render(<ThemeSwitch />, host);
 
-    const choices = [...host.querySelectorAll<HTMLInputElement>('input[type=radio]')];
+    const choices = [...host.querySelectorAll<HTMLOptionElement>('option')];
     expect(choices.map((choice) => choice.value)).toEqual(['system', 'light', 'dark']);
 
-    const light = choices.find((choice) => choice.value === 'light');
-    if (!light) throw new Error('light theme choice missing');
-    light.checked = true;
-    light.dispatchEvent(new Event('change', { bubbles: true }));
+    const select = host.querySelector('select');
+    if (!select) throw new Error('theme choice missing');
+    select.value = 'light';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
 
     expect(loadConsolePreferences()).toEqual({ theme: 'light' });
     expect(document.documentElement.dataset.theme).toBe('light');

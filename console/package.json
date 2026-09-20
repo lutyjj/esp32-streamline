@@ -4,6 +4,7 @@
   "version": "0.4.0",
   "type": "module",
   "dependencies": {
+    "@fontsource-variable/nunito-sans": "5.3.0",
     "@noble/hashes": "^2.4.0",
     "@preact/signals": "^2.11.2",
     "esp-web-tools": "10.4.0",

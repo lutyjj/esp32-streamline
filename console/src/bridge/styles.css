@@ -17,7 +17,14 @@
 }
 .bridge-list {
   display: grid;
-  gap: 10px;
+  gap: 32px;
+}
+.source-card {
+  display: grid;
+  gap: 24px;
+}
+.source-card > .help {
+  margin: 0;
 }
 .source-head {
   display: flex;
@@ -25,13 +32,14 @@
   justify-content: space-between;
   gap: 12px;
 }
-.source-head h3,
+.source-head h2,
 .recording h3 {
   margin: 0;
   font-size: 14px;
 }
-.source-head h3 {
-  font-family: var(--mono);
+.source-head h2 {
+  font-size: 16px;
+  font-weight: 650;
   overflow-wrap: anywhere;
 }
 .meta {
@@ -54,11 +62,22 @@
   font: 10.5px var(--mono);
 }
 .streamrow {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-top: 12px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 20px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line-soft);
+}
+.streamrow h3 {
+  grid-column: 1;
+  margin: 0;
+  font-size: 15px;
+}
+.streamrow .btn {
+  grid-column: 2;
+  grid-row: 1 / 3;
 }
 .streamlabel {
   color: var(--faint);
@@ -67,7 +86,7 @@
   text-transform: uppercase;
 }
 .stream {
-  color: var(--accent);
+  color: var(--text);
   font: 12px var(--mono);
   overflow-wrap: anywhere;
   user-select: all;
@@ -96,9 +115,7 @@
   margin-top: 16px;
 }
 .transport-mode {
-  margin-top: 16px;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 14px;
+  margin-top: 4px;
 }
 .transport-key {
   display: flex;
@@ -112,6 +129,15 @@
   overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
+  .streamrow {
+    grid-template-columns: 1fr;
+  }
+  .streamrow .btn {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    margin-top: 8px;
+  }
   .recording {
     grid-template-columns: 1fr;
   }

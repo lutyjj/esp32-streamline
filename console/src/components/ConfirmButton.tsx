@@ -33,7 +33,7 @@ export function ConfirmButton({
 
   if (!confirming) {
     return (
-      <Button kind="danger" disabled={disabled} onClick={() => setConfirming(true)}>
+      <Button kind="secondary" disabled={disabled} onClick={() => setConfirming(true)}>
         {label}
       </Button>
     );

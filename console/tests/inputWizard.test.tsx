@@ -35,7 +35,7 @@ describe('InputWizard', () => {
 
     expect(host.textContent).toContain('Set up your input');
     expect(host.textContent).toContain('then offers the local analog output');
-    expect(host.querySelectorAll('.stepdots i')).toHaveLength(5);
+    expect(host.querySelectorAll('.step-progress i')).toHaveLength(5);
   });
 
   it('stays a pure level guide on boards without the route', () => {
@@ -48,7 +48,7 @@ describe('InputWizard', () => {
     render(<InputWizard onClose={() => {}} />, host);
 
     expect(host.textContent).not.toContain('local analog output');
-    expect(host.querySelectorAll('.stepdots i')).toHaveLength(4);
+    expect(host.querySelectorAll('.step-progress i')).toHaveLength(4);
   });
 
   it('keeps cancellation open until restore succeeds and offers recovery after failure', async () => {

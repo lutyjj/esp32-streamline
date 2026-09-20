@@ -30,10 +30,10 @@ export function CredentialReveal({
       <div class="keyblock">{pskVisible ? credential.psk : '•••• •••• •••• ••••'}</div>
       <p class="help">Secret. Anyone with this PSK can impersonate the device to this bridge.</p>
       <div class="keypanel-actions">
-        <CopyButton kind="primary" value={credential.key_id} copied="Credential ID copied">
+        <CopyButton value={credential.key_id} copied="Credential ID copied">
           Copy credential ID
         </CopyButton>
-        <CopyButton kind="primary" value={credential.psk} copied="PSK copied">
+        <CopyButton value={credential.psk} copied="PSK copied">
           Copy PSK
         </CopyButton>
         <Button onClick={() => setPskVisible((visible) => !visible)}>

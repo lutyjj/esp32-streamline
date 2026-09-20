@@ -37,6 +37,16 @@ afterEach(() => {
 });
 
 describe('factory reset handoff', () => {
+  it('shows a failed restart beside the action and allows retry', async () => {
+    setTransport(async () => response(503, '{"error":"restart unavailable"}'));
+    mount();
+    click('Restart device');
+    await vi.waitFor(() => expect(host.textContent).toContain('restart unavailable'));
+    expect(
+      [...host.querySelectorAll('button')].find((button) => button.textContent === 'Restart device')
+        ?.disabled,
+    ).toBe(false);
+  });
   it('enters the setup handoff on acknowledgement instead of reboot polling', async () => {
     setTransport(async () =>
       response(

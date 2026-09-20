@@ -11,13 +11,13 @@ import {
 } from '../lib/profiles';
 import { audioProfileLimits, audioProfiles, loadDeviceSettings, status } from '../state/device';
 import { Button } from './Button';
-import { Card } from './Card';
 import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
+import { Section } from './Section';
 import { ActionState, TransactButton } from './Transact';
 
-export function AudioProfiles() {
-  const writable = useWritable();
+export function AudioProfiles({ draftPending = false }: { draftPending?: boolean }) {
+  const writable = useWritable() && !draftPending;
   const transact = useTransact();
   const catalog = audioProfiles.value;
   // Snapshot the live applied levels, so a profile saved right after a board
@@ -134,12 +134,13 @@ export function AudioProfiles() {
   }
 
   return (
-    <Card
+    <Section
       gated
       title="Source profiles"
       lead={
         <>
-          Switch all input settings together. Active: <b>{active?.name ?? 'Custom settings'}</b>.
+          Active: <b>{active?.name ?? 'Custom settings'}</b>. Profiles save the applied settings.
+          {draftPending && ' Save your input changes before applying or managing profiles.'}
         </>
       }
     >
@@ -161,6 +162,18 @@ export function AudioProfiles() {
           </select>
           <span class="help">Applying is instant and survives a restart.</span>
         </div>
+      </div>
+      <div class="profileactions">
+        <TransactButton
+          transact={transact}
+          disabled={!writable || !selected}
+          onClick={applySelected}
+        >
+          Apply profile
+        </TransactButton>
+        <ActionState state={transact.state} />
+      </div>
+      <Disclosure title="Manage profiles" className="profile-share">
         <div class="field">
           <label for="audio_profile_name">Profile name</label>
           <input
@@ -171,60 +184,57 @@ export function AudioProfiles() {
             placeholder="Vinyl"
             onInput={(event) => setName(event.currentTarget.value)}
           />
-          <span class="help">New profiles snapshot the applied settings below.</span>
+          <span class="help">Save the currently applied input, gain, and attenuation.</span>
         </div>
-      </div>
-      <div class="profileactions">
-        <TransactButton
-          transact={transact}
-          disabled={!writable || !selected}
-          onClick={applySelected}
-        >
-          Apply
-        </TransactButton>
-        <TransactButton transact={transact} kind="secondary" disabled={!writable} onClick={saveNew}>
-          Save new
-        </TransactButton>
-        <TransactButton
-          transact={transact}
-          kind="secondary"
-          disabled={!writable || !selected}
-          onClick={updateSelected}
-        >
-          Update
-        </TransactButton>
-        <ConfirmButton
-          label="Delete"
-          confirmLabel={`Delete ${selected?.name ?? 'profile'}`}
-          disabled={!writable || !selected || transact.busy}
-          onConfirm={deleteSelected}
-        />
-        <ActionState state={transact.state} />
-      </div>
-      <Disclosure title="Import or export profiles" className="profile-share">
-        <p class="lead">
-          Exported JSON is versioned and tied to this board. Import replaces saved profiles but
-          never changes live levels.
-        </p>
-        <textarea
-          aria-label="Audio profile catalog JSON"
-          value={sharedJson}
-          placeholder="Paste an exported profile catalog here"
-          onInput={(event) => setSharedJson(event.currentTarget.value)}
-        />
         <div class="profileactions">
-          <Button onClick={() => setSharedJson(exportAudioProfileCatalog(currentCatalog))}>
-            Show export
-          </Button>
+          <TransactButton
+            transact={transact}
+            kind="secondary"
+            disabled={!writable}
+            onClick={saveNew}
+          >
+            Save current settings as a profile
+          </TransactButton>
+          <TransactButton
+            transact={transact}
+            kind="secondary"
+            disabled={!writable || !selected}
+            onClick={updateSelected}
+          >
+            Replace selected profile
+          </TransactButton>
           <ConfirmButton
-            label="Import"
-            confirmLabel="Replace saved profiles"
-            disabled={!writable || !sharedJson.trim() || transact.busy}
-            message="Import replaces every saved profile on the device. Live levels stay unchanged."
-            onConfirm={importCatalog}
+            label="Delete"
+            confirmLabel={`Delete ${selected?.name ?? 'profile'}`}
+            disabled={!writable || !selected || transact.busy}
+            onConfirm={deleteSelected}
           />
         </div>
+        <Disclosure title="Import or export profiles" className="profile-share">
+          <p class="lead">
+            Exported JSON is versioned and tied to this board. Import replaces saved profiles but
+            never changes live levels.
+          </p>
+          <textarea
+            aria-label="Audio profile catalog JSON"
+            value={sharedJson}
+            placeholder="Paste an exported profile catalog here"
+            onInput={(event) => setSharedJson(event.currentTarget.value)}
+          />
+          <div class="profileactions">
+            <Button onClick={() => setSharedJson(exportAudioProfileCatalog(currentCatalog))}>
+              Show export
+            </Button>
+            <ConfirmButton
+              label="Import"
+              confirmLabel="Replace saved profiles"
+              disabled={!writable || !sharedJson.trim() || transact.busy}
+              message="Import replaces every saved profile on the device. Live levels stay unchanged."
+              onConfirm={importCatalog}
+            />
+          </div>
+        </Disclosure>
       </Disclosure>
-    </Card>
+    </Section>
   );
 }

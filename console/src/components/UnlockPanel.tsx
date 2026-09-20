@@ -1,12 +1,15 @@
 import { Button } from './Button';
+import { DialogSheet } from './DialogSheet';
 import { RememberSwitch } from './RememberSwitch';
 
 interface UnlockPanelProps {
   id?: string;
+  onClose: () => void;
   secret: string;
   onSecret: (value: string) => void;
   onUnlock: () => void;
   busy: boolean;
+  error?: string;
   placeholder: string;
   /** `off` for a fresh key, `current-password` where a manager may fill it. */
   autoComplete?: string;
@@ -17,39 +20,66 @@ interface UnlockPanelProps {
 }
 
 /**
- * The inline unlock row shared by both consoles: a secret field that submits on
- * Enter, an optional remember toggle, the Unlock button, and an optional forget
- * action. The device (admin key) and bridge (recording token) supply their own
- * custody — the panel only lays it out.
+ * Shared credential dialog. Enter submits; the caller owns authentication and
+ * secret custody. Failures remain beside the entered credential for retry.
  */
 export function UnlockPanel({
   id,
+  onClose,
   secret,
   onSecret,
   onUnlock,
   busy,
+  error,
   placeholder,
   autoComplete = 'off',
   remember,
   forget,
 }: UnlockPanelProps) {
   return (
-    <div class="unlockpanel" id={id}>
-      <input
-        type="password"
-        autocomplete={autoComplete}
-        placeholder={placeholder}
-        value={secret}
-        onInput={(event) => onSecret(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') onUnlock();
+    <DialogSheet
+      label="Unlock changes"
+      steps={['unlock']}
+      currentStep="unlock"
+      onDismiss={onClose}
+      footer={
+        <Button disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+      }
+    >
+      <form
+        class="unlockpanel"
+        id={id}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy) onUnlock();
         }}
-      />
-      {remember && <RememberSwitch checked={remember.checked} onChange={remember.onChange} />}
-      <Button kind="primary" busy={busy} onClick={onUnlock}>
-        Unlock
-      </Button>
-      {forget && <Button onClick={forget.onForget}>{forget.label}</Button>}
-    </div>
+      >
+        <h3>Access this console</h3>
+        <p>Enter the {placeholder} to change settings. Viewing stays available without it.</p>
+        <label class="field">
+          {placeholder === 'admin key' ? 'Admin key' : 'Bridge API token'}
+          <input
+            type="password"
+            aria-label={placeholder}
+            autocomplete={autoComplete}
+            placeholder={placeholder}
+            value={secret}
+            onInput={(event) => onSecret(event.currentTarget.value)}
+          />
+        </label>
+        {remember && <RememberSwitch checked={remember.checked} onChange={remember.onChange} />}
+        <Button kind="primary" type="submit" busy={busy}>
+          Unlock
+        </Button>
+        {forget && <Button onClick={forget.onForget}>{forget.label}</Button>}
+        {error && (
+          <output class="actionstate err" role="alert">
+            {error}
+          </output>
+        )}
+      </form>
+    </DialogSheet>
   );
 }

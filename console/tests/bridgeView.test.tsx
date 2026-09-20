@@ -1,7 +1,8 @@
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BridgeApp, SourceCard } from '../src/bridge/BridgeApp';
+import { BridgeApp } from '../src/bridge/BridgeApp';
+import { IncomingSource } from '../src/bridge/Sources';
 import { bridge } from '../src/bridge/state';
 import type { RecordingSnapshot, SourceSnapshot } from '../src/generated/bridge';
 
@@ -58,18 +59,18 @@ function source(rms: number): SourceSnapshot {
 describe('bridge source view', () => {
   it('updates a keyed meter without replacing its card DOM node', () => {
     const host = document.createElement('div');
-    render(<SourceCard ip="192.0.2.10" source={source(100)} />, host);
-    const card = host.querySelector('.source-card');
+    render(<IncomingSource ip="192.0.2.10" source={source(100)} />, host);
+    const card = host.querySelector('.incoming-source');
 
-    render(<SourceCard ip="192.0.2.10" source={source(10000)} />, host);
+    render(<IncomingSource ip="192.0.2.10" source={source(10000)} />, host);
 
-    expect(host.querySelector('.source-card')).toBe(card);
-    expect(host.textContent).toContain('-10.3 / -10.3 dBFS');
+    expect(host.querySelector('.incoming-source')).toBe(card);
+    expect(host.querySelector('[role="meter"]')?.getAttribute('aria-valuetext')).toBe('-10.3 dBFS');
   });
 
   it('renders the lifecycle state as a toned status chip', () => {
     const host = document.createElement('div');
-    render(<SourceCard ip="192.0.2.10" source={source(100)} />, host);
+    render(<IncomingSource ip="192.0.2.10" source={source(100)} />, host);
     const chip = host.querySelector('.source-head .chip');
     expect(chip?.className).toContain('good');
     expect(chip?.textContent).toBe('connected');
@@ -148,19 +149,19 @@ describe('bridge lock flow', () => {
     expect(host.querySelector('label[for="transport-key-id"]')?.textContent).toBe('Credential ID');
   });
 
-  it('gates the encryption switch behind the one console lock', () => {
+  it('gates the bridge-wide mode action behind the one console lock', () => {
     bridge.access.value = 'locked';
     const host = document.createElement('div');
     render(<BridgeApp />, host);
 
-    const toggle = host.querySelector<HTMLInputElement>('.transport-mode input[role="switch"]');
-    expect(toggle?.checked).toBe(true);
+    const toggle = host.querySelector<HTMLButtonElement>('.transport-mode button');
+    expect(toggle?.textContent).toBe('Use cleartext');
     expect(toggle?.disabled).toBe(true);
     expect(host.querySelector('#transport-key-id')).toBeNull();
 
     bridge.access.value = 'unlocked';
     render(<BridgeApp />, host);
-    const unlocked = host.querySelector<HTMLInputElement>('.transport-mode input[role="switch"]');
+    const unlocked = host.querySelector<HTMLButtonElement>('.transport-mode button');
     expect(unlocked?.disabled).toBe(false);
   });
 });

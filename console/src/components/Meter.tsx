@@ -1,10 +1,12 @@
 import { dbfs, meterPct } from '../lib/format';
-import { peakHold, status } from '../state/device';
+import { peakHold, status, unreachable } from '../state/device';
 
 const SCALE = ['−60', '−48', '−36', '−24', '−12', '−6', '0'];
 
 /** Stereo level meter fed by the status poll; `foot` adds the RMS/peak/clip row. */
 export function Meter({ foot = false }: { foot?: boolean }) {
+  if (unreachable.value)
+    return <p class="help">Live levels unavailable. Waiting for the device to reconnect.</p>;
   const m = status.value?.metrics;
   const hold = peakHold.value;
   const clip = m ? Math.max(m.peak_abs_left, m.peak_abs_right) >= m.clip_threshold_abs : false;

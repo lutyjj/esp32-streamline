@@ -4,7 +4,7 @@ import { setLed } from '../lib/api';
 import { useTransact } from '../lib/hooks';
 import { LED_ROLE_CHOICES, LED_ROLE_SUMMARY, type LedRow, ledRows } from '../lib/leds';
 import { loadDeviceSettings } from '../state/device';
-import { Card } from './Card';
+import { Section } from './Section';
 import { Segmented } from './Segmented';
 import { ActionState } from './Transact';
 
@@ -28,14 +28,14 @@ export function LedControls({
   if (leds.length === 0) return null;
   const rows = ledRows(leds, roles);
   return (
-    <Card gated title="LEDs" lead="Choose what each LED shows. Changes apply immediately.">
+    <Section gated title="LEDs" lead="Choose what each LED shows. Changes apply immediately.">
       <div class="ledlist">
         {rows.map((row) => (
           <LedField key={row.id} row={row} disabled={!writable || !provisioned} />
         ))}
       </div>
       {!provisioned && <p class="callout">LED control is available after setup completes.</p>}
-    </Card>
+    </Section>
   );
 }
 

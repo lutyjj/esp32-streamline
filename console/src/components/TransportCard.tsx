@@ -9,18 +9,16 @@ import {
   transportJourney,
 } from '../state/transport';
 import { Button } from './Button';
-import { Card, CardFooter } from './Card';
-import { Chip } from './Chip';
 import { ConfirmButton } from './ConfirmButton';
 import { CredentialReveal } from './CredentialReveal';
 import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
-import { Notice } from './Notice';
-import { Toggle } from './Toggle';
+import { Section, SectionActions } from './Section';
+import { SettingRow } from './SettingRow';
 import { ActionState, TransactButton } from './Transact';
 
 /**
- * The Encryption card on the Network tab. Setup — create, enroll, verify,
+ * The Encryption card on the Connections page. Setup — create, enroll, verify,
  * activate — runs in the guided TransportWizard; this card owns the steady
  * state and every exit: credential facts through `Kv`, rollback and
  * retirement, and Recovery nested under Advanced security.
@@ -58,7 +56,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           ? 'If the bridge lost this device’s key, switch the bridge to cleartext first, then disable encryption here.'
           : 'Lost the one-time secret? Replace the pending key, or discard it to stay on cleartext.'}
       </p>
-      <CardFooter compact>
+      <SectionActions compact>
         {secure && (
           <ConfirmButton
             label="Disable encryption & restart"
@@ -89,7 +87,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
             label="Discard pending credential"
             confirmLabel="Discard it"
             disabled={!writable}
-            message="The staged key is deleted and this device stays on cleartext. The bridge copy, if enrolled, can be removed from its console."
+            message="The device stays on cleartext. Restore cleartext in the bridge Settings if you switched its mode, or audio will remain paused. Remove the unused bridge credential there."
             onConfirm={() =>
               recovery.run(() => transport.discard(), { okText: 'Pending credential discarded' })
             }
@@ -106,64 +104,38 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           </TransactButton>
         )}
         <ActionState state={recovery.state} />
-      </CardFooter>
+      </SectionActions>
     </Disclosure>
   );
 
   return (
-    <Card
-      gated
-      title="Encryption"
-      lead="Authenticated TLS 1.3, so only this device can send audio to your bridge."
-      className="transport-card"
-    >
-      {journey === 'opt-in' && (
-        <Notice tone="info">
-          Your audio streams unencrypted. Encryption is recommended: it lets only this device send
-          to the bridge and hides the audio from anyone else on your network. A guide walks you
-          through it in about a minute.
-        </Notice>
-      )}
-      <Toggle
-        checked={secure || setupUnderway}
-        disabled={!writable || targetDirty}
-        onChange={(checked) => {
-          if (checked) {
-            // Setup is guided; the toggle is its entry point.
-            setupWizardRequested.value = true;
-          } else if (setupUnderway) {
-            // Backing out mid-setup is the discard edge under Recovery.
-            setRecoveryOpen(true);
-          } else {
-            // Leaving encryption is an explicit choice that lives under
-            // Recovery; unchecking opens the path instead of acting.
-            setAdvancedOpen(true);
-            setRecoveryOpen(true);
-          }
-        }}
-        label={
-          <span class="transport-title">
-            Encrypt audio to the bridge
-            {secure && (
-              <Chip tone="good" dot>
-                encrypted
-              </Chip>
-            )}
-            {setupUnderway && (
-              <Chip tone="warn" dot>
-                setting up
-              </Chip>
-            )}
-          </span>
-        }
+    <Section gated title="Encrypted audio" className="transport-card">
+      <SettingRow
+        title="Audio to your bridge"
+        status={secure ? 'Active' : setupUnderway ? 'Setup in progress' : 'Off'}
+        tone={secure ? 'good' : setupUnderway ? 'warn' : 'neutral'}
         description={
           secure
-            ? `TLS 1.3 to ${current.target_host}:${current.target_port}. No routine action is needed.`
+            ? 'The device uses TLS 1.3. Check the bridge for audio reception.'
             : setupUnderway
-              ? 'Setup is underway — a credential is staged but not active. Cleartext keeps streaming.'
-              : 'Turning this on starts the guided setup. Cleartext keeps streaming until you finish.'
+              ? 'This device still uses cleartext. If the bridge requires encryption, audio is paused until you activate here or restore cleartext there.'
+              : 'Protect your audio with an authenticated connection. Setup coordinates this device and the bridge.'
         }
-      />
+      >
+        <Button
+          disabled={!writable || targetDirty}
+          onClick={() => {
+            if (secure) {
+              setAdvancedOpen(true);
+              setRecoveryOpen(true);
+            } else {
+              setupWizardRequested.value = true;
+            }
+          }}
+        >
+          {secure ? 'Disable encryption' : setupUnderway ? 'Resume setup' : 'Set up encryption'}
+        </Button>
+      </SettingRow>
       {targetDirty && <span class="help">Save the stream target before changing encryption.</span>}
 
       {credential && !setupUnderway && (
@@ -178,17 +150,6 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           <div class="transport-keys">
             <Kv rows={credentialRows} />
           </div>
-          <CardFooter compact>
-            <Button
-              kind="primary"
-              disabled={!writable}
-              onClick={() => {
-                setupWizardRequested.value = true;
-              }}
-            >
-              Resume guided setup
-            </Button>
-          </CardFooter>
           {recoverySection}
         </>
       )}
@@ -206,7 +167,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           <div class="transport-keys">
             <Kv rows={credentialRows} />
           </div>
-          <CardFooter compact>
+          <SectionActions compact>
             {actions.canStage && (
               <Button
                 disabled={!writable}
@@ -243,10 +204,10 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
               />
             )}
             <ActionState state={lifecycle.state} />
-          </CardFooter>
+          </SectionActions>
           {recoverySection}
         </Disclosure>
       )}
-    </Card>
+    </Section>
   );
 }

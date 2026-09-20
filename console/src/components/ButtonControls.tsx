@@ -10,7 +10,7 @@ import {
 } from '../lib/buttons';
 import { useTransact } from '../lib/hooks';
 import { loadDeviceSettings } from '../state/device';
-import { Card } from './Card';
+import { Section } from './Section';
 import { ActionState } from './Transact';
 
 /**
@@ -34,7 +34,7 @@ export function ButtonControls({
   if (buttons.length === 0) return null;
   const rows = buttonRows(buttons, actions);
   return (
-    <Card
+    <Section
       gated
       title="Buttons"
       lead="Choose what a press of each button does. Changes apply immediately."
@@ -45,7 +45,7 @@ export function ButtonControls({
         ))}
       </div>
       {!provisioned && <p class="callout">Button control is available after setup completes.</p>}
-    </Card>
+    </Section>
   );
 }
 

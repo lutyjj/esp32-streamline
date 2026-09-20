@@ -16,13 +16,17 @@ test('enroll a credential and switch the bridge to encrypted', async ({ page }) 
   await expect(page.getByRole('button', { name: /^Unlocked/ })).toBeVisible();
 
   const keyId = `eli1-${'ab'.repeat(16)}`;
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Credential ID').fill(keyId);
   await page.getByLabel('PSK').fill('cd'.repeat(32));
   await page.getByRole('button', { name: 'Enroll credential' }).click();
   await expect(page.getByText(keyId)).toBeVisible();
 
-  await page.getByText('Encrypt incoming audio', { exact: true }).click();
-  await expect(page.getByRole('switch', { name: /Encrypt incoming audio/ })).toBeChecked();
+  await page.getByRole('button', { name: 'Require encryption', exact: true }).click();
+  await expect(page.getByText('All cleartext connections will close.')).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Require encryption for every device', exact: true })
+    .click();
   await expect(page.getByText('Encrypted · TLS 1.3')).toBeVisible();
 });
 

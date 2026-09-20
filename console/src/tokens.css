@@ -1,0 +1,39 @@
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#f4f2f3, #1c1a1d);
+  --surface: light-dark(#ffffff, #27242a);
+  --surface-2: light-dark(#eae5e9, #353037);
+  --inset: light-dark(#faf8fa, #211e24);
+  --line: light-dark(#91858f, #a0929e);
+  --line-soft: light-dark(#ddd5dc, #4b424b);
+  --text: light-dark(#29232a, #faf3f9);
+  --muted: light-dark(#514650, #d5c7d2);
+  --faint: light-dark(#60515d, #c6b4c1);
+  --accent: light-dark(#803858, #e5aac5);
+  --primary-bg: light-dark(#803858, #e5aac5);
+  --primary-line: light-dark(#803858, #e5aac5);
+  --primary-hover: light-dark(#682b47, #efc0d5);
+  --primary-text: light-dark(#ffffff, #361827);
+  --secondary-hover: light-dark(#e0d6de, #443944);
+  --tab-hover: light-dark(#e7dce4, #443944);
+  --good: light-dark(#5d4b59, #d8c2d1);
+  --bad: light-dark(#ad3045, #ffabb9);
+  --warn: light-dark(#805510, #f0cb83);
+  --focus: light-dark(#803858, #e5aac5);
+  --log-text: light-dark(#514650, #d5c7d2);
+  --meter: light-dark(#897080, #cbb6c4);
+  --motion-fast: 140ms;
+  --motion-panel: 180ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --sans: "Nunito Sans Variable", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-control: 8px;
+  --radius-panel: 16px;
+  --radius-dialog: 16px;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}

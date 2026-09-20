@@ -41,7 +41,7 @@ describe('AudioTab live reconcile', () => {
 
   it('follows a device-side change on a clean control within a poll', async () => {
     host = document.createElement('div');
-    render(<AudioTab onCalibrate={() => {}} />, host);
+    render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, host);
     expect(gainInput()?.value).toBe('4');
     expect(host.textContent).not.toContain('Updated');
 
@@ -58,7 +58,7 @@ describe('AudioTab live reconcile', () => {
 
   it('preserves an in-progress edit across a poll and flags it unsaved', async () => {
     host = document.createElement('div');
-    render(<AudioTab onCalibrate={() => {}} />, host);
+    render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, host);
 
     act(() => {
       const input = gainInput();

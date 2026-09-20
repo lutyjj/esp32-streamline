@@ -48,11 +48,14 @@ function connectLine(): { text: string; cls: '' | 'ok' } {
   if (rebootWait.value) return { text: 'Saving and restarting — about 10 seconds.', cls: '' };
   switch (bridgeConnection.value) {
     case 'sending':
-      return { text: 'Audio is reaching the bridge. The Bridge tile reads Sending.', cls: 'ok' };
+      return {
+        text: 'The device is sending audio. Check reception in the bridge console.',
+        cls: 'ok',
+      };
     case 'connecting':
       return { text: 'Audio detected — reaching the bridge…', cls: '' };
     case 'idle':
-      return { text: 'Connected. Play a track on your source to start streaming.', cls: '' };
+      return { text: 'Target saved. Play a track to check transmission.', cls: '' };
     default:
       return { text: 'Waiting for the device…', cls: '' };
   }
@@ -61,7 +64,7 @@ function connectLine(): { text: string; cls: '' | 'ok' } {
 /**
  * Bridge hookup wizard: choose where the bridge runs, point the device at it,
  * then optionally continue into the guided encryption setup. It only
- * sequences existing endpoints; the plain form on the Network tab stays as
+ * sequences existing endpoints; the plain form on the Connections page stays as
  * the escape hatch.
  */
 export function BridgeWizard({ onClose }: { onClose: () => void }) {
@@ -128,6 +131,13 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           <p class="wizhint">{choice.setup}</p>
+          <a
+            href="https://github.com/lutyjj/esp32-streamline#2-run-the-bridge"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open bridge installation guide
+          </a>
         </div>
       ),
       primary: { label: 'Continue', onClick: () => setStep('connect') },
@@ -199,12 +209,13 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
             ) : (
               <>
                 <p>
-                  Streaming works now over plain TCP, which is fine on a home network you trust.
+                  The target is saved. Play a track, verify reception in the bridge console, then
+                  add its playback URL to your player.
                 </p>
                 <p>
                   You can also wrap it in TLS 1.3 so each device authenticates with its own key. A
                   guide walks you through it — have the bridge API token from your bridge
-                  configuration ready. You can come back to it any time from the Network tab.
+                  configuration ready. You can come back to it any time from the Connections page.
                 </p>
               </>
             )}

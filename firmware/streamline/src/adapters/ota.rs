@@ -34,7 +34,8 @@ use crate::{
 const REPO: &str = "lutyjj/esp32-streamline";
 /// TLS plus the HTTP client and SHA-256 hashing need a roomier stack than the
 /// default worker.
-const WORKER_STACK_BYTES: usize = 16_384;
+const INSTALL_STACK_BYTES: usize = 16_384;
+const CHECK_STACK_BYTES: usize = 8_192;
 /// How often the install worker rechecks whether the PCM transport released
 /// its connection, and how long it waits before giving up on the pause.
 const QUIESCE_POLL_MS: u32 = 100;
@@ -185,7 +186,10 @@ fn spawn(
         let pending = task::prepare(
             ThreadSpawnConfiguration {
                 name: Some(c"ota-update"),
-                stack_size: WORKER_STACK_BYTES,
+                stack_size: match action {
+                    Action::Check => CHECK_STACK_BYTES,
+                    Action::Install(_) => INSTALL_STACK_BYTES,
+                },
                 ..Default::default()
             },
             move || {

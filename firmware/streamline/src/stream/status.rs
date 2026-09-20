@@ -18,7 +18,6 @@ struct Totals {
     read_errors: u64,
     short_reads: u64,
     queue_drops: u64,
-    stale_drops: u64,
     network_errors: u64,
     tls_handshake_failures: u64,
     reconnects: u64,
@@ -190,12 +189,6 @@ impl StreamStatus {
         self.totals().queue_drops += 1;
     }
 
-    /// Account one packet discarded because its capture age exceeded the
-    /// send admission deadline.
-    pub(crate) fn record_stale_drop(&self) {
-        self.totals().stale_drops += 1;
-    }
-
     pub(crate) fn set_queue_depth(&self, depth: usize) {
         self.queue_depth.store(depth as u32, Ordering::Relaxed);
     }
@@ -238,7 +231,6 @@ impl StreamStatus {
             read_errors: totals.read_errors,
             short_reads: totals.short_reads,
             queue_drops: totals.queue_drops,
-            stale_drops: totals.stale_drops,
             network_errors: totals.network_errors,
             tls_handshake_failures: totals.tls_handshake_failures,
             reconnects: totals.reconnects,
@@ -265,7 +257,6 @@ pub struct StreamSnapshot {
     pub read_errors: u64,
     pub short_reads: u64,
     pub queue_drops: u64,
-    pub stale_drops: u64,
     pub network_errors: u64,
     pub tls_handshake_failures: u64,
     pub reconnects: u64,

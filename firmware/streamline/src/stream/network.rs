@@ -1,21 +1,16 @@
-//! Send queued PCM only while its capture timestamp and control state permit it.
+//! Send retained PCM while streaming controls permit it.
 
 use super::{
     effects::{Clock, Delay, PacketSink},
-    queue::{PacketQueue, QUEUE_DEPTH},
+    queue::PacketQueue,
     status::StreamStatus,
 };
-use crate::{
-    packet::AudioPacket,
-    protocol::{FRAMES_PER_PACKET, SAMPLE_RATE_HZ},
-};
+use crate::packet::AudioPacket;
 use std::{sync::Arc, time::Duration};
 
 const SEND_ERROR_BACKOFF_MS: u32 = 250;
 const CONTROL_POLL_MS: u32 = 100;
 const SEND_STALL_MS: u64 = 100;
-const MAX_PACKET_AGE_MS: u64 =
-    QUEUE_DEPTH as u64 * FRAMES_PER_PACKET as u64 * 1000 / SAMPLE_RATE_HZ as u64;
 
 pub fn run(
     mut sink: impl PacketSink,
@@ -66,12 +61,8 @@ fn send_packet(
     delay: &impl Delay,
     clock: &impl Clock,
 ) {
-    let ready =
-        || sending_allowed(status) && packet.age_ms(clock.monotonic_millis()) < MAX_PACKET_AGE_MS;
+    let ready = || sending_allowed(status);
     if !ready() {
-        if sending_allowed(status) {
-            status.record_stale_drop();
-        }
         return;
     }
     let started = clock.monotonic_millis();
@@ -84,14 +75,9 @@ fn send_packet(
             }
             status.record_sent(packet.payload_bytes(), reconnected);
         }
-        Ok(None) => {
-            if sending_allowed(status) {
-                status.record_stale_drop();
-            }
-        }
+        Ok(None) => {}
         Err(failure) => {
             status.record_network_error(failure.secure_handshake);
-            // Backoff exceeds the packet age budget; resume with fresh queued audio.
             delay.delay_ms(SEND_ERROR_BACKOFF_MS);
         }
     }
@@ -167,32 +153,34 @@ mod tests {
             control: None,
         }
     }
-    fn packet(at: u64) -> AudioPacket {
-        AudioPacket::from_pcm(0, at, &[0; PAYLOAD_BYTES])
+    fn packet() -> AudioPacket {
+        AudioPacket::from_pcm(0, &[0; PAYLOAD_BYTES])
     }
 
     #[test]
-    fn expired_audio_is_dropped_even_when_capture_stops() {
+    fn retained_audio_is_sent_after_a_network_delay() {
         let time = Time::default();
         let status = StreamStatus::default();
         let mut sink = sink(&time);
-        time.delay_ms(MAX_PACKET_AGE_MS as u32);
-        send_packet(&mut sink, &packet(0), &status, &time, &time);
-        assert_eq!(sink.calls, 0);
-        assert_eq!(status.snapshot().stale_drops, 1);
+        let waiting = packet();
+        time.delay_ms(500);
+        send_packet(&mut sink, &waiting, &status, &time, &time);
+        assert_eq!(sink.calls, 1);
+        assert_eq!(sink.writes, 1);
+        assert_eq!(status.snapshot().packets, 1);
         assert_eq!(status.snapshot().sequence, 0);
     }
 
     #[test]
-    fn connection_setup_cannot_send_an_expired_packet() {
+    fn connection_setup_preserves_the_waiting_packet() {
         let time = Time::default();
         let status = StreamStatus::default();
         let mut sink = sink(&time);
         sink.connect_ms = 2_000;
-        send_packet(&mut sink, &packet(0), &status, &time, &time);
+        send_packet(&mut sink, &packet(), &status, &time, &time);
         assert_eq!(sink.calls, 1);
-        assert_eq!(sink.writes, 0);
-        assert_eq!(status.snapshot().stale_drops, 1);
+        assert_eq!(sink.writes, 1);
+        assert_eq!(status.snapshot().packets, 1);
     }
 
     #[test]
@@ -203,9 +191,8 @@ mod tests {
             status.mark_transport_present();
             let mut sink = sink(&time);
             sink.control = Some((&status, quiesce));
-            send_packet(&mut sink, &packet(0), &status, &time, &time);
+            send_packet(&mut sink, &packet(), &status, &time, &time);
             assert_eq!(sink.writes, 0);
-            assert_eq!(status.snapshot().stale_drops, 0);
             assert!(!status.transport_quiesced());
         }
     }
@@ -218,7 +205,7 @@ mod tests {
             status.mark_transport_present();
             let mut sink = sink(&time);
             sink.failure = Some(secure);
-            send_packet(&mut sink, &packet(0), &status, &time, &time);
+            send_packet(&mut sink, &packet(), &status, &time, &time);
             assert_eq!(sink.calls, 1);
             assert_eq!(status.snapshot().network_errors, 1);
             assert_eq!(status.snapshot().tls_handshake_failures, u64::from(secure));
@@ -232,10 +219,10 @@ mod tests {
         let time = Time::default();
         let status = StreamStatus::default();
         let mut sink = sink(&time);
-        send_packet(&mut sink, &packet(0), &status, &time, &time);
+        send_packet(&mut sink, &packet(), &status, &time, &time);
         assert_eq!(status.snapshot().reconnects, 0);
         sink.write_ms = SEND_STALL_MS as u32;
-        send_packet(&mut sink, &packet(0), &status, &time, &time);
+        send_packet(&mut sink, &packet(), &status, &time, &time);
         let snapshot = status.snapshot();
         assert_eq!(snapshot.packets, 2);
         assert_eq!(snapshot.bytes, 2 * PAYLOAD_BYTES as u64);
@@ -251,7 +238,7 @@ mod tests {
             let status = StreamStatus::default();
             status.mark_transport_present();
             let queue = PacketQueue::new();
-            queue.push_drop_oldest(packet(0));
+            queue.push_drop_oldest(packet());
             if quiesce {
                 status.request_transport_quiesce();
             } else {
@@ -265,8 +252,7 @@ mod tests {
             assert_eq!(status.transport_quiesced(), quiesce);
             status.end_transport_quiesce();
             status.set_streaming_enabled(true);
-            let now = time.monotonic_millis();
-            queue.push_drop_oldest(packet(now));
+            queue.push_drop_oldest(packet());
             step(&mut sink, &queue, &status, &time, &time);
             assert_eq!(sink.writes, 1);
         }

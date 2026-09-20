@@ -111,7 +111,7 @@ conversations and one-second counts of data segments, retransmissions,
 duplicate acknowledgments, and zero-window announcements. TCP headers remain
 visible with encrypted PCM; decryption keys are unnecessary.
 
-Compare the same interval with device send-stall, queue-drop, stale-drop, and
+Compare the same interval with device send-stall, queue-drop, and
 heap counters, plus the bridge's loss and underrun counters. Retransmissions
 show TCP recovery; zero windows show receiver backpressure. Gaps alone do not
 identify their cause. Check capture drops before attributing missing packets

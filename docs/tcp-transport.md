@@ -50,8 +50,8 @@ source admission.
 - capture reads: 20 ms per DMA wait; failures back off for 10 ms
 - DMA: six buffers of 240 stereo frames, or 30 ms at 48 kHz
 - queue: 32 fixed-capacity packets; on pressure, discard the oldest packet
-- send admission: discard packets aged 170 ms or more, checking again after
-  connection setup; timestamps include partial assembly and the DMA allowance
+- send admission: retain queued audio through network delays and connection
+  setup; check streaming controls again before writing
 - pause: stop enqueueing and admitting sends, then close the connection and
   clear queued audio; an already-started write may finish
 - packet: 24-byte header plus up to 1,024 PCM bytes, coalesced into one write

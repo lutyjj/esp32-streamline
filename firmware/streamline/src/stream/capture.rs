@@ -1,4 +1,4 @@
-//! Assemble bounded-age PCM packets and account capture outages on a monotonic clock.
+//! Assemble PCM packets and account capture outages on a monotonic clock.
 
 use super::{
     effects::{Clock, Delay, PcmSource, ReadFailed},
@@ -104,11 +104,7 @@ impl CaptureEngine {
         if self.filled < PAYLOAD_BYTES {
             return;
         }
-        let captured_at_ms = self
-            .packet_started_ms
-            .take()
-            .expect("packet has samples")
-            .saturating_sub(u64::from(self.buffered_frames).div_ceil(FRAMES_PER_MS));
+        self.packet_started_ms = None;
         self.filled = 0;
         self.last_packet_ms = Some(now);
         self.charged_frames = 0;
@@ -124,7 +120,7 @@ impl CaptureEngine {
         let Some(queue) = queue else {
             return;
         };
-        let packet = AudioPacket::from_pcm(sequence, captured_at_ms, &self.pcm);
+        let packet = AudioPacket::from_pcm(sequence, &self.pcm);
         let (dropped, depth) = queue.push_drop_oldest(packet);
         if dropped {
             status.record_queue_drop();
@@ -608,11 +604,10 @@ mod tests {
         let (packet, _) = queue.pop_timeout(Duration::ZERO).expect("fresh packet");
         let expected: Vec<u8> = (8..8 + PAYLOAD_BYTES).map(|n| n as u8).collect();
         assert_eq!(&packet.as_bytes()[24..], expected);
-        assert_eq!(packet.age_ms(40), 30);
     }
 
     #[test]
-    fn packet_age_includes_partial_assembly_and_dma_capacity() {
+    fn partial_reads_within_dma_capacity_preserve_all_samples() {
         let clock = Time(std::cell::Cell::new(100));
         let queue = PacketQueue::new();
         let status = StreamStatus::default();
@@ -631,6 +626,7 @@ mod tests {
         clock.delay_ms(10);
         engine.step(&mut source, Some(&queue), &status, &clock);
         let (packet, _) = queue.pop_timeout(Duration::ZERO).expect("assembled packet");
-        assert_eq!(packet.age_ms(110), 40);
+        let expected: Vec<u8> = (0..PAYLOAD_BYTES).map(|n| n as u8).collect();
+        assert_eq!(&packet.as_bytes()[24..], expected);
     }
 }

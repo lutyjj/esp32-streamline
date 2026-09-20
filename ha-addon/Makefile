@@ -81,8 +81,9 @@ image: lint context
 # the final container user and cannot be proven by bridge unit tests alone.
 test: image
 	@set -eu; \
-	volume="$$($(CONTAINER) volume create)"; \
 	stub_dir="$$(mktemp -d /tmp/streamline-ha-addon-test.XXXXXX)"; \
+	volume="$${stub_dir##*/}"; \
+	$(CONTAINER) volume create "$$volume" >/dev/null; \
 	cleanup() { \
 		$(CONTAINER) volume rm -f "$$volume" >/dev/null; \
 		rm -rf "$$stub_dir"; \

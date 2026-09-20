@@ -213,7 +213,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
                   needed — credential replacement and recovery live under Advanced security in the
                   Network tab.
                 </p>
-                <p>Play a track: the Bridge tile reads Sending and the bridge shows this device.</p>
+                <p>The Bridge tile reads Sending and the bridge shows this device.</p>
               </>
             )}
           </div>

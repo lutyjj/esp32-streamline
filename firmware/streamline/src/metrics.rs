@@ -229,7 +229,7 @@ impl<W: Write> PrometheusWriter<W> {
         )?;
         self.gauge(
             "streamline_audio_playing",
-            "Whether the signal gate currently treats input as playing.",
+            "Whether the input detector currently reports playback.",
             u8::from(snapshot.audio.playing),
         )?;
 
@@ -473,7 +473,7 @@ streamline_audio_noise_floor 21\n\
 # HELP streamline_audio_clipped_samples_total Clipped samples observed by the capture task.\n\
 # TYPE streamline_audio_clipped_samples_total counter\n\
 streamline_audio_clipped_samples_total 5\n\
-# HELP streamline_audio_playing Whether the signal gate currently treats input as playing.\n\
+# HELP streamline_audio_playing Whether the input detector currently reports playback.\n\
 # TYPE streamline_audio_playing gauge\n\
 streamline_audio_playing 1\n\
 # HELP streamline_ota_info OTA phase and latest version labels.\n\

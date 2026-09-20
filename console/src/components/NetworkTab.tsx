@@ -3,10 +3,10 @@ import { setTarget, setWifi } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
 import {
+  bridgeConnection,
   config,
   configResource,
   noBridge,
-  packetsMoving,
   setupMode,
   status,
 } from '../state/device';
@@ -91,8 +91,8 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
     );
   }
 
-  const moving = packetsMoving.value;
-  const playing = s?.metrics.playing ?? false;
+  const moving = bridgeConnection.value === 'sending';
+  const connecting = bridgeConnection.value === 'connecting';
   const targetDirty = Boolean(
     c &&
       (targetHost.trim() !== c.target_host ||
@@ -227,12 +227,16 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
           </TransactButton>
           <ActionState state={targetTransact.state} />
           {!setup && !noBridge.value && (
-            <Chip tone={moving ? 'good' : playing ? 'warn' : 'neutral'} dot className="healthchip">
+            <Chip
+              tone={moving ? 'good' : connecting ? 'warn' : 'neutral'}
+              dot
+              className="healthchip"
+            >
               {moving
                 ? 'connection healthy'
-                : playing
+                : connecting
                   ? 'connecting to bridge…'
-                  : 'idle — nothing to send'}
+                  : 'streaming paused'}
             </Chip>
           )}
         </CardFooter>

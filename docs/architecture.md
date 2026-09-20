@@ -9,7 +9,7 @@ This document maps component ownership and cross-component contracts. The linked
 ```mermaid
 flowchart LR
   input["Analog source"] --> codec["Board codec"]
-  codec --> capture["Firmware capture and signal gate"]
+  codec --> capture["Firmware capture and playback detection"]
   capture --> tcp["ELI1 over cleartext or TLS 1.3 TCP"]
   tcp --> auth["Bridge transport authentication"]
   auth --> bridge["Source registry and playout buffer"]
@@ -31,7 +31,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 
 | Component | Owns | Does not own |
 |---|---|---|
-| `firmware/streamline` | Board selection, codec and I2S capture, signal gating, device configuration, telemetry, HTTP API, TCP sender, OTA | Jitter buffering, audio encoding, playback |
+| `firmware/streamline` | Board selection, codec and I2S capture, playback detection, device configuration, telemetry, HTTP API, TCP sender, OTA | Jitter buffering, audio encoding, playback |
 | `console` | Device and bridge consoles, WebFlasher UI, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
 | `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
 | `ha-addon` | Home Assistant Supervisor metadata, private recording and transport-key storage mapping, and bridge process wiring | Bridge runtime behavior |
@@ -88,7 +88,7 @@ The selected board descriptor supplies codec identity, GPIO wiring, input labels
 
 On a board that advertises local output, the codec can route the selected input
 directly to that output without converting it to PCM. This route is independent
-of the I2S capture, signal gate, and network sender. The application core owns
+of the I2S capture, playback detector, and network sender. The application core owns
 desired, active, and fault state behind a codec-control interface. Portable codec
 drivers own register order, muting, settling, and rollback. The hardware adapter
 binds their register bus to ESP-IDF I2C with a bounded write timeout.
@@ -99,7 +99,7 @@ permits one transient action worker; it releases the slot on spawn failure or
 completion. This bounds stack use while preventing stale configuration copies
 from overwriting concurrent changes.
 
-For each captured packet, portable code computes levels and updates the signal gate. The firmware increments the sequence while idle but sends packets only while the gate reports playback and streaming is not paused (`POST /api/stream` or a button assigned to it). A bounded drop-oldest queue prevents a stalled network from blocking capture. The [PCM protocol](pcm-protocol.md) owns the bytes; the [PCM transport record](tcp-transport.md) owns mode selection, key lifecycle, task placement, timeouts, and reconnect behavior.
+For each captured packet, portable code computes levels and updates playback detection. The firmware increments the sequence continuously and sends every captured packet, including silence, while streaming is enabled (`POST /api/stream` or a button assigned to it). Playback detection supplies telemetry without gating transmission. A bounded drop-oldest queue prevents a stalled network from blocking capture. The [PCM protocol](pcm-protocol.md) owns the bytes; the [PCM transport record](tcp-transport.md) owns mode selection, key lifecycle, task placement, timeouts, and reconnect behavior.
 
 ### Device API
 

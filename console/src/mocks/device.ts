@@ -378,18 +378,18 @@ export class FakeDevice {
     });
   }
 
-  /** One status poll: audio moves while playing, and pending OTA phases advance. */
+  /** One status poll: capture and enabled transport advance independently of playback. */
   private nextStatus(): StatusResponse {
     const metrics = this.status.metrics;
+    if (this.status.mode === 'provisioned') {
+      metrics.sequence += 100;
+      if (this.status.stream.enabled && this.status.target.target_host) {
+        metrics.packets_total += 100;
+        metrics.bytes_total += 102_400;
+      }
+    }
     if (metrics.playing) {
       const peak = PEAK_STEPS[this.poll % PEAK_STEPS.length];
-      metrics.sequence += 1;
-      // A pause keeps capture and the meters running but nothing on the wire,
-      // exactly like the firmware's capture gate.
-      if (this.status.stream.enabled) {
-        metrics.packets_total += 100;
-        metrics.bytes_total += 176400;
-      }
       metrics.peak_abs_left = peak;
       metrics.peak_abs_right = peak - 900;
       metrics.rms_left = Math.round(peak * 0.55);

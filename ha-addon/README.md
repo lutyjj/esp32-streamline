@@ -2,7 +2,7 @@
 
 This add-on runs the StreamLine bridge inside Home Assistant OS or Home
 Assistant Supervised. It accepts ESP32 PCM on TCP `39000` in one configured
-mode—cleartext or authenticated TLS 1.3—and publishes live WAV, status, and
+mode (cleartext or authenticated TLS 1.3) and publishes live WAV, status, and
 health on HTTP `8088`.
 
 ## Install
@@ -18,7 +18,7 @@ comma-separated list of ESP32 IPv4 addresses to admit. The
 and source lifecycle contract.
 
 Set a private `api_token` of at least 16 characters once; it unlocks every
-bridge control in the Web UI — encryption and recordings.
+bridge control in the Web UI, including encryption and recordings.
 
 Set `recordings_enabled` to enable lossless WAV recording. The add-on stores
 files in its private working directory and exposes the recording flow in its
@@ -36,8 +36,8 @@ cutover, credential replacement, and recovery.
 
 Point each ESP32 device at the Home Assistant host on port `39000`. Music
 Assistant plays the stream as a radio URL: add
-`http://<home-assistant-host>:8088/streamline.wav`, with audio already playing on
-the source. Snapcast, Icecast, or any HTTP consumer reads the same URL.
+`http://<home-assistant-host>:8088/streamline.wav`, with streaming enabled on
+the device. Snapcast, Icecast, or any HTTP consumer reads the same URL.
 
 With several ESP32 sources, select one with
 `http://<home-assistant-host>:8088/streamline.wav?source=<source-id>`.

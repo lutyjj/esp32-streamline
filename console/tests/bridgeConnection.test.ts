@@ -22,18 +22,18 @@ describe('bridgeConnection', () => {
     expect(bridgeConnection.value).toBe('unset');
   });
 
-  it('reads idle when a target is set but the input is quiet', () => {
-    status.value = deviceStatus({ metrics: { playing: false } });
+  it('reads idle when streaming is paused even if the input plays', () => {
+    status.value = deviceStatus({ stream: { enabled: false }, metrics: { playing: true } });
     expect(bridgeConnection.value).toBe('idle');
   });
 
-  it('reads connecting when audio plays before any packet moves', () => {
-    status.value = deviceStatus({ metrics: { playing: true } });
+  it('reads connecting while enabled before any packet moves, including silence', () => {
+    status.value = deviceStatus({ metrics: { playing: false } });
     expect(bridgeConnection.value).toBe('connecting');
   });
 
-  it('reads sending once packets move between polls', () => {
-    status.value = deviceStatus({ metrics: { playing: true } });
+  it('reads sending once packets move between polls even during silence', () => {
+    status.value = deviceStatus({ metrics: { playing: false } });
     packetsMoving.value = true;
     expect(bridgeConnection.value).toBe('sending');
   });

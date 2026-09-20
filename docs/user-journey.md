@@ -41,7 +41,7 @@ Exit: the board broadcasts its own `esp32-streamline-XXXX` network.
 ## Stage 2: first contact
 
 Entry: the user joins the setup network, usually on a phone, with the WPA2
-password the device generated — the flasher's log view and `espflash monitor`
+password the device generated; the flasher's log view and `espflash monitor`
 print it beside the SSID, and a pre-provisioned board carries both on its
 label. A missing or wrong password never strands the owner: holding the
 board's first button while power is applied starts the network open for that
@@ -144,8 +144,8 @@ Entry: streaming works. The device lives here for months.
 Promise: the Overview answers "is everything fine?" in one glance: status,
 signal, Wi-Fi, bridge. A device that came up without its audio codec says so
 here: the Status reads Fault, not a false Idle, with the fix named. Streaming
-follows the music, playing on signal and pausing on sustained silence, with no
-user action. Nothing asks for attention unless something needs it; every
+continues through silence; input activity drives the Playing and Idle indicators.
+The stream control pauses transmission. Nothing asks for attention unless something needs it; every
 unprompted banner is real (clipping, a device unreachable, a codec that did
 not start) and is dismissible or resolves itself.
 
@@ -155,8 +155,8 @@ profile through the API when it knows the physical selector state. StreamLine
 never guesses the source from overlapping waveform characteristics.
 
 Board buttons act without the console: System → Buttons assigns each advertised
-key a press action — start/stop streaming, switch input, restart, factory
-reset — and warns in place when one press is destructive. A press never leaves
+key a press action (start/stop streaming, switch input, restart, factory
+reset) and warns in place when one press is destructive. A press never leaves
 a mystery: pausing streaming turns the Overview status to **Paused** with a
 callout that explains the state and offers **Resume**; a press that switches
 input or steps the gain or attenuation moves the Audio tab's controls to match
@@ -204,7 +204,7 @@ Promise:
   booting after a power cut needs no user action. The setup network stays
   reachable throughout as an escape hatch, and its indicator reads
   reconnecting, not first-run. The fallback network keeps the same WPA2
-  password the device has had since first boot — the one on a pre-flashed
+  password the device has had since first boot, including the one on a pre-flashed
   unit's label and in the flasher's log, which no reset changes, so those
   sources stay true for the device's life. A factory reset repeats it before
   the device leaves, and a button held at power-on opens the network for one

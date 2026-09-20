@@ -1,7 +1,7 @@
 # Firmware
 
 The firmware is a Rust application on ESP-IDF. It captures board-described
-line-in audio, applies the signal gate, sends framed PCM to a bridge, and serves
+line-in audio, detects playback, sends continuous framed PCM to a bridge, and serves
 the device API and console.
 
 [Architecture](../../docs/architecture.md#firmware-boundaries) owns the layer

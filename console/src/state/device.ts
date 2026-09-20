@@ -98,7 +98,7 @@ export const bridgeConnection = computed<BridgeConnection>(() => {
   if (s.mode === 'setup') return 'setup';
   if (!s.target.target_host) return 'unset';
   if (packetsMoving.value) return 'sending';
-  return s.metrics.playing ? 'connecting' : 'idle';
+  return s.stream.enabled ? 'connecting' : 'idle';
 });
 
 let refreshing = false;

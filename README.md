@@ -3,39 +3,39 @@
 [![CI](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml/badge.svg)](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml)
 
 ESP32 StreamLine turns a supported ESP32 line-in board into a network audio
-source. It captures analog audio — a turntable, a CD deck — and streams the raw
+source. It captures analog audio from a turntable or CD deck and streams the raw
 PCM over TCP/Wi-Fi to a self-hosted bridge. The bridge publishes a live HTTP
 WAV stream. Music Assistant plays it as a radio URL; Snapcast, Icecast, or any
 HTTP consumer can read it too.
 
 ## Features
 
-- **Dumb device architecture** — the ESP32 captures and moves packets. Encoding,
+- **Dumb device architecture:** the ESP32 captures and moves packets. Encoding,
   buffering, and syncing live on the bridge. See [design notes](docs/design.md).
-- **Zero-config commissioning** — an unconfigured device opens a setup AP,
+- **Zero-config commissioning:** an unconfigured device opens a setup AP,
   WPA2-protected by a password it generates once and prints on its serial
   log. A small web console joins Wi-Fi, then handles the stream target and
   audio levels. A per-device admin key gates every write through digest
   authentication, so the key never crosses the network; reads stay open,
   apart from the device log and crash dumps.
-- **Signal-gated streaming** — the device streams while the input plays and
-  pauses on sustained silence, so an idle input costs no bandwidth.
-- **Local analog output** — supported boards can send the selected input
+- **Continuous streaming:** quiet passages and track gaps stay on the same
+  connection. Playback detection reports input activity; pause controls transmission.
+- **Local analog output:** supported boards can send the selected input
   directly through the codec to a local output while capture and streaming
   continue independently.
 - **Source profiles**: save complete input settings for sources such as CD
   and vinyl, switch them live from the console or API, and share the versioned
   board-bound catalog. See [audio profiles](docs/audio-profiles.md).
-- **Self-hosted bridge** — one Docker container turns the TCP PCM stream into
+- **Self-hosted bridge:** one Docker container turns the TCP PCM stream into
   a live HTTP WAV stream. A ~1 s playout buffer smooths Wi-Fi jitter and
   conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
-- **Opt-in encrypted PCM** — TLS 1.3 authenticates each device with its own
+- **Opt-in encrypted PCM:** TLS 1.3 authenticates each device with its own
   key and provides forward secrecy. Cleartext remains available for first
   setup and explicit recovery. See [PCM transport](docs/tcp-transport.md).
 - **Lossless recording**: an optional bridge page and API preserve one source
   as a finite 48 kHz, 16-bit stereo WAV, with sequence gaps measured and
   represented as silence. See [lossless recordings](docs/recordings.md).
-- **Verified automatic OTA updates** — the device pulls new GitHub releases
+- **Verified automatic OTA updates:** the device pulls new GitHub releases
   over HTTPS, verifies their SHA-256, and rolls back automatically if an image
   fails to boot. See [OTA updates](docs/ota.md).
 
@@ -75,26 +75,26 @@ id. The official preset wires one status light; a
 
 A board advertises the buttons it wires, and you assign each one a press
 action: **start/stop streaming**, **switch input line**, **input gain** or
-**attenuation** stepping, **restart**, or **factory reset** — a physical way
+**attenuation** stepping, **restart**, or **factory reset**, giving a physical way
 back to setup when the device is unreachable. Every action is the press-driven
 twin of an API capability, and assignments apply without a reboot.
 
 `GET /api/status` reports the board's buttons under `capabilities.buttons`;
 `POST /api/settings/button` assigns an action by button id, and
 `POST /api/stream` is the same pause/resume a streaming button fires. The
-official preset maps its six keys — streaming on KEY1, input switch on KEY2,
-restart on KEY6 — and a [custom descriptor](docs/design.md#buttons) can remap
+official preset maps its six keys (streaming on KEY1, input switch on KEY2,
+restart on KEY6), and a [custom descriptor](docs/design.md#buttons) can remap
 or extend them.
 
 ## Quick start
 
 ### 1. Flash the firmware
 
-**Browser** — open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/)
+**Browser:** open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/)
 in desktop Chrome or Edge, connect the board over USB, and click
 **Connect & Install**.
 
-**Terminal** — download the latest `streamline-X.Y.Z-full.bin` from
+**Terminal:** download the latest `streamline-X.Y.Z-full.bin` from
 [Releases](https://github.com/lutyjj/esp32-streamline/releases), then flash it with
 [esptool](https://docs.espressif.com/projects/esptool/) (`pip install esptool`):
 
@@ -112,7 +112,7 @@ publishes the same ports as the container: PCM on `39000/tcp` and HTTP WAV on
 `8088/tcp`. The PCM port accepts either cleartext or TLS, as selected in the
 bridge configuration, never both.
 
-**Docker** — create `docker-compose.yml` on your server and start it with
+**Docker:** create `docker-compose.yml` on your server and start it with
 `docker compose up -d`:
 
 ```yaml
@@ -147,8 +147,8 @@ volumes:
 ```
 
 The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
-Music Assistant as a radio/URL stream, with audio already playing on the source:
-an idle device sends no audio, and Music Assistant rejects a stream it cannot
+Music Assistant as a radio/URL stream, with streaming enabled on the device:
+a paused device sends no audio, and Music Assistant rejects a stream it cannot
 probe. With several ESP32 sources, select one with
 `http://<bridge-host>:8088/streamline.wav?source=<source-id>`. `/status` serves
 per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning
@@ -175,7 +175,7 @@ trusted LAN; neither is an internet-facing service.
 ### 3. Configure the device
 
 1. Read the setup network's password from the flasher's **Logs & console**
-   view (or `espflash monitor`) — the board prints its SSID and password when
+   view (or `espflash monitor`); the board prints its SSID and password when
    it starts. Pre-provisioned boards carry both on a label. No password at
    hand? Hold the board's first key (KEY1 on the Audio Kit) while plugging it
    in: the setup network starts open for that one boot.
@@ -211,7 +211,7 @@ the one-time serial reflash that pre-OTA devices need.
 
 ## Development
 
-Everything builds and checks in containers — install only Docker (or Podman)
+Everything builds and checks in containers. Install only Docker (or Podman)
 and `make`. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and the PR flow;
 [AGENTS.md](AGENTS.md) states the engineering rules.
 
@@ -258,10 +258,10 @@ the firmware images with the `FIRMWARE_SIGNING_KEY` secret so devices accept
 them over the air (see [firmware signing](docs/ota.md#firmware-signing)),
 attaches them with provenance attestations, publishes the release, then pushes
 container images. Every asset and image carries verifiable provenance and an
-SPDX SBOM — see [artifact verification](docs/security.md#release-artifact-verification).
+SPDX SBOM; see [artifact verification](docs/security.md#release-artifact-verification).
 If publication is interrupted, rerun
-**Actions → Release** with the same tag — every step converges. Never edit
-the version files or changelog by hand — land a Conventional Commit and let
+**Actions → Release** with the same tag; every step converges. Never edit
+the version files or changelog by hand. Land a Conventional Commit and let
 the release PR carry it.
 
 ## Scope
@@ -272,5 +272,5 @@ consuming the stream.
 
 ## AI usage
 
-AI contributions are welcome — this project is built with heavy AI usage.
+AI contributions are welcome. This project is built with heavy AI usage.
 Agents: follow [AGENTS.md](AGENTS.md).

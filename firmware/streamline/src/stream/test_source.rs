@@ -72,7 +72,7 @@ mod tests {
     }
 
     #[test]
-    fn tone_opens_the_real_signal_gate_without_clipping() {
+    fn tone_reports_playback_without_clipping() {
         let mut source = TestSource::new(ClockedSource(crate::protocol::PAYLOAD_BYTES));
         let mut detector = crate::play::PlayDetector::new();
         let mut buffer = [0; crate::protocol::PAYLOAD_BYTES];

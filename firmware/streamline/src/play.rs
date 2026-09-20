@@ -1,6 +1,6 @@
 //! Play-state detection from per-packet level measurements.
 //!
-//! Decides whether the line input is carrying a signal worth streaming. The
+//! Reports whether the line input is carrying an active signal. The
 //! detector calibrates itself to whatever is plugged in — it tracks the
 //! input's idle level and derives both decision thresholds from it, so no
 //! constant has to fit every source, cable, and attenuation setting. Four
@@ -13,12 +13,12 @@
 //!   cannot lift it.
 //! - **Boot warm-up**: for the first two seconds the detector only learns.
 //!   The codec's power-up transient is loud enough to pass any threshold and
-//!   must never start a stream.
+//!   must not report playback.
 //! - **Amplitude hysteresis**: starting requires a level several times the
 //!   idle level; stopping requires falling back toward it. Levels between the
 //!   two thresholds hold the current state.
 //! - **Time hysteresis with outlier tolerance**: the start level must hold
-//!   for a debounce window so clicks and pops do not start a stream. Stopping
+//!   for a debounce window so clicks and pops do not report playback. Stopping
 //!   charges a counter across seconds of quiet packets, and an occasional
 //!   noise burst discharges it a little instead of resetting it — an idle
 //!   input whose noise sometimes spikes over the stop threshold still stops.
@@ -33,22 +33,22 @@ use crate::levels::LevelStats;
 const START_IDLE_FACTOR: u32 = 3;
 
 /// Start threshold never drops below this RMS, keeping clicks on a
-/// near-silent input (idle level ≈ 0) from starting a stream.
+/// near-silent input (idle level ≈ 0) from reporting playback.
 const START_RMS_MIN: u32 = 150;
 
 /// Stopping requires falling below this multiple of the idle level.
 const STOP_IDLE_FACTOR: u32 = 2;
 
-/// Stop threshold never drops below this RMS, so the silence gate works while
+/// Stop threshold never drops below this RMS, so silence detection works while
 /// the idle estimate is still converging.
 const STOP_RMS_MIN: u32 = 60;
 
 /// One packet is 256 frames at 48 kHz ≈ 5.3 ms.
-/// Signal must persist this long to start streaming (≈ 130 ms): longer than a
+/// Signal must persist this long to report playback (≈ 130 ms): longer than a
 /// click or a needle drop, short enough to feel immediate.
 pub const START_AFTER_PACKETS: u32 = 24;
 
-/// Quiet packets must accumulate this charge to stop streaming (≈ 2 s of
+/// Quiet packets must accumulate this charge to report idle (≈ 2 s of
 /// silence): longer than the quiet gap between record tracks.
 pub const STOP_AFTER_PACKETS: u32 = 375;
 
@@ -298,13 +298,13 @@ mod tests {
     }
 
     #[test]
-    fn a_hum_below_the_start_threshold_never_starts_a_stream() {
+    fn a_hum_below_the_start_threshold_never_reports_playback() {
         let mut detector = settled(&IDLE_CD_PLAYER_RMS);
         assert!(!feed(&mut detector, 100, STOP_AFTER_PACKETS * 4));
     }
 
     #[test]
-    fn a_quiet_passage_above_the_stop_threshold_never_stops_a_stream() {
+    fn a_quiet_passage_above_the_stop_threshold_keeps_reporting_playback() {
         let mut detector = settled(&IDLE_CD_PLAYER_RMS);
         feed(&mut detector, 5_000, START_AFTER_PACKETS);
         assert!(feed(&mut detector, 200, STOP_AFTER_PACKETS * 4));
@@ -333,10 +333,10 @@ mod tests {
     }
 
     #[test]
-    fn recorded_idle_noise_stops_a_running_stream() {
+    fn recorded_idle_noise_clears_playback_status() {
         // Bursts above the stop threshold discharge the silence counter
         // instead of resetting it, so both measured noise regimes stop within
-        // tens of seconds instead of streaming forever.
+        // tens of seconds instead of reporting playback forever.
         for fixture in [&IDLE_CD_PLAYER_RMS[..], &IDLE_CD_PLAYER_RMS_HOT[..]] {
             let mut detector = settled(fixture);
             feed(&mut detector, 5_000, START_AFTER_PACKETS);

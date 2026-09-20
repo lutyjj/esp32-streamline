@@ -44,7 +44,7 @@ audio creates no empty file.
 
 | Boundary | Responsibility |
 | --- | --- |
-| Firmware | Capture PCM, increment the packet sequence continuously, and send packets while the signal gate is open. |
+| Firmware | Capture PCM, increment the packet sequence continuously, and send packets while streaming is enabled. |
 | Bridge source pipeline | Admit the producer and expose received `(sequence, PCM)` packets to non-blocking consumers. |
 | Recording service | Validate commands, own session states, reconstruct the source timeline, and enforce resource limits. |
 | Recording store | Create, recover, list, download, and delete files inside one configured directory. |
@@ -68,8 +68,9 @@ recorder compares its sequence with the expected next value:
 - a backwards sequence interrupts the recording because the source timeline
   may have reset.
 
-This preserves track gaps created by the device's signal gate, including across
-a TCP reconnect when the device sequence continues. The bridge interrupts a
+Quiet passages and track gaps arrive as captured PCM. Missing packets retain
+their timeline positions across a TCP reconnect when the device sequence continues.
+The bridge interrupts a
 recording rather than creating an unbounded file when one gap exceeds five
 minutes, the session reaches four hours, writable storage falls below 256 MiB,
 or the bounded writer queue fills. An interrupted recording remains

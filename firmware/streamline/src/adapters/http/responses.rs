@@ -4,7 +4,7 @@ use anyhow::Result;
 use embedded_svc::io::Write;
 use serde::Serialize;
 
-use crate::{api, mutation::MutationError};
+use crate::{api, buffered_writer::BufferedWriter, mutation::MutationError};
 
 /// Hand off to the reserved restart worker before writing the response.
 /// A disconnected client cannot cancel a committed configuration change.
@@ -110,9 +110,8 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    let mut writer = std::io::BufWriter::with_capacity(
-        BODY_BUFFER_BYTES,
-        StdWriter(request.into_response(
+    let mut writer =
+        BufferedWriter::<_, BODY_BUFFER_BYTES>::new(StdWriter(request.into_response(
             401,
             None,
             &[
@@ -120,8 +119,7 @@ where
                 ("Cache-Control", "no-store"),
                 ("WWW-Authenticate", challenge),
             ],
-        )?),
-    );
+        )?));
     serde_json::to_writer(
         &mut writer,
         &api::ErrorResponse {
@@ -168,10 +166,7 @@ where
     error_response(request, 503, message)
 }
 
-/// Bytes buffered per response body. Bodies stream through this fixed window
-/// instead of materializing in one heap block: several concurrent status
-/// scrapes arriving while the packet queue is full must not multiply peak
-/// heap into allocation failure.
+// Inline storage keeps response buffering available under heap pressure.
 const BODY_BUFFER_BYTES: usize = 1_024;
 
 /// Adapt the connection's writer to `std::io::Write` so `serde_json` and
@@ -197,7 +192,7 @@ pub(super) fn body_writer<C>(
     request: embedded_svc::http::server::Request<C>,
     code: u16,
     content_type: &str,
-) -> Result<std::io::BufWriter<StdWriter<embedded_svc::http::server::Response<C>>>>
+) -> Result<BufferedWriter<StdWriter<embedded_svc::http::server::Response<C>>, BODY_BUFFER_BYTES>>
 where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
@@ -210,10 +205,7 @@ where
             ("Cache-Control", "no-store"),
         ],
     )?;
-    Ok(std::io::BufWriter::with_capacity(
-        BODY_BUFFER_BYTES,
-        StdWriter(response),
-    ))
+    Ok(BufferedWriter::new(StdWriter(response)))
 }
 
 pub(super) fn json_response<C, T>(

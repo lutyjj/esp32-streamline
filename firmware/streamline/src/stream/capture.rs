@@ -65,7 +65,7 @@ impl CaptureEngine {
         clock: &(impl Delay + Clock),
     ) {
         if status.take_relearn() {
-            self.detector = PlayDetector::new();
+            self.detector.relearn();
             status.reset_clipped();
         }
         let started = clock.monotonic_millis();
@@ -295,6 +295,26 @@ mod tests {
         }
         assert!(status.snapshot().playing, "warm-up should start playback");
         while queue.pop_timeout(Duration::ZERO).is_some() {}
+    }
+
+    #[test]
+    fn live_relearning_does_not_interrupt_queued_audio() {
+        let mut engine = CaptureEngine::new(0);
+        let queue = PacketQueue::new();
+        let status = StreamStatus::default();
+        warm_to_playing(&mut engine, &queue, &status);
+        status.request_relearn();
+        let mut source = ConstantSource { sample: LOUD / 2 };
+        for _ in 0..500 {
+            engine.step(
+                &mut source,
+                Some(&queue),
+                &status,
+                &RecordingDelay::default(),
+            );
+            assert!(status.snapshot().playing);
+            assert!(queue.pop_timeout(Duration::ZERO).is_some());
+        }
     }
 
     #[test]

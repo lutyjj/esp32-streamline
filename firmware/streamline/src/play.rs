@@ -71,6 +71,7 @@ const IDLE_STEP_X256: u32 = 64;
 pub struct PlayDetector {
     playing: bool,
     warmup: u32,
+    relearn_hold: u32,
     signal_run: u32,
     silence_charge: u32,
     /// Idle-level RMS estimate in 1/256 units for sub-integer steps.
@@ -82,6 +83,7 @@ impl PlayDetector {
         Self {
             playing: false,
             warmup: WARMUP_PACKETS,
+            relearn_hold: 0,
             signal_run: 0,
             silence_charge: 0,
             idle_x256: 0,
@@ -89,7 +91,17 @@ impl PlayDetector {
     }
 
     pub const fn playing(&self) -> bool {
-        self.playing
+        self.playing || self.relearn_hold > 0
+    }
+
+    pub fn relearn(&mut self) {
+        let hold = if self.playing() {
+            WARMUP_PACKETS + START_AFTER_PACKETS
+        } else {
+            0
+        };
+        *self = Self::new();
+        self.relearn_hold = hold;
     }
 
     /// Current idle-level RMS estimate, exposed as the noise floor in
@@ -102,6 +114,7 @@ impl PlayDetector {
     /// playing. The louder channel decides, so a mono source on either channel
     /// is detected.
     pub fn update(&mut self, levels: LevelStats) -> bool {
+        self.relearn_hold = self.relearn_hold.saturating_sub(1);
         let rms = u32::from(levels.rms_left.max(levels.rms_right));
         let stop = self.stop_threshold();
         let start = self.start_threshold();
@@ -109,7 +122,7 @@ impl PlayDetector {
 
         if self.warmup > 0 {
             self.warmup -= 1;
-            return false;
+            return self.playing();
         }
 
         self.signal_run = if rms >= start {
@@ -132,7 +145,7 @@ impl PlayDetector {
             // Pre-start silence must not count toward the next stop.
             self.silence_charge = 0;
         }
-        self.playing
+        self.playing()
     }
 
     fn start_threshold(&self) -> u32 {
@@ -223,6 +236,39 @@ mod tests {
         feed_noise(&mut detector, fixture, WARMUP_PACKETS + 2_000);
         assert!(!detector.playing());
         detector
+    }
+
+    #[test]
+    fn relearning_keeps_existing_music_continuous() {
+        let mut detector = settled(&IDLE_CD_PLAYER_RMS);
+        assert!(feed(&mut detector, 5_000, START_AFTER_PACKETS));
+        detector.relearn();
+        for _ in 0..WARMUP_PACKETS + START_AFTER_PACKETS + 1 {
+            assert!(detector.update(rms(1_000)));
+        }
+    }
+
+    #[test]
+    fn relearning_releases_playback_when_the_new_input_is_idle() {
+        let mut detector = settled(&IDLE_CD_PLAYER_RMS);
+        assert!(feed(&mut detector, 5_000, START_AFTER_PACKETS));
+        detector.relearn();
+        assert!(feed(
+            &mut detector,
+            200,
+            WARMUP_PACKETS + START_AFTER_PACKETS - 1
+        ));
+        assert!(!detector.update(rms(200)));
+        assert!(!feed(&mut detector, 200, 2_000));
+        assert!(detector.noise_floor() >= 199);
+    }
+
+    #[test]
+    fn relearning_an_idle_input_does_not_start_playback() {
+        let mut detector = settled(&IDLE_CD_PLAYER_RMS);
+        detector.relearn();
+        assert!(!feed(&mut detector, 5_000, WARMUP_PACKETS));
+        assert!(!feed(&mut detector, 0, STOP_AFTER_PACKETS));
     }
 
     #[test]

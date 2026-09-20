@@ -34,7 +34,7 @@ use crate::{
 const REPO: &str = "lutyjj/esp32-streamline";
 /// TLS plus the HTTP client and SHA-256 hashing need a roomier stack than the
 /// default worker.
-const INSTALL_STACK_BYTES: usize = 16_384;
+const INSTALL_STACK_BYTES: usize = 10_240;
 const CHECK_STACK_BYTES: usize = 8_192;
 /// How often the install worker rechecks whether the PCM transport released
 /// its connection, and how long it waits before giving up on the pause.
@@ -198,7 +198,11 @@ fn spawn(
                     action,
                     store.as_deref(),
                     stream.as_deref(),
-                )
+                );
+                // SAFETY: a null handle selects this running task.
+                log::info!("OTA worker stack minimum free: {} bytes", unsafe {
+                    sys::uxTaskGetStackHighWaterMark(std::ptr::null_mut())
+                });
             },
         );
         match pending {
@@ -339,6 +343,10 @@ fn install_and_reboot(
     progress.set_phase(Phase::Installed);
     progress.set_message(&message);
     log::info!("OTA {message}");
+    // SAFETY: a null handle selects this running task.
+    log::info!("OTA install stack minimum free: {} bytes", unsafe {
+        sys::uxTaskGetStackHighWaterMark(std::ptr::null_mut())
+    });
     // Let the console's status poll (1.5 s interval) observe the final state
     // before the reboot; a shorter window can fall between two polls.
     esp_idf_svc::hal::delay::FreeRtos::delay_ms(3_000);

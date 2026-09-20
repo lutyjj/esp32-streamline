@@ -43,8 +43,10 @@ source admission.
 - transport: TCP sender on core 1, FreeRTOS priority 6
 - both audio tasks outrank httpd (priority 5), so HTTP load cannot starve the
   stream into dropping packets
-- radio: Wi-Fi power save off, so round-trip time stays low enough that the
-  send window sustains the capture bitrate
+- radio: Wi-Fi power save and transmit aggregation off; frames receive
+  individual acknowledgements
+- TCP: eight-segment send and receive windows bound concurrent connections;
+  Wi-Fi uses the SDK's default buffer pools
 - capture reads: 20 ms per DMA wait; failures back off for 10 ms
 - DMA: six buffers of 240 stereo frames, or 30 ms at 48 kHz
 - queue: 32 fixed-capacity packets; on pressure, discard the oldest packet

@@ -1,11 +1,11 @@
-# A 48 kHz stereo capture puts 192 KB of PCM per second on the wire, and the
-# sender blocks whenever the socket's send buffer is full. Sixteen segments of
-# send buffer let the sender keep queuing through a few hundred milliseconds of
-# radio stall instead of blocking until the packet queue overflows; the matching
-# receive window keeps large HTTP bodies (an OTA download) off the same floor.
-# lwIP grows these buffers on demand, so the larger bound costs nothing idle.
-CONFIG_LWIP_TCP_SND_BUF_DEFAULT=23040
-CONFIG_LWIP_TCP_WND_DEFAULT=23040
+# Bound each TCP connection to eight segments in each direction so concurrent
+# streaming and HTTP clients leave RAM for TLS and authenticated settings writes.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
+CONFIG_LWIP_TCP_WND_DEFAULT=11520
+
+# Acknowledging each outgoing Wi-Fi frame avoids aggregation stalls that
+# exhaust the capture queue despite available CPU and heap.
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
 
 # Boot composes the complete persisted state, including both transport-key
 # slots, before it moves long-running work onto dedicated tasks.
@@ -80,6 +80,9 @@ CONFIG_MBEDTLS_SSL_TLS1_3_KEXM_PSK_EPHEMERAL=y
 # download opts out per connection (adapters/download.rs): per-record
 # reallocation cannot carry a firmware-sized body across a fragmenting heap.
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+# One PCM frame fits in a 2 KiB outgoing record. Incoming records retain the
+# full 16 KiB limit for certificate-verified HTTPS.
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=2048
 
 # The image must fit a 1.9 MB OTA slot (partitions.csv), so capabilities the
 # product cannot reach stay out of the build. The device's only TLS-certificate

@@ -1,6 +1,33 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.13.0](https://github.com/lutyjj/esp32-streamline/compare/v0.12.0...v0.13.0) (2026-09-20)
+
+
+### Features
+
+* **tools:** analyze streaming TCP captures with TShark ([c9a9eea](https://github.com/lutyjj/esp32-streamline/commit/c9a9eeab145c0260cd053abf58588a4d5e07bbe9))
+
+
+### Bug Fixes
+
+* **bridge:** attach waiting listeners to encrypted sources ([1f72b06](https://github.com/lutyjj/esp32-streamline/commit/1f72b06be3c6cb4466faa914b34d7fc46dafb26c))
+* describe heap low-water accounting accurately ([b7c040c](https://github.com/lutyjj/esp32-streamline/commit/b7c040cdc93a89d7e1609399a33d10500a12e42c))
+* **firmware:** avoid aggregated Wi-Fi transmit stalls ([2dcf95e](https://github.com/lutyjj/esp32-streamline/commit/2dcf95e9788aa95895ab24b959e124c535dc5081))
+* **firmware:** buffer HTTP responses without heap allocation ([aa2ee8e](https://github.com/lutyjj/esp32-streamline/commit/aa2ee8edba2998ad40412e2d008b28ee1c08b609))
+* **firmware:** capture Rust records in remote diagnostics ([dabdf91](https://github.com/lutyjj/esp32-streamline/commit/dabdf9187769866010970cd29c2fc4e2376cbb3e))
+* **firmware:** keep diagnostic buffers in RTC memory ([9613106](https://github.com/lutyjj/esp32-streamline/commit/9613106dc833235abd6a38c3d32e9fce40530170))
+* **firmware:** keep PCM flowing through quiet input ([152f5ad](https://github.com/lutyjj/esp32-streamline/commit/152f5adbbbf240e7a834b6ef01aef2306c13a528))
+* **firmware:** pin ESP-IDF 5.5.3 for audio streaming ([4645e78](https://github.com/lutyjj/esp32-streamline/commit/4645e7882e95a29e027a1d2d019300942a2e92bf))
+* **firmware:** preserve active audio during detector relearning ([ac42f8c](https://github.com/lutyjj/esp32-streamline/commit/ac42f8cab183f7590980a374a13238d06f73ea38))
+* **firmware:** reclaim OTA worker stack headroom ([8738859](https://github.com/lutyjj/esp32-streamline/commit/8738859d7764c4ff29d3ade59b9eb7c67f54c107))
+* **firmware:** reclaim unused task stack memory ([2db66c4](https://github.com/lutyjj/esp32-streamline/commit/2db66c44d23217ef44caf5e39da1b29c19ca6767))
+* **firmware:** report byte-addressable heap headroom ([707eebe](https://github.com/lutyjj/esp32-streamline/commit/707eebe1c5c25d88aae19335aba8df1b38dd8135))
+* **firmware:** size NVS reads to their stored values ([d288ac8](https://github.com/lutyjj/esp32-streamline/commit/d288ac849a893132b98c5add1b8befe3db03f030))
+* keep HTTP audio flowing during silence rebuffering ([9198c3d](https://github.com/lutyjj/esp32-streamline/commit/9198c3d084781c6ba4bd81628b27ea86cb175afb))
+* **stream:** retain buffered audio through network delays ([192d095](https://github.com/lutyjj/esp32-streamline/commit/192d095cc6ea8be48eb455ab40e5ffdbf66015b6))
+* **stream:** retain producer connections through gated silence ([aeae082](https://github.com/lutyjj/esp32-streamline/commit/aeae082502d781c716fbd2b625dd8eab7453ee02))
+
 ## [0.12.0](https://github.com/lutyjj/esp32-streamline/compare/v0.11.2...v0.12.0) (2026-09-20)
 
 

@@ -79,6 +79,11 @@ The largest free block limits a single allocation; total free bytes alone do
 not show fragmentation. Instruction-only RAM is excluded because audio,
 network, and HTTP buffers cannot use it.
 
+`minimum_free_bytes` sums each heap region's lowest free space since boot.
+Regions can reach their minima at different times, so this value can be lower
+than any observed total. Use current `free_bytes`, `largest_free_block_bytes`
+and allocation-failure logs to assess memory pressure during an operation.
+
 The running boot keeps 4 KB of lines, the previous boot 2 KB, both in the
 ESP32's RTC slow memory. These fixed buffers need no PSRAM and leave ordinary
 internal RAM available for audio and networking. When a buffer fills, the

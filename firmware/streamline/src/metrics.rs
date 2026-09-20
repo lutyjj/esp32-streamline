@@ -53,7 +53,7 @@ impl<W: Write> PrometheusWriter<W> {
         )?;
         self.gauge(
             "streamline_heap_minimum_free_bytes",
-            "Lowest free internal-RAM heap observed since boot, in bytes.",
+            "Sum of internal-RAM heap regions' minimum free bytes since boot; minima may occur at different times.",
             snapshot.system.heap.minimum_free_bytes,
         )?;
         self.gauge(
@@ -375,7 +375,7 @@ streamline_heap_free_bytes 142000\n\
 # HELP streamline_heap_total_bytes Total internal-RAM heap in bytes.\n\
 # TYPE streamline_heap_total_bytes gauge\n\
 streamline_heap_total_bytes 300000\n\
-# HELP streamline_heap_minimum_free_bytes Lowest free internal-RAM heap observed since boot, in bytes.\n\
+# HELP streamline_heap_minimum_free_bytes Sum of internal-RAM heap regions' minimum free bytes since boot; minima may occur at different times.\n\
 # TYPE streamline_heap_minimum_free_bytes gauge\n\
 streamline_heap_minimum_free_bytes 120500\n\
 # HELP streamline_heap_largest_free_block_bytes Largest allocatable internal-RAM block in bytes.\n\

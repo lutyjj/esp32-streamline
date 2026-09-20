@@ -110,8 +110,8 @@ pub struct SystemTelemetry {
 pub struct HeapTelemetry {
     pub free_bytes: u32,
     pub total_bytes: u32,
-    /// Lowest free heap observed since boot; the all-time worst case that a
-    /// leak or a demanding moment drove the device to.
+    /// Sum of each heap region's minimum free bytes since boot. Regions may
+    /// reach their minima at different times; this is not an observed total.
     pub minimum_free_bytes: u32,
     /// Largest single allocation the heap can still satisfy; a fragmentation
     /// signal that free bytes alone hides.

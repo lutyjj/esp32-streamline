@@ -88,6 +88,35 @@ Read often enough and the reader keeps more history than the device does: the
 console merges each read into what it already holds, so lines that scrolled out
 of the device's buffer between two reads stay on screen.
 
+## Network captures
+
+Capture the PCM connection at the bridge's network interface to distinguish
+sender gaps, TCP loss recovery, and receiver backpressure. Start before the
+connection opens so Wireshark sees the negotiated TCP window scale. On a Linux
+bridge host with `tcpdump`, select its receiving interface and device address:
+
+```sh
+timeout 90 tcpdump -i eth0 -s 128 -w stream.pcap \
+  'host 192.0.2.10 and tcp port 39000'
+```
+
+Copy the capture to the development machine and run:
+
+```sh
+make tools-pcap CAP=/path/to/stream.pcap
+```
+
+The container runs TShark, Wireshark's command-line analyzer, and reports TCP
+conversations and one-second counts of data segments, retransmissions,
+duplicate acknowledgments, and zero-window announcements. TCP headers remain
+visible with encrypted PCM; decryption keys are unnecessary.
+
+Compare the same interval with device send-stall, queue-drop, stale-drop, and
+heap counters, plus the bridge's loss and underrun counters. Retransmissions
+show TCP recovery; zero windows show receiver backpressure. Gaps alone do not
+identify their cause. Check capture drops before attributing missing packets
+to the connection. Captures contain network addresses and stay local.
+
 ## Crash dumps
 
 A panic writes an ELF core dump to the dedicated `coredump` flash partition,

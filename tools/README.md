@@ -29,6 +29,9 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
 - `streamline-analyze` (`make tools-analyze REF=ref.flac CAP=capture.wav`)
   compares a captured stream against its reference audio and reports offset,
   drift, and quality metrics.
+- `make tools-pcap CAP=capture.pcap` runs Wireshark's TCP analysis in the
+  tools container. See [network captures](../docs/diagnostics.md#network-captures)
+  for capture placement and interpretation.
 - `streamline-capture`: bounded, non-interactive serial capture. Stdlib-only
   so `make firmware-capture` can run it with the system `python3`; the serial
   port is a host resource containers cannot reach.

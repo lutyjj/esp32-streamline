@@ -33,20 +33,26 @@ impl GenerationStorage for NvsGenerationStorage<'_> {
     type Error = anyhow::Error;
 
     fn get(&self, key: &str) -> Result<Option<String>, Self::Error> {
-        let capacity = match key {
+        let maximum = match key {
             "state_a" | "state_b" => crate::state::MAX_STATE_BYTES + 1,
             "state_commit" => crate::state::MAX_MARKER_BYTES + 1,
             _ => return Err(anyhow!("unknown state key: {key}")),
         };
-        if self
-            .nvs
-            .str_len(key)?
-            .is_some_and(|length| length > capacity)
-        {
+        let Some(length) = self.nvs.str_len(key)? else {
+            return Ok(None);
+        };
+        if length > maximum {
             return Ok(None);
         }
-        let mut buffer = vec![0_u8; capacity];
-        Ok(self.nvs.get_str(key, &mut buffer)?.map(str::to_owned))
+        let mut buffer = Vec::new();
+        buffer.try_reserve_exact(length)?;
+        buffer.resize(length, 0);
+        let Some(value) = self.nvs.get_str(key, &mut buffer)? else {
+            return Ok(None);
+        };
+        let length = value.len();
+        buffer.truncate(length);
+        Ok(Some(String::from_utf8(buffer)?))
     }
 
     fn set(&self, key: &str, value: &str) -> Result<(), Self::Error> {

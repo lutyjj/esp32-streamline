@@ -129,7 +129,7 @@ impl StreamStatus {
 
     /// Ask the capture task to restart play detection from scratch. Called
     /// after a live codec change: the idle estimate and thresholds belong to a
-    /// different input scale and must be rebuilt before classifying activity.
+    /// different input scale and must be rebuilt before gating the signal.
     pub fn request_relearn(&self) {
         self.relearn.store(true, Ordering::Relaxed);
     }

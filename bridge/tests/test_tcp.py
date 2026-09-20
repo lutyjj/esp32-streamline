@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import errno
 import socket
 import threading
 import time
 import unittest
 from typing import cast
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT, HEADER, MAGIC, VERSION
@@ -103,7 +104,7 @@ class TcpAdapterTests(unittest.TestCase):
         finally:
             peer.close()
 
-    def test_idle_timeout_increments_tcp_error_and_disconnects_source(self) -> None:
+    def test_first_packet_timeout_increments_tcp_error_and_disconnects_source(self) -> None:
         registry, lease, server, peer = self.prepare()
         server.settimeout(0.001)
         try:
@@ -115,6 +116,49 @@ class TcpAdapterTests(unittest.TestCase):
             self.assertEqual(lifecycle["state"], "disconnected")
         finally:
             peer.close()
+
+    def test_established_source_resumes_after_read_deadlines(self) -> None:
+        registry = SourceRegistry(make_pipeline, max_sources=1)
+        server = MagicMock(spec=socket.socket)
+        server.__enter__.return_value = server
+        encoded = packet(9)
+        resumed = packet(10)
+        server.recv.side_effect = [
+            encoded[: HEADER.size],
+            encoded[HEADER.size :],
+            TimeoutError("timed out"),
+            TimeoutError("timed out"),
+            resumed[: HEADER.size],
+            resumed[HEADER.size :],
+            b"",
+        ]
+        lease = registry.lease_producer("192.0.2.10", server)
+
+        receive_source(lease, server, ("192.0.2.10", 39000))
+
+        self.assertEqual(lease.hub.snapshot()["packets"], 2)
+        self.assertEqual(lease.hub.snapshot()["tcp_errors"], 0)
+        self.assertEqual(lease.hub.snapshot()["last_seq"], 10)
+
+    def test_established_source_rejects_stalled_frames_and_dead_peers(self) -> None:
+        encoded = packet(9)
+        cases: dict[str, list[bytes | TimeoutError]] = {
+            "partial header": [encoded[:8], TimeoutError("timed out")],
+            "partial payload": [encoded[: HEADER.size], encoded[HEADER.size : -1], TimeoutError("timed out")],
+            "dead peer": [TimeoutError(errno.ETIMEDOUT, "Connection timed out")],
+        }
+        for name, ending in cases.items():
+            with self.subTest(name=name):
+                registry = SourceRegistry(make_pipeline, max_sources=1)
+                server = MagicMock(spec=socket.socket)
+                server.__enter__.return_value = server
+                server.recv.side_effect = [encoded[: HEADER.size], encoded[HEADER.size :], *ending]
+                lease = registry.lease_producer("192.0.2.10", server)
+
+                receive_source(lease, server, ("192.0.2.10", 39000))
+
+                self.assertEqual(lease.hub.snapshot()["packets"], 1)
+                self.assertEqual(lease.hub.snapshot()["tcp_errors"], 1)
 
     def test_new_connection_replaces_old_connection_atomically(self) -> None:
         registry, first, server, peer = self.prepare()
@@ -132,6 +176,41 @@ class TcpAdapterTests(unittest.TestCase):
             replacement_peer.close()
             replacement.close()
             server.close()
+
+    def test_live_tcp_source_keeps_connection_through_silence(self) -> None:
+        pipeline = make_pipeline()
+        registry = SourceRegistry(lambda: pipeline, max_sources=1)
+        ingest = TcpIngestServer(registry, "127.0.0.1", 0, 0.05, max_connections=1)
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        peer = socket.create_connection(listener.getsockname())
+        server, address = listener.accept()
+        try:
+            peer.sendall(packet(9))
+            ingest.accept(server, address)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                if pipeline.snapshot()["packets"] == 1:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(pipeline.snapshot()["packets"], 1)
+            self.assertEqual(server.getsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE), 1)
+            self.assertEqual(server.getsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE), 1)
+            self.assertEqual(server.getsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL), 1)
+            self.assertEqual(server.getsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT), 3)
+            time.sleep(0.2)
+            peer.sendall(packet(10))
+            peer.shutdown(socket.SHUT_WR)
+            self.assertEqual(self.wait_for_state(registry, address[0], "disconnected"), "disconnected")
+            stats = pipeline.snapshot()
+            self.assertEqual(stats["packets"], 2)
+            self.assertEqual(stats["tcp_connections"], 1)
+            self.assertEqual(stats["tcp_errors"], 0)
+        finally:
+            peer.close()
+            listener.close()
+            ingest.close()
 
     def test_ingest_worker_count_is_bounded(self) -> None:
         registry = SourceRegistry(make_pipeline, max_sources=2)

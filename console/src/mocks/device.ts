@@ -378,15 +378,18 @@ export class FakeDevice {
     });
   }
 
-  /** One status poll: capture and enabled transport advance independently of playback. */
+  /** One status poll: audio moves while playing, and pending OTA phases advance. */
   private nextStatus(): StatusResponse {
     const metrics = this.status.metrics;
-    if (this.status.mode === 'provisioned') {
-      metrics.sequence += 100;
-      if (this.status.stream.enabled && this.status.target.target_host) {
-        metrics.packets_total += 100;
-        metrics.bytes_total += 102_400;
-      }
+    metrics.sequence += 100;
+    if (
+      metrics.playing &&
+      this.status.stream.enabled &&
+      this.config.target_host &&
+      this.status.mode !== 'setup'
+    ) {
+      metrics.packets_total += 100;
+      metrics.bytes_total += 102400;
     }
     if (metrics.playing) {
       const peak = PEAK_STEPS[this.poll % PEAK_STEPS.length];

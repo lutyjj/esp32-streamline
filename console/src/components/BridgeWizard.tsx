@@ -50,9 +50,9 @@ function connectLine(): { text: string; cls: '' | 'ok' } {
     case 'sending':
       return { text: 'Audio is reaching the bridge. The Bridge tile reads Sending.', cls: 'ok' };
     case 'connecting':
-      return { text: 'Reaching the bridge…', cls: '' };
+      return { text: 'Audio detected — reaching the bridge…', cls: '' };
     case 'idle':
-      return { text: 'Streaming is paused. Resume it from Overview.', cls: '' };
+      return { text: 'Connected. Play a track on your source to start streaming.', cls: '' };
     default:
       return { text: 'Waiting for the device…', cls: '' };
   }

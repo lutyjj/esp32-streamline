@@ -138,7 +138,7 @@ BRIDGE_OPTIONS = (
         "--source-idle-timeout-seconds",
         float,
         5.0,
-        "drop an inactive TCP producer after this many seconds",
+        "producer read deadline and TCP keepalive interval; established streams may gate silence",
         minimum=0.001,
         addon=True,
         maximum=3600.0,

@@ -83,7 +83,7 @@ that artifact to generate a typed client; do not edit generated client files.
 | `--playout-buffer-seconds` | 1.0 | finite number 0.001..60 | Packets buffered before playout begins or resumes. |
 | `--max-repeat-conceal-packets` | 3 | integer 0..256 | Loss packets that repeat attenuated PCM before silence. |
 | `--max-outage-silence-seconds` | 5.0 | finite number 0.001..300 | Concealed outage before playout re-buffers. |
-| `--source-idle-timeout-seconds` | 5.0 | finite number 0.001..3600 | Inactive TCP connection timeout. |
+| `--source-idle-timeout-seconds` | 5.0 | finite number 0.001..3600 | Producer read deadline and TCP keepalive interval; established streams may gate silence. |
 | `--source-eviction-idle-seconds` | 300.0 | finite number 0.001..86400 | Inactive dynamic source retention interval. |
 
 Home Assistant exposes the owner-facing tuning options. Its add-on adapter

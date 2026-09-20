@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import socket
 import threading
 from dataclasses import dataclass
@@ -92,12 +93,19 @@ class _LiveConnections:
                 sock.shutdown(socket.SHUT_RDWR)
 
 
-def recv_exact(conn: socket.socket, size: int, *, allow_eof: bool = False) -> bytes | None:
+def recv_exact(conn: socket.socket, size: int, *, allow_eof: bool = False, allow_idle: bool = False) -> bytes | None:
     """Read a complete frame portion, distinguishing clean EOF from truncation."""
     chunks: list[bytes] = []
     remaining = size
     while remaining:
-        chunk = conn.recv(remaining)
+        try:
+            chunk = conn.recv(remaining)
+        except TimeoutError as exc:
+            # A socket read deadline has no errno. Kernel ETIMEDOUT means the
+            # peer failed its keepalive probes and must close even while quiet.
+            if allow_idle and remaining == size and exc.errno is None:
+                continue
+            raise
         if not chunk:
             received = size - remaining
             if allow_eof and received == 0:
@@ -113,13 +121,14 @@ def receive_source(
     conn: socket.socket,
     addr: tuple[str, int],
 ) -> None:
-    """Receive framed packets until EOF, timeout, malformed input, or replacement."""
+    """Receive framed packets, allowing established producers to gate silence."""
     source = lease.source
     with conn:
         source.hub.note_tcp_connect()
+        established = False
         try:
             while True:
-                header = recv_exact(conn, HEADER.size, allow_eof=True)
+                header = recv_exact(conn, HEADER.size, allow_eof=True, allow_idle=established)
                 if header is None:
                     return
                 try:
@@ -129,6 +138,7 @@ def receive_source(
                 payload = recv_exact(conn, payload_bytes)
                 if payload is None or not lease.ingest(seq, payload):
                     return
+                established = True
         except (OSError, ValueError) as exc:
             if lease.is_active():
                 source.hub.note_tcp_error()
@@ -326,6 +336,11 @@ class TcpIngestServer:
             stream = authenticated.socket
             self._live.replace(conn, authenticated)
             stream.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            keepalive_seconds = max(1, math.ceil(self._idle_timeout_seconds))
+            stream.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            stream.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, keepalive_seconds)
+            stream.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, keepalive_seconds)
+            stream.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
             stream.settimeout(self._idle_timeout_seconds)
             try:
                 lease = self._sources.lease_producer(
@@ -346,3 +361,4 @@ class TcpIngestServer:
         finally:
             self._live.discard(stream)
             self._live.discard(conn)
+            stream.close()

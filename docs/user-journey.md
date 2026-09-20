@@ -144,8 +144,8 @@ Entry: streaming works. The device lives here for months.
 Promise: the Overview answers "is everything fine?" in one glance: status,
 signal, Wi-Fi, bridge. A device that came up without its audio codec says so
 here: the Status reads Fault, not a false Idle, with the fix named. Streaming
-continues through silence; input activity drives the Playing and Idle indicators.
-The stream control pauses transmission. Nothing asks for attention unless something needs it; every
+follows the music, playing on signal and pausing on sustained silence, with no
+user action. Nothing asks for attention unless something needs it; every
 unprompted banner is real (clipping, a device unreachable, a codec that did
 not start) and is dismissible or resolves itself.
 

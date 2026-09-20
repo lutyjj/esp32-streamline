@@ -111,8 +111,8 @@ export function BridgeApp() {
           ) : (
             <EmptyState>
               {status && status.transport.mode === 'tls-psk' && status.transport.key_ids.length
-                ? `No device is streaming. ${status.transport.key_ids.length === 1 ? 'The enrolled device appears' : `${status.transport.key_ids.length} enrolled devices appear`} here when streaming is enabled.`
-                : `No device is streaming. Point a StreamLine device at this bridge (TCP port ${status?.transport.port ?? 39000}) and enable streaming.`}
+                ? `No audio right now. ${status.transport.key_ids.length === 1 ? 'The enrolled device appears' : `${status.transport.key_ids.length} enrolled devices appear`} here while their audio plays.`
+                : `No device is streaming. A StreamLine device connects only while audio plays — point it at this bridge (TCP port ${status?.transport.port ?? 39000}) and start playback.`}
             </EmptyState>
           )}
         </div>

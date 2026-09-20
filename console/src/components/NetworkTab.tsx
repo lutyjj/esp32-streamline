@@ -236,7 +236,9 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
                 ? 'connection healthy'
                 : connecting
                   ? 'connecting to bridge…'
-                  : 'streaming paused'}
+                  : s?.stream.enabled
+                    ? 'idle — nothing to send'
+                    : 'streaming paused'}
             </Chip>
           )}
         </CardFooter>

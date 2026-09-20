@@ -18,8 +18,8 @@ HTTP consumer can read it too.
   audio levels. A per-device admin key gates every write through digest
   authentication, so the key never crosses the network; reads stay open,
   apart from the device log and crash dumps.
-- **Continuous streaming:** quiet passages and track gaps stay on the same
-  connection. Playback detection reports input activity; pause controls transmission.
+- **Signal-gated streaming:** the device pauses PCM on sustained silence and
+  resumes on the same connection when the input plays.
 - **Local analog output:** supported boards can send the selected input
   directly through the codec to a local output while capture and streaming
   continue independently.
@@ -147,8 +147,8 @@ volumes:
 ```
 
 The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
-Music Assistant as a radio/URL stream, with streaming enabled on the device:
-a paused device sends no audio, and Music Assistant rejects a stream it cannot
+Music Assistant as a radio/URL stream, with audio playing on the input:
+an idle device sends no audio, and Music Assistant rejects a stream it cannot
 probe. With several ESP32 sources, select one with
 `http://<bridge-host>:8088/streamline.wav?source=<source-id>`. `/status` serves
 per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning

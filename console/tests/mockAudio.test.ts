@@ -22,7 +22,7 @@ describe('mock audio transport', () => {
     setTransport((request) => fetch(request));
   });
 
-  it('streams a quiet commissioned input until transmission is paused', async () => {
+  it('gates a quiet commissioned input while capture continues', async () => {
     await setWifi({
       ssid: 'Example network',
       password: 'example-password',
@@ -33,8 +33,9 @@ describe('mock audio transport', () => {
     const before = await getStatus();
     const flowing = await getStatus();
     expect(flowing.metrics.playing).toBe(false);
-    expect(flowing.metrics.packets_total).toBeGreaterThan(before.metrics.packets_total);
-    expect(flowing.metrics.bytes_total).toBeGreaterThan(before.metrics.bytes_total);
+    expect(flowing.metrics.packets_total).toBe(before.metrics.packets_total);
+    expect(flowing.metrics.bytes_total).toBe(before.metrics.bytes_total);
+    expect(flowing.metrics.sequence).toBeGreaterThan(before.metrics.sequence);
 
     await setStream({ enabled: false });
     const paused = await getStatus();

@@ -74,6 +74,11 @@ into the next boot.
 
 ## Sizes
 
+`GET /api/status` reports byte-addressable internal RAM under `system.heap`.
+The largest free block limits a single allocation; total free bytes alone do
+not show fragmentation. Instruction-only RAM is excluded because audio,
+network, and HTTP buffers cannot use it.
+
 The running boot keeps 4 KB of lines, the previous boot 2 KB, both allocated
 statically at build time. They cost the same whether or not anyone reads them
 and never fragment the heap the audio path needs. When a buffer fills, the

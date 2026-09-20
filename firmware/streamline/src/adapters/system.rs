@@ -7,7 +7,7 @@
 use esp_idf_svc::sys::{
     esp_timer_get_time, heap_caps_get_free_size, heap_caps_get_largest_free_block,
     heap_caps_get_minimum_free_size, heap_caps_get_total_size, nvs_get_stats, nvs_stats_t,
-    uxTaskGetNumberOfTasks, ESP_OK, MALLOC_CAP_INTERNAL,
+    uxTaskGetNumberOfTasks, ESP_OK, MALLOC_CAP_8BIT, MALLOC_CAP_INTERNAL,
 };
 
 use crate::telemetry::{HeapTelemetry, NvsTelemetry, SystemTelemetry};
@@ -31,10 +31,8 @@ fn uptime_seconds() -> u64 {
     u64::try_from(micros).unwrap_or(0) / 1_000_000
 }
 
-/// Internal RAM heap. One capability mask keeps free, total, low-water, and
-/// largest-block reported against the same set of regions.
 fn heap() -> HeapTelemetry {
-    let caps = MALLOC_CAP_INTERNAL;
+    let caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
     HeapTelemetry {
         free_bytes: unsafe { heap_caps_get_free_size(caps) } as u32,
         total_bytes: unsafe { heap_caps_get_total_size(caps) } as u32,

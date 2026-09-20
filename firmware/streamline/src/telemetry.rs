@@ -106,7 +106,7 @@ pub struct SystemTelemetry {
     pub nvs: NvsTelemetry,
 }
 
-/// Internal RAM heap, in bytes.
+/// Byte-addressable internal RAM heap, in bytes.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HeapTelemetry {
     pub free_bytes: u32,

@@ -326,7 +326,7 @@ pub struct SystemStatus {
     pub nvs: NvsStatus,
 }
 
-/// Internal RAM heap, in bytes.
+/// Byte-addressable internal RAM heap, in bytes.
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct HeapStatus {

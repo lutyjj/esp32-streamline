@@ -184,6 +184,24 @@ def test_coredump_reads_stay_behind_the_admin_key(authed_device_api: DeviceApi) 
         assert code == 401, f"GET {path} without the key answered HTTP {code}"
 
 
+def test_logs_capture_rust_records_behind_the_admin_key(authed_device_api: DeviceApi) -> None:
+    stranger = dataclasses.replace(authed_device_api, admin_key=None)
+    code, _ = stranger.fetch("/api/logs")
+    assert code == 401
+
+    # Reapply the current name to emit a Rust mDNS record without changing
+    # device settings. This exercises the logger registration, not just its formatter.
+    code, body = authed_device_api.fetch("/api/settings")
+    assert code == 200
+    settings = json.loads(body)
+    code, _ = authed_device_api.post_form("/api/settings/name", {"name": settings["device_name"]})
+    assert code == 200
+    code, body = authed_device_api.fetch("/api/logs")
+    assert code == 200
+    current = json.loads(body)["current"]
+    assert "streamline_firmware::adapters::mdns: mDNS instance name set to" in current["text"]
+
+
 def test_coredump_status_names_a_coherent_state(authed_device_api: DeviceApi) -> None:
     # A layout with the coredump partition answers 200 with a present flag; a
     # layout from before the partition existed answers 503. Both are healthy

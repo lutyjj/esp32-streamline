@@ -16,6 +16,28 @@
 /// long line is usually a formatted error whose beginning carries the fact.
 pub const MAX_LINE_BYTES: usize = 240;
 
+/// Format a Rust record into caller-owned storage, truncating without allocation.
+pub fn render_record(record: &log::Record<'_>, timestamp: u32, output: &mut [u8]) -> usize {
+    use std::io::Write;
+
+    let marker = match record.level() {
+        log::Level::Error => "E",
+        log::Level::Warn => "W",
+        log::Level::Info => "I",
+        log::Level::Debug => "D",
+        log::Level::Trace => "V",
+    };
+    let capacity = output.len();
+    let mut remaining = output;
+    let _ = write!(
+        remaining,
+        "{marker} ({timestamp}) {}: {}",
+        record.target(),
+        record.args()
+    );
+    capacity - remaining.len()
+}
+
 /// Marks a buffer this build wrote and can read back. The value changes with
 /// the struct layout, so an image that reboots into a different layout treats
 /// what it finds as absent rather than misreading it.
@@ -287,6 +309,37 @@ fn sanitize(raw: &[u8], line: &mut [u8; MAX_LINE_BYTES]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rust_record_preserves_severity_time_target_and_message() {
+        let mut line = [0; MAX_LINE_BYTES];
+        let length = render_record(
+            &log::Record::builder()
+                .level(log::Level::Warn)
+                .target("capture")
+                .args(format_args!("read failed after {} ms", 200))
+                .build(),
+            42,
+            &mut line,
+        );
+        assert_eq!(&line[..length], b"W (42) capture: read failed after 200 ms");
+    }
+
+    #[test]
+    fn oversized_rust_record_retains_its_prefix_without_growing() {
+        let mut line = [0; 24];
+        let length = render_record(
+            &log::Record::builder()
+                .level(log::Level::Error)
+                .target("tcp")
+                .args(format_args!("connection failed during handshake"))
+                .build(),
+            7,
+            &mut line,
+        );
+        assert_eq!(length, line.len());
+        assert_eq!(&line, b"E (7) tcp: connection fa");
+    }
 
     const CAPACITY: usize = MAX_LINE_BYTES * 8;
     /// Enough short lines to overflow [`CAPACITY`] several times over.

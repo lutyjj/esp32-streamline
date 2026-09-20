@@ -623,6 +623,10 @@ def test_ota_http_failure_keeps_the_custom_url_private(
     assert "HTTP 503" in ota["message"], ota
     _assert_ota_url_private(provisioned_device)
     _assert_ota_url_absent_from_serial(provisioned_device)
+    code, body = provisioned_device.api.fetch("/api/logs")
+    assert code == 200
+    assert _OTA_URL_CANARY.encode() not in body, "custom OTA query leaked through captured logs"
+    assert "OTA update failed:" in json.loads(body)["current"]["text"]
 
 
 def test_ota_interruption_persists_only_a_redacted_recovery_note(

@@ -1,9 +1,8 @@
 //! Capture of the device's own log output into memory the API can serve.
 //!
-//! ESP-IDF routes every log line — the firmware's and the Wi-Fi, esp-tls, and
-//! OTA components' — through one `vprintf`-shaped hook. Installing that hook
-//! puts each rendered line into a [`LogBuffer`] before it reaches the UART, so a
-//! device with no serial cable attached can still be read.
+//! Native ESP-IDF logs enter through its `vprintf` hook. Rust records enter
+//! through a `log::Log` adapter that also forwards them to the SDK's logger.
+//! Both paths retain bounded lines for devices without a serial connection.
 //!
 //! The current buffer sits in `.noinit`, which the linker excludes from startup
 //! zeroing and the heap. A software reset — the kind a panic ends in — leaves
@@ -22,6 +21,9 @@ use core::{
     ptr::addr_of_mut,
 };
 use std::sync::{Mutex, Once, OnceLock};
+
+use esp_idf_svc::log::{EspIdfLogFilter, EspIdfLogger};
+use log::{Log, Metadata, Record};
 
 use esp_idf_svc::sys::{
     esp_get_free_heap_size, esp_log_set_vprintf, esp_random, esp_rom_printf,
@@ -62,6 +64,37 @@ struct Buffers {
 
 static BUFFERS: OnceLock<Mutex<Buffers>> = OnceLock::new();
 static INSTALLED: Once = Once::new();
+static RUST_LOGGER: CapturedLogger = CapturedLogger(EspIdfLogger::new(EspIdfLogFilter::new()));
+
+struct CapturedLogger(EspIdfLogger<EspIdfLogFilter>);
+
+impl Log for CapturedLogger {
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+        self.0.enabled(metadata)
+    }
+
+    fn log(&self, record: &Record<'_>) {
+        if self.enabled(record.metadata()) {
+            capture_record(record);
+            self.0.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.0.flush();
+    }
+}
+
+fn capture_record(record: &Record<'_>) {
+    let mut line = [0; MAX_LINE_BYTES];
+    let timestamp = unsafe { esp_idf_svc::sys::esp_log_timestamp() };
+    let length = crate::logs::render_record(record, timestamp, &mut line);
+    if let Some(buffers) = BUFFERS.get() {
+        let mut guard = buffers.lock().unwrap_or_else(|error| error.into_inner());
+        guard.current.append(&line[..length]);
+        guard.current.append(b"\n");
+    }
+}
 
 /// Start capturing. Call once, as early in the boot as possible: lines logged
 /// before this land on the UART only.
@@ -88,6 +121,8 @@ pub fn install() {
         // Installed after the snapshot so the previous boot's lines are safe
         // before this boot can write over them.
         unsafe { esp_log_set_vprintf(Some(capture_line)) };
+        log::set_logger(&RUST_LOGGER).expect("Rust logger is installed once");
+        RUST_LOGGER.0.filter().initialize();
         if unsafe { heap_caps_register_failed_alloc_callback(Some(note_allocation_failure)) }
             != ESP_OK
         {

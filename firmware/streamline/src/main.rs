@@ -58,7 +58,6 @@ fn main() {
 fn run() -> Result<()> {
     // Required by esp-idf-sys to link runtime patches on an ESP-IDF target.
     esp_idf_svc::sys::link_patches();
-    esp_idf_svc::log::EspLogger::initialize_default();
     // Before anything else logs: this both starts the capture and rescues the
     // previous boot's lines, which a reset leaves in place only until they are
     // written over.

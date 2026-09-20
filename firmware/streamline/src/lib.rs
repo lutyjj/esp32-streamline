@@ -11,6 +11,8 @@ pub mod api;
 pub mod auth;
 pub mod board;
 pub mod boot_health;
+#[cfg(any(test, target_os = "espidf"))]
+mod buffered_writer;
 pub mod button;
 pub mod captive_portal;
 pub mod codec;

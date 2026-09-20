@@ -77,6 +77,7 @@ class Source[H: AudioPipeline]:
     disconnected_at: float
     connected: bool = False
     http_clients: int = 0
+    pinned_http_clients: int = 0
     recording_sessions: int = 0
     peer_ip: str = ""
     transport: str = "cleartext"
@@ -107,6 +108,8 @@ class SourceLease[H: AudioPipeline]:
         kind: Literal["producer", "http", "recording"],
         conn: socket.socket | None = None,
         generation: int | None = None,
+        *,
+        identity_pinned: bool = False,
     ) -> None:
         self._registry = registry
         self.source = source
@@ -114,6 +117,7 @@ class SourceLease[H: AudioPipeline]:
         self._conn = conn
         self._generation = generation
         self._closed = False
+        self._identity_pinned = identity_pinned
 
     @property
     def key(self) -> str:
@@ -229,9 +233,11 @@ class SourceRegistry[H: AudioPipeline]:
             source = self._select_locked(requested)
             if kind == "http":
                 source.http_clients += 1
+                if requested is not None:
+                    source.pinned_http_clients += 1
             else:
                 source.recording_sessions += 1
-            lease = SourceLease(self, source, kind)
+            lease = SourceLease(self, source, kind, identity_pinned=requested is not None)
         self._close_hubs(evicted)
         return lease
 
@@ -251,6 +257,8 @@ class SourceRegistry[H: AudioPipeline]:
                     source.disconnected_at = self._now()
             elif lease.kind == "http":
                 source.http_clients -= 1
+                if lease._identity_pinned:
+                    source.pinned_http_clients -= 1
             else:
                 source.recording_sessions -= 1
             if not source.connected and not source.http_clients and not source.recording_sessions:
@@ -308,7 +316,7 @@ class SourceRegistry[H: AudioPipeline]:
             if candidate == PENDING_KEY:
                 return candidate, source
             if candidate == peer and source.permanent:
-                if source.http_clients:
+                if source.pinned_http_clients:
                     continue
                 return candidate, source
             if not at_capacity:

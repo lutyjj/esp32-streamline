@@ -4,8 +4,9 @@
 //! through a `log::Log` adapter that also forwards them to the SDK's logger.
 //! Both paths retain bounded lines for devices without a serial connection.
 //!
-//! The current buffer sits in `.noinit`, which the linker excludes from startup
-//! zeroing and the heap. A software reset — the kind a panic ends in — leaves
+//! The buffers use RTC slow memory, separate from the audio and network heap.
+//! The current buffer sits in `.rtc_noinit`, excluded from startup zeroing.
+//! A software reset — the kind a panic ends in — leaves
 //! it intact, so the first thing [`install`] does is copy the previous boot's
 //! lines aside. That is what turns "the device rebooted" into a readable
 //! account of what it was doing beforehand.
@@ -47,14 +48,15 @@ pub const PREVIOUS_BYTES: usize = 2_048;
 /// generous.
 const RENDER_BYTES: usize = MAX_LINE_BYTES + 16;
 
-/// Survives a software reset: the linker places `.noinit` outside both the
+/// Survives a software reset: the linker places `.rtc_noinit` outside both the
 /// startup zeroing and the heap. Contents from a previous boot are validated,
 /// never trusted — see [`LogBuffer::is_intact`].
-#[link_section = ".noinit"]
+#[link_section = ".rtc_noinit"]
 static mut CURRENT: LogBuffer<CURRENT_BYTES> = LogBuffer::new();
 
 /// The previous boot's lines, copied out of `CURRENT` before this boot reuses it.
-/// Ordinary zero-initialized memory: it reads as absent until a boot fills it.
+/// The SDK clears RTC BSS during startup, so this is absent until a boot fills it.
+#[link_section = ".rtc.bss"]
 static mut PREVIOUS: LogBuffer<PREVIOUS_BYTES> = LogBuffer::new();
 
 struct Buffers {

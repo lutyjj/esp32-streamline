@@ -79,9 +79,9 @@ The largest free block limits a single allocation; total free bytes alone do
 not show fragmentation. Instruction-only RAM is excluded because audio,
 network, and HTTP buffers cannot use it.
 
-The running boot keeps 4 KB of lines, the previous boot 2 KB, both allocated
-statically at build time. They cost the same whether or not anyone reads them
-and never fragment the heap the audio path needs. When a buffer fills, the
+The running boot keeps 4 KB of lines, the previous boot 2 KB, both in the
+ESP32's RTC slow memory. These fixed buffers need no PSRAM and leave ordinary
+internal RAM available for audio and networking. When a buffer fills, the
 oldest whole lines are discarded and counted in `dropped`.
 
 Read often enough and the reader keeps more history than the device does: the

@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 import threading
 import unittest
+from itertools import pairwise
 
 from streamline_bridge.fanout import ClientFanout
 from streamline_bridge.playout import MAX_UINT32, PlayoutBuffer, PlayoutWorker
@@ -75,8 +76,10 @@ class PlayoutBufferTests(unittest.TestCase):
         self.assertIsNotNone(buffer.next_chunk())
         self.assertIsNotNone(buffer.next_chunk())
         self.assertIsNotNone(buffer.next_chunk())
-        self.assertIsNone(buffer.next_chunk())
+        for _ in range(100):
+            self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
         self.assertEqual(buffer.snapshot()["underruns"], 1)
+        self.assertEqual(buffer.snapshot()["lost"], 2, "waiting for resumed audio is not further packet loss")
         buffer.ingest(20, payload(2000))
         self.assertEqual(buffer.next_chunk(), payload(2000))
 
@@ -105,10 +108,23 @@ class PlayoutBufferTests(unittest.TestCase):
         buffer = self.make_buffer(outage_packets=1)
         buffer.ingest(4, payload(10_000))
         buffer.ingest(90, payload(1))  # far ahead: reachable only by playing the whole gap
-        while buffer.next_chunk() is not None:
-            pass
+        for _ in range(3):
+            buffer.next_chunk()
         self.assertEqual(buffer.snapshot()["underruns"], 1)
         self.assertEqual(buffer.snapshot()["buffered_packets"], 0)
+
+    def test_silence_continues_until_the_resumed_buffer_reaches_its_target(self) -> None:
+        buffer = self.make_buffer(buffered_packets=2, outage_packets=1)
+        for seq in (0, 1):
+            buffer.ingest(seq, payload(1000))
+        for _ in range(4):
+            buffer.next_chunk()
+        buffer.ingest(100, payload(2000))
+        self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+        self.assertEqual(buffer.snapshot()["playout_seq"], 100)
+        buffer.ingest(101, payload(3000))
+        self.assertEqual(buffer.next_chunk(), payload(2000))
+        self.assertEqual(buffer.next_chunk(), payload(3000))
 
     def test_a_closed_buffer_refuses_packets_and_unblocks_its_worker(self) -> None:
         buffer = self.make_buffer()
@@ -151,6 +167,32 @@ class PlayoutWorkerTests(unittest.TestCase):
         seen = len(self.published)
         self.assertFalse(self.buffer.ingest(1, payload(2)))
         self.assertEqual(len(self.published), seen, "a closed pipeline publishes no later chunks")
+
+    def test_rebuffering_keeps_output_paced_and_resumes_at_the_new_sequence(self) -> None:
+        times: list[float] = []
+
+        def publish(chunk: bytes) -> None:
+            self.published.append(chunk)
+            times.append(self.clock.monotonic())
+            if len(self.published) == 8:
+                self.buffer.ingest(10_000, payload(2000))
+            if len(self.published) == 9:
+                self.buffer.close()
+
+        self.buffer.ingest(0, payload(1000))
+        worker = threading.Thread(target=PlayoutWorker(self.buffer, publish, self.clock).run, daemon=True)
+        worker.start()
+        worker.join(timeout=1.0)
+        completed = not worker.is_alive()
+        self.buffer.close()
+        worker.join(timeout=1.0)
+
+        self.assertTrue(completed, "output must continue beyond the outage-silence budget")
+        self.assertEqual(self.published[4:8], [bytes(DEFAULT_FORMAT.payload_bytes)] * 4)
+        self.assertEqual(self.published[8], payload(2000))
+        for previous, current in pairwise(times):
+            self.assertAlmostEqual(current - previous, self.buffer.packet_interval)
+        self.assertEqual(self.buffer.snapshot()["played_frames"], 9 * DEFAULT_FORMAT.frames_per_packet)
 
 
 class ClientFanoutTests(unittest.TestCase):

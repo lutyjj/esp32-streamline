@@ -31,6 +31,13 @@ When more than one source exists, an unqualified `/streamline.wav` request
 returns `409` and lists the available source ids. Invalid source values return
 `400`; unknown source ids return `404`.
 
+After the first audio buffer fills, HTTP WAV output keeps its sample cadence.
+If PCM stops long enough to trigger rebuffering, the bridge sends silence while
+waiting for fresh audio. The outage-silence limit bounds packet-loss concealment
+and resets sequence tracking; it does not cut off the HTTP stream. Resumed audio
+fills the configured playout buffer before replacing silence. Slow HTTP clients
+still face the write deadline and bounded output queue.
+
 ## Source lifecycle
 
 A cleartext source is keyed by its TCP peer IPv4 address. An encrypted source

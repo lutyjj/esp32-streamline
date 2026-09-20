@@ -178,10 +178,14 @@ class PlayoutBuffer:
             return True
 
     def next_chunk(self) -> bytes | None:
-        """Play one packet when buffered, or return ``None`` until re-buffered."""
+        """Play buffered PCM or silence while buffering; only close ends output."""
         with self._lock:
-            if self._closed or not self._ready.is_set() or self.stats.playout_seq is None:
+            if self._closed:
                 return None
+            self.stats.played_frames += self._format.frames_per_packet
+            self.stats.last_playout_at = self._clock.time()
+            if not self._ready.is_set() or self.stats.playout_seq is None:
+                return bytes(self._last_payload_size)
             seq = self.stats.playout_seq
             payload = self._packets.pop(seq, None)
             if payload is None:
@@ -195,9 +199,7 @@ class PlayoutBuffer:
                 self._outage_conceal_packets = 0
                 self._last_payload = payload
             self.stats.playout_seq = (seq + 1) & MAX_UINT32
-            self.stats.played_frames += self.stats.packet_frames or 0
             self.stats.buffered_packets = len(self._packets)
-            self.stats.last_playout_at = self._clock.time()
             if self._outage_conceal_packets > self._max_outage_silence_packets:
                 self._clear_for_rebuffer()
                 self.stats.underruns += 1
@@ -256,19 +258,18 @@ class PlayoutWorker:
         self._clock = clock or SystemClock()
 
     def run(self) -> None:
+        # Wait for the first buffered audio, then keep the HTTP audio clock
+        # running through gated silence and later source-session resets.
+        self._buffer.wait_until_ready()
+        next_tick = self._clock.monotonic()
         while True:
-            self._buffer.wait_until_ready()
-            if self._buffer.closed:
+            chunk = self._buffer.next_chunk()
+            if chunk is None:
                 return
-            next_tick = self._clock.monotonic()
-            while True:
-                chunk = self._buffer.next_chunk()
-                if chunk is None:
-                    break
-                self._publish(chunk)
-                next_tick += self._buffer.packet_interval
-                delay = next_tick - self._clock.monotonic()
-                if delay > 0:
-                    self._clock.sleep(delay)
-                else:
-                    next_tick = self._clock.monotonic()
+            self._publish(chunk)
+            next_tick += self._buffer.packet_interval
+            delay = next_tick - self._clock.monotonic()
+            if delay > 0:
+                self._clock.sleep(delay)
+            else:
+                next_tick = self._clock.monotonic()

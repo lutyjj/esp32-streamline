@@ -69,6 +69,11 @@ and discards partial audio while preserving stereo frame alignment. This is
 a timing estimate, not an exact DMA overrun count. Two seconds without a
 complete packet clears playing status, including when reads return fragments.
 
+Live audio changes relearn the input's noise floor. An existing stream stays
+open through the learning and start-debounce window (about 2.1 seconds), then
+follows the new input's detected state. An idle input does not start streaming
+just because its settings changed.
+
 The packet age limit governs admission to a socket write; socket buffering
 and write duration can add delivery latency. A failed send discards that
 packet and backs off for 250 ms before processing the queue.

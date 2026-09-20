@@ -212,7 +212,7 @@ pub fn bind() -> Result<EspHttpServer<'static>> {
         // Authenticated transport-key writes serialize a complete atomic state
         // generation before returning the one-time credential. Keep that work
         // on the HTTP task without approaching FreeRTOS's stack guard.
-        stack_size: 16_384,
+        stack_size: 14_336,
         // One slot per API endpoint, the `/` console handler, and the optional
         // setup fallback, so a new route never silently overflows the table.
         max_uri_handlers: api::ENDPOINTS.len() + 2,

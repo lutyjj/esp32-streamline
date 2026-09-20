@@ -45,6 +45,8 @@ source admission.
   stream into dropping packets
 - radio: Wi-Fi power save off, so round-trip time stays low enough that the
   send window sustains the capture bitrate
+- Wi-Fi transmit queue: at most 16 dynamic packet copies, bounding radio
+  buffering separately from the TCP send window and capture queue
 - capture reads: 20 ms per DMA wait; failures back off for 10 ms
 - DMA: six buffers of 240 stereo frames, or 30 ms at 48 kHz
 - queue: 32 fixed-capacity packets; on pressure, discard the oldest packet

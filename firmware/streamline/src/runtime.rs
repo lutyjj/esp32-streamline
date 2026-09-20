@@ -16,7 +16,8 @@ use crate::{
     task_start::PendingTask,
 };
 
-const TASK_STACK_BYTES: usize = 8_192;
+const CAPTURE_STACK_BYTES: usize = 6_144;
+const NETWORK_STACK_BYTES: usize = 8_192;
 /// The audio pipeline outranks every request-serving task: ESP-IDF httpd runs
 /// at priority 5, and a burst of status scrapes must never starve capture or
 /// the sender into dropping audio. Both engines block on I2S, the queue, or
@@ -52,14 +53,19 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
     let clock = SystemClock(std::time::Instant::now());
     let capture_status = Arc::clone(&status);
     let capture_queue = queue.clone();
-    let capture_task = spawn_pinned(c"capture", CAPTURE_PRIORITY, move || {
-        CaptureEngine::new(Capture::BUFFERED_FRAMES).run(
-            capture,
-            capture_queue,
-            capture_status,
-            clock,
-        )
-    })?;
+    let capture_task = spawn_pinned(
+        c"capture",
+        CAPTURE_PRIORITY,
+        CAPTURE_STACK_BYTES,
+        move || {
+            CaptureEngine::new(Capture::BUFFERED_FRAMES).run(
+                capture,
+                capture_queue,
+                capture_status,
+                clock,
+            )
+        },
+    )?;
 
     if let (Some(target), Some(queue)) = (target, queue) {
         // Recorded here, beside the decision itself: an install must wait for
@@ -67,9 +73,14 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
         // no sender to wait for.
         status.mark_transport_present();
         let network_status = Arc::clone(&status);
-        let network_task = spawn_pinned(c"network", NETWORK_PRIORITY, move || {
-            stream::run_network(TcpClient::new(target), queue, network_status, clock, clock)
-        })?;
+        let network_task = spawn_pinned(
+            c"network",
+            NETWORK_PRIORITY,
+            NETWORK_STACK_BYTES,
+            move || {
+                stream::run_network(TcpClient::new(target), queue, network_status, clock, clock)
+            },
+        )?;
         network_task.commit();
     }
     capture_task.commit();
@@ -83,12 +94,13 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
 fn spawn_pinned(
     name: &'static CStr,
     priority: u8,
+    stack_size: usize,
     task: impl FnOnce() + Send + 'static,
 ) -> Result<PendingTask> {
     task::prepare(
         ThreadSpawnConfiguration {
             name: Some(name),
-            stack_size: TASK_STACK_BYTES,
+            stack_size,
             priority,
             pin_to_core: Some(Core::Core1),
             ..Default::default()

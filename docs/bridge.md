@@ -41,8 +41,10 @@ connects. The lifecycle reports peer admission as `open` or `allowlisted`
 independently from identity retention. A TLS key identity is dynamic even when
 its peer is allowlisted. A dynamic source is `connected` while its TCP producer is active,
 `http-selected` while an HTTP client holds it open, and `disconnected` after
-both end. A bare WAV request creates a `pending` dynamic pipeline that the first
-producer adopts.
+both end. A bare WAV request waits for the first producer when no source exists.
+With one allowlisted address, it uses that address's pipeline, which the peer's
+authenticated producer can adopt. Explicit `?source=` listeners and recordings
+pin their selected identity and prevent adoption under a different identity.
 
 The bridge retains an inactive dynamic source for
 `--source-eviction-idle-seconds` (300 seconds by default). A reconnect during

@@ -262,6 +262,20 @@ class SourceRegistryTests(unittest.TestCase):
             server.close()
             peer.close()
 
+    def test_bare_listener_receives_tls_source_after_allowlisted_startup(self) -> None:
+        for capacity in (1, 2):
+            with self.subTest(capacity=capacity):
+                registry = self.registry(capacity, frozenset({"192.0.2.10"}))
+                self.addCleanup(registry.close)
+                server, peer = socket.socketpair()
+                with registry.lease_http(None) as listener, server, peer:
+                    key = "eli1-00112233445566778899aabbccddeeff"
+                    with registry.lease_producer(key, server, peer_ip="192.0.2.10", transport="tls-psk") as producer:
+                        self.assertIs(listener.hub, producer.hub)
+                        self.assertTrue(producer.ingest(0, bytes(1024)))
+                        self.assertEqual(listener.hub.snapshot()["packets"], 1)
+                        self.assertEqual(set(registry.snapshot()), {key})
+
     def test_active_allowlisted_http_source_gets_a_distinct_tls_slot_when_available(self) -> None:
         registry = self.registry(2, frozenset({"192.0.2.10"}))
         key_id = "eli1-00112233445566778899aabbccddeeff"
@@ -277,6 +291,20 @@ class SourceRegistryTests(unittest.TestCase):
             http.close()
             server.close()
             peer.close()
+
+    def test_explicit_listener_pins_identity_until_its_lease_closes(self) -> None:
+        registry = self.registry(1, frozenset({"192.0.2.10"}))
+        self.addCleanup(registry.close)
+        server, peer = socket.socketpair()
+        key = "eli1-00112233445566778899aabbccddeeff"
+        with registry.lease_http(None) as bare, registry.lease_http("192.0.2.10") as explicit, server, peer:
+            with self.assertRaises(SourceAdmissionError):
+                registry.lease_producer(key, server, peer_ip="192.0.2.10", transport="tls-psk")
+            explicit.close()
+            explicit.close()
+            with registry.lease_producer(key, server, peer_ip="192.0.2.10", transport="tls-psk") as producer:
+                self.assertIs(bare.hub, producer.hub)
+                self.assertEqual(producer.source.http_clients, 1)
 
     def test_allowlist_rejects_an_unlisted_peer_independently_of_identity(self) -> None:
         registry = self.registry(1, frozenset({"192.0.2.10"}))

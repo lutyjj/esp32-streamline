@@ -41,8 +41,8 @@ source admission.
 
 - capture: I2S RX on core 1, FreeRTOS priority 7
 - transport: TCP sender on core 1, FreeRTOS priority 6
-- both audio tasks outrank httpd (priority 5), so HTTP load cannot starve the
-  stream into dropping packets
+- both audio tasks outrank httpd (priority 5); shared locks and network work
+  can still delay streaming
 - radio: Wi-Fi power save and transmit aggregation off; frames receive
   individual acknowledgements
 - TCP: eight-segment send and receive windows bound concurrent connections;

@@ -269,12 +269,12 @@ class SourceRegistryTests(unittest.TestCase):
                 self.addCleanup(registry.close)
                 server, peer = socket.socketpair()
                 with registry.lease_http(None) as listener, server, peer:
-                    key = "eli1-00112233445566778899aabbccddeeff"
-                    with registry.lease_producer(key, server, peer_ip="192.0.2.10", transport="tls-psk") as producer:
+                    key_id = "eli1-00112233445566778899aabbccddeeff"
+                    with registry.lease_producer(key_id, server, peer_ip="192.0.2.10", transport="tls-psk") as producer:
                         self.assertIs(listener.hub, producer.hub)
                         self.assertTrue(producer.ingest(0, bytes(1024)))
                         self.assertEqual(listener.hub.snapshot()["packets"], 1)
-                        self.assertEqual(set(registry.snapshot()), {key})
+                        self.assertEqual(set(registry.snapshot()), {key_id})
 
     def test_active_allowlisted_http_source_gets_a_distinct_tls_slot_when_available(self) -> None:
         registry = self.registry(2, frozenset({"192.0.2.10"}))
@@ -296,13 +296,13 @@ class SourceRegistryTests(unittest.TestCase):
         registry = self.registry(1, frozenset({"192.0.2.10"}))
         self.addCleanup(registry.close)
         server, peer = socket.socketpair()
-        key = "eli1-00112233445566778899aabbccddeeff"
+        key_id = "eli1-00112233445566778899aabbccddeeff"
         with registry.lease_http(None) as bare, registry.lease_http("192.0.2.10") as explicit, server, peer:
             with self.assertRaises(SourceAdmissionError):
-                registry.lease_producer(key, server, peer_ip="192.0.2.10", transport="tls-psk")
+                registry.lease_producer(key_id, server, peer_ip="192.0.2.10", transport="tls-psk")
             explicit.close()
             explicit.close()
-            with registry.lease_producer(key, server, peer_ip="192.0.2.10", transport="tls-psk") as producer:
+            with registry.lease_producer(key_id, server, peer_ip="192.0.2.10", transport="tls-psk") as producer:
                 self.assertIs(bare.hub, producer.hub)
                 self.assertEqual(producer.source.http_clients, 1)
 

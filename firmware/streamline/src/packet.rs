@@ -10,26 +10,18 @@ pub const MAX_PACKET_BYTES: usize = HEADER_LEN + PAYLOAD_BYTES;
 #[derive(Clone)]
 pub struct AudioPacket {
     bytes: [u8; MAX_PACKET_BYTES],
-    captured_at_ms: u64,
 }
 
 impl AudioPacket {
-    pub fn from_pcm(sequence: u32, captured_at_ms: u64, pcm: &[u8; PAYLOAD_BYTES]) -> Self {
+    pub fn from_pcm(sequence: u32, pcm: &[u8; PAYLOAD_BYTES]) -> Self {
         let mut bytes = [0; MAX_PACKET_BYTES];
         bytes[..HEADER_LEN].copy_from_slice(&PacketHeader::new(sequence).encode());
         bytes[HEADER_LEN..].copy_from_slice(pcm);
-        Self {
-            bytes,
-            captured_at_ms,
-        }
+        Self { bytes }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
-    }
-
-    pub fn age_ms(&self, now_ms: u64) -> u64 {
-        now_ms.saturating_sub(self.captured_at_ms)
     }
 
     pub const fn payload_bytes(&self) -> usize {
@@ -45,7 +37,7 @@ mod tests {
     fn packet_coalesces_header_and_pcm() {
         let mut pcm = [0_u8; PAYLOAD_BYTES];
         pcm[..4].copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
-        let packet = AudioPacket::from_pcm(4, 0, &pcm);
+        let packet = AudioPacket::from_pcm(4, &pcm);
         assert_eq!(packet.as_bytes().len(), MAX_PACKET_BYTES);
         assert_eq!(&packet.as_bytes()[24..28], &pcm[..4]);
         assert_eq!(packet.payload_bytes(), PAYLOAD_BYTES);

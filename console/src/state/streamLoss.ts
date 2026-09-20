@@ -27,7 +27,7 @@ export const lossCalloutVisible = computed(
 effect(() => {
   const s = status.value;
   if (!s) return;
-  const total = s.metrics.queue_drops_total + s.metrics.stale_drops_total;
+  const total = s.metrics.queue_drops_total + s.metrics.network_errors_total;
   const last = lastDropTotal.peek();
   lastDropTotal.value = total;
   // First sample, or a counter that shrank (the device rebooted): nothing to

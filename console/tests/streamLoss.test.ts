@@ -9,10 +9,10 @@ import {
   lossCalloutVisible,
 } from '../src/state/streamLoss';
 
-function withDrops(queue: number, stale = 0, mode: 'setup' | 'provisioned' = 'provisioned') {
+function withDrops(queue: number, mode: 'setup' | 'provisioned' = 'provisioned') {
   return deviceStatus({
     mode,
-    metrics: { queue_drops_total: queue, stale_drops_total: stale },
+    metrics: { queue_drops_total: queue },
   });
 }
 
@@ -37,11 +37,11 @@ describe('stream loss callout', () => {
     expect(episodeDrops.value).toBe(30);
   });
 
-  it('counts stale drops as loss too', () => {
-    status.value = withDrops(10, 0);
-    status.value = withDrops(10, 4);
+  it('counts packets lost to a failed send', () => {
+    status.value = deviceStatus({ metrics: { network_errors_total: 2 } });
+    status.value = deviceStatus({ metrics: { network_errors_total: 3 } });
     expect(lossCalloutVisible.value).toBe(true);
-    expect(episodeDrops.value).toBe(4);
+    expect(episodeDrops.value).toBe(1);
   });
 
   it('accumulates across bursts and survives clean polls in between', () => {
@@ -73,8 +73,8 @@ describe('stream loss callout', () => {
   });
 
   it('never shows in setup mode', () => {
-    status.value = withDrops(0, 0, 'setup');
-    status.value = withDrops(40, 0, 'setup');
+    status.value = withDrops(0, 'setup');
+    status.value = withDrops(40, 'setup');
     expect(lossCalloutVisible.value).toBe(false);
   });
 });

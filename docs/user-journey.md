@@ -2,7 +2,7 @@
 
 StreamLine takes an analog source from a blank board to a network player.
 This document owns the experience contract. The [quick start](../README.md#quick-start)
-owns installation commands; [Console design](../console/DESIGN.md) owns visual conventions.
+owns installation commands.
 
 ## Shared promises
 

@@ -44,8 +44,9 @@ const mockAdminKey = 'a'.repeat(48);
 test('audio drafts survive navigation and profiles capture saved settings', async ({ page }) => {
   await page.goto('/#/audio');
   await unlock(page);
+  await page.getByRole('button', { name: 'Adjust input', exact: true }).click();
   await page.getByLabel('Input gain').fill('12');
-  await page.getByRole('link', { name: 'Connections', exact: true }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Audio', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.getByLabel('Input gain')).toHaveValue('12');
@@ -154,6 +155,7 @@ test('a button action assignment reaches the device and warns when destructive',
   await page.getByRole('link', { name: 'Settings', exact: true }).click();
 
   const key3 = page.getByLabel('Key 3 action');
+  await page.getByRole('link', { name: /Device Name, lights/ }).click();
   await expect(key3).toHaveValue('none');
   await key3.selectOption('factory_reset');
   await expect(page.getByText('one press, no confirmation')).toBeVisible();

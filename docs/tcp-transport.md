@@ -128,7 +128,7 @@ set `api_token` in the add-on configuration.
 
 Open the device console and the bridge console:
 
-1. In device **Connections → Encrypted audio**, select **Set up encryption**,
+1. In device **Settings → Encrypted audio**, select **Set up encryption**,
    then **Generate bridge credential**. Copy the one-time
    key id and PSK. Cleartext keeps streaming.
 2. In bridge **Settings → Audio security**, unlock with the API token and add that key id

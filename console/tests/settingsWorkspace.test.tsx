@@ -2,12 +2,17 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { expect, it } from 'vitest';
 import { SettingsWorkspace } from '../src/components/SettingsWorkspace';
+import { sectionFromHash, useRouteHash } from '../src/state/route';
 
-it('keeps a draft while switching sections through desktop and phone navigation', () => {
+it('keeps a draft while switching sections through addressable settings tasks', async () => {
+  window.location.hash = '#/settings/name';
   const host = document.createElement('div');
-  act(() =>
-    render(
+  function RoutedSettings() {
+    const hash = useRouteHash();
+    return (
       <SettingsWorkspace
+        baseHref="#/settings"
+        selected={sectionFromHash(hash, 'settings')}
         label="Settings"
         sections={[
           {
@@ -15,33 +20,26 @@ it('keeps a draft while switching sections through desktop and phone navigation'
             label: 'Name',
             content: <input aria-label="Device name" defaultValue="Kitchen" />,
           },
-          {
-            id: 'access',
-            label: 'Access',
-            content: <p>Key settings</p>,
-          },
+          { id: 'access', label: 'Access', content: <p>Key settings</p> },
         ]}
-      />,
-      host,
-    ),
-  );
+      />
+    );
+  }
+  act(() => render(<RoutedSettings />, host));
   const input = host.querySelector('input');
   if (!input) throw new Error('Name field missing');
   input.value = 'Listening room';
-  act(() => {
-    host
-      .querySelectorAll('nav button')[1]
-      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await act(async () => {
+    window.location.hash = host.querySelectorAll('nav a')[1].getAttribute('href')!;
+    window.dispatchEvent(new Event('hashchange'));
   });
   expect(input.closest('section')?.hidden).toBe(true);
-  const select = host.querySelector('select');
-  if (!select) throw new Error('Phone navigation missing');
-  act(() => {
-    select.value = 'name';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+  await act(async () => {
+    window.location.hash = '#/settings/name';
+    window.dispatchEvent(new Event('hashchange'));
   });
   expect(input.closest('section')?.hidden).toBe(false);
   expect(input.value).toBe('Listening room');
-  expect(host.querySelector('nav button[aria-current="page"]')?.textContent).toBe('Name');
+  expect(host.querySelector('nav a[aria-current="page"]')?.textContent).toBe('Name');
   render(null, host);
 });

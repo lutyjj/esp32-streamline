@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'preact/hooks';
+import './bridge.css';
+import { useState } from 'preact/hooks';
 import { PageHeading } from '../components/ConsoleNavigation';
 import { ConsoleShell } from '../components/ConsoleShell';
 import { EmptyState } from '../components/EmptyState';
@@ -7,6 +8,7 @@ import { Notice } from '../components/Notice';
 import { SettingsWorkspace } from '../components/SettingsWorkspace';
 import { Toasts } from '../components/Toasts';
 import { UnlockPanel } from '../components/UnlockPanel';
+import { sectionFromHash, useRouteHash } from '../state/route';
 import { toast } from '../state/toasts';
 import { Recordings } from './Recordings';
 import { IncomingSource } from './Sources';
@@ -14,12 +16,9 @@ import { bridge } from './state';
 import { Transport } from './Transport';
 
 export function BridgeApp() {
-  const [view, setView] = useState(() => bridgeView());
-  useEffect(() => {
-    const change = () => setView(bridgeView());
-    window.addEventListener('hashchange', change);
-    return () => window.removeEventListener('hashchange', change);
-  }, []);
+  const route = useRouteHash();
+  const view = bridgeView(route, window.location.pathname);
+  const recordingSource = new URLSearchParams(route.split('?')[1]).get('source') ?? '';
   const status = bridge.status.value;
   const access = bridge.access.value;
   const [panelOpen, setPanelOpen] = useState(false);
@@ -100,6 +99,14 @@ export function BridgeApp() {
                 Object.entries(status.sources)
                   .filter(([ip]) => ip !== 'pending')
                   .map(([ip, source]) => <IncomingSource key={ip} ip={ip} source={source} />)
+              ) : !status ? (
+                <EmptyState>
+                  {bridge.unreachable.value
+                    ? 'Cannot reach the bridge. Check its service and your network; this page retries automatically.'
+                    : 'Checking for incoming audio…'}
+                </EmptyState>
+              ) : bridge.unreachable.value ? (
+                <EmptyState>Waiting for the bridge before checking for sources.</EmptyState>
               ) : (
                 <EmptyState>
                   {status && status.transport.mode === 'tls-psk' && status.transport.key_ids.length
@@ -113,6 +120,8 @@ export function BridgeApp() {
         <section class="view active" hidden={view !== 'settings'}>
           <PageHeading {...BRIDGE_NAVIGATION[2]} />
           <SettingsWorkspace
+            baseHref="#/settings"
+            selected={sectionFromHash(route, 'settings')}
             label="Bridge settings"
             sections={[
               {
@@ -148,7 +157,7 @@ export function BridgeApp() {
         </section>
         <section class="view active" hidden={view !== 'recordings'}>
           <PageHeading {...BRIDGE_NAVIGATION[1]} />
-          <Recordings />
+          <Recordings requestedSource={recordingSource} />
         </section>
       </div>
       <Toasts />
@@ -174,8 +183,9 @@ const BRIDGE_NAVIGATION = [
   },
 ] as const;
 
-function bridgeView() {
-  const candidate = window.location.hash.replace(/^#\//, '');
+export function bridgeView(hash: string, pathname: string) {
+  if (!hash && /\/recordings\/?$/.test(pathname)) return 'recordings';
+  const candidate = hash.replace(/^#\//, '').split(/[/?]/)[0];
   return BRIDGE_NAVIGATION.find(({ view }) => view === candidate)?.view ?? 'sources';
 }
 

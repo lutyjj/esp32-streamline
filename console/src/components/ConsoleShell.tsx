@@ -32,15 +32,15 @@ export function ConsoleShell({
         >
           Skip to content
         </button>
-        <div class="console-topbar">
+        <aside class="console-rail">
           <div class="brand">StreamLine</div>
-          {header}
+          <ConsoleNavigation items={items} current={current} />
           <div class="console-preferences">
             <ThemeSwitch />
           </div>
-        </div>
+        </aside>
         <div class="console-body">
-          <ConsoleNavigation items={items} current={current} />
+          <div class="console-topbar">{header}</div>
           <main id="workspace" class="workspace" tabIndex={-1}>
             {children}
           </main>

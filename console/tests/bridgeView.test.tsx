@@ -1,7 +1,9 @@
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { BridgeApp } from '../src/bridge/BridgeApp';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BridgeApp, bridgeView } from '../src/bridge/BridgeApp';
+import { Recordings } from '../src/bridge/Recordings';
+import { receptionSummary } from '../src/bridge/reception';
 import { IncomingSource } from '../src/bridge/Sources';
 import { bridge } from '../src/bridge/state';
 import type { RecordingSnapshot, SourceSnapshot } from '../src/generated/bridge';
@@ -80,6 +82,7 @@ describe('bridge source view', () => {
 
 describe('bridge lock flow', () => {
   beforeEach(() => {
+    window.location.hash = '#/settings/security';
     sessionStorage.clear();
     bridge.status.value = {
       bridge_version: 'test',
@@ -271,4 +274,99 @@ describe('recording states drive their own affordances', () => {
     expect(host.textContent).toContain('per minute');
     expect(host.querySelector<HTMLInputElement>('#rec-title')?.maxLength).toBe(48);
   });
+});
+
+it('recognizes recording entry paths behind ingress and honors an explicit destination', () => {
+  expect(bridgeView('', '/recordings')).toBe('recordings');
+  expect(bridgeView('', '/api/hassio_ingress/session/recordings/')).toBe('recordings');
+  expect(bridgeView('#/sources', '/recordings')).toBe('sources');
+  expect(bridgeView('#/settings/security', '/')).toBe('settings');
+});
+
+it('separates loading and unavailable from a confirmed empty bridge', () => {
+  const host = document.createElement('div');
+  bridge.status.value = undefined;
+  bridge.unreachable.value = false;
+  render(<BridgeApp />, host);
+  expect(host.textContent).toContain('Checking for incoming audio');
+  expect(host.textContent).not.toContain('TCP port 39000');
+  act(() => {
+    bridge.unreachable.value = true;
+  });
+  expect(host.textContent).toContain('Cannot reach the bridge');
+  expect(host.textContent).not.toContain('Connect your device');
+  render(null, host);
+  bridge.unreachable.value = false;
+});
+
+it('points to recent player delivery trouble without alarming on historical counters', () => {
+  const previous = { ...source(100), buffer_ready_at: 1, clients: 1, client_queue_drops: 5 };
+  expect(receptionSummary(previous, previous)).toContain('Audio is available');
+  expect(receptionSummary({ ...previous, client_queue_drops: 6 }, previous)).toContain(
+    'player is falling behind',
+  );
+  expect(receptionSummary({ ...previous, concealed: 1 }, previous)).toContain('Audio gaps');
+});
+
+it('carries source B through unlocking and an already mounted recording workspace', async () => {
+  const host = document.createElement('div');
+  bridge.status.value = {
+    bridge_version: 'test',
+    api_token_configured: true,
+    sources: { A: source(1), B: source(2) },
+    transport: {
+      contract_version: 1,
+      mode: 'cleartext',
+      configurable: true,
+      port: 39000,
+      key_ids: [],
+      auth_successes: 0,
+      auth_failures: 0,
+    },
+  };
+  bridge.unreachable.value = false;
+  bridge.access.value = 'locked';
+  bridge.capabilities.value = {
+    enabled: true,
+    format: {
+      bytes_per_second: 192000,
+      bits_per_sample: 16,
+      channels: 2,
+      codec: 'pcm_s16le',
+      container: 'wav',
+      sample_rate: 48000,
+    },
+    limits: {
+      max_duration_seconds: 3600,
+      max_gap_seconds: 30,
+      max_title_chars: 80,
+      min_free_bytes: 1000,
+      queue_chunks: 64,
+    },
+  };
+  bridge.recordings.value = { active: [], saved: [], storage: { free_bytes: 1921000 } };
+  render(<Recordings requestedSource="B" />, host);
+  await act(async () => {
+    bridge.access.value = 'unlocked';
+  });
+  expect(host.querySelector<HTMLSelectElement>('#rec-source')?.value).toBe('B');
+  render(<Recordings requestedSource="A" />, host);
+  await act(async () => {});
+  render(<Recordings requestedSource="B" />, host);
+  await act(async () => {});
+  const start = vi.spyOn(bridge, 'startRecording').mockResolvedValue('done');
+  await act(async () => {
+    host
+      .querySelector('form')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  expect(start).toHaveBeenCalledWith({ source: 'B', title: '' });
+  act(() => {
+    if (bridge.status.value)
+      bridge.status.value = { ...bridge.status.value, sources: { A: source(1) } };
+  });
+  expect(host.textContent).toContain('Selected source unavailable');
+  expect(host.querySelector<HTMLSelectElement>('#rec-source')?.value).toBe('B');
+  start.mockRestore();
+  render(null, host);
 });

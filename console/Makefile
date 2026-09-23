@@ -94,11 +94,12 @@ build: generate
 build-bridge: generate
 	$(CONTAINER_RUN) sh -c 'STREAMLINE_BUILD=bridge npx vite build'
 
-# The vite dev server, published on host port 5173.
+# The Vite dev server can run beside another preview on a separate host port.
+DEV_PORT ?= 5173
 DEV_SERVE := $(CONTAINER) run --rm --user "$(HOST_USER)" -v "$(ROOT_DIR):$(WORKSPACE)" \
 	-v "$(WEBFLASHER_DIR):/webflasher:ro" -e STREAMLINE_WEBFLASHER_DIR=/webflasher \
 	-e HOME=/tmp -e npm_config_cache=/tmp/npm-cache \
-	-e npm_config_update_notifier=false -p 5173:5173 -w $(WORKSPACE)/console
+	-e npm_config_update_notifier=false -p $(DEV_PORT):5173 -w $(WORKSPACE)/console
 
 # Live-reload UI development against a real device:
 # `make dev DEVICE=192.0.2.10` (or set STREAMLINE_DEVICE in the root .env),

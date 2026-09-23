@@ -18,7 +18,7 @@ import { SettingRow } from './SettingRow';
 import { ActionState, TransactButton } from './Transact';
 
 /**
- * The Encryption card on the Connections page. Setup — create, enroll, verify,
+ * The Encrypted audio settings task. Setup — create, enroll, verify,
  * activate — runs in the guided TransportWizard; this card owns the steady
  * state and every exit: credential facts through `Kv`, rollback and
  * retirement, and Recovery nested under Advanced security.

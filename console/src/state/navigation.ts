@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 
-export const CONSOLE_VIEWS = ['audio', 'connections', 'settings'] as const;
+export const CONSOLE_VIEWS = ['audio', 'settings'] as const;
 export type ConsoleView = (typeof CONSOLE_VIEWS)[number];
 
 export const CONSOLE_NAVIGATION: ReadonlyArray<{
@@ -11,14 +11,9 @@ export const CONSOLE_NAVIGATION: ReadonlyArray<{
   {
     view: 'audio',
     label: 'Audio',
-    description: 'Your input, levels, and saved profiles.',
+    description: 'Your source, ready to listen.',
   },
-  {
-    view: 'connections',
-    label: 'Connections',
-    description: 'Connect to Wi-Fi and choose where your audio goes.',
-  },
-  { view: 'settings', label: 'Settings', description: 'Make this device yours.' },
+  { view: 'settings', label: 'Settings', description: 'Connections, device controls, and care.' },
 ];
 
 export function viewFromHash(hash: string): ConsoleView {

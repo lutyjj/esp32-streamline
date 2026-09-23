@@ -187,7 +187,7 @@ trusted LAN; neither is an internet-facing service.
    unlocks every later settings change; lose it and you must reflash.
 5. Join. The device reboots onto your network and advertises its console as
    `http://streamline-xxxx.local/`.
-6. Open the station console, then set the bridge host in **Connections** and
+6. Open the station console, then set the bridge host in **Settings → Connect a player** and
    calibrate from **Audio**. Save a source profile when several players need
    different input levels.
 

@@ -140,7 +140,8 @@ export function AudioProfiles({ draftPending = false }: { draftPending?: boolean
       lead={
         <>
           Active: <b>{active?.name ?? 'Custom settings'}</b>. Profiles save the applied settings.
-          {draftPending && ' Save your input changes before applying or managing profiles.'}
+          {draftPending &&
+            ' Save or discard your input changes before applying or managing profiles.'}
         </>
       }
     >

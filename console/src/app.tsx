@@ -5,7 +5,6 @@ import { PageHeading } from './components/ConsoleNavigation';
 import { ConsoleShell } from './components/ConsoleShell';
 import { InputWizard } from './components/InputWizard';
 import { Masthead } from './components/Masthead';
-import { NetworkTab } from './components/NetworkTab';
 import { Notice } from './components/Notice';
 import { OnboardingOverlay } from './components/OnboardingOverlay';
 import { SystemTab } from './components/SystemTab';
@@ -69,10 +68,8 @@ export function App() {
     switch (selected) {
       case 'audio':
         return <AudioTab onCalibrate={openWizard} onSetupBridge={openBridgeWizard} />;
-      case 'connections':
-        return <NetworkTab onSetupBridge={openBridgeWizard} />;
       case 'settings':
-        return <SystemTab />;
+        return <SystemTab onSetupBridge={openBridgeWizard} />;
     }
   }
 
@@ -122,7 +119,8 @@ export function App() {
         <OnboardingOverlay
           onClose={() => {
             setOnboardingOpen(false);
-            navigateTo('connections');
+            navigateTo('settings');
+            window.location.hash = '#/settings/wifi';
           }}
         />
       )}

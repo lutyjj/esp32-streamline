@@ -1,6 +1,6 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { Button } from '../components/Button';
-import { ConfirmButton } from '../components/ConfirmButton';
+import { DestructiveAction } from '../components/DestructiveAction';
 import { EmptyState } from '../components/EmptyState';
 import { Notice } from '../components/Notice';
 import { LoadFailure } from '../components/ResourceNotice';
@@ -11,11 +11,12 @@ import { formatBytes, formatDuration } from './format';
 import { bridgeBase } from './http';
 import { StateChip } from './StateChip';
 import { bridge } from './state';
-export function Recordings() {
+export function Recordings({ requestedSource = '' }: { requestedSource?: string }) {
   const access = bridge.access.value;
   const capabilities = bridge.capabilities.value;
   if (!capabilities) {
-    if (!bridge.capabilitiesError.value) return null;
+    if (!bridge.capabilitiesError.value)
+      return <EmptyState>Checking recording availability…</EmptyState>;
     return (
       <section class="bridge-group">
         <SectionHead title="Recordings" note="unavailable" />
@@ -42,23 +43,35 @@ export function Recordings() {
           Recordings are locked. Select Locked in the header to unlock, then manage them.
         </EmptyState>
       ) : (
-        <RecordingWorkspace />
+        <RecordingWorkspace requestedSource={requestedSource} />
       )}
     </section>
   );
 }
 
-function RecordingWorkspace() {
+function RecordingWorkspace({ requestedSource }: { requestedSource: string }) {
   const data = bridge.recordings.value;
   const capabilities = bridge.capabilities.value;
   const sources = Object.keys(bridge.status.value?.sources || {}).filter(
     (source) => source !== 'pending',
   );
-  const [source, setSource] = useState(sources[0] || '');
+  const [selection, setSelection] = useState({
+    intent: requestedSource,
+    source: requestedSource || sources[0] || '',
+  });
+  const source =
+    selection.intent === requestedSource ? selection.source : requestedSource || selection.source;
+  const setSource = (source: string) => setSelection({ intent: requestedSource, source });
   const [title, setTitle] = useState('');
   const [starting, setStarting] = useState(false);
-  const [composing, setComposing] = useState(false);
-  const selectedSource = sources.includes(source) ? source : sources[0] || '';
+  const [composing, setComposing] = useState(Boolean(requestedSource));
+  useEffect(() => {
+    if (!requestedSource) return;
+    setSource(requestedSource);
+    setComposing(true);
+  }, [requestedSource]);
+  const selectedSource = source;
+  const sourceAvailable = sources.includes(source) && !bridge.unreachable.value;
   if (!data) {
     if (!bridge.recordingsError.value) return <EmptyState>Loading recordings…</EmptyState>;
     return (
@@ -80,6 +93,7 @@ function RecordingWorkspace() {
       <form
         onSubmit={async (event) => {
           event.preventDefault();
+          if (!sourceAvailable) return;
           setStarting(true);
           try {
             const outcome = await bridge.startRecording({ source: selectedSource, title });
@@ -101,6 +115,9 @@ function RecordingWorkspace() {
               onChange={(event) => setSource(event.currentTarget.value)}
               required
             >
+              {!sources.includes(source) && (
+                <option value={source}>{source || 'Choose a source'} (unavailable)</option>
+              )}
               {sources.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -121,10 +138,19 @@ function RecordingWorkspace() {
           </div>
         </div>
         <SectionActions>
-          <Button kind="primary" type="submit" busy={starting} disabled={!selectedSource}>
+          <Button
+            kind="primary"
+            type="submit"
+            busy={starting}
+            disabled={!sourceAvailable || bridge.recordingAction.value !== null}
+          >
             Start recording
           </Button>
-          <span class="actionstate">{formatBytes(data.storage.free_bytes)} free</span>
+          {!sourceAvailable && (
+            <span class="actionstate">
+              Selected source unavailable. Reconnect it or choose another source.
+            </span>
+          )}
         </SectionActions>
       </form>
     </Section>
@@ -138,6 +164,22 @@ function RecordingWorkspace() {
         </Notice>
       )}
       <div class="recording-capture">
+        <div class="recording-headroom">
+          <strong>{formatBytes(data.storage.free_bytes)} free</strong>
+          {capabilities && (
+            <p>
+              About{' '}
+              {formatDuration(
+                Math.max(0, data.storage.free_bytes - capabilities.limits.min_free_bytes) /
+                  capabilities.format.bytes_per_second /
+                  Math.max(1, data.active.length),
+              )}{' '}
+              of storage for {data.active.length > 1 ? 'these recordings' : 'one recording'}. Each
+              recording stops at {formatDuration(capabilities.limits.max_duration_seconds)} or the
+              storage reserve.
+            </p>
+          )}
+        </div>
         {data.active.length > 0 && <RecordingList title="Recording now" items={data.active} />}
         {data.active.length === 0 || composing ? (
           composer
@@ -175,6 +217,8 @@ function RecordingList({ title, items }: { title: string; items: RecordingSnapsh
 const ACTIVE_STATES: readonly string[] = ['waiting-for-audio', 'recording', 'finalizing'];
 
 function RecordingCard({ item }: { item: RecordingSnapshot }) {
+  const [result, setResult] = useState('');
+  const pending = bridge.recordingAction.value;
   // Every affordance derives from the recording's own state and file, not
   // from which list happened to render it.
   const active = ACTIVE_STATES.includes(item.state);
@@ -193,11 +237,41 @@ function RecordingCard({ item }: { item: RecordingSnapshot }) {
           {item.duplicate_packets > 0 && <span>{item.duplicate_packets} duplicate packets</span>}
         </div>
         {item.error && <div class="meta err">{item.error}</div>}
+        {active && bridge.capabilities.value && (
+          <p class="help">
+            Time remaining:{' '}
+            {formatDuration(
+              Math.max(
+                0,
+                bridge.capabilities.value.limits.max_duration_seconds - item.duration_seconds,
+              ),
+            )}
+          </p>
+        )}
+        {result && <p role="status">{result}</p>}
       </div>
       <div class="actions">
         {stoppable && (
-          <Button kind="primary" onClick={() => void bridge.stopRecording(item.id)}>
-            Stop and save
+          <Button
+            kind="primary"
+            busy={pending?.id === item.id && pending.operation === 'stop'}
+            disabled={pending !== null}
+            onClick={async () => {
+              const outcome = await bridge.stopRecording(item.id);
+              setResult(
+                outcome === 'refresh-failed'
+                  ? 'Stop accepted. The list could not refresh; use Retry above.'
+                  : outcome === 'failed'
+                    ? bridge.error.value
+                    : outcome === 'in-flight'
+                      ? 'Another recording action is running. Try again when it finishes.'
+                      : 'Recording saved.',
+              );
+            }}
+          >
+            {pending?.id === item.id && pending.operation === 'stop'
+              ? 'Saving recording…'
+              : 'Stop and save'}
           </Button>
         )}
         {!active && (
@@ -216,10 +290,21 @@ function RecordingCard({ item }: { item: RecordingSnapshot }) {
                 Download WAV
               </Button>
             )}
-            <ConfirmButton
+            <DestructiveAction
               label="Delete"
-              confirmLabel="Delete"
-              onConfirm={() => void bridge.deleteRecording(item.id)}
+              title={`Delete “${item.title}”?`}
+              message="This permanently deletes the recording and its WAV file. Download a copy first if you want to keep it."
+              disabled={pending !== null}
+              run={async () => {
+                const outcome = await bridge.deleteRecording(item.id);
+                if (outcome === 'failed')
+                  return bridge.error.value || 'Deletion failed. Try again.';
+                if (outcome === 'in-flight')
+                  return 'Another recording action is running. Try again when it finishes.';
+                if (outcome === 'refresh-failed')
+                  setResult('Deleted. The list could not refresh; use Retry above.');
+                return undefined;
+              }}
             />
           </>
         )}

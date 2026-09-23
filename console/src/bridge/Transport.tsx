@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { Button } from '../components/Button';
 import { ConfirmButton } from '../components/ConfirmButton';
+import { DestructiveAction } from '../components/DestructiveAction';
 import { EmptyState } from '../components/EmptyState';
 import { Section, SectionActions } from '../components/Section';
 import { SettingRow } from '../components/SettingRow';
@@ -96,10 +97,15 @@ function TransportWorkspace({
               <div class="transport-key" key={id}>
                 <code>{id}</code>
                 {unlocked && (
-                  <ConfirmButton
+                  <DestructiveAction
                     label="Remove"
-                    confirmLabel="Remove"
-                    onConfirm={() => void bridge.removeTransportKey(id)}
+                    title={`Remove credential ${id}?`}
+                    message="This closes the device's live audio connections. It cannot reconnect with this credential. Enroll a replacement to restore encrypted audio."
+                    run={async () =>
+                      (await bridge.removeTransportKey(id))
+                        ? undefined
+                        : bridge.error.value || 'Removal failed. Try again.'
+                    }
                   />
                 )}
               </div>

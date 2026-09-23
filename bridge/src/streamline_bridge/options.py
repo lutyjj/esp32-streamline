@@ -7,6 +7,7 @@ import ipaddress
 import math
 import os
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from streamline_bridge.transport import DEFAULT_PORT
 
@@ -66,6 +67,14 @@ BRIDGE_OPTIONS = (
     ),
     BridgeOption("http_bind", "--http-bind", str, "0.0.0.0", "HTTP bind address"),
     BridgeOption("http_port", "--http-port", int, 8088, "HTTP listen port", minimum=1, maximum=65535),
+    BridgeOption(
+        "public_url",
+        "--public-url",
+        str,
+        "",
+        "player-accessible HTTP base URL, outside authenticated ingress",
+        addon=True,
+    ),
     BridgeOption(
         "max_http_connections",
         "--max-http-connections",
@@ -206,6 +215,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     """Validate values that argparse and Supervisor cannot express alone."""
+    args.public_url = validate_public_url(args.public_url)
     for option in BRIDGE_OPTIONS:
         if option.name == "source_allow" or option.minimum is None:
             continue
@@ -223,6 +233,33 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     if len(args.source_allow) > args.max_sources:
         raise SystemExit("--max-sources must be at least the number of allowed sources")
     return args
+
+
+def validate_public_url(value: str) -> str:
+    """Accept a bounded credential-free HTTP base address for external players."""
+    if not value:
+        return ""
+    try:
+        url = urlsplit(value)
+        if (
+            len(value) > 2048
+            or any(character.isspace() or ord(character) < 32 for character in value)
+            or "\\" in value
+            or url.scheme not in {"http", "https"}
+            or not url.hostname
+            or url.username is not None
+            or url.password is not None
+            or url.query
+            or url.fragment
+            or (url.port is not None and url.port < 1)
+            or "/api/hassio_ingress/" in url.path
+        ):
+            raise ValueError
+    except ValueError as exc:
+        raise SystemExit(
+            "--public-url must be a player-accessible HTTP(S) base URL without credentials, query, or fragment"
+        ) from exc
+    return value.rstrip("/")
 
 
 def option_value(options: dict[str, object], option: BridgeOption) -> str:

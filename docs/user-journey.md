@@ -2,7 +2,7 @@
 
 StreamLine takes an analog source from a blank board to a network player.
 This document owns the experience contract. The [quick start](../README.md#quick-start)
-owns installation commands; [DESIGN.md](../DESIGN.md) owns visual conventions.
+owns installation commands; [Console design](../console/DESIGN.md) owns visual conventions.
 
 ## Shared promises
 
@@ -26,16 +26,16 @@ owns installation commands; [DESIGN.md](../DESIGN.md) owns visual conventions.
 
 | Console | Workspace | Task |
 |---|---|---|
-| Device | Audio | Observe input, adjust levels, calibrate, and apply profiles |
-| Device | Connections | Set the audio destination, Wi-Fi, and encryption |
-| Device | Settings | Configure identity, hardware, access, updates, and diagnostics |
+| Device | Audio | Check the input and switch saved profiles; open tuning when needed |
+| Device | Settings | Connect a player or Wi-Fi, then manage security, hardware, and maintenance |
 | Bridge | Listen | Observe sources and copy playback addresses |
 | Bridge | Recordings | Capture a source and retrieve saved WAV files |
 | Bridge | Settings | Configure audio security and understand deployment access |
 
-Device settings separate General, Access, Updates, Maintenance, Diagnostics,
-and Developer API. Phones use bottom primary navigation and a settings-category
-selector. Both preserve visited forms.
+Settings is a task index. Each destination opens one focused task with an
+All settings link. URLs identify the task, browser Back retraces navigation,
+and visited forms retain drafts. Phones use the same destinations and bottom
+primary navigation.
 
 ## 1. Install and make first contact
 
@@ -50,30 +50,33 @@ admin key, then submit the network change. Back retains entered values.
 
 The setup address and home-network hostname are different browser origins.
 Remembering a key at one address does not transfer it to another. Before joining,
-the owner confirms the key is saved outside this console. The normal Connections
-setup path keeps the same safeguard.
+the owner confirms the key is saved outside this console. Settings → Wi-Fi keeps the same safeguard.
 
 A transport disconnect during joining is an unconfirmed handoff, not success.
 Reconnect to home Wi-Fi, open the advertised device address, and enter the saved
 key there. Reaching that console verifies the join. Closing onboarding exposes
-the Connections forms without hiding the custody requirement.
+Settings → Wi-Fi without hiding the custody requirement.
 
 ## 2. Connect a bridge and player
 
 Capture and calibration work before a bridge exists. Audio offers Connect bridge
 when no destination is configured. The guide explains Home Assistant, Docker,
-or an existing installation, then saves the target. Connections also provides
+or an existing installation, then saves the target. Settings → Connect a player also provides
 the host and port form; both use the same API.
 
 After saving, the device distinguishes restarting, quiet input, connecting, and
 sending. Only observed transmission supports Sending audio. Open the bridge
 to verify reception, then copy the playback URL from Listen into an HTTP WAV
-player. The console does not play audio. A connected player does not prove its
+player. The guide accepts the owner’s bridge console address and links directly
+to Listen; it never infers an HTTP port from the audio target. An ingress-hosted
+bridge needs its player-accessible public URL configured separately. The console does not play audio. A connected player does not prove its
 speakers are audible.
 
 ## 3. Set input levels
 
-Audio places the meter beside input settings. Changes apply when saved;
+Audio places saved profiles beside the live meter. Adjust input opens a focused
+editor with its own live meter, Save, and Discard changes. Fields remain locked
+while saving. Changes apply when saved;
 the meter describes applied settings while a draft is edited. A clipping warning
 offers calibration. The guide asks the owner to pause the source and play loud
 material. Cancellation restores entry levels and reports restoration failures;
@@ -95,13 +98,15 @@ attempts, and transmission. Resume reverses a pause. External button or API
 changes update fields the user has not edited. The console never guesses which
 physical source a waveform represents.
 
-Settings → General assigns advertised buttons and LEDs. Destructive button
+Settings → Device assigns advertised buttons and LEDs. Destructive button
 assignments carry a warning. A console pause is not a persistent shutdown;
 restarting resumes streaming according to firmware policy.
 
 Bridge Listen shows known sources, levels, connection state, playback addresses,
 and reception details. Recordings separates capture from the file library.
-An unseen source must play once for discovery before selection. Start recording
+Record this audio carries the selected source through unlocking; a missing
+source never silently becomes a different input. Storage headroom stays visible
+during capture. An unseen source must play once for discovery before selection. Start recording
 before the desired passage, observe its state, then stop and save. The active
 session replaces the new-recording form; another recording is an explicit action.
 Finalized files offer download and confirmed deletion. [Recordings](recordings.md)
@@ -112,7 +117,7 @@ directs the owner to an unavailable unlock action.
 
 ## 5. Enable encrypted audio
 
-Connections → Encrypted audio offers Set up encryption or Resume setup. Generate
+Settings → Encrypted audio offers Set up encryption or Resume setup. Generate
 and preserve a credential, enroll it under bridge Settings → Audio security,
 require encryption there, verify from the device, then activate and restart.
 
@@ -132,8 +137,8 @@ Settings → Updates owns scheduling, checks, installation, rollback, and develo
 installs. Updates narrate interruption and recovery. A failed install does not
 claim completion. [OTA](ota.md) owns verification and rollback behavior.
 
-Settings → Diagnostics exposes health, the protected device log, and raw status.
-Settings → Developer API exposes the machine interface. Settings → Maintenance
+Settings → Troubleshooting exposes health, the protected device log, and raw status.
+Settings → Developer API exposes the machine interface. Settings → Restart & reset
 contains restart and confirmed factory reset.
 
 A provisioned device that loses Wi-Fi exposes a recovery form on its setup network,

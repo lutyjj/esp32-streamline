@@ -79,7 +79,7 @@ describe('BridgeWizard', () => {
 
     click(host, 'Continue');
     click(host, 'Continue');
-    expect(host.textContent).toContain('Encrypt the connection?');
+    expect(host.textContent).toContain('Connect your player');
 
     click(host, 'Set up encryption');
 
@@ -101,7 +101,7 @@ describe('BridgeWizard', () => {
     click(host, 'Continue');
     click(host, 'Continue');
 
-    expect(host.textContent).toContain('Encryption is on');
+    expect(host.textContent).toContain('already streams over authenticated TLS 1.3');
     expect(labels(host)).toContain('Done');
     expect(labels(host)).not.toContain('Set up encryption');
   });

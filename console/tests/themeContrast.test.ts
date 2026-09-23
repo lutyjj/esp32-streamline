@@ -14,6 +14,10 @@ function tokens(theme: 'light' | 'dark'): Map<string, string> {
   )) {
     map.set(name, theme === 'light' ? light : dark);
   }
+  for (const [, name, reference] of css.matchAll(/--([\w-]+):\s*var\(--([\w-]+)\)/g)) {
+    const value = map.get(reference);
+    if (value) map.set(name, value);
+  }
   return map;
 }
 const light = tokens('light');

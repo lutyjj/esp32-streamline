@@ -1,3 +1,5 @@
+import { sectionFromHash, useRouteHash } from '../state/route';
+import './system.css';
 import { useState } from 'preact/hooks';
 import { generateAdminKey, isUnlocked, replaceAdminKey, useAuthEpoch } from '../lib/adminKey';
 import {
@@ -32,6 +34,7 @@ import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
 import { LedControls } from './LedControls';
 import { LogCard } from './LogCard';
+import { NetworkTab } from './NetworkTab';
 import { Notice } from './Notice';
 import { ResourceNotice } from './ResourceNotice';
 import { Section, SectionActions } from './Section';
@@ -40,16 +43,38 @@ import { SettingsWorkspace } from './SettingsWorkspace';
 import { ActionState, TransactButton } from './Transact';
 import { UsageBar } from './UsageBar';
 
-export function SystemTab() {
+export function SystemTab({ onSetupBridge }: { onSetupBridge: () => void }) {
+  const route = useRouteHash();
   return (
     <>
       <ResourceNotice of={configResource} />
       <SettingsWorkspace
+        baseHref="#/settings"
+        selected={sectionFromHash(route, 'settings')}
         label="Device settings"
         sections={[
           {
+            id: 'bridge',
+            label: 'Connect a player',
+            description: 'Bridge address and audio destination',
+            content: <NetworkTab section="bridge" onSetupBridge={onSetupBridge} />,
+          },
+          {
+            id: 'wifi',
+            label: 'Wi-Fi',
+            description: 'Home network and connection recovery',
+            content: <NetworkTab section="wifi" onSetupBridge={onSetupBridge} />,
+          },
+          {
+            id: 'security',
+            label: 'Encrypted audio',
+            description: 'Protect the connection to your bridge',
+            content: <NetworkTab section="security" onSetupBridge={onSetupBridge} />,
+          },
+          {
             id: 'identity',
-            label: 'General',
+            label: 'Device',
+            description: 'Name, lights, and physical buttons',
             content: (
               <>
                 <NameCard />
@@ -61,21 +86,25 @@ export function SystemTab() {
           {
             id: 'access',
             label: 'Access',
+            description: 'Your device admin key',
             content: <AccessCard />,
           },
           {
             id: 'firmware',
             label: 'Updates',
+            description: 'Firmware and automatic updates',
             content: <FirmwareCard />,
           },
           {
             id: 'maintenance',
-            label: 'Maintenance',
+            label: 'Restart & reset',
+            description: 'Restart the device or begin setup again',
             content: <ResetCard />,
           },
           {
             id: 'diagnostics',
-            label: 'Diagnostics',
+            label: 'Troubleshooting',
+            description: 'Device health and logs',
             content: (
               <>
                 <DeviceHealthCard />
@@ -87,6 +116,7 @@ export function SystemTab() {
           {
             id: 'api',
             label: 'Developer API',
+            description: 'HTTP endpoints and request examples',
             content: <ApiTab />,
           },
         ]}

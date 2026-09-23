@@ -212,7 +212,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
                 <p>
                   Every packet to the bridge is now authenticated TLS 1.3. No routine action is
                   needed — credential replacement and recovery live under Advanced security in the
-                  Connections page.
+                  Settings → Encrypted audio.
                 </p>
                 <p>
                   Play a track. Check transmission on Audio, then open Listen in the bridge console

@@ -1,3 +1,5 @@
+import './audio.css';
+import { useState } from 'preact/hooks';
 import { setAudio } from '../lib/api';
 import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
@@ -23,6 +25,7 @@ export function AudioTab({
   onCalibrate: () => void;
   onSetupBridge: () => void;
 }) {
+  const [tuning, setTuning] = useState(false);
   const writable = useWritable();
   const transact = useTransact();
   const s = status.value;
@@ -77,7 +80,7 @@ export function AudioTab({
             <h2>{inputLabel}</h2>
             <span>Live input</span>
           </div>
-          <Meter foot />
+          <Meter />
           <AudioDelivery onSetupBridge={onSetupBridge} />
           {lossCalloutVisible.value && (
             <Notice tone="error">
@@ -86,15 +89,16 @@ export function AudioTab({
             </Notice>
           )}
           {clipCalloutVisible.value && (
-            <Notice tone="warn">
-              <strong>Loud passages are clipping.</strong> Adjust the levels or run calibration.
-              <div class="actions">
+            <aside class="clipping-notice" aria-label="Input level warning">
+              <strong>Loud passages are clipping.</strong>
+              <p>Lower the input level or calibrate to prevent distortion.</p>
+              <div class="clipping-actions">
                 <Button disabled={!writable} onClick={onCalibrate}>
                   Calibrate levels
                 </Button>
                 <Button onClick={dismissClipCallout}>Dismiss</Button>
               </div>
-            </Notice>
+            </aside>
           )}
           <Disclosure title="Signal details">
             <Kv
@@ -111,9 +115,35 @@ export function AudioTab({
             />
           </Disclosure>
         </div>
-        <div class="audio-controls">
-          <Section gated title="Adjust input" lead="Changes apply when you save.">
-            <form onSubmit={save}>
+        <div class="audio-profiles">
+          <AudioProfiles
+            draftPending={
+              dirty ||
+              transact.busy ||
+              (audio !== null &&
+                (line.value !== String(audio.input_line) ||
+                  gain.value !== String(audio.input_gain) ||
+                  atten.value !== String(audio.adc_attenuation_db)))
+            }
+          />
+        </div>
+      </div>
+      <div class="audio-tools">
+        <Button onClick={() => setTuning(!tuning)} aria-expanded={tuning}>
+          {tuning ? 'Close input editor' : 'Adjust input'}
+        </Button>
+        <Button disabled={!writable || dirty || transact.busy} onClick={onCalibrate}>
+          Calibrate input
+        </Button>
+        <p>Set levels once. Save a profile for each source you use.</p>
+      </div>
+      <div class="audio-controls" hidden={!tuning}>
+        <Section gated title="Adjust input" lead="Changes apply when you save.">
+          <form onSubmit={save}>
+            <fieldset disabled={!writable || transact.busy}>
+              <div class="tuning-feedback">
+                <Meter foot />
+              </div>
               <div class="formgrid">
                 <div class="field">
                   <label for="input_line">
@@ -177,33 +207,24 @@ export function AudioTab({
                   Save
                 </TransactButton>
                 <ActionState state={transact.state} />
+                <Button
+                  disabled={!dirty || transact.busy}
+                  onClick={() => {
+                    if (!audio) return;
+                    line.set(String(audio.input_line));
+                    gain.set(String(audio.input_gain));
+                    atten.set(String(audio.adc_attenuation_db));
+                  }}
+                >
+                  Discard changes
+                </Button>
               </SectionActions>
-            </form>
-
-            <div class="calibration-entry">
-              <div>
-                <strong>Let StreamLine set the levels</strong>
-                <p>Play a loud passage. The guide measures your source and checks the result.</p>
-              </div>
-              <Button disabled={!writable} onClick={onCalibrate}>
-                Calibrate input
-              </Button>
-            </div>
-          </Section>
-        </div>
+            </fieldset>
+          </form>
+        </Section>
       </div>
       <div class="audio-library">
         {' '}
-        <AudioProfiles
-          draftPending={
-            dirty ||
-            transact.busy ||
-            (audio !== null &&
-              (line.value !== String(audio.input_line) ||
-                gain.value !== String(audio.input_gain) ||
-                atten.value !== String(audio.adc_attenuation_db)))
-          }
-        />{' '}
         {s && (
           <AnalogPassthrough
             capability={caps?.analog_passthrough}

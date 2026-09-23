@@ -80,6 +80,7 @@ def main() -> int:
                 transport,
                 healthy=lambda: pcm_server.healthy,
                 progress_deadline_seconds=args.http_request_timeout_seconds,
+                public_url=args.public_url,
             ),
             host=args.http_bind,
             port=args.http_port,

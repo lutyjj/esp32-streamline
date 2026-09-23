@@ -9,6 +9,7 @@ import {
   noBridge,
   setupMode,
   status,
+  unreachable,
 } from '../state/device';
 import { handoffMessage, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
@@ -19,11 +20,16 @@ import { GuidePrompt } from './GuidePrompt';
 import { KeyReveal } from './KeyReveal';
 import { ResourceNotice } from './ResourceNotice';
 import { Section, SectionActions, SectionStack } from './Section';
-import { SettingsWorkspace } from './SettingsWorkspace';
 import { ActionState, TransactButton } from './Transact';
 import { TransportCard } from './TransportCard';
 
-export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
+export function NetworkTab({
+  onSetupBridge,
+  section = 'bridge',
+}: {
+  onSetupBridge: () => void;
+  section?: 'bridge' | 'wifi' | 'security';
+}) {
   const writable = useWritable();
   const s = status.value;
   const setup = setupMode.value;
@@ -100,11 +106,15 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
         gated
         title="Wi-Fi"
         lead={
-          setup
-            ? 'Not configured yet — join the device to your home network.'
-            : s
-              ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi_dbm} dBm · ${s.wifi.sta_ip}`
-              : '—'
+          unreachable.value
+            ? 'Device unavailable. Connection details are last known; check your network.'
+            : setup
+              ? 'Not configured yet — join the device to your home network.'
+              : s?.wifi.status === 'connected'
+                ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi_dbm} dBm · ${s.wifi.sta_ip}`
+                : s
+                  ? 'Wi-Fi disconnected. Check your router or update the network below.'
+                  : 'Checking Wi-Fi…'
         }
       >
         <div class="formgrid">
@@ -251,13 +261,15 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
         <ActionState state={targetTransact.state} />
         {!setup && !noBridge.value && (
           <Chip tone={moving ? 'good' : connecting ? 'warn' : 'neutral'} dot className="healthchip">
-            {moving
-              ? 'sending audio'
-              : connecting
-                ? 'connecting to bridge…'
-                : s?.stream.enabled
-                  ? 'idle — nothing to send'
-                  : 'streaming paused'}
+            {bridgeConnection.value === 'unavailable'
+              ? 'connection unavailable'
+              : moving
+                ? 'sending audio'
+                : connecting
+                  ? 'connecting to bridge…'
+                  : s?.stream.enabled
+                    ? 'idle — nothing to send'
+                    : 'streaming paused'}
           </Chip>
         )}
       </SectionActions>
@@ -271,31 +283,14 @@ export function NetworkTab({ onSetupBridge }: { onSetupBridge: () => void }) {
           {wifiPanel}
           {bridgePanel}
         </SectionStack>
+      ) : section === 'wifi' ? (
+        wifiPanel
+      ) : section === 'bridge' ? (
+        bridgePanel
+      ) : noBridge.value ? (
+        <p>Set an audio destination before setting up encryption.</p>
       ) : (
-        <SettingsWorkspace
-          label="Connection settings"
-          sections={[
-            {
-              id: 'bridge',
-              label: 'Audio destination',
-              content: bridgePanel,
-            },
-            {
-              id: 'wifi',
-              label: 'Wi-Fi network',
-              content: wifiPanel,
-            },
-            {
-              id: 'security',
-              label: 'Encrypted audio',
-              content: noBridge.value ? (
-                <p>Set an audio destination before setting up encryption.</p>
-              ) : (
-                <TransportCard targetDirty={targetDirty} />
-              ),
-            },
-          ]}
-        />
+        <TransportCard targetDirty={targetDirty} />
       )}
     </>
   );

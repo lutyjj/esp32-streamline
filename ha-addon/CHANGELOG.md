@@ -1,6 +1,13 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.14.0](https://github.com/lutyjj/esp32-streamline/compare/v0.13.0...v0.14.0) (2026-09-23)
+
+
+### Features
+
+* **console:** redesign device and bridge controls around listening ([fa7c6df](https://github.com/lutyjj/esp32-streamline/commit/fa7c6dfac7c4e6c4296685d05aefdfc409c7d1fa))
+
 ## [0.13.0](https://github.com/lutyjj/esp32-streamline/compare/v0.12.0...v0.13.0) (2026-09-20)
 
 

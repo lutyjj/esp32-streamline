@@ -45,6 +45,7 @@ import { UsageBar } from './UsageBar';
 
 export function SystemTab({ onSetupBridge }: { onSetupBridge: () => void }) {
   const route = useRouteHash();
+  const [targetDraftPending, setTargetDraftPending] = useState(false);
   return (
     <>
       <ResourceNotice of={configResource} />
@@ -57,7 +58,13 @@ export function SystemTab({ onSetupBridge }: { onSetupBridge: () => void }) {
             id: 'bridge',
             label: 'Connect a player',
             description: 'Bridge address and audio destination',
-            content: <NetworkTab section="bridge" onSetupBridge={onSetupBridge} />,
+            content: (
+              <NetworkTab
+                section="bridge"
+                onSetupBridge={onSetupBridge}
+                onTargetDraftPending={setTargetDraftPending}
+              />
+            ),
           },
           {
             id: 'wifi',
@@ -69,7 +76,13 @@ export function SystemTab({ onSetupBridge }: { onSetupBridge: () => void }) {
             id: 'security',
             label: 'Encrypted audio',
             description: 'Protect the connection to your bridge',
-            content: <NetworkTab section="security" onSetupBridge={onSetupBridge} />,
+            content: (
+              <NetworkTab
+                section="security"
+                onSetupBridge={onSetupBridge}
+                targetDraftPending={targetDraftPending}
+              />
+            ),
           },
           {
             id: 'identity',

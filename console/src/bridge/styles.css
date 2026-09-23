@@ -26,21 +26,9 @@
 .source-card > .help {
   margin: 0;
 }
-.source-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.source-head h2,
 .recording h3 {
   margin: 0;
   font-size: 14px;
-}
-.source-head h2 {
-  font-size: 16px;
-  font-weight: 650;
-  overflow-wrap: anywhere;
 }
 .meta {
   display: flex;

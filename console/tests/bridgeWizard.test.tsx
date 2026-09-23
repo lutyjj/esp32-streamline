@@ -101,7 +101,7 @@ describe('BridgeWizard', () => {
     click(host, 'Continue');
     click(host, 'Continue');
 
-    expect(host.textContent).toContain('already streams over authenticated TLS 1.3');
+    expect(host.textContent).toContain('Audio to the bridge is encrypted.');
     expect(labels(host)).toContain('Done');
     expect(labels(host)).not.toContain('Set up encryption');
   });

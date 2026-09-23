@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { setTarget, setWifi } from '../lib/api';
 import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
@@ -26,9 +26,13 @@ import { TransportCard } from './TransportCard';
 export function NetworkTab({
   onSetupBridge,
   section = 'bridge',
+  targetDraftPending = false,
+  onTargetDraftPending,
 }: {
   onSetupBridge: () => void;
   section?: 'bridge' | 'wifi' | 'security';
+  targetDraftPending?: boolean;
+  onTargetDraftPending?: (pending: boolean) => void;
 }) {
   const writable = useWritable();
   const s = status.value;
@@ -99,6 +103,10 @@ export function NetworkTab({
       (targetHost.trim() !== c.target_host ||
         (targetPort !== '' && Number(targetPort) !== c.target_port)),
   );
+
+  useEffect(() => {
+    onTargetDraftPending?.(targetDirty || targetTransact.busy);
+  }, [targetDirty, targetTransact.busy, onTargetDraftPending]);
 
   const wifiPanel = (
     <>
@@ -290,7 +298,7 @@ export function NetworkTab({
       ) : noBridge.value ? (
         <p>Set an audio destination before setting up encryption.</p>
       ) : (
-        <TransportCard targetDirty={targetDirty} />
+        <TransportCard targetDirty={targetDirty || targetDraftPending} />
       )}
     </>
   );

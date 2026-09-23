@@ -131,18 +131,20 @@
   padding: 16px;
   margin-bottom: 12px;
   border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
-  border-left: 3px solid var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
 }
 .clipping-notice strong {
-  display: block;
-  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--warn);
   font-size: 14px;
 }
 .clipping-notice p {
   margin: 4px 0 12px;
   font-size: 14px;
-  color: var(--muted);
+  color: var(--warn);
 }
 .clipping-actions {
   display: flex;

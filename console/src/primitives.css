@@ -144,7 +144,7 @@ a {
   background: var(--good);
 }
 .lockchip.locked .dot {
-  background: var(--warn);
+  background: var(--muted);
 }
 .lockchip small {
   display: none;
@@ -224,10 +224,18 @@ a {
   font-size: 13px;
 }
 .notice.warn {
-  border-color: color-mix(in srgb, var(--warn) 35%, var(--line-soft));
-  border-left-color: var(--warn);
-  background: rgba(244, 201, 93, 0.06);
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
   color: var(--warn);
+}
+.warning-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  vertical-align: -3px;
+}
+.notice > .warning-icon {
+  margin-right: 8px;
 }
 .notice.error {
   border-color: color-mix(in srgb, var(--bad) 35%, var(--line-soft));

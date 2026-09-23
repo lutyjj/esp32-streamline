@@ -83,3 +83,22 @@ describe.each([
     expect(contrast(themed(theme, 'focus'), themed(theme, 'surface'))).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe.each([
+  ['light', light],
+  ['dark', darkExplicit],
+])('%s warning palette', (_name, theme) => {
+  it('keeps warning text readable on its panel and standard surfaces', () => {
+    for (const surface of ['warn-bg', 'bg', 'surface', 'surface-2', 'inset']) {
+      expect(
+        contrast(themed(theme, 'warn'), themed(theme, surface)),
+        surface,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+  it('keeps the warning outline distinct from the warning background', () => {
+    expect(contrast(themed(theme, 'warn-line'), themed(theme, 'warn-bg'))).toBeGreaterThanOrEqual(
+      3,
+    );
+  });
+});

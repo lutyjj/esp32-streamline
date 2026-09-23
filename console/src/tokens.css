@@ -18,7 +18,9 @@
   --tab-hover: var(--surface-2);
   --good: light-dark(#176442, #93dab2);
   --bad: light-dark(#ab2535, #ffacb5);
-  --warn: light-dark(#805000, #f5ce84);
+  --warn: light-dark(#854600, #ffca70);
+  --warn-bg: light-dark(#fff3d6, #35270f);
+  --warn-line: light-dark(#b77100, #ba862e);
   --focus: var(--accent);
   --log-text: var(--muted);
   --meter: light-dark(#39724f, #93dab2);

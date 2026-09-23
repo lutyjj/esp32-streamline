@@ -13,7 +13,7 @@ import { Disclosure } from './Disclosure';
 import { FieldFlag } from './FieldFlag';
 import { Kv } from './Kv';
 import { Meter } from './Meter';
-import { Notice } from './Notice';
+import { Notice, WarningIcon } from './Notice';
 import { ResourceNotice } from './ResourceNotice';
 import { Section, SectionActions } from './Section';
 import { ActionState, TransactButton } from './Transact';
@@ -90,7 +90,10 @@ export function AudioTab({
           )}
           {clipCalloutVisible.value && (
             <aside class="clipping-notice" aria-label="Input level warning">
-              <strong>Loud passages are clipping.</strong>
+              <strong>
+                <WarningIcon />
+                Loud passages are clipping.
+              </strong>
               <p>Lower the input level or calibrate to prevent distortion.</p>
               <div class="clipping-actions">
                 <Button disabled={!writable} onClick={onCalibrate}>

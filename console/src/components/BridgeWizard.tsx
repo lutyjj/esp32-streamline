@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { setTarget } from '../lib/api';
+import { consoleAddress } from '../lib/consoleAddress';
 import { useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
 import { bridgeConnection, config } from '../state/device';
@@ -48,11 +49,14 @@ function connectLine(): { text: string; cls: '' | 'ok' } {
   if (rebootWait.value) return { text: 'Saving and restarting — about 10 seconds.', cls: '' };
   switch (bridgeConnection.value) {
     case 'sending':
-      return { text: 'Audio is reaching the bridge. The Bridge tile reads Sending.', cls: 'ok' };
+      return {
+        text: 'The device is sending audio. Check reception in the bridge console.',
+        cls: 'ok',
+      };
     case 'connecting':
       return { text: 'Audio detected — reaching the bridge…', cls: '' };
     case 'idle':
-      return { text: 'Connected. Play a track on your source to start streaming.', cls: '' };
+      return { text: 'Target saved. Play a track to check transmission.', cls: '' };
     default:
       return { text: 'Waiting for the device…', cls: '' };
   }
@@ -61,7 +65,7 @@ function connectLine(): { text: string; cls: '' | 'ok' } {
 /**
  * Bridge hookup wizard: choose where the bridge runs, point the device at it,
  * then optionally continue into the guided encryption setup. It only
- * sequences existing endpoints; the plain form on the Network tab stays as
+ * sequences existing endpoints; the plain form on Settings → Connect a player stays as
  * the escape hatch.
  */
 export function BridgeWizard({ onClose }: { onClose: () => void }) {
@@ -72,6 +76,8 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
   const [host, setHost] = useState(c?.target_host ?? '');
   const [port, setPort] = useState(String(c?.target_port || BRIDGE_PORT));
   const [saved, setSaved] = useState(false);
+  const [consoleUrl, setConsoleUrl] = useState('');
+  const handoffUrl = consoleAddress(consoleUrl);
   const connect = useTransact();
 
   const secure = c?.transport.mode === 'tls-psk';
@@ -128,6 +134,13 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           <p class="wizhint">{choice.setup}</p>
+          <a
+            href="https://github.com/lutyjj/esp32-streamline#2-run-the-bridge"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open bridge installation guide
+          </a>
         </div>
       ),
       primary: { label: 'Continue', onClick: () => setStep('connect') },
@@ -192,29 +205,46 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
       id: 'encrypt',
       body: (
         <div>
-          <h3>{secure ? 'Encryption is on' : 'Encrypt the connection?'}</h3>
-          <div class="body">
-            {secure ? (
-              <p>This device already streams over authenticated TLS 1.3. Nothing else to do.</p>
-            ) : (
-              <>
-                <p>
-                  Streaming works now over plain TCP, which is fine on a home network you trust.
-                </p>
-                <p>
-                  You can also wrap it in TLS 1.3 so each device authenticates with its own key. A
-                  guide walks you through it — have the bridge API token from your bridge
-                  configuration ready. You can come back to it any time from the Network tab.
-                </p>
-              </>
-            )}
-          </div>
+          <h3>Connect your player</h3>
+          <p>
+            Open the bridge, check that this audio is arriving, then copy its stream address into
+            your player.
+          </p>
+          <label class="field">
+            Bridge console address
+            <input
+              type="url"
+              value={consoleUrl}
+              placeholder="http://bridge.local:8088"
+              onInput={(event) => setConsoleUrl(event.currentTarget.value)}
+            />
+          </label>
+          <p class="help">
+            Use the address you open for the bridge, including its HTTP port. In Home Assistant,
+            copy the bridge’s Open web UI address.
+          </p>
+          {consoleUrl && !handoffUrl && (
+            <p class="err">
+              Enter a complete HTTP or HTTPS address without a username or password.
+            </p>
+          )}
+          {handoffUrl && (
+            <a class="btn primary" href={handoffUrl} target="_blank" rel="noreferrer">
+              Open bridge to listen
+            </a>
+          )}
+          <p class="help">
+            {secure
+              ? 'Audio to the bridge is encrypted.'
+              : 'To protect audio between this device and the bridge, set up encryption here or in Settings → Encrypted audio. Have the bridge API token ready.'}
+          </p>
         </div>
       ),
-      secondary: back('connect'),
-      primary: secure
-        ? { label: 'Done', onClick: onClose }
-        : { label: 'Set up encryption', disabled: !writable, onClick: encrypt },
+      secondary: [
+        ...back('connect'),
+        ...(!secure ? [{ label: 'Set up encryption', disabled: !writable, onClick: encrypt }] : []),
+      ],
+      primary: { label: 'Done', onClick: onClose },
     },
   ];
 
@@ -224,7 +254,7 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
       steps={steps}
       current={step}
       onDismiss={onClose}
-      dismissLabel={step === 'encrypt' ? 'Skip' : 'Cancel'}
+      dismissLabel={step === 'encrypt' ? 'Close' : 'Cancel'}
     />
   );
 }

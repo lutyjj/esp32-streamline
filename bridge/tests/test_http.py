@@ -179,6 +179,12 @@ class HttpContractTests(SourceTestCase):
         }
         self.assertEqual(actual_responses, expected_responses)
 
+    def test_public_player_address_is_available_without_console_credentials(self) -> None:
+        client = TestClient(make_app(self.sources, "test", api_token="a" * 16, public_url="http://192.0.2.20:8099"))
+        response = client.get("/status", headers={"X-Ingress-Path": "/api/hassio_ingress/session"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["public_url"], "http://192.0.2.20:8099")
+
     def test_console_routes_inject_ingress_base_and_csp_nonce(self) -> None:
         root = self.client.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/abc-1_2"})
         alias = self.client.get("/recordings")
@@ -190,6 +196,7 @@ class HttpContractTests(SourceTestCase):
         self.assertIn('content=""', spoofed.text)
         csp = root.headers["Content-Security-Policy"]
         self.assertNotIn("unsafe-inline", csp)
+        self.assertIn("font-src data:;", csp)
         nonce = csp.split("script-src 'nonce-", 1)[1].split("'", 1)[0]
         self.assertIn(f'<script nonce="{nonce}"', root.text)
 

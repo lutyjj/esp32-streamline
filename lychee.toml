@@ -1,3 +1,5 @@
 offline = true
 include_fragments = "anchor-only"
 exclude_path = ["dist", "firmware/streamline/target", "node_modules"]
+# Vite resolves this npm package asset; the console build and browser font test verify it.
+exclude = ['^file:///.*/console/src/@fontsource-variable/nunito-sans/files/nunito-sans-latin-wght-normal\.woff2$']

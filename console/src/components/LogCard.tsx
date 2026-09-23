@@ -13,10 +13,10 @@ import {
   previousLog,
 } from '../state/logs';
 import { Button } from './Button';
-import { Card, CardFooter } from './Card';
 import { CopyButton } from './CopyButton';
 import { Disclosure } from './Disclosure';
 import { Notice } from './Notice';
+import { Section, SectionActions } from './Section';
 import { Toggle } from './Toggle';
 
 /**
@@ -42,9 +42,10 @@ export function LogCard() {
   }, [open, following, authorized]);
 
   return (
-    <Card>
+    <Section>
       <Disclosure
-        title="Developer — device log"
+        title="Device log"
+        description="Read what happened during this boot and before the last restart."
         open={open}
         onToggle={(next) => {
           setOpen(next);
@@ -53,7 +54,7 @@ export function LogCard() {
       >
         {authorized ? <LogBody following={following} onFollow={setFollowing} /> : <LockedNotice />}
       </Disclosure>
-    </Card>
+    </Section>
   );
 }
 
@@ -90,7 +91,7 @@ function LogBody({
           empty="The previous boot left no lines."
         />
       )}
-      <CardFooter>
+      <SectionActions>
         <Toggle
           checked={following}
           onChange={onFollow}
@@ -112,7 +113,7 @@ function LogBody({
         <span class="actionstate">
           Same lines at <code>/api/logs</code>
         </span>
-      </CardFooter>
+      </SectionActions>
     </>
   );
 }
@@ -120,7 +121,7 @@ function LogBody({
 function LogLines({ title, view, empty }: { title: string; view: BootLogView; empty: string }) {
   const hidden = hiddenLines(view);
   return (
-    <div class="card-subsection">
+    <div class="section-subsection">
       <h3>{title}</h3>
       <div class="log apidump">
         {hidden > 0 && (

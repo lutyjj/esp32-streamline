@@ -12,6 +12,12 @@
             "title": "Bridge Version",
             "type": "string"
           },
+          "public_url": {
+            "default": "",
+            "description": "Player-accessible HTTP base URL. Empty means no advertised address is configured.",
+            "title": "Public Url",
+            "type": "string"
+          },
           "sources": {
             "additionalProperties": {
               "$ref": "#/components/schemas/SourceSnapshot"

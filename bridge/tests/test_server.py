@@ -111,3 +111,27 @@ class BridgeServerTests(unittest.TestCase):
             configured_server.config.timeout_graceful_shutdown,
             bridge_server.HTTP_GRACEFUL_SHUTDOWN_SECONDS,
         )
+
+
+class PublicUrlTests(unittest.TestCase):
+    def test_advertised_address_is_normalized_without_guessing_ports(self) -> None:
+        from streamline_bridge.options import validate_args
+
+        args = validate_args(parse_args(["--public-url", "http://192.0.2.20:8099/audio/"]))
+        self.assertEqual(args.public_url, "http://192.0.2.20:8099/audio")
+
+    def test_credentials_and_non_http_addresses_are_rejected(self) -> None:
+        from streamline_bridge.options import validate_args
+
+        for value in (
+            "javascript:alert(1)",
+            "https://secret@example.com",
+            "http://example.com?token=secret",
+            "http://example.com/#fragment",
+            "http://example.com:99999",
+            "http://example.com/ bad",
+            "https://home.example/api/hassio_ingress/secret",
+            "http://example.com/" + "a" * 2048,
+        ):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                validate_args(parse_args(["--public-url", value]))

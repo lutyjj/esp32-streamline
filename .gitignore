@@ -35,3 +35,4 @@ webflasher/*.bin
 .claude/
 .uniskill-cache/
 .playwright-mcp/
+.worktrees/

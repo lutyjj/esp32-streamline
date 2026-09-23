@@ -30,21 +30,20 @@ validates immediately.
 
 ## Endpoints
 
-- `http://<home-assistant-host>:8088/streamline.wav` — live WAV stream.
-- `http://<home-assistant-host>:8088/streamline.wav?source=<source-id>` — one
+- `http://<home-assistant-host>:8088/streamline.wav` serves the live WAV stream.
+- `http://<home-assistant-host>:8088/streamline.wav?source=<source-id>` selects one
   IPv4 cleartext source or authenticated key id when several devices feed the
   bridge.
-- `http://<home-assistant-host>:8088/status` — per-source JSON stats.
-- **Open Web UI** (Home Assistant ingress) — the recording console. On the LAN,
+- `http://<home-assistant-host>:8088/status` reports per-source JSON stats.
+- **Open Web UI** opens the bridge console through Home Assistant ingress. On the LAN,
   `http://<home-assistant-host>:8088/` serves the same page.
 
 ## Encrypt a device
 
-1. Generate the one-time bridge credential in the device's **Stream target**
-   card and copy it.
+1. Generate the one-time bridge credential under **Settings → Encrypted audio** in the device console and copy it.
 2. Open **Open Web UI**, unlock with `api_token`, and add the one-time key id
    and PSK under **Device credentials**. Audio keeps streaming.
-3. In the Web UI's **PCM transport** section, switch on encrypted mode.
+3. In the Web UI's **Settings → Audio security** task, switch on encrypted mode.
    Cleartext stops immediately.
 4. Verify and activate encryption from the device console. Audio resumes over
    TLS.
@@ -82,3 +81,10 @@ identity still comes from its authenticated key id.
 
 The [bridge reference](../docs/bridge.md) defines every add-on tuning option,
 its default, and its validation rule.
+
+### Player address
+
+Set `public_url` to the bridge's HTTP address reachable by your players, for
+example `http://192.0.2.20:8088`, then restart the add-on. Use the published HTTP
+port, not the PCM input port or Home Assistant ingress address. Listen uses
+this address for playback links while management stays within ingress.

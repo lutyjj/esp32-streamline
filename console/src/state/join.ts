@@ -1,7 +1,7 @@
 /**
  * First-join commissioning: save Wi-Fi credentials with the generated admin
  * key, unlock this browser, and flag the network handoff. Both the
- * onboarding overlay and the Network tab's setup-mode save go through here,
+ * onboarding overlay and the Connections page's setup-mode save go through here,
  * so the two paths cannot drift.
  *
  * A first join is not a reboot wait: the device leaves for the home network
@@ -24,8 +24,9 @@ export interface JoinRequest {
   rememberKey: boolean;
 }
 
-/** True after a confirmed first join: the setup network is going away. */
+/** A join was submitted; the owner must verify it at the station address. */
 export const handoff = signal(false);
+export const handoffConfirmed = signal(false);
 
 /** Console address on the home network, best known before the switch. */
 export function expectedHostname(): string {
@@ -34,7 +35,7 @@ export function expectedHostname(): string {
 
 /** The one handoff story every surface renders. */
 export function handoffMessage(): string {
-  return `The setup network disappears now — reconnect to your own Wi-Fi, then open http://${expectedHostname()}/.`;
+  return `${handoffConfirmed.value ? 'Settings saved.' : 'The connection ended before the save could be confirmed.'} Reconnect to your own Wi-Fi, then open http://${expectedHostname()}/ to verify. Use your saved admin key at the new address. If it cannot be reached, return to the setup network and retry.`;
 }
 
 /**
@@ -47,10 +48,11 @@ export function handoffMessage(): string {
  * ([`ApiError`]) is a real rejection the caller must show inline. But the same
  * restart tears down the setup AP this browser is on, so the connection can
  * drop *after* a successful save — `fetch` then rejects with a transport error
- * that is not an `ApiError`. That drop is the handoff itself, not a failure:
- * assume the save took and tell the handoff story.
+ * that is not an `ApiError`. Keep that outcome unconfirmed and explain how
+ * to verify the station address or return to setup and retry.
  */
 export async function joinNetwork(req: JoinRequest): Promise<Ack> {
+  handoffConfirmed.value = false;
   let data: Ack;
   try {
     data = await setWifi({
@@ -60,14 +62,15 @@ export async function joinNetwork(req: JoinRequest): Promise<Ack> {
       target_port: Number(req.targetPort ?? status.value?.target?.target_port ?? 39000),
       admin_key: setupKey.value,
     });
+    handoffConfirmed.value = true;
   } catch (err) {
     // A status came back and it was a rejection: nothing was saved, surface it.
     if (err instanceof ApiError) throw err;
-    // No response at all — the device dropped us as it left the setup AP.
+    // A lost response cannot establish whether the device saved the request.
     data = { rebooting: true };
   }
-  // The device reboots onto the home network; keep the key so this browser
-  // can unlock it there.
+  // Browser custody is limited to this origin; the owner carries the saved
+  // key to the station address.
   if (setupKey.value) unlockSettings(setupKey.value, req.rememberKey);
   handoff.value = true;
   return data;

@@ -11,20 +11,23 @@ import {
 } from '../lib/adminKey';
 import { verifyAdminKey } from '../lib/api';
 import { errorMessage } from '../lib/errors';
-import { setupMode, status, unreachable } from '../state/device';
+import { status, unreachable } from '../state/device';
 import { toast } from '../state/toasts';
-import { Chip } from './Chip';
 import { LockChip, type LockState } from './LockChip';
-import { ThemeSwitch } from './ThemeSwitch';
 import { UnlockPanel } from './UnlockPanel';
 
-export function Masthead() {
+export function Masthead({
+  panelOpen,
+  onPanelOpen: setPanelOpen,
+}: {
+  panelOpen: boolean;
+  onPanelOpen: (open: boolean) => void;
+}) {
   useAuthEpoch();
   const s = status.value;
-  const [panelOpen, setPanelOpen] = useState(false);
 
   const chip: { state: LockState; text: string; sub: string } = !s
-    ? { state: 'neutral', text: 'Checking…', sub: '' }
+    ? { state: 'neutral', text: unreachable.value ? 'Unavailable' : 'Checking…', sub: '' }
     : !s.auth_required
       ? { state: 'unlocked', text: 'Setup mode', sub: '· no key yet' }
       : isUnlocked()
@@ -53,24 +56,16 @@ export function Masthead() {
     <>
       <header class="masthead">
         <div>
-          <h1 class="wordmark">
-            Stream<span>Line</span>
-          </h1>
-          {s?.device_name && <div class="devname">{s.device_name}</div>}
-          <div class="chips">
-            <Chip tone={!s ? 'neutral' : unreachable.value ? 'bad' : 'good'} dot>
-              v{s?.firmware_version ?? '—'}
-            </Chip>
-            <Chip>
-              {s ? `${s.audio.sample_rate_hz / 1000} kHz / ${s.audio.bits_per_sample}-bit` : '— Hz'}
-            </Chip>
-            <Chip>
-              {s ? (setupMode.value ? s.wifi.ap_ip : s.wifi.hostname || s.wifi.sta_ip) : '—'}
-            </Chip>
-          </div>
+          <div class="console-identity">{s?.device_name || 'Device console'}</div>
+          <span class="identity-detail">
+            {unreachable.value
+              ? 'Unavailable'
+              : s
+                ? `Firmware ${s.firmware_version}`
+                : 'Connecting…'}
+          </span>
         </div>
         <div class="masthead-actions">
-          <ThemeSwitch />
           <LockChip
             state={chip.state}
             text={chip.text}
@@ -92,8 +87,10 @@ function AdminUnlock({ onDone }: { onDone: () => void }) {
   const [secret, setSecret] = useState(storedAdminKey());
   const [remember, setRemember] = useState(keyRemembered());
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   async function unlock() {
+    setError('');
     setBusy(true);
     try {
       const typed = secret.trim();
@@ -118,7 +115,7 @@ function AdminUnlock({ onDone }: { onDone: () => void }) {
       }
       onDone();
     } catch (error) {
-      toast(errorMessage(error), 'err');
+      setError(errorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -126,11 +123,13 @@ function AdminUnlock({ onDone }: { onDone: () => void }) {
 
   return (
     <UnlockPanel
+      onClose={onDone}
       id="admin-unlock-panel"
       secret={secret}
       onSecret={setSecret}
       onUnlock={unlock}
       busy={busy}
+      error={error}
       placeholder="admin key"
       remember={{ checked: remember, onChange: setRemember }}
       forget={

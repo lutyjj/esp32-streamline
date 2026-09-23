@@ -130,6 +130,9 @@ class TransportSnapshot(ContractModel):
 
 class BridgeStatus(ContractModel):
     bridge_version: str
+    public_url: str = Field(
+        default="", description="Player-accessible HTTP base URL. Empty means no advertised address is configured."
+    )
     api_token_configured: bool
     sources: dict[str, SourceSnapshot]
     transport: TransportSnapshot

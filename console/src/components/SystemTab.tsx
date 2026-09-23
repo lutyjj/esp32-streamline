@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'preact/hooks';
+import { sectionFromHash, useRouteHash } from '../state/route';
+import './system.css';
+import { useState } from 'preact/hooks';
 import { generateAdminKey, isUnlocked, replaceAdminKey, useAuthEpoch } from '../lib/adminKey';
 import {
   factoryReset,
@@ -12,7 +14,7 @@ import {
   setFirmware,
 } from '../lib/api';
 import { bytes, duration } from '../lib/format';
-import { useTransact, useWritable } from '../lib/hooks';
+import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
 import { ApiError } from '../lib/http';
 import { config, configResource, loadConfig, status } from '../state/device';
 import {
@@ -23,33 +25,115 @@ import {
   prettyPhase,
 } from '../state/ota';
 import { beginResetHandoff, resetHandoff, resetHandoffMessage } from '../state/resetHandoff';
+import { ApiTab } from './ApiTab';
 import { Button } from './Button';
 import { ButtonControls } from './ButtonControls';
-import { Card, CardFooter } from './Card';
 import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
 import { KeyReveal } from './KeyReveal';
 import { Kv } from './Kv';
 import { LedControls } from './LedControls';
 import { LogCard } from './LogCard';
+import { NetworkTab } from './NetworkTab';
 import { Notice } from './Notice';
 import { ResourceNotice } from './ResourceNotice';
+import { Section, SectionActions } from './Section';
+import { SettingRow } from './SettingRow';
+import { SettingsWorkspace } from './SettingsWorkspace';
 import { ActionState, TransactButton } from './Transact';
 import { UsageBar } from './UsageBar';
 
-export function SystemTab() {
+export function SystemTab({ onSetupBridge }: { onSetupBridge: () => void }) {
+  const route = useRouteHash();
+  const [targetDraftPending, setTargetDraftPending] = useState(false);
   return (
     <>
       <ResourceNotice of={configResource} />
-      <DeviceHealthCard />
-      <FirmwareCard />
-      <NameCard />
-      <LedCard />
-      <ButtonsCard />
-      <AccessCard />
-      <ResetCard />
-      <LogCard />
-      <RawStatusCard />
+      <SettingsWorkspace
+        baseHref="#/settings"
+        selected={sectionFromHash(route, 'settings')}
+        label="Device settings"
+        sections={[
+          {
+            id: 'bridge',
+            label: 'Connect a player',
+            description: 'Bridge address and audio destination',
+            content: (
+              <NetworkTab
+                section="bridge"
+                onSetupBridge={onSetupBridge}
+                onTargetDraftPending={setTargetDraftPending}
+              />
+            ),
+          },
+          {
+            id: 'wifi',
+            label: 'Wi-Fi',
+            description: 'Home network and connection recovery',
+            content: <NetworkTab section="wifi" onSetupBridge={onSetupBridge} />,
+          },
+          {
+            id: 'security',
+            label: 'Encrypted audio',
+            description: 'Protect the connection to your bridge',
+            content: (
+              <NetworkTab
+                section="security"
+                onSetupBridge={onSetupBridge}
+                targetDraftPending={targetDraftPending}
+              />
+            ),
+          },
+          {
+            id: 'identity',
+            label: 'Device',
+            description: 'Name, lights, and physical buttons',
+            content: (
+              <>
+                <NameCard />
+                <LedCard />
+                <ButtonsCard />
+              </>
+            ),
+          },
+          {
+            id: 'access',
+            label: 'Access',
+            description: 'Your device admin key',
+            content: <AccessCard />,
+          },
+          {
+            id: 'firmware',
+            label: 'Updates',
+            description: 'Firmware and automatic updates',
+            content: <FirmwareCard />,
+          },
+          {
+            id: 'maintenance',
+            label: 'Restart & reset',
+            description: 'Restart the device or begin setup again',
+            content: <ResetCard />,
+          },
+          {
+            id: 'diagnostics',
+            label: 'Troubleshooting',
+            description: 'Device health and logs',
+            content: (
+              <>
+                <DeviceHealthCard />
+                <LogCard />
+                <RawStatusCard />
+              </>
+            ),
+          },
+          {
+            id: 'api',
+            label: 'Developer API',
+            description: 'HTTP endpoints and request examples',
+            content: <ApiTab />,
+          },
+        ]}
+      />
     </>
   );
 }
@@ -99,14 +183,20 @@ function DeviceHealthCard() {
   ];
 
   return (
-    <Card
+    <Section
       title="Device health"
-      lead="Live resource headroom, read straight from the device. A falling memory low-water or a filling NVS is the early warning before something breaks."
+      lead="Memory, saved configuration, and the last restart. Use these readings when investigating a fault."
     >
-      <div class="card-section">
-        <Kv rows={[['Uptime', `${duration(sys.uptime_seconds)} · last boot: ${bootReason}`]]} />
+      <div class="section-body">
+        <Kv
+          rows={[
+            ['Running for', duration(sys.uptime_seconds)],
+            ['Last restart', bootReason],
+            ...details,
+          ]}
+        />
       </div>
-      <div class="card-section usage-stack">
+      <div class="resource-grid">
         <UsageBar
           label="Memory"
           value={heapUsed}
@@ -122,10 +212,7 @@ function DeviceHealthCard() {
           caption={`${nvs.used_entries} of ${nvs.total_entries} config entries used`}
         />
       </div>
-      <Disclosure title="Details">
-        <Kv rows={details} />
-      </Disclosure>
-    </Card>
+    </Section>
   );
 }
 
@@ -136,15 +223,9 @@ function FirmwareCard() {
   const transact = useTransact();
   const settingsTransact = useTransact();
   const customTransact = useTransact();
-  const [autoUpdateSchedule, setAutoUpdateSchedule] =
-    useState<SettingsResponse['auto_update_schedule']>('daily');
+  const schedule = useDeviceField(config.value?.auto_update_schedule ?? null);
   const [url, setUrl] = useState('');
   const [sha256, setSha256] = useState('');
-
-  const c = config.value;
-  useEffect(() => {
-    if (c) setAutoUpdateSchedule(c.auto_update_schedule);
-  }, [c]);
 
   const latest = ota?.latest_version || '';
   const rows: [string, string][] = [
@@ -165,52 +246,12 @@ function FirmwareCard() {
   const installing = OTA_INSTALLING_PHASES.includes(ota?.phase ?? '');
 
   return (
-    <Card
+    <Section
       gated
-      title="Firmware"
-      lead="Choose how often the device checks for a new release. It waits for idle audio, then uses the same verified, rollback-safe flow as a manual update."
+      title="Firmware updates"
+      lead="Check your installed version and update when you are ready. Installation interrupts streaming."
     >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          settingsTransact.run(
-            async () => {
-              const data = await setFirmware({ auto_update_schedule: autoUpdateSchedule });
-              if (config.value) {
-                config.value = { ...config.value, auto_update_schedule: autoUpdateSchedule };
-              }
-              return data;
-            },
-            { busyText: 'Saving…', okText: 'Update preference saved' },
-          );
-        }}
-      >
-        <div class="field field-narrow card-section">
-          <label for="auto_update_schedule">Automatic updates</label>
-          <select
-            id="auto_update_schedule"
-            disabled={!writable}
-            value={autoUpdateSchedule}
-            onChange={(e) =>
-              setAutoUpdateSchedule(
-                e.currentTarget.value as SettingsResponse['auto_update_schedule'],
-              )
-            }
-          >
-            <option value="daily">Daily when idle</option>
-            <option value="weekly">Weekly when idle</option>
-            <option value="disabled">Off</option>
-          </select>
-          <span class="help">The first check waits ten minutes after startup.</span>
-        </div>
-        <CardFooter>
-          <TransactButton transact={settingsTransact} type="submit" disabled={!writable}>
-            Save
-          </TransactButton>
-          <ActionState state={settingsTransact.state} />
-        </CardFooter>
-      </form>
-      <div class="formgrid card-section">
+      <div class="formgrid section-body">
         <Kv rows={rows} />
         <div class="log">
           {otaLog.value.length === 0 && (
@@ -226,7 +267,7 @@ function FirmwareCard() {
           ))}
         </div>
       </div>
-      <CardFooter>
+      <SectionActions>
         <TransactButton
           transact={transact}
           kind="secondary"
@@ -281,9 +322,66 @@ function FirmwareCard() {
           </TransactButton>
         )}
         <ActionState state={transact.state} />
-      </CardFooter>
-      <Disclosure title="Developer — install a custom image" className="disclosure-offset">
-        <div class="card-section">
+      </SectionActions>
+      <div class="update-schedule">
+        <h3>Automatic updates</h3>
+        <p class="help">
+          Check daily or weekly after startup. Installation waits until audio is idle.
+        </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            settingsTransact.run(
+              async () => {
+                const value = schedule.value;
+                if (value !== 'daily' && value !== 'weekly' && value !== 'disabled') {
+                  throw new Error('Choose an automatic update schedule.');
+                }
+                const data = await setFirmware({ auto_update_schedule: value });
+                if (config.value) {
+                  config.value = { ...config.value, auto_update_schedule: value };
+                }
+                schedule.commit();
+                return data;
+              },
+              { busyText: 'Saving…', okText: 'Update preference saved' },
+            );
+          }}
+        >
+          <div class="field field-narrow section-body">
+            <label for="auto_update_schedule">Check frequency</label>
+            <select
+              id="auto_update_schedule"
+              disabled={!writable}
+              value={schedule.value}
+              onChange={(e) =>
+                schedule.set(e.currentTarget.value as SettingsResponse['auto_update_schedule'])
+              }
+            >
+              <option value="daily">Daily when idle</option>
+              <option value="weekly">Weekly when idle</option>
+              <option value="disabled">Off</option>
+            </select>
+            <span class="help">The first check waits ten minutes after startup.</span>
+          </div>
+          <SectionActions>
+            <TransactButton
+              transact={settingsTransact}
+              type="submit"
+              disabled={!writable || !schedule.dirty}
+            >
+              Save
+            </TransactButton>
+            <ActionState state={settingsTransact.state} />
+          </SectionActions>
+        </form>
+      </div>
+      <Disclosure
+        title="Install a custom image"
+        description="Developer installation using an image URL and its SHA-256 digest."
+        className="disclosure-offset"
+      >
+        <div class="section-body">
           <p class="help">
             Images must use the running firmware’s signing key. Switching between development and
             release keys requires a full serial flash. Adding a second signature does not switch
@@ -308,7 +406,7 @@ function FirmwareCard() {
             });
           }}
         >
-          <div class="formgrid card-section">
+          <div class="formgrid section-body">
             <div class="field">
               <label for="ota_url">Image URL</label>
               <input
@@ -334,7 +432,7 @@ function FirmwareCard() {
               />
             </div>
           </div>
-          <CardFooter>
+          <SectionActions>
             <TransactButton
               transact={customTransact}
               kind="secondary"
@@ -344,27 +442,21 @@ function FirmwareCard() {
               Install custom image
             </TransactButton>
             <ActionState state={customTransact.state} />
-          </CardFooter>
+          </SectionActions>
         </form>
       </Disclosure>
-    </Card>
+    </Section>
   );
 }
 
 function NameCard() {
   const writable = useWritable();
   const transact = useTransact();
-  const [name, setName] = useState('');
-
-  // Seed from each settings snapshot, like every other form (initial load
-  // and after expected reboots).
   const c = config.value;
-  useEffect(() => {
-    if (c) setName(c.device_name);
-  }, [c]);
+  const name = useDeviceField(c?.device_name ?? null);
 
   return (
-    <Card
+    <Section
       gated
       title="Device name"
       lead="Shown in the console header and browser tab so you can tell devices apart."
@@ -374,7 +466,7 @@ function NameCard() {
           e.preventDefault();
           transact.run(
             async () => {
-              const ack = await setDeviceName({ name });
+              const ack = await setDeviceName({ name: name.value });
               // The snapshot must carry the accepted name, or a remount
               // reverts the form to the old one.
               await loadConfig();
@@ -397,20 +489,24 @@ function NameCard() {
               maxlength={32}
               placeholder="e.g. Study CD player"
               disabled={!writable}
-              value={name}
-              onInput={(e) => setName(e.currentTarget.value)}
+              value={name.value}
+              onInput={(e) => name.set(e.currentTarget.value)}
             />
-            <span class="help">Leave blank to show only the address.</span>
+            <span class="help">Leave blank to use “Device console”.</span>
           </div>
         </div>
-        <CardFooter>
-          <TransactButton transact={transact} type="submit" disabled={!writable || !c}>
+        <SectionActions>
+          <TransactButton
+            transact={transact}
+            type="submit"
+            disabled={!writable || !c || !name.dirty}
+          >
             Save
           </TransactButton>
           <ActionState state={transact.state} />
-        </CardFooter>
+        </SectionActions>
       </form>
-    </Card>
+    </Section>
   );
 }
 
@@ -439,19 +535,19 @@ function AccessCard() {
   }
 
   return (
-    <Card
+    <Section
       gated
       title="Access"
       lead="One admin key protects every change. Reads are open on your network; unlocking lasts 15 minutes."
     >
       <form onSubmit={save}>
         {!staged && (
-          <CardFooter>
+          <SectionActions>
             <Button disabled={!manageable} onClick={() => setStaged(generateAdminKey())}>
               Replace admin key
             </Button>
             <span class="actionstate">The new key is shown once before it takes effect.</span>
-          </CardFooter>
+          </SectionActions>
         )}
         {staged && (
           <div class="keypanel">
@@ -465,17 +561,17 @@ function AccessCard() {
               onRemember={setRemember}
               copiedToast="New admin key copied"
             />
-            <CardFooter>
+            <SectionActions>
               <TransactButton transact={transact} type="submit" disabled={!manageable}>
                 Save
               </TransactButton>
               <Button onClick={() => setStaged('')}>Cancel</Button>
               <ActionState state={transact.state} />
-            </CardFooter>
+            </SectionActions>
           </div>
         )}
       </form>
-    </Card>
+    </Section>
   );
 }
 
@@ -489,7 +585,7 @@ export function ResetCard() {
   const handoff = resetHandoff.value;
   if (handoff) {
     return (
-      <Card title="Reset">
+      <Section title="Reset">
         <Notice tone="info">
           <strong class="strong">Factory reset done.</strong> {resetHandoffMessage()} Installed
           firmware stays; every setting was erased.
@@ -502,13 +598,20 @@ export function ResetCard() {
             ]}
           />
         )}
-      </Card>
+      </Section>
     );
   }
 
   return (
-    <Card gated title="Reset">
-      <CardFooter compact>
+    <Section
+      gated
+      title="Maintenance"
+      lead="Restart without losing settings, or erase this device for a fresh setup."
+    >
+      <SettingRow
+        title="Restart device"
+        description="Audio stops briefly. Your network, profiles, and other settings stay saved."
+      >
         <TransactButton
           transact={restart}
           kind="secondary"
@@ -522,6 +625,11 @@ export function ResetCard() {
         >
           Restart device
         </TransactButton>
+      </SettingRow>
+      <SettingRow
+        title="Factory reset"
+        description="Erase saved settings and return to the setup network. Installed firmware stays."
+      >
         <ConfirmButton
           label="Factory reset"
           confirmLabel="Erase everything"
@@ -548,23 +656,29 @@ export function ResetCard() {
             )
           }
         />
+      </SettingRow>
+      <SectionActions compact>
+        <ActionState state={restart.state} />
         <ActionState state={factory.state} />
-      </CardFooter>
-    </Card>
+      </SectionActions>
+    </Section>
   );
 }
 
 function RawStatusCard() {
   return (
-    <Card>
-      <Disclosure title="Developer — raw status">
-        <div class="log apidump card-section">{JSON.stringify(status.value, null, 2)}</div>
-        <CardFooter compact>
+    <Section>
+      <Disclosure
+        title="Raw status"
+        description="Inspect the full API response for support or integration debugging."
+      >
+        <div class="log apidump section-body">{JSON.stringify(status.value, null, 2)}</div>
+        <SectionActions compact>
           <span class="actionstate">
             Full JSON at <code>/api/status</code> · Prometheus at <code>/api/metrics</code>
           </span>
-        </CardFooter>
+        </SectionActions>
       </Disclosure>
-    </Card>
+    </Section>
   );
 }

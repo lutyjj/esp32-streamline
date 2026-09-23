@@ -1,15 +1,31 @@
+import './audio.css';
+import { useState } from 'preact/hooks';
 import { setAudio } from '../lib/api';
 import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
+import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import { audioProfilesResource, contractResource, status } from '../state/device';
+import { lossCalloutVisible } from '../state/streamLoss';
 import { AnalogPassthrough } from './AnalogPassthrough';
+import { AudioDelivery } from './AudioDelivery';
 import { AudioProfiles } from './AudioProfiles';
-import { Card, CardFooter } from './Card';
+import { Button } from './Button';
+import { Disclosure } from './Disclosure';
 import { FieldFlag } from './FieldFlag';
-import { GuidePrompt } from './GuidePrompt';
+import { Kv } from './Kv';
+import { Meter } from './Meter';
+import { Notice, WarningIcon } from './Notice';
 import { ResourceNotice } from './ResourceNotice';
+import { Section, SectionActions } from './Section';
 import { ActionState, TransactButton } from './Transact';
 
-export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
+export function AudioTab({
+  onCalibrate,
+  onSetupBridge,
+}: {
+  onCalibrate: () => void;
+  onSetupBridge: () => void;
+}) {
+  const [tuning, setTuning] = useState(false);
   const writable = useWritable();
   const transact = useTransact();
   const s = status.value;
@@ -45,95 +61,173 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
       },
       {
         busyText: 'Saving…',
-        okText: 'Saved — the Overview meter shows the new levels',
+        okText: 'Input settings applied',
         // In setup mode the codec is not running, so the device restarts instead.
         reboots: 'the audio settings',
       },
     );
   }
 
+  const inputLabel =
+    caps?.input_lines.find((input) => input.line === audio?.input_line)?.label ?? 'Audio input';
   return (
     <>
       <ResourceNotice of={audioProfilesResource} />
       <ResourceNotice of={contractResource} />
-      <AudioProfiles />
-      <Card
-        gated
-        title="Input settings"
-        lead="Changes apply instantly and return to Custom settings. The Overview shows the live input level."
-      >
-        <GuidePrompt
-          text="Not sure? The guide measures your source and sets everything for you."
-          action="Guide me"
-          disabled={!writable}
-          onAction={onCalibrate}
-        />
-        <form onSubmit={save}>
-          <div class="formgrid">
-            <div class="field">
-              <label for="input_line">
-                Source line
-                <FieldFlag field={line} />
-              </label>
-              <select
-                id="input_line"
-                disabled={!writable}
-                value={line.value}
-                onChange={(e) => line.set(e.currentTarget.value)}
-              >
-                {(caps?.input_lines ?? []).map((option) => (
-                  <option key={option.line} value={String(option.line)}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div class="field">
-              <label for="input_gain">
-                Input gain
-                <FieldFlag field={gain} />
-              </label>
-              <div class="unit">
-                <input
-                  id="input_gain"
-                  type="number"
-                  min="0"
-                  max={caps?.input_gain_max}
-                  disabled={!writable}
-                  value={gain.value}
-                  onInput={(e) => gain.set(e.currentTarget.value)}
-                />
-                <span class="u">/ {caps?.input_gain_max ?? '—'}</span>
-              </div>
-              <span class="help">Leave at 0 for line-level sources.</span>
-            </div>
-            <div class="field">
-              <label for="adc_atten_db">
-                ADC attenuation
-                <FieldFlag field={atten} />
-              </label>
-              <div class="unit">
-                <input
-                  id="adc_atten_db"
-                  type="number"
-                  min="0"
-                  max={caps?.adc_atten_max_db}
-                  disabled={!writable}
-                  value={atten.value}
-                  onInput={(e) => atten.set(e.currentTarget.value)}
-                />
-                <span class="u">dB</span>
-              </div>
-              <span class="help">Raise until loud passages stop clipping.</span>
-            </div>
+      <div class="audio-workspace">
+        <div class="audio-monitor">
+          <div class="monitor-heading">
+            <h2>{inputLabel}</h2>
+            <span>Live input</span>
           </div>
-          <CardFooter>
-            <TransactButton transact={transact} type="submit" disabled={!writable || !dirty}>
-              Save
-            </TransactButton>
-            <ActionState state={transact.state} />
-          </CardFooter>
-        </form>
+          <Meter />
+          <AudioDelivery onSetupBridge={onSetupBridge} />
+          {lossCalloutVisible.value && (
+            <Notice tone="error">
+              Audio packets are being dropped. Check the Wi-Fi link and bridge; listeners may hear
+              gaps.
+            </Notice>
+          )}
+          {clipCalloutVisible.value && (
+            <aside class="clipping-notice" aria-label="Input level warning">
+              <strong>
+                <WarningIcon />
+                Loud passages are clipping.
+              </strong>
+              <p>Lower the input level or calibrate to prevent distortion.</p>
+              <div class="clipping-actions">
+                <Button disabled={!writable} onClick={onCalibrate}>
+                  Calibrate levels
+                </Button>
+                <Button onClick={dismissClipCallout}>Dismiss</Button>
+              </div>
+            </aside>
+          )}
+          <Disclosure title="Signal details">
+            <Kv
+              rows={
+                s
+                  ? [
+                      ['Packets sent', String(s.metrics.packets_total)],
+                      ['Dropped packets', String(s.metrics.queue_drops_total)],
+                      ['Send errors', String(s.metrics.network_errors_total)],
+                      ['Reconnects', String(s.metrics.reconnects_total)],
+                    ]
+                  : []
+              }
+            />
+          </Disclosure>
+        </div>
+        <div class="audio-profiles">
+          <AudioProfiles
+            draftPending={
+              dirty ||
+              transact.busy ||
+              (audio !== null &&
+                (line.value !== String(audio.input_line) ||
+                  gain.value !== String(audio.input_gain) ||
+                  atten.value !== String(audio.adc_attenuation_db)))
+            }
+          />
+        </div>
+      </div>
+      <div class="audio-tools">
+        <Button onClick={() => setTuning(!tuning)} aria-expanded={tuning}>
+          {tuning ? 'Close input editor' : 'Adjust input'}
+        </Button>
+        <Button disabled={!writable || dirty || transact.busy} onClick={onCalibrate}>
+          Calibrate input
+        </Button>
+        <p>Set levels once. Save a profile for each source you use.</p>
+      </div>
+      <div class="audio-controls" hidden={!tuning}>
+        <Section gated title="Adjust input" lead="Changes apply when you save.">
+          <form onSubmit={save}>
+            <fieldset disabled={!writable || transact.busy}>
+              <div class="tuning-feedback">
+                <Meter foot />
+              </div>
+              <div class="formgrid">
+                <div class="field">
+                  <label for="input_line">
+                    Source line
+                    <FieldFlag field={line} />
+                  </label>
+                  <select
+                    id="input_line"
+                    disabled={!writable}
+                    value={line.value}
+                    onChange={(e) => line.set(e.currentTarget.value)}
+                  >
+                    {(caps?.input_lines ?? []).map((option) => (
+                      <option key={option.line} value={String(option.line)}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="input_gain">
+                    Input gain
+                    <FieldFlag field={gain} />
+                  </label>
+                  <div class="unit">
+                    <input
+                      id="input_gain"
+                      type="number"
+                      min="0"
+                      max={caps?.input_gain_max}
+                      disabled={!writable}
+                      value={gain.value}
+                      onInput={(e) => gain.set(e.currentTarget.value)}
+                    />
+                    <span class="u">/ {caps?.input_gain_max ?? '—'}</span>
+                  </div>
+                  <span class="help">Leave at 0 for line-level sources.</span>
+                </div>
+                <div class="field">
+                  <label for="adc_atten_db">
+                    ADC attenuation
+                    <FieldFlag field={atten} />
+                  </label>
+                  <div class="unit">
+                    <input
+                      id="adc_atten_db"
+                      type="number"
+                      min="0"
+                      max={caps?.adc_atten_max_db}
+                      disabled={!writable}
+                      value={atten.value}
+                      onInput={(e) => atten.set(e.currentTarget.value)}
+                    />
+                    <span class="u">dB</span>
+                  </div>
+                  <span class="help">Raise until loud passages stop clipping.</span>
+                </div>
+              </div>
+              <SectionActions>
+                <TransactButton transact={transact} type="submit" disabled={!writable || !dirty}>
+                  Save
+                </TransactButton>
+                <ActionState state={transact.state} />
+                <Button
+                  disabled={!dirty || transact.busy}
+                  onClick={() => {
+                    if (!audio) return;
+                    line.set(String(audio.input_line));
+                    gain.set(String(audio.input_gain));
+                    atten.set(String(audio.adc_attenuation_db));
+                  }}
+                >
+                  Discard changes
+                </Button>
+              </SectionActions>
+            </fieldset>
+          </form>
+        </Section>
+      </div>
+      <div class="audio-library">
+        {' '}
         {s && (
           <AnalogPassthrough
             capability={caps?.analog_passthrough}
@@ -142,7 +236,7 @@ export function AudioTab({ onCalibrate }: { onCalibrate: () => void }) {
             provisioned={s.mode === 'provisioned'}
           />
         )}
-      </Card>
+      </div>
     </>
   );
 }

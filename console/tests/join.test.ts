@@ -3,7 +3,13 @@ import { forgetAdminKey, isUnlocked } from '../src/lib/adminKey';
 import { setTransport } from '../src/lib/api';
 import { deviceStatus } from '../src/mocks/fixtures';
 import { status } from '../src/state/device';
-import { expectedHostname, handoff, joinNetwork } from '../src/state/join';
+import {
+  expectedHostname,
+  handoff,
+  handoffConfirmed,
+  handoffMessage,
+  joinNetwork,
+} from '../src/state/join';
 import { rebootWait } from '../src/state/rebootWait';
 import { setupKey } from '../src/state/setupKey';
 
@@ -42,6 +48,7 @@ describe('joinNetwork', () => {
     await joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: false });
     expect(isUnlocked()).toBe(true);
     expect(handoff.value).toBe(true);
+    expect(handoffConfirmed.value).toBe(true);
     // The fallback escalation lives in rebootWait; a first join must never
     // arm it, because this browser stays on the vanished setup network.
     expect(rebootWait.value).toBeNull();
@@ -57,7 +64,7 @@ describe('joinNetwork', () => {
     expect(handoff.value).toBe(false);
   });
 
-  it('treats a dropped connection as the handoff, not a failure', async () => {
+  it('preserves access but marks a dropped connection as unconfirmed', async () => {
     // The device flushed its response, then tore down the setup AP as it
     // rebooted — so the fetch rejects with a transport error after the save
     // already succeeded. The join must land on the handoff, not "Not saved".
@@ -68,6 +75,8 @@ describe('joinNetwork', () => {
     await expect(
       joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: true }),
     ).resolves.toEqual({ rebooting: true });
+    expect(handoffConfirmed.value).toBe(false);
+    expect(handoffMessage()).toContain('before the save could be confirmed');
     expect(isUnlocked()).toBe(true);
     expect(handoff.value).toBe(true);
     // Still a first join: never arm the fallback escalation.

@@ -41,7 +41,7 @@ describe('AudioTab live reconcile', () => {
 
   it('follows a device-side change on a clean control within a poll', async () => {
     host = document.createElement('div');
-    render(<AudioTab onCalibrate={() => {}} />, host);
+    render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, host);
     expect(gainInput()?.value).toBe('4');
     expect(host.textContent).not.toContain('Updated');
 
@@ -58,7 +58,7 @@ describe('AudioTab live reconcile', () => {
 
   it('preserves an in-progress edit across a poll and flags it unsaved', async () => {
     host = document.createElement('div');
-    render(<AudioTab onCalibrate={() => {}} />, host);
+    render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, host);
 
     act(() => {
       const input = gainInput();
@@ -79,5 +79,69 @@ describe('AudioTab live reconcile', () => {
     // The user's edit stands; only clean fields follow the device.
     expect(gainInput()?.value).toBe('15');
     expect(host.textContent).toContain('Unsaved');
+  });
+
+  it('locks every input during a save and follows the confirming poll', async () => {
+    host = document.createElement('div');
+    render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, host);
+    let finish: (response: Response) => void = () => {};
+    setTransport((request) =>
+      request.method === 'POST'
+        ? new Promise<Response>((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(
+            jsonResponse(deviceStatus({ auth_required: false, audio: { input_gain: 1 } })),
+          ),
+    );
+    act(() => {
+      const input = gainInput()!;
+      input.value = '1';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      host
+        ?.querySelector('form')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(host.querySelector('fieldset')?.disabled).toBe(true);
+    expect(
+      host.querySelectorAll('.audio-controls fieldset input, .audio-controls fieldset select'),
+    ).toHaveLength(3);
+    await act(async () => {
+      finish(jsonResponse({ ok: true, rebooting: false }));
+    });
+    await act(async () => {
+      await refresh();
+    });
+    expect(gainInput()?.value).toBe('1');
+    expect(host.querySelector('fieldset')?.disabled).toBe(false);
+    expect(host.textContent).not.toContain('Unsaved');
+  });
+
+  it('discards an input draft using the latest applied state without writing', async () => {
+    host = document.createElement('div');
+    render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, host);
+    let writes = 0;
+    setTransport((request) => {
+      if (request.method === 'POST') writes++;
+      return Promise.resolve(jsonResponse({}));
+    });
+    act(() => {
+      const input = gainInput()!;
+      input.value = '12';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    act(() => {
+      status.value = deviceStatus({ auth_required: false, audio: { input_gain: 7 } });
+    });
+    act(() => {
+      [...host!.querySelectorAll('button')]
+        .find((button) => button.textContent === 'Discard changes')
+        ?.click();
+    });
+    expect(gainInput()?.value).toBe('7');
+    expect(host.textContent).not.toContain('Unsaved');
+    expect(writes).toBe(0);
   });
 });

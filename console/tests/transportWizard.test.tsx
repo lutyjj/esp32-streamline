@@ -83,7 +83,7 @@ describe('TransportWizard', () => {
 
     expect(host.textContent).toContain('Add it to your bridge');
     expect(host.textContent).toContain('http://192.0.2.20:8088/');
-    expect(host.textContent).toContain('Encrypt incoming audio');
+    expect(host.textContent).toContain('Require encryption');
     expect(labels(host)).toContain('Verify with bridge');
   });
 

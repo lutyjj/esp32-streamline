@@ -17,7 +17,7 @@ function steps(onNext: () => void, onBack: () => void): FlowStep[] {
 }
 
 describe('FlowDialog', () => {
-  it('renders the current step from data: dots, body, and footer actions', () => {
+  it('renders the current step from data: progress, body, and footer actions', () => {
     const onNext = vi.fn();
     const host = document.createElement('div');
     render(
@@ -31,7 +31,7 @@ describe('FlowDialog', () => {
       host,
     );
 
-    expect(host.querySelectorAll('.stepdots i')).toHaveLength(3);
+    expect(host.querySelectorAll('.step-progress i')).toHaveLength(3);
     expect(host.textContent).toContain('first body');
     const labels = [...host.querySelectorAll('button')].map((b) => b.textContent);
     expect(labels).toEqual(['Leave', 'Next']);

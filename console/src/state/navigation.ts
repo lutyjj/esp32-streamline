@@ -1,19 +1,24 @@
 import { useEffect, useState } from 'preact/hooks';
 
-export const CONSOLE_VIEWS = ['overview', 'audio', 'network', 'system', 'api'] as const;
+export const CONSOLE_VIEWS = ['audio', 'settings'] as const;
 export type ConsoleView = (typeof CONSOLE_VIEWS)[number];
 
-export const CONSOLE_NAVIGATION: ReadonlyArray<{ view: ConsoleView; label: string }> = [
-  { view: 'overview', label: 'Overview' },
-  { view: 'audio', label: 'Audio' },
-  { view: 'network', label: 'Network' },
-  { view: 'system', label: 'System' },
-  { view: 'api', label: 'API' },
+export const CONSOLE_NAVIGATION: ReadonlyArray<{
+  view: ConsoleView;
+  label: string;
+  description: string;
+}> = [
+  {
+    view: 'audio',
+    label: 'Audio',
+    description: 'Your source, ready to listen.',
+  },
+  { view: 'settings', label: 'Settings', description: 'Connections, device controls, and care.' },
 ];
 
 export function viewFromHash(hash: string): ConsoleView {
   const candidate = hash.replace(/^#\/?/, '').split(/[/?]/, 1)[0];
-  return CONSOLE_VIEWS.find((view) => view === candidate) ?? 'overview';
+  return CONSOLE_VIEWS.find((view) => view === candidate) ?? 'audio';
 }
 
 export function viewHref(view: ConsoleView) {

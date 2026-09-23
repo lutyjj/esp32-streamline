@@ -22,8 +22,8 @@ function open(host: HTMLElement, title: string): void {
   act(() => summary?.click());
 }
 
-function toggle(host: HTMLElement): HTMLInputElement | null {
-  return host.querySelector<HTMLInputElement>('input[role="switch"]');
+function action(host: HTMLElement, label: string): HTMLButtonElement | undefined {
+  return [...host.querySelectorAll('button')].find((button) => button.textContent === label);
 }
 
 describe('PCM encryption journey', () => {
@@ -34,30 +34,21 @@ describe('PCM encryption journey', () => {
     setupWizardRequested.value = false;
   });
 
-  it('is its own Encryption card that encourages setup while cleartext', () => {
+  it('names encrypted audio and offers setup while cleartext', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    expect(host.querySelector('.card h2')?.textContent).toBe('Encryption');
-    const notice = host.querySelector('.notice');
-    expect(notice?.textContent).toContain('streams unencrypted');
-    expect(notice?.textContent).toContain('recommended');
+    expect(host.querySelector('.section h2')?.textContent).toBe('Encrypted audio');
+    expect(host.textContent).toContain('Off');
+    expect(host.textContent).toContain('Setup coordinates this device and the bridge');
   });
 
   it('routes the opt-in straight into the guided setup', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    expect(buttonLabels(host)).toEqual([]);
-    expect(summaries(host)).toEqual([]);
-    expect(toggle(host)?.checked).toBe(false);
-
-    const control = toggle(host);
-    act(() => {
-      if (!control) return;
-      control.checked = true;
-      control.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    expect(host.querySelector('[role="switch"]')).toBeNull();
+    act(() => action(host, 'Set up encryption')?.click());
 
     expect(setupWizardRequested.value).toBe(true);
   });
@@ -69,13 +60,14 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    expect(toggle(host)?.checked).toBe(true);
-    expect(host.textContent).toContain('setting up');
+    expect(host.querySelector('[role="switch"]')).toBeNull();
+    expect(host.textContent).toContain('Setup in progress');
+    expect(host.textContent).toContain('audio is paused');
     expect(host.textContent).toContain('Pending credential');
-    expect(buttonLabels(host)).toContain('Resume guided setup');
+    expect(buttonLabels(host)).toContain('Resume setup');
 
     const resume = [...host.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Resume guided setup',
+      (button) => button.textContent === 'Resume setup',
     );
     act(() => resume?.click());
     expect(setupWizardRequested.value).toBe(true);
@@ -115,18 +107,22 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    expect(host.textContent).toContain('encrypted');
-    expect(host.textContent).toContain('No routine action is needed.');
+    expect(host.textContent).toContain('Active');
+    expect(host.textContent).toContain('Check the bridge for audio reception.');
     // The encouragement is only for the cleartext state.
     expect(host.querySelector('.notice')).toBeNull();
-    expect(buttonLabels(host)).toEqual([]);
+    expect(buttonLabels(host)).toEqual(['Disable encryption']);
     expect(summaries(host).map((s) => s.textContent)).toEqual(['Advanced security']);
 
     open(host, 'Advanced security');
 
     expect(host.textContent).toContain('Active credential');
     expect(host.textContent).toContain('Previous credential');
-    expect(buttonLabels(host)).toEqual(['Use previous credential', 'Forget previous credential']);
+    expect(buttonLabels(host)).toEqual([
+      'Disable encryption',
+      'Use previous credential',
+      'Forget previous credential',
+    ]);
     expect(summaries(host).map((s) => s.textContent)).toEqual(['Advanced security', 'Recovery']);
 
     open(host, 'Recovery');
@@ -180,7 +176,7 @@ describe('PCM encryption journey', () => {
     expect(buttonLabels(host)).toContain('Cancel');
   });
 
-  it('opens the leave-encryption path when the owner unchecks the mode', () => {
+  it('opens the leave-encryption path through an explicit action', () => {
     config.value = deviceConfig({
       transport: transportStatus({
         mode: 'tls-psk',
@@ -190,15 +186,8 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard />, host);
 
-    const control = toggle(host);
-    expect(control?.checked).toBe(true);
-    act(() => {
-      if (!control) return;
-      control.checked = false;
-      control.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-
-    expect(toggle(host)?.checked).toBe(true);
+    act(() => action(host, 'Disable encryption')?.click());
+    expect(host.querySelector('[role="switch"]')).toBeNull();
     expect(setupWizardRequested.value).toBe(false);
     expect(buttonLabels(host)).toContain('Disable encryption & restart');
   });
@@ -207,7 +196,7 @@ describe('PCM encryption journey', () => {
     const host = document.createElement('div');
     render(<TransportCard targetDirty />, host);
 
-    expect(toggle(host)?.disabled).toBe(true);
+    expect(action(host, 'Set up encryption')?.disabled).toBe(true);
     expect(host.textContent).toContain('Save the stream target before changing encryption.');
   });
 });

@@ -88,7 +88,9 @@ export class BridgeController {
   readonly capabilitiesError = signal('');
   readonly recordingsError = signal('');
   /** One recording mutation at a time; a second click is ignored in flight. */
-  private actionInFlight = false;
+  readonly recordingAction = signal<{ operation: 'start' | 'stop' | 'delete'; id: string } | null>(
+    null,
+  );
 
   private recordingTimer?: number;
   private statusTimer?: number;
@@ -220,15 +222,15 @@ export class BridgeController {
   }
 
   async startRecording(request: StartRecordingRequest): Promise<MutationOutcome> {
-    return this.runRecordingAction(() => this.api.start(request));
+    return this.runRecordingAction('start', request.source, () => this.api.start(request));
   }
 
   async stopRecording(id: string): Promise<MutationOutcome> {
-    return this.runRecordingAction(() => this.api.stop(id));
+    return this.runRecordingAction('stop', id, () => this.api.stop(id));
   }
 
   async deleteRecording(id: string): Promise<MutationOutcome> {
-    return this.runRecordingAction(() => this.api.delete(id));
+    return this.runRecordingAction('delete', id, () => this.api.delete(id));
   }
 
   async downloadTicket(id: string): Promise<DownloadTicket | undefined> {
@@ -276,21 +278,25 @@ export class BridgeController {
     this.recordingTimer = this.schedule(() => void this.refreshRecordings(), 1000);
   }
 
-  private async runRecordingAction(action: () => Promise<void>): Promise<MutationOutcome> {
-    if (this.actionInFlight) return 'in-flight';
-    this.actionInFlight = true;
+  private async runRecordingAction(
+    operation: 'start' | 'stop' | 'delete',
+    id: string,
+    action: () => Promise<void>,
+  ): Promise<MutationOutcome> {
+    if (this.recordingAction.value) return 'in-flight';
+    this.recordingAction.value = { operation, id };
     try {
-      await action();
-    } catch (error) {
-      this.error.value = message(error);
-      return 'failed';
+      try {
+        await action();
+      } catch (error) {
+        this.error.value = message(error);
+        return 'failed';
+      }
+      this.error.value = '';
+      return (await this.refreshRecordings()) ? 'done' : 'refresh-failed';
     } finally {
-      this.actionInFlight = false;
+      this.recordingAction.value = null;
     }
-    this.error.value = '';
-    // The bridge accepted the mutation; a refresh failure must not be
-    // reported as the mutation failing.
-    return (await this.refreshRecordings()) ? 'done' : 'refresh-failed';
   }
 }
 

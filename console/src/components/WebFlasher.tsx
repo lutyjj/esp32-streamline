@@ -13,7 +13,7 @@ export function WebFlasher() {
         </p>
       </header>
 
-      <section class="card flasher-install" aria-labelledby="install-heading">
+      <section class="section flasher-install" aria-labelledby="install-heading">
         <p class="eyebrow">1. Install</p>
         <h2 id="install-heading">Connect your board</h2>
         <p class="lead">
@@ -35,7 +35,7 @@ export function WebFlasher() {
       </section>
 
       <div class="flasher-grid">
-        <section class="card" aria-labelledby="prepare-heading">
+        <section class="section" aria-labelledby="prepare-heading">
           <p class="eyebrow">Before you start</p>
           <h2 id="prepare-heading">Prepare the connection</h2>
           <ul class="flasher-list">
@@ -45,7 +45,7 @@ export function WebFlasher() {
           </ul>
         </section>
 
-        <section class="card" aria-labelledby="setup-heading">
+        <section class="section" aria-labelledby="setup-heading">
           <p class="eyebrow">2. Set up Wi-Fi</p>
           <h2 id="setup-heading">Continue on the setup network</h2>
           <ol class="flasher-list">
@@ -64,7 +64,7 @@ export function WebFlasher() {
         </section>
       </div>
 
-      <section class="card flasher-cli" aria-labelledby="terminal-heading">
+      <section class="section flasher-cli" aria-labelledby="terminal-heading">
         <div>
           <p class="eyebrow">Alternative</p>
           <h2 id="terminal-heading">Use the terminal</h2>

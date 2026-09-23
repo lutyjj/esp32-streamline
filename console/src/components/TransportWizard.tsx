@@ -147,7 +147,8 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
                 <b>Add the credential</b> — paste the ID and PSK under Device credentials.
               </li>
               <li>
-                <b>Switch on “Encrypt incoming audio”.</b> Audio pauses until this device follows.
+                <b>Choose “Require encryption” in Settings.</b> Audio pauses until this device
+                follows.
               </li>
             </ol>
             <p>Then come back and verify — the device makes a real test connection.</p>
@@ -159,7 +160,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
               label="Changed my mind — discard this credential"
               confirmLabel="Discard it"
               disabled={!writable}
-              message="The staged credential is deleted and the device stays on cleartext. Remove the bridge copy in its console if you already added it."
+              message="The device stays on cleartext. If you switched the bridge to encrypted mode, restore cleartext in its Settings to resume audio. Remove the enrolled bridge credential only if no device uses it."
               onConfirm={discardAndClose}
             />
           </div>
@@ -198,7 +199,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
       id: 'done',
       body: (
         <div>
-          <h3>{settled ? 'Encrypted and streaming' : 'Restarting…'}</h3>
+          <h3>{settled ? 'Encryption configured' : 'Restarting…'}</h3>
           <div class="body">
             {!settled ? (
               <p class="wizard-waiting">
@@ -211,9 +212,12 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
                 <p>
                   Every packet to the bridge is now authenticated TLS 1.3. No routine action is
                   needed — credential replacement and recovery live under Advanced security in the
-                  Network tab.
+                  Settings → Encrypted audio.
                 </p>
-                <p>Play a track: the Bridge tile reads Sending and the bridge shows this device.</p>
+                <p>
+                  Play a track. Check transmission on Audio, then open Listen in the bridge console
+                  to verify reception.
+                </p>
               </>
             )}
           </div>

@@ -1,13 +1,10 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import { errorMessage } from '../lib/errors';
-import { expectedHostname, joinNetwork } from '../state/join';
+import { expectedHostname, handoffConfirmed, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { Button } from './Button';
 import { DialogSheet } from './DialogSheet';
 import { KeyReveal } from './KeyReveal';
-
-/** Seconds the device takes to restart onto the home network. */
-export const ONBOARDING_REBOOT_SECS = 10;
 
 const ONBOARDING_STEPS = ['wifi', 'key', 'joining'] as const;
 type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
@@ -38,7 +35,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
     }
   }
 
-  /** Advance to the joining screen only on the device's confirmation. */
+  /** Explain the network handoff without claiming the station is reachable. */
   async function join() {
     setBusy(true);
     setError('');
@@ -63,6 +60,11 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
       footer={
         <>
           <Button onClick={onClose}>{step === 'joining' ? 'Close' : 'Cancel'}</Button>
+          {step === 'key' && (
+            <Button disabled={busy} onClick={() => setStep('wifi')}>
+              Back
+            </Button>
+          )}
           <div class="sheetfoot-row">
             <output class="actionstate err">{error}</output>
             {step !== 'joining' && (
@@ -114,7 +116,8 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
           <div class="body">
             <p>
               This key unlocks settings later. It is shown <strong class="strong">only once</strong>
-              . Copy it somewhere safe now.
+              . Copy it somewhere safe now. Browser storage only remembers this address. You will
+              need this key again at the device’s home-network address.
             </p>
           </div>
           <KeyReveal secret={setupKey.value} remember={remember} onRemember={setRemember} />
@@ -127,50 +130,40 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
 }
 
 function JoiningStep({ ssid }: { ssid: string }) {
-  const [elapsed, setElapsed] = useState(0);
   const hostname = expectedHostname();
 
-  useEffect(() => {
-    const tick = setInterval(() => {
-      setElapsed((e) => {
-        if (e + 1 >= ONBOARDING_REBOOT_SECS) clearInterval(tick);
-        return e + 1;
-      });
-    }, 1000);
-    return () => clearInterval(tick);
-  }, []);
-
-  const done = elapsed >= ONBOARDING_REBOOT_SECS;
   return (
     <div>
-      <h3>Joining {ssid}…</h3>
+      <h3>{handoffConfirmed.value ? `Joining ${ssid}…` : 'Check the network handoff'}</h3>
+      {!handoffConfirmed.value && (
+        <p class="wznote">
+          The connection ended before the save could be confirmed. Keep your admin key. Try the
+          home-network address, or return to setup and retry.
+        </p>
+      )}
       <div class="body">
         <p>
-          The setup network will disappear — that’s normal. Reconnect to your own Wi-Fi, then find
-          your device at:
+          The setup network may disappear while the device joins. Reconnect to your own Wi-Fi, then
+          find your device at:
         </p>
       </div>
       <div class="bigread">
         <span class="n bigread-address">{`http://${hostname}/`}</span>
       </div>
-      <div class="progress">
-        <i style={{ width: `${Math.min(100, (elapsed / ONBOARDING_REBOOT_SECS) * 100)}%` }} />
-      </div>
       <div class="body">
         <p>
-          {done
-            ? 'Done — reconnect to your own Wi-Fi and open the address above.'
-            : `Restarting — about ${ONBOARDING_REBOOT_SECS - elapsed} s…`}
+          Open that address to verify the connection. If it is unavailable, return to the setup
+          network and retry.
         </p>
       </div>
       <div class="body body-spaced">
         <p>Two steps left once you’re back in the console:</p>
         <ol class="checklist">
           <li>
-            <b>Point StreamLine at your bridge</b> — Network tab, takes a minute
+            <b>Point StreamLine at your bridge</b> — Connections page
           </li>
           <li>
-            <b>Calibrate input levels</b> — Audio tab; have a loud track ready
+            <b>Calibrate input levels</b> — Audio page; have a loud track ready
           </li>
         </ol>
       </div>

@@ -187,7 +187,7 @@ trusted LAN; neither is an internet-facing service.
    unlocks every later settings change; lose it and you must reflash.
 5. Join. The device reboots onto your network and advertises its console as
    `http://streamline-xxxx.local/`.
-6. Open the station console, then set the bridge host in **Network** and
+6. Open the station console, then set the bridge host in **Settings → Connect a player** and
    calibrate from **Audio**. Save a source profile when several players need
    different input levels.
 
@@ -205,7 +205,7 @@ monitoring, scrape `http://<esp32-host>/api/metrics`; JSON diagnostics live at
 ### 4. Update
 
 Daily automatic updates are enabled by default and wait for idle audio. Console
-→ **System** → **Firmware** can switch to weekly, disable them, check immediately,
+→ **Settings** → **Updates** can switch to weekly, disable them, check immediately,
 or install manually. [OTA updates](docs/ota.md) covers the flow, rollback, and
 the one-time serial reflash that pre-OTA devices need.
 

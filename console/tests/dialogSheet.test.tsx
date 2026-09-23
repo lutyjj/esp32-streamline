@@ -25,6 +25,28 @@ function mount(onDismiss = vi.fn()) {
 }
 
 describe('DialogSheet', () => {
+  it('moves focus to the content when the step changes', () => {
+    const { host } = mount();
+    expect(document.activeElement).toBe(host.querySelector('.sheetcontent'));
+    act(() => {
+      render(
+        <DialogSheet
+          label="Level calibration"
+          steps={['measure', 'done']}
+          currentStep="done"
+          onDismiss={() => {}}
+          footer={<button type="button">Close</button>}
+        >
+          <h3>Complete</h3>
+        </DialogSheet>,
+        host,
+      );
+    });
+    expect(document.activeElement).toBe(host.querySelector('.sheetcontent'));
+    expect(document.activeElement?.textContent).toContain('Complete');
+    render(null, host);
+    host.remove();
+  });
   it('owns the shared modal and step semantics as a native dialog', () => {
     const { host } = mount();
     // showModal() carries the modal contract natively: focus trap, inert
@@ -32,7 +54,7 @@ describe('DialogSheet', () => {
     const dialog = host.querySelector('dialog');
     expect(dialog?.open).toBe(true);
     expect(dialog?.getAttribute('aria-label')).toBe('Level calibration');
-    expect(host.querySelector('.sr-only')?.textContent).toContain('Step 2 of 3');
+    expect(host.querySelector('.step-count')?.textContent).toContain('Step 2 of 3');
     host.remove();
   });
 

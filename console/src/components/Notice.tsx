@@ -15,5 +15,28 @@ interface NoticeProps {
  */
 export function Notice({ children, tone = 'info' }: NoticeProps) {
   const toneClass = tone === 'info' ? '' : ` ${tone}`;
-  return <div class={`notice${toneClass}`}>{children}</div>;
+  return (
+    <div class={`notice${toneClass}`}>
+      {tone === 'warn' && <WarningIcon />}
+      {children}
+    </div>
+  );
+}
+
+export function WarningIcon() {
+  return (
+    <svg
+      class="warning-icon"
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M10 2 1.5 17h17L10 2Z" />
+      <path d="M10 7v4m0 3v.1" />
+    </svg>
+  );
 }

@@ -232,8 +232,10 @@ describe('bridge controller', () => {
     const first = controller.startRecording({ source: '192.0.2.10', title: 'A' });
     const second = await controller.startRecording({ source: '192.0.2.10', title: 'A' });
     expect(second).toBe('in-flight');
+    expect(controller.recordingAction.value).toEqual({ operation: 'start', id: '192.0.2.10' });
     release();
     await first;
+    expect(controller.recordingAction.value).toBeNull();
     expect(api.start).toHaveBeenCalledOnce();
   });
 

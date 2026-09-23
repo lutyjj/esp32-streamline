@@ -2,33 +2,26 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// Log narration must stay readable in both themes (issue: the default theme
-// shipped 1.47:1 log text). Body text meets WCAG AA for normal text (4.5:1);
-// de-emphasized and status colors meet the 3:1 non-text/large threshold so
-// they stay distinguishable without competing with the body.
 const BODY_MIN = 4.5;
-const SECONDARY_MIN = 3.0;
+const SECONDARY_MIN = 4.5;
 
-const css = readFileSync(resolve(import.meta.dirname, '../src/styles.css'), 'utf8');
+const css = readFileSync(resolve(import.meta.dirname, '../src/tokens.css'), 'utf8');
 
-function tokens(block: string): Map<string, string> {
+function tokens(theme: 'light' | 'dark'): Map<string, string> {
   const map = new Map<string, string>();
-  for (const [, name, value] of block.matchAll(/--([\w-]+):\s*([^;]+);/g)) {
-    map.set(name, value.trim());
+  for (const [, name, light, dark] of css.matchAll(
+    /--([\w-]+):\s*light-dark\((#[\da-f]+),\s*(#[\da-f]+)\)/g,
+  )) {
+    map.set(name, theme === 'light' ? light : dark);
+  }
+  for (const [, name, reference] of css.matchAll(/--([\w-]+):\s*var\(--([\w-]+)\)/g)) {
+    const value = map.get(reference);
+    if (value) map.set(name, value);
   }
   return map;
 }
-
-function themeBlock(selector: RegExp): string {
-  const match = css.match(selector);
-  if (!match) throw new Error(`theme block not found: ${selector}`);
-  return match[0];
-}
-
-const light = tokens(themeBlock(/:root\s*\{[^}]+\}/));
-const darkExplicit = tokens(themeBlock(/:root\[data-theme="dark"\]\s*\{[^}]+\}/));
-const darkSystem = tokens(themeBlock(/:root:not\(\[data-theme="light"\]\)\s*\{[^}]+\}/));
-
+const light = tokens('light');
+const darkExplicit = tokens('dark');
 // https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
 function luminance(hex: string): number {
   const rgb = hex.replace('#', '');
@@ -53,7 +46,6 @@ function themed(theme: Map<string, string>, name: string): string {
 describe.each([
   ['default', light],
   ['dark', darkExplicit],
-  ['system dark', darkSystem],
 ])('log palette in the %s theme', (_name, theme) => {
   const inset = themed(theme, 'inset');
 
@@ -70,8 +62,43 @@ describe.each([
   });
 });
 
-it('log styles read colors from theme tokens, not raw values', () => {
-  const logBlock = css.match(/\/\* -+ Log -+ \*\/[\s\S]*?\n\n/);
-  if (!logBlock) throw new Error('log style section not found');
-  expect(logBlock[0]).not.toMatch(/color:\s*#/);
+describe.each([
+  ['light', light],
+  ['dark', darkExplicit],
+])('readable %s controls', (_name, theme) => {
+  for (const surface of ['bg', 'surface', 'surface-2', 'inset']) {
+    it(`keeps all text readable on ${surface}`, () => {
+      for (const foreground of ['text', 'muted', 'faint', 'accent']) {
+        expect(
+          contrast(themed(theme, foreground), themed(theme, surface)),
+          foreground,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  }
+  it('keeps primary labels and focus indicators readable', () => {
+    expect(
+      contrast(themed(theme, 'primary-text'), themed(theme, 'primary-bg')),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(themed(theme, 'focus'), themed(theme, 'surface'))).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe.each([
+  ['light', light],
+  ['dark', darkExplicit],
+])('%s warning palette', (_name, theme) => {
+  it('keeps warning text readable on its panel and standard surfaces', () => {
+    for (const surface of ['warn-bg', 'bg', 'surface', 'surface-2', 'inset']) {
+      expect(
+        contrast(themed(theme, 'warn'), themed(theme, surface)),
+        surface,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+  it('keeps the warning outline distinct from the warning background', () => {
+    expect(contrast(themed(theme, 'warn-line'), themed(theme, 'warn-bg'))).toBeGreaterThanOrEqual(
+      3,
+    );
+  });
 });

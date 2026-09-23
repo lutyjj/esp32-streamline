@@ -173,6 +173,7 @@ def make_app(
     transport: TransportControl | None = None,
     healthy: Callable[[], bool] | None = None,
     progress_deadline_seconds: float = DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
+    public_url: str = "",
 ) -> FastAPI:
     """Build the runtime app whose routes and models own the OpenAPI contract."""
     app = BridgeApi(
@@ -238,6 +239,7 @@ def make_app(
             {
                 "bridge_version": bridge_version,
                 "api_token_configured": api_token is not None,
+                "public_url": public_url,
                 "sources": sources.snapshot(),
                 "transport": transport.snapshot(),
             }
@@ -493,7 +495,8 @@ def make_app(
                 "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
                 "Content-Security-Policy": (
                     f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
-                    "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'self'"
+                    "font-src data:; img-src data:; connect-src 'self'; form-action 'self'; "
+                    "base-uri 'none'; frame-ancestors 'self'"
                 ),
             },
         )

@@ -22,7 +22,7 @@ test('first boot: Wi-Fi, admin key, join, provisioned', async ({ page }) => {
   await setup.getByRole('button', { name: 'Close' }).click();
 
   // Provisioned: the handoff story stays visible and this browser is unlocked.
-  await expect(page.getByText('The setup network disappears now')).toBeVisible();
+  await expect(page.getByText(/Settings saved\. Reconnect/)).toBeVisible();
   await expect(page.getByRole('button', { name: /^Unlocked/ })).toBeVisible();
 });
 
@@ -40,6 +40,55 @@ test('a wrong admin key is rejected and settings stay locked', async ({ page }) 
 
 /** The fake device's admin key (`MOCK_ADMIN_KEY` in src/mocks/device.ts). */
 const mockAdminKey = 'a'.repeat(48);
+
+test('audio drafts survive navigation and profiles capture saved settings', async ({ page }) => {
+  await page.goto('/#/audio');
+  await unlock(page);
+  await page.getByRole('button', { name: 'Adjust input', exact: true }).click();
+  await page.getByLabel('Input gain').fill('12');
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('link', { name: 'Audio', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  await expect(page.getByLabel('Input gain')).toHaveValue('12');
+  await page.getByRole('button', { name: 'Manage profiles', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Save current settings as a profile' }),
+  ).toBeDisabled();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Input settings applied')).toBeVisible();
+  await page.getByLabel('Profile name').fill('Turntable');
+  await page.getByRole('button', { name: 'Save current settings as a profile' }).click();
+  await expect(page.getByLabel('Saved profile')).toContainText('Turntable');
+  const catalog = await page.evaluate(async () => (await fetch('/api/audio-profiles')).json());
+  expect(catalog.profiles[0].audio.input_gain).toBe(12);
+});
+
+test('commissioning key custody is explicit across two browser origins', async ({ page }) => {
+  // Deterministic entropy aligns the commissioned key with the steady fake device.
+  await page.addInitScript(() => {
+    crypto.getRandomValues = ((bytes: Uint8Array) =>
+      bytes.fill(0xaa)) as typeof crypto.getRandomValues;
+  });
+  await page.goto('/?scenario=first-boot');
+  const setup = page.getByRole('dialog', { name: 'First-run setup' });
+  await setup.getByLabel('Your Wi-Fi network').fill('home');
+  await setup.getByLabel('Wi-Fi password').fill('correct horse');
+  await setup.getByRole('button', { name: 'Continue' }).click();
+  await expect(setup.getByText(/Browser storage only remembers this address/)).toBeVisible();
+  const savedKey = await setup.locator('.keyblock').innerText();
+  await setup.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(setup.getByLabel('Your Wi-Fi network')).toHaveValue('home');
+  await setup.getByRole('button', { name: 'Continue' }).click();
+  await setup.getByRole('button', { name: 'I saved my key, join network' }).click();
+  await expect(setup.getByRole('heading', { name: 'Joining home…' })).toBeVisible();
+  // localhost and 127.0.0.1 are separate origins; storage must not imply transfer.
+  await page.goto('http://localhost:5173/');
+  await page.getByRole('button', { name: /^Locked/ }).click();
+  await expect(page.getByPlaceholder('admin key')).toHaveValue('');
+  await page.getByPlaceholder('admin key').fill(savedKey);
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Unlocked/ })).toBeVisible();
+});
 
 async function unlock(page: Page): Promise<void> {
   await page.getByRole('button', { name: /^Locked/ }).click();
@@ -87,12 +136,12 @@ test('an out-of-band streaming pause is named and recoverable', async ({ page })
   }, mockAdminKey);
 
   // The next status poll names the state in the tile and the callout.
-  await expect(page.getByText('Streaming is paused.')).toBeVisible();
+  await expect(page.getByText('Streaming is paused. The input meter stays live.')).toBeVisible();
   await expect(page.getByText('Paused', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Resume' }).click();
-  await expect(page.getByText('Streaming is paused.')).toBeHidden();
-  await expect(page.getByText('Streaming', { exact: true })).toBeVisible();
+  await expect(page.getByText('Streaming is paused. The input meter stays live.')).toBeHidden();
+  await expect(page.getByText('Sending audio', { exact: true })).toBeVisible();
 });
 
 // System → Buttons: assigning an action reaches the device — the settings
@@ -103,9 +152,10 @@ test('a button action assignment reaches the device and warns when destructive',
 }) => {
   await page.goto('/');
   await unlock(page);
-  await page.getByRole('link', { name: 'System' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
 
   const key3 = page.getByLabel('Key 3 action');
+  await page.getByRole('link', { name: /Device Name, lights/ }).click();
   await expect(key3).toHaveValue('none');
   await key3.selectOption('factory_reset');
   await expect(page.getByText('one press, no confirmation')).toBeVisible();

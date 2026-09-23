@@ -59,7 +59,9 @@ describe('BridgeWizard', () => {
     click(host, 'Continue');
 
     expect(labels(host)).not.toContain('Save & connect');
-    expect(host.textContent).toContain('Bridge tile reads Sending');
+    expect(host.textContent).toContain(
+      'The device is sending audio. Check reception in the bridge console.',
+    );
   });
 
   it('continues straight into the guided encryption setup', () => {
@@ -77,7 +79,7 @@ describe('BridgeWizard', () => {
 
     click(host, 'Continue');
     click(host, 'Continue');
-    expect(host.textContent).toContain('Encrypt the connection?');
+    expect(host.textContent).toContain('Connect your player');
 
     click(host, 'Set up encryption');
 
@@ -99,7 +101,7 @@ describe('BridgeWizard', () => {
     click(host, 'Continue');
     click(host, 'Continue');
 
-    expect(host.textContent).toContain('Encryption is on');
+    expect(host.textContent).toContain('Audio to the bridge is encrypted.');
     expect(labels(host)).toContain('Done');
     expect(labels(host)).not.toContain('Set up encryption');
   });

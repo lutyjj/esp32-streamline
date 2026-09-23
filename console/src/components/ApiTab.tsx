@@ -7,8 +7,8 @@ import {
   resolveSchema,
 } from '../lib/contract';
 import { errorMessage } from '../lib/errors';
-import { Card } from './Card';
 import { CopyButton } from './CopyButton';
+import { Section } from './Section';
 
 type OperationEntry = {
   method: 'GET' | 'POST';
@@ -27,14 +27,14 @@ export function ApiTab() {
   }, []);
 
   if (failure) {
-    return <Card>Could not load the API contract: {failure}</Card>;
+    return <Section>Could not load the API contract: {failure}</Section>;
   }
-  if (!document) return <Card>Loading the device API contract…</Card>;
+  if (!document) return <Section>Loading the device API contract…</Section>;
 
   const operations = collectOperations(document);
   return (
     <>
-      <Card className="api-intro">
+      <Section className="api-intro">
         <div>
           <h2>{document.info?.title ?? 'Device API'}</h2>
           <p class="lead">
@@ -45,7 +45,7 @@ export function ApiTab() {
         <a class="btn secondary" href="/api/openapi.json" target="_blank" rel="noreferrer">
           Open JSON
         </a>
-      </Card>
+      </Section>
       <div class="api-list">
         {operations.map(({ method, path, operation }) => (
           <OperationCard

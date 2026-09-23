@@ -68,6 +68,7 @@ export const audioProfileLimits = computed<AudioProfileImportLimits | null>(() =
 });
 /** True when polls fail outside an expected reboot window. */
 export const unreachable = signal(false);
+export const statusAt = signal(0);
 /** Counts failed polls so subsystems (OTA) can react to the device vanishing. */
 export const pollFailures = signal(0);
 /** Peak-hold marks for the level meters. */
@@ -89,11 +90,18 @@ export const noBridge = computed(
 /**
  * The bridge link as one word, derived once so the Overview tile and the setup
  * wizard narrate the same state and cannot drift. `sending` means packets moved
- * between the last two polls — the observable proof audio reaches the bridge.
+ * between the last two polls. Reception and playback require separate evidence.
  */
-export type BridgeConnection = 'setup' | 'unset' | 'idle' | 'connecting' | 'sending';
+export type BridgeConnection =
+  | 'setup'
+  | 'unset'
+  | 'idle'
+  | 'connecting'
+  | 'sending'
+  | 'unavailable';
 export const bridgeConnection = computed<BridgeConnection>(() => {
   const s = status.value;
+  if (unreachable.value) return 'unavailable';
   if (!s) return 'unset';
   if (s.mode === 'setup') return 'setup';
   if (!s.target.target_host) return 'unset';
@@ -115,7 +123,9 @@ export async function refresh(): Promise<void> {
     unreachable.value = false;
   } catch {
     pollFailures.value += 1;
-    if (!rebootWaitTick(true) && status.value && !resetHandoff.value) unreachable.value = true;
+    packetsMoving.value = false;
+    lastPackets = -1;
+    if (!rebootWaitTick(true) && !resetHandoff.value) unreachable.value = true;
   } finally {
     refreshing = false;
   }
@@ -123,6 +133,7 @@ export async function refresh(): Promise<void> {
 
 function applyStatus(s: StatusResponse): void {
   const now = Date.now();
+  statusAt.value = now;
   peakHold.value = nextPeakHold(
     peakHold.value,
     s.metrics.peak_abs_left,

@@ -128,12 +128,12 @@ set `api_token` in the add-on configuration.
 
 Open the device console and the bridge console:
 
-1. In the device **Network → Stream target** card, turn on **Encrypt
-   transport** and select **Generate bridge credential**. Copy the one-time
+1. In device **Settings → Encrypted audio**, select **Set up encryption**,
+   then **Generate bridge credential**. Copy the one-time
    key id and PSK. Cleartext keeps streaming.
-2. In the bridge console, unlock with the bridge API token and add that key id
+2. In bridge **Settings → Audio security**, unlock with the API token and add that key id
    and PSK under **Device credentials**. Audio still streams.
-3. In the bridge **PCM transport** section, switch on encrypted mode. The one
+3. Select **Require encryption** and confirm the bridge-wide change. The one
    PCM port now rejects cleartext, so audio pauses until the device follows.
 4. On the device, select **Verify with bridge**. The device performs a real TLS
    handshake on the configured target port and marks the pending credential

@@ -155,7 +155,7 @@ A missing `coredump` partition makes these endpoints return `503`.
 
 ## In the console
 
-The **device log** under **System → Developer** shows both boots, with a **Follow** switch
+The **device log** under **Settings → Troubleshooting** shows both boots, with a **Follow** switch
 that re-reads every few seconds and a copy button. The section needs the
 settings unlock, for the same reason the endpoint needs the key.
 

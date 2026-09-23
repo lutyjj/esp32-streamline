@@ -1,11 +1,46 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setTransport } from '../src/lib/api';
 import { deviceStatus } from '../src/mocks/fixtures';
-import { bridgeConnection, packetsMoving, status } from '../src/state/device';
+import { bridgeConnection, packetsMoving, refresh, status, unreachable } from '../src/state/device';
 
 describe('bridgeConnection', () => {
   beforeEach(() => {
     status.value = null;
     packetsMoving.value = false;
+    unreachable.value = false;
+  });
+  afterEach(() => setTransport((request) => fetch(request)));
+
+  it('reports an unavailable device even when the first poll fails', async () => {
+    setTransport(async () => {
+      throw new TypeError('offline');
+    });
+    await refresh();
+    expect(unreachable.value).toBe(true);
+    expect(bridgeConnection.value).toBe('unavailable');
+  });
+
+  it('clears live transmission evidence on failure and establishes a new baseline after recovery', async () => {
+    let packets = 10;
+    setTransport(
+      async () =>
+        new Response(JSON.stringify(deviceStatus({ metrics: { packets_total: packets++ } }))),
+    );
+    await refresh();
+    await refresh();
+    expect(packetsMoving.value).toBe(true);
+    setTransport(async () => {
+      throw new TypeError('offline');
+    });
+    await refresh();
+    expect(packetsMoving.value).toBe(false);
+    expect(bridgeConnection.value).toBe('unavailable');
+    setTransport(
+      async () => new Response(JSON.stringify(deviceStatus({ metrics: { packets_total: 99 } }))),
+    );
+    await refresh();
+    expect(unreachable.value).toBe(false);
+    expect(packetsMoving.value).toBe(false);
   });
 
   it('reads unset before the first status', () => {

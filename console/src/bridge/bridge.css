@@ -1,0 +1,136 @@
+.source-head h2 span {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  letter-spacing: normal;
+}
+.source-monitor .bridge-meter {
+  margin: 20px 0;
+}
+.listener-status {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 24px;
+}
+.player-handoff h3 {
+  font-size: 19px;
+  margin: 0;
+}
+.player-handoff > p {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 10px 0 24px;
+  max-width: 48ch;
+}
+.player-handoff input {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.player-handoff > .btn {
+  margin-top: 16px;
+  width: 100%;
+}
+.record-link {
+  display: block;
+  width: fit-content;
+  margin-top: 24px;
+  font-size: 13px;
+}
+.recording-workspace {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+.recording-capture {
+  padding: 24px;
+  border-right: 1px solid var(--line-soft);
+  background: var(--inset);
+  border-radius: var(--radius-panel) 0 0 var(--radius-panel);
+}
+.recording-capture .formgrid {
+  grid-template-columns: 1fr;
+}
+.recording-capture > .btn {
+  margin-top: 20px;
+}
+.recording-library {
+  padding: 24px;
+  min-width: 0;
+}
+.recording-workspace > .notice {
+  grid-column: 1 / -1;
+}
+.recording-workspace .recording {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+.recording-workspace .empty {
+  border: 0;
+  padding: 28px 0;
+  text-align: left;
+}
+.recording-workspace .empty p {
+  max-width: 45ch;
+}
+
+@media (max-width: 900px) {
+  .recording-workspace {
+    display: block;
+  }
+  .recording-capture {
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+  }
+}
+.incoming-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 1fr);
+  gap: 24px;
+  padding: 0 0 24px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.source-monitor {
+  min-width: 0;
+}
+.source-head {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.source-head h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.player-handoff {
+  padding-left: 32px;
+  border-left: 1px solid var(--line-soft);
+}
+.source-monitor .track {
+  height: 16px;
+  border: 0;
+  border-radius: 2px;
+}
+.recording-headroom {
+  margin-bottom: 24px;
+}
+.recording-headroom p {
+  color: var(--muted);
+  font-size: 13px;
+}
+@media (max-width: 900px) {
+  .incoming-source {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .player-handoff {
+    padding: 24px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line-soft);
+  }
+}

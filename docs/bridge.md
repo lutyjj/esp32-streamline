@@ -137,3 +137,18 @@ through the add-on's ingress Web UI.
 
 [Lossless recordings](recordings.md) defines the user flow, API, resource
 limits, timeline reconstruction, and storage lifecycle.
+
+## Player address
+
+`--public-url http://192.0.2.20:8088` advertises the HTTP base address that
+external players can reach. Home Assistant exposes the same setting as
+`public_url`. Include the published HTTP port and any reverse-proxy prefix;
+do not include credentials, a query, or a fragment. Restart the bridge after
+changing deployment options.
+
+`GET /status` reports this address as `public_url`. The console keeps its
+management requests on the ingress path, but builds playback links from the
+advertised address. Without an advertised address, a directly opened bridge
+uses its HTTP origin; an ingress console asks for configuration and does not
+copy an authenticated ingress link. The address must expose the WAV route to
+the player without the browser's Home Assistant session.

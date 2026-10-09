@@ -60,7 +60,7 @@ tools:
   - 'firmware/streamline/src/tracing_poc.rs'
   - 'firmware/streamline/src/adapters/tracing_poc.rs'
   - 'bridge/src/streamline_bridge/packet_tracing.py'
-  - 'bridge/src/streamline_bridge/delivery_tracing.py'
+  - 'bridge/src/streamline_bridge/response_tracing.py'
 
 webflasher:
   - *shared

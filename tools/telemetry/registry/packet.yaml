@@ -24,8 +24,8 @@ groups:
     attributes:
       - ref: streamline.packet.sequence
         requirement_level: required
-  - id: span.streamline.bridge.first_pcm
+  - id: span.streamline.bridge.first_pcm_submit
     type: span
     stability: development
-    brief: HTTP response streaming start through the first PCM ASGI write completion; excludes the WAV header and includes silence.
+    brief: HTTP response streaming start through first PCM ASGI send completion; excludes the WAV header, includes silence, and does not prove socket delivery.
     span_kind: internal

@@ -117,7 +117,7 @@ build: image console-asset
 # diff's flash cost has a name before the OTA size gate refuses it. The
 # analysis lives in tools; this target owns building its input.
 size-report: build
-	$(MAKE) -C ../tools size-report
+	$(MAKE) -C ../tools size-report FIRMWARE_BUILD_DIR=/repo/firmware/$(SRC)/target/$(TARGET)/$(PROFILE)
 
 # The QEMU image variant: network over emulated Ethernet, audio skipped. It
 # shares the hardware image's bootloader, partition table, and console asset,

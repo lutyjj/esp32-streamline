@@ -1,13 +1,39 @@
-"""Attribution charges archive owners first, then crates, and keeps a rest."""
+"""Select firmware artifacts and attribute their flash bytes to owners."""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from streamline_tools.size.report import attribute, render
+from streamline_tools.size.report import attribute, discover_archives, discover_elf, render
 from streamline_tools.size.symbols import FlashSymbol
 
 
 def _symbol(name: str, size: int) -> FlashSymbol:
     return FlashSymbol(name, ".flash.text", size)
+
+
+class DiscoveryTest(unittest.TestCase):
+    def test_selected_profile_owns_both_elf_and_archives_with_or_without_release(self) -> None:
+        with TemporaryDirectory() as directory:
+            firmware = Path(directory)
+            selected = firmware / "target/xtensa-esp32-espidf/telemetry"
+            release = firmware / "target/xtensa-esp32-espidf/release"
+            archive = Path("build/esp-idf-sys-fixture/out/build/component/libcomponent.a")
+            for profile in (selected, release):
+                (profile / archive).parent.mkdir(parents=True)
+                (profile / archive).touch()
+                (profile / "streamline-firmware").touch()
+            for with_release in (True, False):
+                with self.subTest(with_release=with_release):
+                    if not with_release:
+                        (release / archive).unlink()
+                        (release / "streamline-firmware").unlink()
+                    self.assertEqual(discover_elf(selected), selected / "streamline-firmware")
+                    self.assertEqual(discover_archives(firmware, selected)[""], [selected / archive])
+            with self.assertRaises(FileNotFoundError):
+                discover_elf(release)
+            with self.assertRaises(FileNotFoundError):
+                discover_archives(firmware, release)
 
 
 class AttributeTest(unittest.TestCase):

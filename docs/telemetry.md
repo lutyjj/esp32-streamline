@@ -6,7 +6,7 @@ its instrumentation and SDK lifecycle. The Collector routes signals to a
 backend or writes standard OTLP files for offline inspection.
 
 The opt-in experiment measures device packet construction through sending,
-bridge buffer residence, and the first HTTP PCM body write. It establishes
+bridge buffer residence, and the first PCM submission to ASGI. It establishes
 SDK feasibility and local timing boundaries. It does not measure analog
 capture latency, one-way network delay, or sound at a speaker.
 
@@ -67,7 +67,7 @@ do not replace counters or histograms.
 |---|---|---|
 | `streamline.device.packet` | PCM or silence packet object construction | Sender batch attempt returns |
 | `streamline.bridge.playout` | Packet admitted to the buffer | Packet removed for playout |
-| `streamline.bridge.first_pcm` | HTTP response streaming begins | First PCM ASGI body write returns |
+| `streamline.bridge.first_pcm_submit` | HTTP response streaming begins | First PCM ASGI body send returns |
 
 The device's `send.begin` event separates queue and batching residence from
 the send attempt. A successful send means the local transport accepted the
@@ -75,10 +75,14 @@ batch; it is not proof of bridge receipt. Failed attempts carry error status
 and include the sender's failure backoff. They must be excluded from
 successful-delivery latency distributions.
 
-The first-PCM span excludes the WAV header and includes silence. A thin
-adapter observes native ASGI writes after completion. The span excludes
-request parsing, downstream playback and speaker delay.
-A disconnect before that boundary ends the span with error status.
+The first-PCM submission span excludes the WAV header and includes silence.
+A thin adapter observes the ASGI send call after it returns. This boundary
+measures application submission, not socket delivery: an ASGI server can
+return without writing when a connection has already closed. Raised write
+errors or cancellation before completion end the span with error status.
+The span excludes request parsing, downstream playback and speaker delay.
+Use a receiving-client observation to prove PCM delivery; this probe cannot
+supply that guarantee.
 
 Both packet probes sample every 257th sequence position. This visits every
 position in the four-packet sender batch. It is a diagnostic sample, not an

@@ -104,8 +104,9 @@ pcap: image
 # blobs, and Rust crates (issue #355), reading the firmware build tree through
 # a read-only /repo mount. `make firmware-size-report` builds the ELF first
 # and forwards here.
+FIRMWARE_BUILD_DIR ?= /repo/firmware/streamline/target/xtensa-esp32-espidf/release
 size-report: image
-	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" $(IMAGE) streamline-size-report
+	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" $(IMAGE) streamline-size-report --build-dir "$(FIRMWARE_BUILD_DIR)"
 
 qemu-image:
 	$(CONTAINER) build -f Dockerfile --target qemu-runner -t $(QEMU_IMAGE) .

@@ -1,4 +1,4 @@
-"""Time the first PCM body accepted by the HTTP response transport."""
+"""Time first PCM submission to ASGI, without claiming socket delivery."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ if TYPE_CHECKING:
     from starlette.types import Message, Send
 
 
-class FirstPcmDelivery:
+class FirstPcmSubmission:
     """One response-body lifetime, excluding the WAV header from completion."""
 
     def __init__(self) -> None:
         self._wall = time.time_ns()
         self._started = time.monotonic_ns()
         self._span: trace.Span | None = trace.get_tracer("streamline.audio").start_span(
-            "streamline.bridge.first_pcm", start_time=self._wall
+            "streamline.bridge.first_pcm_submit", start_time=self._wall
         )
 
     def complete(self) -> None:
@@ -30,15 +30,15 @@ class FirstPcmDelivery:
 
     def close(self) -> None:
         if self._span is not None:
-            self._span.set_status(Status(StatusCode.ERROR, "response ended before first PCM write"))
+            self._span.set_status(Status(StatusCode.ERROR, "response ended before first PCM submission"))
             self.complete()
 
 
 class PcmStreamingResponse(StreamingResponse):
-    """Observe native ASGI writes after the single WAV header body."""
+    """Observe ASGI send completion after the single WAV header body."""
 
     async def stream_response(self, send: Send) -> None:
-        delivery = FirstPcmDelivery()
+        submission = FirstPcmSubmission()
         header_sent = False
 
         async def timed_send(message: Message) -> None:
@@ -46,10 +46,10 @@ class PcmStreamingResponse(StreamingResponse):
             await send(message)
             if message["type"] == "http.response.body" and message.get("body"):
                 if header_sent:
-                    delivery.complete()
+                    submission.complete()
                 header_sent = True
 
         try:
             await super().stream_response(timed_send)
         finally:
-            delivery.close()
+            submission.close()

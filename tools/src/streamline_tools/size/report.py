@@ -1,6 +1,6 @@
 """Aggregate flash bytes by owner and print the size report.
 
-`main` locates the build products under the firmware source tree, charges
+`main` reads the selected Cargo build directory, charges
 every sized flash symbol to an ESP-IDF component, a prebuilt blob, or a Rust
 crate, and prints owners largest-first so a diff's flash cost has a name.
 """
@@ -56,20 +56,20 @@ def attribute(symbols: list[FlashSymbol], owners: dict[str, str]) -> Attribution
     return Attribution(dict(totals), unattributed)
 
 
-def discover_archives(firmware_dir: Path) -> dict[str, list[Path]]:
+def discover_archives(firmware_dir: Path, build_dir: Path) -> dict[str, list[Path]]:
     """Component archives from the ESP-IDF build, blobs from the IDF tree."""
-    built = sorted(firmware_dir.glob("target/*/release/build/esp-idf-sys-*/out/build/**/lib*.a"))
+    built = sorted(build_dir.glob("build/esp-idf-sys-*/out/build/**/lib*.a"))
     blobs = sorted(firmware_dir.glob(".embuild/espressif/esp-idf/*/components/*/lib/esp32/lib*.a"))
     if not built:
-        raise FileNotFoundError(f"no component archives under {firmware_dir}; run: make -C firmware build")
+        raise FileNotFoundError(f"no component archives under {build_dir}; build the selected firmware profile first")
     return {"": built, BLOB_PREFIX: blobs}
 
 
-def discover_elf(firmware_dir: Path) -> Path:
-    candidates = sorted(firmware_dir.glob("target/*/release/streamline-firmware"))
-    if not candidates:
-        raise FileNotFoundError(f"no linked ELF under {firmware_dir}; run: make -C firmware build")
-    return candidates[0]
+def discover_elf(build_dir: Path) -> Path:
+    elf = build_dir / "streamline-firmware"
+    if not elf.is_file():
+        raise FileNotFoundError(f"no linked ELF under {build_dir}; build the selected firmware profile first")
+    return elf
 
 
 def render(attribution: Attribution, symbols: list[FlashSymbol], top: int) -> str:
@@ -92,12 +92,13 @@ def main() -> int:
         "--firmware-dir",
         type=Path,
         default=Path("/repo/firmware/streamline"),
-        help="firmware source tree holding target/ and .embuild/",
+        help="firmware source tree holding .embuild/",
     )
     parser.add_argument("--top", type=int, default=20, help="unattributed symbols to list")
+    parser.add_argument("--build-dir", type=Path, required=True, help="selected Cargo target/profile output directory")
     arguments = parser.parse_args()
-    elf = discover_elf(arguments.firmware_dir)
-    owners = symbol_owners(discover_archives(arguments.firmware_dir))
+    elf = discover_elf(arguments.build_dir)
+    owners = symbol_owners(discover_archives(arguments.firmware_dir, arguments.build_dir))
     symbols = flash_symbols(elf)
     attribution = attribute(symbols, owners)
     print(f"{elf}")

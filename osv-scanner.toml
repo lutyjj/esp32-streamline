@@ -12,3 +12,8 @@
 id = "RUSTSEC-2026-0173"
 ignoreUntil = 2027-01-01T00:00:00Z
 reason = "unmaintained-crate notice, no fix released: proc-macro-error2 is a build-time proc macro pulled through defmt-macros in the ESP-IDF stack; re-check whether defmt dropped it on expiry"
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2026-11-09T00:00:00Z
+reason = "braces 3.0.3 has no patched release; micromatch uses it only in console development tooling with repository-controlled glob patterns, not the shipped console or bridge; re-check upstream on expiry"

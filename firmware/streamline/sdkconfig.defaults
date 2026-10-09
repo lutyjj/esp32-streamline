@@ -1,6 +1,6 @@
 # Retain outgoing audio across delayed acknowledgements. Keep receive buffers
 # smaller so HTTP clients leave RAM for streaming and authenticated writes.
-CONFIG_LWIP_TCP_SND_BUF_DEFAULT=32768
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
 CONFIG_LWIP_TCP_WND_DEFAULT=11520
 
 # Acknowledging each outgoing Wi-Fi frame avoids aggregation stalls that

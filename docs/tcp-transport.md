@@ -45,7 +45,7 @@ source admission.
   can still delay streaming
 - radio: Wi-Fi power save and transmit aggregation off; frames receive
   individual acknowledgements
-- TCP: 32,768-byte send buffers and 11,520-byte receive windows;
+- TCP: 11,520-byte send buffers and receive windows;
   Wi-Fi uses the SDK's default buffer pools
 - capture reads: 20 ms per DMA wait; failures back off for 10 ms
 - DMA: six buffers of 240 stereo frames, or 30 ms at 48 kHz

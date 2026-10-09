@@ -30,6 +30,11 @@ function source(rms: number): SourceSnapshot {
     overflows: 0,
     buffered_packets: 0,
     playout_buffer_packets: 1,
+    applied_buffer_packets: 1,
+    min_playout_buffer_packets: 1,
+    max_playout_buffer_packets: 600,
+    buffer_expansion_packets: 0,
+    buffer_reduction_packets: 0,
     max_buffered_packets: 48,
     max_outage_silence_packets: 1,
     bytes: 1024,
@@ -404,4 +409,30 @@ it('reports a bounded quality window without treating silence as loss', () => {
   current.quality.missing_packets = 0;
   current.quality.disconnects = 1;
   expect(qualitySummary(current)).toBe('Quality target not met');
+});
+
+it('shows the adaptive target separately from the applied buffer and loss', () => {
+  const current = {
+    ...source(100),
+    playout_buffer_packets: 300,
+    applied_buffer_packets: 188,
+    buffer_expansion_packets: 12,
+    buffer_reduction_packets: 4,
+  };
+  const host = document.createElement('div');
+  render(<IncomingSource ip="192.0.2.10" source={current} />, host);
+  act(() =>
+    host.querySelector<HTMLButtonElement>('button[aria-label="Reception details"]')?.click(),
+  );
+  expect(host.textContent).toContain('300 packets (limit 600)');
+  expect(host.textContent).toContain('188 packets');
+  expect(host.textContent).toContain('Applied during quiet input or rebuffering');
+  expect(host.textContent).toContain('Silence intervals added12');
+  expect(host.textContent).toContain('Silence intervals removed4');
+  render(
+    <IncomingSource ip="192.0.2.10" source={{ ...current, applied_buffer_packets: 300 }} />,
+    host,
+  );
+  expect(host.textContent).toContain('Target applied');
+  render(null, host);
 });

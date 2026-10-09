@@ -37,6 +37,7 @@ def main() -> int:
         return AudioPipeline(
             max_client_chunks=args.client_buffer_chunks,
             playout_buffer_seconds=args.playout_buffer_seconds,
+            max_playout_buffer_seconds=args.max_playout_buffer_seconds,
             max_repeat_conceal_packets=args.max_repeat_conceal_packets,
             max_outage_silence_seconds=args.max_outage_silence_seconds,
         )

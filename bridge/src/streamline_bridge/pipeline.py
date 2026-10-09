@@ -23,6 +23,7 @@ class AudioPipeline:
         pcm_format: PcmFormat = DEFAULT_FORMAT,
         clock: Clock | None = None,
         start_worker: bool = True,
+        max_playout_buffer_seconds: float = 3.0,
     ) -> None:
         self.playout = PlayoutBuffer(
             playout_buffer_seconds,
@@ -30,6 +31,7 @@ class AudioPipeline:
             max_outage_silence_seconds,
             pcm_format,
             clock,
+            max_playout_buffer_seconds,
         )
         now = clock.time if clock is not None else None
         self.clients = ClientFanout(max_client_chunks, now=now) if now is not None else ClientFanout(max_client_chunks)

@@ -34,6 +34,7 @@ options:
   http_request_timeout_seconds: 10.0
   client_buffer_chunks: 2048
   playout_buffer_seconds: 1.0
+  max_playout_buffer_seconds: 3.0
   max_repeat_conceal_packets: 3
   max_outage_silence_seconds: 5.0
   source_idle_timeout_seconds: 5.0
@@ -48,6 +49,7 @@ schema:
   http_request_timeout_seconds: "float(0.001,3600.0)"
   client_buffer_chunks: "int(1,4096)"
   playout_buffer_seconds: "float(0.001,60.0)"
+  max_playout_buffer_seconds: "float(0.001,60.0)"
   max_repeat_conceal_packets: "int(0,256)"
   max_outage_silence_seconds: "float(0.001,300.0)"
   source_idle_timeout_seconds: "float(0.001,3600.0)"

@@ -33,7 +33,7 @@ def packet(sequence: int, magic: bytes = MAGIC) -> bytes:
 
 
 def make_pipeline() -> AudioPipeline:
-    return AudioPipeline(4, 0.001, 1, 1.0, start_worker=False)
+    return AudioPipeline(4, 0.001, 1, 1.0, start_worker=False, max_playout_buffer_seconds=0.001)
 
 
 class TcpAdapterTests(unittest.TestCase):

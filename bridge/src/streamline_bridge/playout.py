@@ -8,6 +8,7 @@ import time
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Protocol
 
+from streamline_bridge.adaptive_buffer import AdaptiveBuffer
 from streamline_bridge.protocol import DEFAULT_FORMAT, DEFAULT_RATE, PcmFormat
 from streamline_bridge.quality import QualityWindow
 
@@ -54,6 +55,11 @@ class ReceiverStats:
     overflows: int = 0
     buffered_packets: int = 0
     playout_buffer_packets: int = 0
+    applied_buffer_packets: int = 0
+    min_playout_buffer_packets: int = 0
+    max_playout_buffer_packets: int = 0
+    buffer_expansion_packets: int = 0
+    buffer_reduction_packets: int = 0
     max_buffered_packets: int = 0
     max_outage_silence_packets: int = 0
     bytes: int = 0
@@ -95,13 +101,18 @@ class PlayoutBuffer:
         max_outage_silence_seconds: float,
         pcm_format: PcmFormat = DEFAULT_FORMAT,
         clock: Clock | None = None,
+        max_playout_buffer_seconds: float = 3.0,
     ) -> None:
         self._format = pcm_format
         self._clock = clock or SystemClock()
         self._max_repeat_conceal_packets = max_repeat_conceal_packets
         self._packet_interval = pcm_format.frames_per_packet / pcm_format.rate
-        self._playout_buffer_packets = max(1, round(playout_buffer_seconds / self._packet_interval))
-        self._max_buffered_packets = self._playout_buffer_packets + max(
+        self._adaptive = AdaptiveBuffer(
+            max(1, round(playout_buffer_seconds / self._packet_interval)),
+            max(1, round(max_playout_buffer_seconds / self._packet_interval)),
+            self._packet_interval,
+        )
+        self._max_buffered_packets = self._adaptive.maximum + max(
             1, round(BUFFER_SLACK_SECONDS / self._packet_interval)
         )
         self._max_outage_silence_packets = max(1, round(max_outage_silence_seconds / self._packet_interval))
@@ -114,9 +125,13 @@ class PlayoutBuffer:
         self._loss_run = 0
         self._outage_conceal_packets = 0
         self._quality = QualityWindow()
+        self._arrival_seq: int | None = None
         self.stats = ReceiverStats(
             started_at=self._clock.time(),
-            playout_buffer_packets=self._playout_buffer_packets,
+            playout_buffer_packets=self._adaptive.target,
+            applied_buffer_packets=self._adaptive.target,
+            min_playout_buffer_packets=self._adaptive.minimum,
+            max_playout_buffer_packets=self._adaptive.maximum,
             max_buffered_packets=self._max_buffered_packets,
             max_outage_silence_packets=self._max_outage_silence_packets,
         )
@@ -152,9 +167,14 @@ class PlayoutBuffer:
             self.stats.packet_frames = self._format.frames_per_packet
             self.stats.last_seq = seq
             self.stats.last_packet_at = self._clock.time()
+            advance = None if self._arrival_seq is None else seq_distance(self._arrival_seq, seq)
+            self._adaptive.observe(advance, self._clock.monotonic())
+            if advance is None or advance > 0:
+                self._arrival_seq = seq
             if self.stats.playout_seq is not None and seq_distance(self.stats.playout_seq, seq) < 0:
                 self.stats.late += 1
                 self._quality.record("late_packets", self._clock.monotonic())
+                self._adaptive.impair(self._clock.monotonic())
                 return True
             if seq in self._packets:
                 self.stats.duplicate += 1
@@ -173,9 +193,10 @@ class PlayoutBuffer:
             if self.stats.playout_seq is None:
                 self.stats.playout_seq = seq
             self.stats.buffered_packets = len(self._packets)
-            if len(self._packets) >= self._playout_buffer_packets:
+            if len(self._packets) >= self._adaptive.target:
                 if self.stats.buffer_ready_at is None:
                     self.stats.buffer_ready_at = self._clock.time()
+                    self.stats.applied_buffer_packets = self._adaptive.target
                 self._ready.set()
             return True
 
@@ -189,10 +210,22 @@ class PlayoutBuffer:
             if not self._ready.is_set() or self.stats.playout_seq is None:
                 return bytes(self._last_payload_size)
             seq = self.stats.playout_seq
+            if self._packets.get(seq) == b"":
+                if self.stats.applied_buffer_packets < self._adaptive.target:
+                    self.stats.applied_buffer_packets += 1
+                    self.stats.buffer_expansion_packets += 1
+                    return bytes(self._last_payload_size)
+                following = (seq + 1) & MAX_UINT32
+                if self.stats.applied_buffer_packets > self._adaptive.target and self._packets.get(following) == b"":
+                    del self._packets[seq]
+                    seq = following
+                    self.stats.applied_buffer_packets -= 1
+                    self.stats.buffer_reduction_packets += 1
             payload = self._packets.pop(seq, None)
             if payload is None:
                 self.stats.missing_packets += 1
                 self._quality.record("missing_packets", self._clock.monotonic())
+                self._adaptive.impair(self._clock.monotonic())
                 self._loss_run += 1
                 self._outage_conceal_packets += 1
                 payload = self._conceal_payload()
@@ -228,6 +261,7 @@ class PlayoutBuffer:
         with self._lock:
             self.stats.tcp_disconnects += 1
             self._quality.record("disconnects", self._clock.monotonic())
+            self._adaptive.impair(self._clock.monotonic())
 
     def note_tcp_error(self) -> None:
         with self._lock:
@@ -237,6 +271,7 @@ class PlayoutBuffer:
         with self._lock:
             data = asdict(self.stats)
             data["buffered_packets"] = len(self._packets)
+            data["playout_buffer_packets"] = self._adaptive.target
             data["quality"] = self._quality.snapshot(self._clock.monotonic())
         data["uptime_seconds"] = self._clock.time() - float(data["started_at"])
         return data
@@ -250,6 +285,8 @@ class PlayoutBuffer:
             self._ready.clear()
         self.stats.playout_seq = None
         self.stats.highest_seq = None
+        self._adaptive.reset_arrivals()
+        self._arrival_seq = None
         self.stats.buffer_ready_at = None
         self._loss_run = 0
         self._outage_conceal_packets = 0

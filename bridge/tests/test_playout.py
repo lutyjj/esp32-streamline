@@ -39,6 +39,7 @@ class PlayoutBufferTests(unittest.TestCase):
         interval = DEFAULT_FORMAT.frames_per_packet / DEFAULT_FORMAT.rate
         return PlayoutBuffer(
             playout_buffer_seconds=interval * buffered_packets,
+            max_playout_buffer_seconds=interval * buffered_packets,
             max_repeat_conceal_packets=1,
             max_outage_silence_seconds=interval * outage_packets,
             clock=self.clock,
@@ -174,6 +175,75 @@ class PlayoutBufferTests(unittest.TestCase):
         self.assertIsNone(buffer.next_chunk())
         buffer.wait_until_ready()  # returns instead of blocking forever
 
+    def test_adaptation_protects_pcm_after_learning_a_repeated_tcp_stall_during_silence(self) -> None:
+        interval = DEFAULT_FORMAT.frames_per_packet / DEFAULT_FORMAT.rate
+        adaptive = PlayoutBuffer(interval * 4, 0, 5.0, clock=self.clock, max_playout_buffer_seconds=interval * 80)
+        fixed = self.make_buffer(buffered_packets=4, outage_packets=1000)
+        played: list[bytes] = []
+        pending: list[int] = []
+        before: list[int] = []
+        for tick in range(700):
+            self.clock.current = 100.0 + tick * interval
+            pending.append(tick)
+            if not (100 <= tick < 120 or 300 <= tick < 320):
+                for seq in pending:
+                    data = b"" if seq < 200 else payload(seq)
+                    self.assertTrue(adaptive.ingest(seq, data))
+                    self.assertTrue(fixed.ingest(seq, data))
+                pending.clear()
+            if tick == 250:
+                before = [adaptive.stats.missing_packets, fixed.stats.missing_packets]
+            chunk = adaptive.next_chunk()
+            fixed.next_chunk()
+            if chunk and any(chunk):
+                played.append(chunk)
+        self.assertEqual(adaptive.stats.missing_packets - before[0], 0)
+        self.assertGreater(fixed.stats.missing_packets - before[1], 0)
+        self.assertGreater(adaptive.stats.buffer_expansion_packets, 0)
+        self.assertEqual(played, [payload(seq) for seq in range(200, 200 + len(played))])
+        self.assertGreater(len(played), 400)
+
+    def test_lower_target_removes_only_explicit_silence_and_never_pcm(self) -> None:
+        interval = DEFAULT_FORMAT.frames_per_packet / DEFAULT_FORMAT.rate
+        buffer = PlayoutBuffer(interval * 4, 0, 5.0, clock=self.clock, max_playout_buffer_seconds=interval * 40)
+        buffer.ingest(0, b"")
+        self.clock.current += 20 * interval
+        buffer.ingest(1, b"")
+        for seq in range(2, 35):
+            self.clock.current += interval
+            buffer.ingest(seq, b"")
+        buffer.ingest(35, payload(101))
+        buffer.ingest(36, b"")
+        buffer.ingest(37, payload(102))
+        buffer.next_chunk()
+        applied = buffer.stats.applied_buffer_packets
+        self.assertGreater(applied, 4)
+        # Advance capture and arrival together; a clean minute permits one decrease.
+        self.clock.current += 61.0
+        buffer.ingest(38 + round(61 / interval), payload(500))
+        buffer.next_chunk()
+        self.assertEqual(buffer.stats.buffer_reduction_packets, 1)
+        self.assertEqual(buffer.stats.applied_buffer_packets, applied - 1)
+        self.assertEqual(buffer.stats.missing_packets, 0)
+        played = [buffer.next_chunk() for _ in range(38)]
+        self.assertEqual([chunk for chunk in played if chunk and any(chunk)], [payload(101), payload(102)])
+
+    def test_active_pcm_defers_growth_and_reconnect_uses_the_learned_target(self) -> None:
+        interval = DEFAULT_FORMAT.frames_per_packet / DEFAULT_FORMAT.rate
+        buffer = PlayoutBuffer(interval, 0, 5.0, clock=self.clock, max_playout_buffer_seconds=interval * 40)
+        buffer.ingest(MAX_UINT32, payload(1))
+        self.assertEqual(buffer.next_chunk(), payload(1))
+        self.clock.current += 20 * interval
+        buffer.ingest(0, payload(2))
+        self.assertEqual(buffer.next_chunk(), payload(2))
+        self.assertGreater(cast("int", buffer.snapshot()["playout_buffer_packets"]), 1)
+        self.assertEqual(buffer.stats.applied_buffer_packets, 1)
+        self.assertEqual(buffer.stats.buffer_expansion_packets, 0)
+        buffer.reset_source_session()
+        buffer.ingest(0, payload(3))
+        self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+        self.assertIsNone(buffer.stats.buffer_ready_at)
+
 
 class PlayoutWorkerTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -181,6 +251,7 @@ class PlayoutWorkerTests(unittest.TestCase):
         interval = DEFAULT_FORMAT.frames_per_packet / DEFAULT_FORMAT.rate
         self.buffer = PlayoutBuffer(
             playout_buffer_seconds=interval,
+            max_playout_buffer_seconds=interval,
             max_repeat_conceal_packets=1,
             max_outage_silence_seconds=interval * 2,
             clock=self.clock,

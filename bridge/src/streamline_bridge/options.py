@@ -117,7 +117,17 @@ BRIDGE_OPTIONS = (
         "--playout-buffer-seconds",
         float,
         1.0,
-        "receiver jitter buffer before playout starts",
+        "minimum receiver jitter buffer before playout starts",
+        minimum=0.001,
+        addon=True,
+        maximum=60.0,
+    ),
+    BridgeOption(
+        "max_playout_buffer_seconds",
+        "--max-playout-buffer-seconds",
+        float,
+        3.0,
+        "maximum adaptive receiver jitter buffer; equal to minimum disables adaptation",
         minimum=0.001,
         addon=True,
         maximum=60.0,
@@ -220,6 +230,9 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
         if option.name == "source_allow" or option.minimum is None:
             continue
         _validate_numeric(option, getattr(args, option.name))
+
+    if args.max_playout_buffer_seconds < args.playout_buffer_seconds:
+        raise SystemExit("--max-playout-buffer-seconds must be at least --playout-buffer-seconds")
 
     try:
         args.source_allow = frozenset(

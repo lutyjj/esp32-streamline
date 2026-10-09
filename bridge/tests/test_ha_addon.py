@@ -24,6 +24,7 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
                 "max_sources": 2,
                 "client_buffer_chunks": 1024,
                 "playout_buffer_seconds": 0.5,
+                "max_playout_buffer_seconds": 2.0,
                 "max_repeat_conceal_packets": 4,
                 "max_outage_silence_seconds": 3.5,
                 "source_idle_timeout_seconds": 8.0,
@@ -43,6 +44,8 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
                 "1024",
                 "--playout-buffer-seconds",
                 "0.5",
+                "--max-playout-buffer-seconds",
+                "2.0",
                 "--max-repeat-conceal-packets",
                 "4",
                 "--max-outage-silence-seconds",
@@ -61,6 +64,16 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
             bridge_argv({"source_allow": "", "max_sources": 8}),
             ["streamline-bridge", "--transport-state-file", "/data/transport.json", "--max-sources", "8"],
         )
+
+    def test_adaptive_buffer_bounds_are_validated_by_the_bridge_entry_point(self) -> None:
+        for argv in (
+            ["--playout-buffer-seconds", "4"],
+            bridge_argv({"playout_buffer_seconds": 2.0, "max_playout_buffer_seconds": 1.0})[1:],
+        ):
+            with self.assertRaisesRegex(SystemExit, "must be at least --playout"):
+                validate_args(parse_args(argv))
+        args = validate_args(parse_args(["--playout-buffer-seconds", "2", "--max-playout-buffer-seconds", "2"]))
+        self.assertEqual(args.max_playout_buffer_seconds, 2.0)
 
     def test_recordings_use_private_storage_and_keep_the_token_out_of_argv(self) -> None:
         options = {"recordings_enabled": True, "api_token": "long-bridge-api-token"}

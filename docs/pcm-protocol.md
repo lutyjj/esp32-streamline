@@ -70,11 +70,48 @@ encoder, and `bridge-test` fails until the parser matches the file.
 ## Receiver Playout
 
 The HTTP bridge uses a playout buffer before publishing audio to clients. By
-default it waits for about 1 second of packets, then plays one packet duration at
+default it starts with about 1 second of packets, then plays one packet duration at
 a time from the expected sequence number. TCP delivers admitted bytes in order.
 Capture failure, queue overflow, or late arrival can still leave missing
 PCM at a playout deadline. The buffer smooths timing jitter; concealment handles
 those gaps.
+
+### Adaptive buffering
+
+Each source learns a playout target between the configured minimum and maximum
+(1 and 3 seconds by default), rounded to whole packet intervals. Equal bounds
+select fixed buffering. Arrival time minus capture-sequence time measures transit
+variation. The range of transit times in a bounded one-minute history supplies
+the delay estimate, retaining burst peaks across quiet arrivals so the target
+does not oscillate within each burst. Sequence gaps therefore do not themselves
+look like network jitter. Duplicate and reordered records do not train the target.
+Rising delay raises the target immediately in approximately 50 ms steps. Missing
+or late packets and disconnects also raise it once per impairment burst. After
+60 seconds of arrivals without an impairment or target increase, the target
+can fall by one step. Each further decrease needs another clean minute.
+
+The target applies when the buffer starts or resumes. During playout, adjustments
+use only explicit silence: growth extends silence by holding its sequence position;
+reduction removes one silence interval per output tick when the next interval is
+also explicit silence. Both stop when the applied target reaches the learned
+target. Active PCM keeps its sample values, order, and playback rate. Continuous
+music defers adjustment until silence or rebuffering, so an unfamiliar stall can
+still cause loss before the bridge learns and applies a larger target.
+
+`playout_buffer_packets` reports the learned target and `applied_buffer_packets`
+reports the scheduling target in use; neither measures end-to-end player latency.
+The snapshot also reports minimum and maximum targets, plus lifetime
+`buffer_expansion_packets` and `buffer_reduction_packets` for added and removed
+silence intervals. These adjustments are separate from missing-packet counters.
+Recordings tap received records before playout and retain the source timeline.
+Reconnects retain the learned target but reset arrival history; source eviction
+or bridge restart resets it. Admission remains bounded by the maximum target
+plus one second of burst headroom. No device memory or wire-format change is needed.
+
+Relative-delay estimation follows the separation between arrival measurement
+and playout decisions used by [WebRTC NetEq](https://webrtc.googlesource.com/src.git/+/refs/heads/main/modules/audio_coding/neteq/delay_manager.cc).
+StreamLine uses a small controller for its fixed-format TCP stream; it does not
+resample active PCM or embed NetEq's codec and speech-processing machinery.
 
 HTTP stream clients get their own output queues. The bridge batches small PCM
 packets into short writes so slow proxy/player reads are less likely to starve

@@ -35,7 +35,9 @@ After the first audio buffer fills, HTTP WAV output keeps its sample cadence.
 If PCM stops long enough to trigger rebuffering, the bridge sends silence while
 waiting for fresh audio. The outage-silence limit bounds packet-loss concealment
 and resets sequence tracking; it does not cut off the HTTP stream. Resumed audio
-fills the configured playout buffer before replacing silence. Slow HTTP clients
+fills the learned playout target before replacing silence. The
+[adaptive buffer](pcm-protocol.md#adaptive-buffering) adjusts during explicit
+source silence or rebuffering. Slow HTTP clients
 still face the write deadline and bounded output queue.
 
 ## Source lifecycle
@@ -62,7 +64,7 @@ threads. The `/status` lifecycle block reports the state, admission policy,
 consumer counts, current idle duration, and eviction interval.
 
 Each playout buffer admits at most one second of audio beyond
-`--playout-buffer-seconds`. A producer that sends faster than real time past
+`--max-playout-buffer-seconds`. A producer that sends faster than real time past
 that ceiling is disconnected, and the source's `overflows` counter records it;
 the buffer also drops its stored packets whenever an outage forces a
 re-buffer, so a stalled stream cannot strand memory.
@@ -87,7 +89,8 @@ that artifact to generate a typed client; do not edit generated client files.
 | `--max-http-connections` | 32 | integer 1..128 | Maximum simultaneous HTTP workers. Excess connections are rejected. |
 | `--http-request-timeout-seconds` | 10.0 | finite number 0.001..3600 | Progress deadline for every HTTP phase: header reads, body reads, response writes, and keep-alive idling. A client stalled past it is disconnected; healthy streams are unaffected. |
 | `--client-buffer-chunks` | 2048 | integer 1..4096 | Per-client output queue depth in 1 KiB chunks. Full queues evict the client. |
-| `--playout-buffer-seconds` | 1.0 | finite number 0.001..60 | Packets buffered before playout begins or resumes. |
+| `--playout-buffer-seconds` | 1.0 | finite number 0.001..60 | Minimum adaptive playout target. |
+| `--max-playout-buffer-seconds` | 3.0 | finite number 0.001..60, at least the minimum | Maximum adaptive playout target; equal bounds select fixed buffering. |
 | `--max-repeat-conceal-packets` | 3 | integer 0..256 | Loss packets that repeat attenuated PCM before silence. |
 | `--max-outage-silence-seconds` | 5.0 | finite number 0.001..300 | Concealed outage before playout re-buffers. |
 | `--source-idle-timeout-seconds` | 5.0 | finite number 0.001..3600 | Producer read deadline and TCP keepalive interval; established streams may gate silence. |

@@ -27,7 +27,7 @@ HTTP consumer can read it too.
   and vinyl, switch them live from the console or API, and share the versioned
   board-bound catalog. See [audio profiles](docs/audio-profiles.md).
 - **Self-hosted bridge:** one Docker container turns the TCP PCM stream into
-  a live HTTP WAV stream. A ~1 s playout buffer smooths Wi-Fi jitter and
+  a live HTTP WAV stream. An adaptive playout buffer smooths Wi-Fi jitter and
   conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
 - **Opt-in encrypted PCM:** TLS 1.3 authenticates each device with its own
   key and provides forward secrecy. Cleartext remains available for first

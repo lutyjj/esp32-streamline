@@ -662,6 +662,16 @@
       "SourceSnapshot": {
         "additionalProperties": false,
         "properties": {
+          "applied_buffer_packets": {
+            "minimum": 1.0,
+            "title": "Applied Buffer Packets",
+            "type": "integer"
+          },
+          "buffer_expansion_packets": {
+            "minimum": 0.0,
+            "title": "Buffer Expansion Packets",
+            "type": "integer"
+          },
           "buffer_ready_at": {
             "anyOf": [
               {
@@ -672,6 +682,11 @@
               }
             ],
             "title": "Buffer Ready At"
+          },
+          "buffer_reduction_packets": {
+            "minimum": 0.0,
+            "title": "Buffer Reduction Packets",
+            "type": "integer"
           },
           "buffered_packets": {
             "minimum": 0.0,
@@ -780,6 +795,16 @@
           "max_outage_silence_packets": {
             "minimum": 1.0,
             "title": "Max Outage Silence Packets",
+            "type": "integer"
+          },
+          "max_playout_buffer_packets": {
+            "minimum": 1.0,
+            "title": "Max Playout Buffer Packets",
+            "type": "integer"
+          },
+          "min_playout_buffer_packets": {
+            "minimum": 1.0,
+            "title": "Min Playout Buffer Packets",
             "type": "integer"
           },
           "missing_packets": {
@@ -896,6 +921,11 @@
           "overflows",
           "buffered_packets",
           "playout_buffer_packets",
+          "applied_buffer_packets",
+          "min_playout_buffer_packets",
+          "max_playout_buffer_packets",
+          "buffer_expansion_packets",
+          "buffer_reduction_packets",
           "max_buffered_packets",
           "max_outage_silence_packets",
           "bytes",

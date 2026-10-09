@@ -73,6 +73,19 @@ export function IncomingSource({ ip, source }: { ip: string; source: SourceSnaps
               ['Intentional silence packets (lifetime)', String(source.silence_packets)],
               ['Uptime', formatDuration(source.uptime_seconds)],
               ['Buffered packets', `${source.buffered_packets} / ${source.playout_buffer_packets}`],
+              [
+                'Buffer target',
+                `${source.playout_buffer_packets} packets (limit ${source.max_playout_buffer_packets})`,
+              ],
+              ['Applied buffer', `${source.applied_buffer_packets} packets`],
+              [
+                'Buffer adjustment',
+                source.applied_buffer_packets === source.playout_buffer_packets
+                  ? 'Target applied'
+                  : 'Applied during quiet input or rebuffering',
+              ],
+              ['Silence intervals added', String(source.buffer_expansion_packets)],
+              ['Silence intervals removed', String(source.buffer_reduction_packets)],
               ['Late packets (lifetime)', String(source.late)],
               ['Buffer underruns (lifetime)', String(source.underruns)],
               ['Slow players (lifetime)', String(source.slow_clients)],

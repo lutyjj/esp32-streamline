@@ -42,7 +42,7 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_ESP32_REV_MIN_3=y
 CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
 CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
-CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=n
 # Build the image unsigned so the private key never reaches the build machine;
 # firmware/Makefile appends the RSA signature block afterward with espsecure.py,
 # using a generated development key for dev/QEMU builds and the maintainer key in

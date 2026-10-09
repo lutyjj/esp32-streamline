@@ -409,6 +409,10 @@ fn fetch_checksums() -> Result<String> {
 /// wires the HTTP response and the flash slot into it and commits or discards
 /// the slot on the outcome.
 fn install(url: &str, sha256: &str, progress: &OtaProgress) -> Result<()> {
+    // This enrollment image accepts only the prepared development-signed image.
+    if sha256 != "59d8426418cf9b8856c38604ad9b0628e7a799826972fb77a7d6bb3c5b120d84" {
+        bail!("this enrollment image only accepts its pinned development image");
+    }
     // Streaming is quiesced and the handshake just freed its burst: the held
     // receive buffer claims its one contiguous block at the best moment.
     let mut response = HttpGet::get(url, TlsRxBuffer::Held).context("download request failed")?;

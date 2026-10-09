@@ -17,6 +17,8 @@ see [README.md](README.md).
 
 GitHub-hosted build jobs use Google's `mirror.gcr.io` cache for Docker Hub
 images through the [runner setup action](.github/actions/docker-mirror/action.yml).
+The action clears the runner's default Docker Hub login so the public cache
+accepts anonymous pulls. Other registry credentials are unaffected.
 Docker keeps the image references and digest checks and falls back to Docker Hub
 on cache misses. The cache reduces shared-runner pull-limit failures; it does
 not guarantee availability for every image. Local Docker configuration is unchanged.

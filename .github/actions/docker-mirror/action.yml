@@ -7,6 +7,9 @@ runs:
     - name: Configure Docker registry mirror
       shell: bash
       run: |
+        # Docker forwards stored Hub credentials to mirrors. The public cache
+        # rejects those credentials, so public pulls must be anonymous.
+        docker logout
         config="$(mktemp)"
         trap 'rm -f "$config"' EXIT
         if sudo test -f /etc/docker/daemon.json; then

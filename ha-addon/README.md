@@ -32,6 +32,17 @@ activate on the device. The coordinated switch briefly interrupts audio. The
 [PCM transport workflow](../docs/tcp-transport.md#enable-encryption) owns
 cutover, credential replacement, and recovery.
 
+## Confinement
+
+Supervisor applies the bundled AppArmor profile on supported hosts. The
+[security reference](../docs/security.md#host-containment) owns its permissions
+and limits. `make ha-addon-lint` compiles the profile with AppArmor's parser;
+compilation alone does not verify kernel enforcement.
+`make ha-addon-apparmor-test` uses a disposable enforcing profile to check the
+production image's startup, storage, HTTP health, shutdown, and denied writes
+and shell execution. It requires an AppArmor-enabled Docker host and removes
+the test profile afterward. The add-on check runs both gates.
+
 ## Use
 
 Point each ESP32 device at the Home Assistant host on port `39000`. Music

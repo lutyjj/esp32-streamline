@@ -32,14 +32,24 @@ ADDON_IMAGE_AARCH64 ?= $(subst {arch},aarch64,$(IMAGE_TEMPLATE))
 # image, and the validator agree on the labels they stamp.
 ADDON_BUILD_ARGS := --build-arg BUILD_VERSION=$(VERSION) --build-arg BUILD_REVISION=$(REVISION)
 
-.PHONY: format lint context validate test image publish check
+APPARMOR_IMAGE := esp32-streamline-ha-addon-apparmor
+APPARMOR_RUN = $(CONTAINER) run --rm --network none --cap-drop ALL \
+	-v "$(CURDIR)/apparmor.txt:/apparmor.txt:ro" $(APPARMOR_IMAGE)
+
+.PHONY: format lint apparmor-image apparmor-test context validate test image publish check
 
 format:
 	@true
 
-lint:
+apparmor-image:
+	$(CONTAINER) build -f Dockerfile.apparmor -t $(APPARMOR_IMAGE) .
+
+lint: apparmor-image
 	@test "$(BUILD_ARCH)" = "amd64" -o "$(BUILD_ARCH)" = "aarch64" || (echo "BUILD_ARCH must be amd64 or aarch64" >&2; exit 2)
 	@test "$(VERSION)" = "$(CONFIG_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(CONFIG_VERSION))" >&2; exit 2)
+	$(APPARMOR_RUN) apparmor_parser --skip-kernel-load --skip-cache \
+		--features-file /etc/apparmor.d/abi/3.0 --warn=all --Werror /apparmor.txt
+	@test "$$($(APPARMOR_RUN) apparmor_parser --skip-cache --names /apparmor.txt)" = "streamline_bridge" || (echo "expected one streamline_bridge AppArmor profile" >&2; exit 2)
 
 # A standard Home Assistant add-on context: the bridge distribution plus the
 # freshly built console asset and config.yaml, with no reach into the bridge
@@ -49,7 +59,7 @@ context:
 	$(MAKE) -C ../console build-bridge
 	rm -rf $(BUILD_CONTEXT)
 	mkdir -p $(BUILD_CONTEXT)/src
-	cp Dockerfile config.yaml $(BUILD_CONTEXT)/
+	cp Dockerfile config.yaml apparmor.txt $(BUILD_CONTEXT)/
 	cp ../bridge/pyproject.toml ../bridge/uv.lock $(BUILD_CONTEXT)/
 	cp -R ../bridge/src/streamline_bridge $(BUILD_CONTEXT)/src/
 	cp ../console/dist/bridge/bridge.html $(BUILD_CONTEXT)/src/streamline_bridge/console.html
@@ -76,6 +86,27 @@ image: lint context
 		--build-arg BUILD_ARCH=$(BUILD_ARCH) \
 		-t $(IMAGE):$(VERSION) \
 		$(BUILD_CONTEXT)
+
+# Use a unique disposable profile; never replace a running add-on's policy.
+# Requires a Docker host exposing AppArmor's securityfs interface.
+apparmor-test: image
+	@set -eu; \
+	work="$$(mktemp -d /tmp/streamline-apparmor.XXXXXX)"; \
+	profile="streamline-test-$${work##*.}"; \
+	sed "s/^profile streamline_bridge /profile $$profile /" apparmor.txt > "$$work/profile"; \
+	loader() { $(CONTAINER) run --rm --privileged --network none \
+		-v /sys/kernel/security:/sys/kernel/security \
+		-v "$$work/profile:/profile:ro" $(APPARMOR_IMAGE) \
+		apparmor_parser --skip-cache "$$@" /profile; }; \
+	loaded=; \
+	cleanup() { if [ -n "$$loaded" ]; then loader --remove; fi; rm -rf "$$work"; }; \
+	trap cleanup EXIT; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; \
+	loader --add; loaded=yes; \
+	$(CONTAINER) run --rm -i --platform $(PLATFORM) \
+		--security-opt "apparmor=$$profile" --tmpfs /data --tmpfs /tmp \
+		-e "STREAMLINE_TEST_PROFILE=$$profile" --entrypoint python3 \
+		"$(IMAGE):$(VERSION)" - < ../tools/src/streamline_tools/addon_confinement.py
 
 # This is intentionally an image test: Supervisor /data permissions depend on
 # the final container user and cannot be proven by bridge unit tests alone.
@@ -158,4 +189,4 @@ publish: lint context
 		echo "published $$image@$$digest"; \
 	done
 
-check: lint validate test
+check: lint validate test apparmor-test

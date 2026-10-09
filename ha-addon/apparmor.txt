@@ -1,0 +1,38 @@
+# Confinement for the bundled Python bridge. Supervisor rewrites the profile
+# name to the installed add-on's repository-prefixed slug.
+
+#include <tunables/global>
+
+profile streamline_bridge flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  # Resolver abstractions may grant capabilities that the bridge never needs.
+  deny capability,
+
+  # PCM and HTTP, plus DNS and resolver sockets from nameservice above.
+  network inet stream,
+  network inet6 stream,
+  # asyncio wakes its event loop through a local socket pair.
+  unix type=stream,
+
+  # The interpreter, its standard library, and the add-on's virtual environment.
+  # `streamline-ha-addon` execs `streamline-bridge` in the same profile. `m`
+  # covers the native extension modules the interpreter maps executable.
+  /usr/local/bin/python3{,.[0-9]*} rix,
+  /opt/venv/bin/streamline-{ha-addon,bridge} ix,
+  /usr/local/lib/python3*/{,**} mr,
+  /usr/local/lib/lib*.so* mr,
+  /opt/venv/{,**} mr,
+  /etc/ssl/openssl.cnf r,
+  /app/bridge/ r,
+
+  # Application state and scratch space; base also grants runtime devices.
+  /data/{,**} rwk,
+  /tmp/{,**} rwk,
+
+  # The interpreter reads its own process state, and glibc reads the kernel's
+  # huge-page size at startup.
+  @{PROC}/@{pid}/{,**} r,
+  /sys/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+}

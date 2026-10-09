@@ -1,0 +1,7 @@
+# AppArmor's policy compiler. Compilation checks syntax; enforcement requires
+# an AppArmor-enabled Linux host. This image contains no application code.
+FROM debian:bookworm-slim@sha256:63a496b5d3b99214b39f5ed70eb71a61e590a77979c79cbee4faf991f8c0783e
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends apparmor \
+    && rm -rf /var/lib/apt/lists/*

@@ -204,6 +204,13 @@ check: it validates the image against the `sha256` the caller supplies from
   exclude `recordings`; restore and uninstall may therefore remove those files.
 - Runtime images pin their Python base image by digest. Dependabot owns digest
   updates so reviewed dependency changes remain mechanical.
+- On AppArmor-enabled hosts, Supervisor applies the add-on's `apparmor.txt`.
+  It permits the bundled Python entrypoints, runtime libraries, TCP networking,
+  name resolution, and writes to application state and scratch storage. It does
+  not grant shell execution or Linux capabilities. Shared runtime abstractions
+  also permit access to devices such as `/dev/null` and `/dev/urandom`.
+  This is filesystem and process confinement, not an outbound network firewall:
+  authentication and Supervisor permissions still govern API access.
 - The bridge media path does not invoke a shell, start subprocesses, deserialize
   executable objects, load plugins, or fetch user-selected URLs.
 

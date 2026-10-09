@@ -65,6 +65,7 @@ webflasher:
 ha-addon:
   - *shared
   - 'ha-addon/**'
+  - 'tools/src/streamline_tools/addon_confinement.py'
   - 'console/**'
   - 'repository.yaml'
   - 'bridge/pyproject.toml'

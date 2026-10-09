@@ -3,9 +3,8 @@
 CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
 CONFIG_LWIP_TCP_WND_DEFAULT=11520
 
-# Acknowledging each outgoing Wi-Fi frame avoids aggregation stalls that
-# exhaust the capture queue despite available CPU and heap.
-CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
+# Aggregate outgoing Wi-Fi frames to amortize airtime and acknowledgements.
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=y
 
 # Boot composes the complete persisted state, including both transport-key
 # slots, before it moves long-running work onto dedicated tasks.

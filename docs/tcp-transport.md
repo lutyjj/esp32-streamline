@@ -43,8 +43,7 @@ source admission.
 - transport: TCP sender on core 1, FreeRTOS priority 6
 - both audio tasks outrank httpd (priority 5); shared locks and network work
   can still delay streaming
-- radio: Wi-Fi power save and transmit aggregation off; frames receive
-  individual acknowledgements
+- radio: Wi-Fi power save off; transmit aggregation enabled
 - TCP: eight-segment send and receive windows bound concurrent connections;
   Wi-Fi uses the SDK's default buffer pools
 - capture reads: 20 ms per DMA wait; failures back off for 10 ms

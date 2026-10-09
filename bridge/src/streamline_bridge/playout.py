@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from streamline_bridge.adaptive_buffer import AdaptiveBuffer
+from streamline_bridge.packet_tracing import PacketTraces
 from streamline_bridge.protocol import DEFAULT_FORMAT, DEFAULT_RATE, PcmFormat
 from streamline_bridge.quality import QualityWindow
 
@@ -120,6 +121,7 @@ class PlayoutBuffer:
         self._ready = threading.Event()
         self._closed = False
         self._packets: dict[int, bytes] = {}
+        self._traces = PacketTraces()
         self._last_payload: bytes | None = None
         self._last_payload_size = pcm_format.payload_bytes
         self._loss_run = 0
@@ -152,6 +154,7 @@ class PlayoutBuffer:
         """Stop admitting and playing packets and wake a waiting worker."""
         with self._lock:
             self._closed = True
+            self._traces.reset()
             self._packets.clear()
             self.stats.buffered_packets = 0
             self._ready.set()
@@ -185,6 +188,7 @@ class PlayoutBuffer:
             if self.stats.highest_seq is not None and seq_distance(self.stats.highest_seq, seq) < 0:
                 self.stats.reordered += 1
             self._packets[seq] = payload
+            self._traces.admit(seq)
             self.stats.highest_seq = (
                 seq
                 if self.stats.highest_seq is None or seq_distance(self.stats.highest_seq, seq) > 0
@@ -218,10 +222,12 @@ class PlayoutBuffer:
                 following = (seq + 1) & MAX_UINT32
                 if self.stats.applied_buffer_packets > self._adaptive.target and self._packets.get(following) == b"":
                     del self._packets[seq]
+                    self._traces.played(seq, discarded=True)
                     seq = following
                     self.stats.applied_buffer_packets -= 1
                     self.stats.buffer_reduction_packets += 1
             payload = self._packets.pop(seq, None)
+            self._traces.played(seq)
             if payload is None:
                 self.stats.missing_packets += 1
                 self._quality.record("missing_packets", self._clock.monotonic())
@@ -277,6 +283,7 @@ class PlayoutBuffer:
         return data
 
     def _clear_for_rebuffer(self) -> None:
+        self._traces.reset()
         # Stored packets go too: sequence state resets, so packets kept across
         # a rebuffer could strand at offsets the new session never plays.
         self._packets.clear()

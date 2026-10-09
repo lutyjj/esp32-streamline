@@ -19,6 +19,12 @@ opt-level = "s"
 debug = true
 opt-level = "z"
 
+[profile.telemetry]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+
 [dependencies]
 # Host-testable core logic, so these must build for every target, not only the
 # device: `sha2` backs the verifying-download pipeline in `update`; serde backs
@@ -31,6 +37,11 @@ log = "0.4"
 anyhow = "1"
 utoipa = { version = "5.5.0", optional = true }
 unicode-normalization = "0.1.25"
+opentelemetry = { version = "0.33.0", default-features = false, features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace"], optional = true }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["http-proto", "trace"], optional = true }
+opentelemetry-http = { version = "0.33.1", default-features = false, optional = true }
+async-trait = { version = "0.1", optional = true }
 
 [features]
 api-spec = ["dep:utoipa"]
@@ -43,11 +54,13 @@ pcm-frame-vectors = []
 qemu = []
 qemu-fail-management = ["qemu"]
 test-source = []
+otel-poc = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-http", "dep:async-trait"]
 
 [dev-dependencies]
 # Host-only: proves the generated id pattern the console imports matches the
 # device's own id validation. Never compiled into the device image.
 regex = "1"
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["testing"] }
 
 [target.'cfg(target_os = "espidf")'.dependencies]
 embedded-svc = "0.29"

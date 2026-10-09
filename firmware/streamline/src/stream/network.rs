@@ -60,6 +60,8 @@ fn step(
         return;
     };
     status.set_queue_depth(depth);
+    #[cfg(feature = "otel-poc")]
+    let mut sample = packet.sample;
     batch.extend_from_slice(packet.as_bytes());
     let mut packets = 1;
     let mut payload_bytes = packet.payload_bytes();
@@ -70,11 +72,23 @@ fn step(
             break;
         };
         batch.extend_from_slice(packet.as_bytes());
+        #[cfg(feature = "otel-poc")]
+        if packet.sample.is_some() {
+            sample = packet.sample;
+        }
         packets += 1;
         payload_bytes += packet.payload_bytes();
         status.set_queue_depth(depth);
     }
-    send_batch(sink, batch, packets, payload_bytes, status, delay, clock);
+    #[cfg(feature = "otel-poc")]
+    let queued = sample.map(|s| s.started.elapsed());
+    let sent = send_batch(sink, batch, packets, payload_bytes, status, delay, clock);
+    #[cfg(not(feature = "otel-poc"))]
+    let _ = sent;
+    #[cfg(feature = "otel-poc")]
+    if let (Some(sample), Some(queued)) = (sample, queued) {
+        crate::tracing_poc::record(sample, queued, sent);
+    }
 }
 
 fn send_batch(
@@ -85,10 +99,10 @@ fn send_batch(
     status: &StreamStatus,
     delay: &impl Delay,
     clock: &impl Clock,
-) {
+) -> bool {
     let ready = || sending_allowed(status);
     if !ready() {
-        return;
+        return false;
     }
     let started = clock.monotonic_millis();
     match sink.send(bytes, ready) {
@@ -99,12 +113,14 @@ fn send_batch(
                 log::warn!("PCM send stalled for {elapsed} ms");
             }
             status.record_sent_batch(packets, payload_bytes, reconnected);
+            true
         }
-        Ok(None) => {}
+        Ok(None) => false,
         Err(failure) => {
             status.record_failed_send(packets);
             status.record_network_error(failure.secure_handshake);
             delay.delay_ms(SEND_ERROR_BACKOFF_MS);
+            false
         }
     }
 }

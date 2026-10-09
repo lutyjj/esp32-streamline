@@ -42,6 +42,8 @@ pub mod state;
 pub mod stream;
 pub mod task_start;
 pub mod telemetry;
+#[cfg(feature = "otel-poc")]
+pub mod tracing_poc;
 pub mod transport;
 pub mod transport_diagnostics;
 pub mod update;

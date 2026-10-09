@@ -1,0 +1,31 @@
+groups:
+  - id: registry.streamline
+    type: attribute_group
+    brief: Packet identity within one source session.
+    attributes:
+      - id: streamline.packet.sequence
+        type: int
+        stability: development
+        brief: Unsigned 32-bit capture packet sequence, wrapping within a device boot.
+        examples: [256, 512]
+  - id: span.streamline.device.packet
+    type: span
+    stability: development
+    brief: Packet construction through the end of its sender batch attempt.
+    span_kind: internal
+    attributes:
+      - ref: streamline.packet.sequence
+        requirement_level: required
+  - id: span.streamline.bridge.playout
+    type: span
+    stability: development
+    brief: Admitted packet residence until removal from the playout buffer.
+    span_kind: internal
+    attributes:
+      - ref: streamline.packet.sequence
+        requirement_level: required
+  - id: span.streamline.bridge.first_pcm
+    type: span
+    stability: development
+    brief: HTTP response streaming start through the first PCM ASGI write completion; excludes the WAV header and includes silence.
+    span_kind: internal

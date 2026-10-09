@@ -1,0 +1,26 @@
+services:
+  weaver:
+    image: streamline-telemetry-weaver
+    command:
+      - registry
+      - live-check
+      - -r
+      - /registry
+      - --otlp-grpc-address
+      - 0.0.0.0
+      - --otlp-grpc-port
+      - '4317'
+      - --inactivity-timeout
+      - '10'
+      - --format
+      - json
+      - --include-unreferenced
+    volumes:
+      - ./registry:/registry:ro
+  replay:
+    image: streamline-telemetry-collector
+    command: [--config=/etc/replay.yaml]
+    depends_on: [weaver]
+    volumes:
+      - ./replay.yaml:/etc/replay.yaml:ro
+      - ${TELEMETRY_INPUT:?Set TELEMETRY_INPUT to a captured OTLP JSONL file}:/data/traces.jsonl:ro

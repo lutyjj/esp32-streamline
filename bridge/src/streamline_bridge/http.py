@@ -34,6 +34,7 @@ from streamline_bridge.api_models import (
     TransportSnapshot,
     UnlockResult,
 )
+from streamline_bridge.delivery_tracing import PcmStreamingResponse
 from streamline_bridge.http_ingress import HttpIngressGuard
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
 from streamline_bridge.recording import RecordingError
@@ -348,7 +349,7 @@ def make_app(
         except SourceSelectionError as exc:
             return error_response(int(exc.status), "invalid-source", exc.message)
         remote = request.client.host if request.client is not None else "unknown"
-        return StreamingResponse(
+        return PcmStreamingResponse(
             stream_wav_body(lease, remote, str(request.url.path)),
             media_type="audio/wav",
             headers={"Cache-Control": "no-store", "Connection": "close"},

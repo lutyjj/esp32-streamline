@@ -1,0 +1,19 @@
+receivers:
+  otlp_json_file:
+    include: [/data/traces.jsonl]
+    start_at: beginning
+    include_file_name: false
+exporters:
+  otlp_grpc:
+    endpoint: weaver:4317
+    compression: none
+    tls:
+      insecure: true
+    retry_on_failure:
+      initial_interval: 100ms
+      max_interval: 1s
+service:
+  pipelines:
+    traces:
+      receivers: [otlp_json_file]
+      exporters: [otlp_grpc]

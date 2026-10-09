@@ -12,6 +12,7 @@ import uvicorn
 from streamline_bridge.http import make_app
 from streamline_bridge.http_ingress import ProgressDeadlineH11Protocol
 from streamline_bridge.options import parse_args, validate_args
+from streamline_bridge.packet_tracing import configure as configure_tracing
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.recording import RecordingService, RecordingStore
 from streamline_bridge.sources import SourceRegistry
@@ -32,6 +33,7 @@ def bridge_version() -> str:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = validate_args(parse_args())
+    tracing = configure_tracing()
 
     def make_pipeline() -> AudioPipeline:
         return AudioPipeline(
@@ -113,6 +115,8 @@ def main() -> int:
         if recordings is not None:
             recordings.shutdown()
         sources.close()
+        if tracing is not None:
+            tracing.shutdown()
     return result
 
 

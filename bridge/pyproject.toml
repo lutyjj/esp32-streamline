@@ -14,6 +14,8 @@ dependencies = [
   # resolves it, so this pin only names the contract we depend on.
   "h11>=0.16,<1",
   "uvicorn>=0.52.1,<1",
+  "opentelemetry-sdk>=1.38,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.38,<2",
 ]
 
 [project.scripts]

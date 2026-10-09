@@ -3,7 +3,8 @@ include ../mk/common.mk
 IMAGE := esp32-streamline-firmware
 SRC := streamline
 TARGET := xtensa-esp32-espidf
-ELF := target/$(TARGET)/release/streamline-firmware
+PROFILE ?= release
+ELF := target/$(TARGET)/$(PROFILE)/streamline-firmware
 VERSION ?= dev
 FEATURES ?=
 PORT ?= /dev/cu.usbserial-0001
@@ -93,23 +94,24 @@ lock-check: image
 # skips one is a blind spot the release build never reports. The host passes
 # take the crate core alone and then with the host-only feature bins. Device
 # passes cover the `cfg(espidf)` adapters, `runtime`, and `main.rs` in the
-# standard image and each test variant. They share the release profile and
-# target directory with `build`, reusing the ESP-IDF build.
+# standard image and each test variant, including the telemetry profile.
 # Device `#[cfg(test)]` code is the remaining gap: no pass compiles it and no
 # target runs it, so a green lint says nothing about it.
 lint: image console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --locked --lib -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --lib --tests -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --lib --tests --features otel-poc -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --features api-spec,pcm-frame-vectors \
 		--lib --bin streamline-openapi --bin streamline-pcm-frame-vectors -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu-fail-management -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features test-source -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --profile telemetry --target $(TARGET) --features otel-poc,test-source -- -D warnings
 
 build: image console-asset
-	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET) $(if $(FEATURES),--features $(FEATURES))
+	$(CONTAINER_RUN) cargo build --locked --profile $(PROFILE) --target $(TARGET) $(if $(FEATURES),--features $(FEATURES))
 
 # Attribute the built ELF's flash bytes to their owners (issue #355), so a
 # diff's flash cost has a name before the OTA size gate refuses it. The
@@ -121,10 +123,11 @@ size-report: build
 # shares the hardware image's bootloader, partition table, and console asset,
 # so QEMU exercises the same boot and API contracts without a radio.
 qemu-build: image console-asset
-	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET) --features qemu
+	$(CONTAINER_RUN) cargo build --locked --profile $(PROFILE) --target $(TARGET) --features qemu
 
 test: image console-asset
 	$(CONTAINER_RUN) cargo test --locked --lib
+	$(CONTAINER_RUN) cargo test --locked --lib --features otel-poc
 
 # Rust DTOs and endpoint declarations are the API source. The host-only
 # `api-spec` feature keeps utoipa out of the device image.
@@ -151,7 +154,7 @@ pcm-frame-vectors: image
 # slot, silently running the old image. Config in NVS survives.
 flash: build
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	espflash flash --chip esp32 --port $(PORT) --baud 921600 --flash-size $(FLASH_SIZE) --bootloader $(SRC)/target/$(TARGET)/release/bootloader.bin --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
+	espflash flash --chip esp32 --port $(PORT) --baud 921600 --flash-size $(FLASH_SIZE) --bootloader $(SRC)/target/$(TARGET)/$(PROFILE)/bootloader.bin --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
 
 monitor:
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
@@ -198,7 +201,7 @@ signing-key: image
 #      install boots too. The table comes from partitions.csv (the layout applied
 #      at flash time), not the ESP-IDF build's default single-app table.
 define sign_and_package
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); GENPART="$$IDF_PATH/components/partition_table/gen_esp32part.py"; REL=target/$(TARGET)/release; "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); GENPART="$$IDF_PATH/components/partition_table/gen_esp32part.py"; REL=target/$(TARGET)/$(PROFILE); "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
 endef
 
 # `-full.bin` is the serial-flash image: it bundles the OTA-capable partition
@@ -270,7 +273,7 @@ signature-check:
 repro-check:
 	@test -f "$(SRC)/$(ELF)" || (echo "build first: make build VERSION=$(VERSION)" >&2; exit 2)
 	@set -eu; snapshot="$$(mktemp -d)"; trap 'rm -rf "$$snapshot"' EXIT INT TERM; \
-		rel="$(SRC)/target/$(TARGET)/release"; \
+		rel="$(SRC)/target/$(TARGET)/$(PROFILE)"; \
 		files="streamline-firmware bootloader.bin partition-table.bin"; \
 		for f in $$files; do cp "$$rel/$$f" "$$snapshot/"; done; \
 		$(MAKE) clean; \
@@ -289,6 +292,6 @@ qemu-artifacts: qemu-build signing-key
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-qemu.elf
 	$(MAKE) ota-size-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin
 	$(MAKE) signature-check OTA_IMAGE=$(DIST_DIR)/firmware/streamline-qemu-ota.bin
-	$(CONTAINER_RUN) cargo build --locked --release --target $(TARGET) --features qemu-fail-management
+	$(CONTAINER_RUN) cargo build --locked --profile $(PROFILE) --target $(TARGET) --features qemu-fail-management
 	$(call sign_and_package,streamline-qemu-fail-management)
 	cp $(SRC)/$(ELF) $(DIST_DIR)/firmware/streamline-qemu-fail-management.elf

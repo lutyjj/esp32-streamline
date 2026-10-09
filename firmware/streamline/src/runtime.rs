@@ -85,6 +85,10 @@ pub fn start(capture: Capture, target: Option<TargetAddress>) -> Result<Arc<Stre
         network_task.commit();
     }
     capture_task.commit();
+    #[cfg(feature = "otel-poc")]
+    if let Err(error) = crate::adapters::tracing_poc::start() {
+        log::warn!("telemetry unavailable: {error}");
+    }
     Ok(status)
 }
 

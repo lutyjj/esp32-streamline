@@ -4,6 +4,9 @@ StreamLine captures analog audio on an ESP32 and publishes it as a live HTTP WAV
 
 This document maps component ownership and cross-component contracts. The linked references own protocol details, operations, security, and user behavior.
 
+The opt-in [pipeline telemetry experiment](telemetry.md) defines the
+OpenTelemetry direction, component boundaries and timing limitations.
+
 ## System map
 
 ```mermaid

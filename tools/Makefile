@@ -56,8 +56,32 @@ image:
 format: dev-image
 	$(CONTAINER_RUN) sh -c 'ruff check --select I --fix src tests smoke && ruff format src tests smoke'
 
-lint: dev-image
+lint: dev-image telemetry-check
 	$(CONTAINER_RUN) sh -c 'ruff format --check src tests smoke && ruff check src tests smoke && mypy'
+
+TELEMETRY_OUTPUT ?= $(REPO_ROOT)/.private/telemetry
+TELEMETRY_BIND ?= 127.0.0.1
+TELEMETRY_INPUT ?=
+
+.PHONY: telemetry-images telemetry-check telemetry-collect telemetry-live-check
+telemetry-images:
+	$(CONTAINER) build --target weaver -t streamline-telemetry-weaver telemetry
+	$(CONTAINER) build --target collector -t streamline-telemetry-collector telemetry
+
+telemetry-check: telemetry-images
+	$(CONTAINER) run --rm -v "$(CURDIR)/telemetry/registry:/registry:ro" streamline-telemetry-weaver registry check -r /registry
+	$(CONTAINER) run --rm streamline-telemetry-collector validate --config=/etc/otelcol-contrib/config.yaml
+
+telemetry-collect: telemetry-check
+	mkdir -p "$(TELEMETRY_OUTPUT)"
+	$(CONTAINER) run --rm --name streamline-telemetry-collector --user "$(CONTAINER_HOST_USER)" \
+		-p "$(TELEMETRY_BIND):4318:4318" -v "$(TELEMETRY_OUTPUT):/data" streamline-telemetry-collector
+
+telemetry-live-check: telemetry-images
+	@test -f "$(TELEMETRY_INPUT)" || (echo "TELEMETRY_INPUT=/path/to/traces.jsonl is required" >&2; exit 2)
+	@set -eu; export TELEMETRY_INPUT="$(abspath $(TELEMETRY_INPUT))"; \
+		trap '$(CONTAINER) compose -p streamline-telemetry-replay -f telemetry/compose.yaml down' EXIT; \
+		$(CONTAINER) compose -p streamline-telemetry-replay -f telemetry/compose.yaml up --abort-on-container-exit --exit-code-from weaver
 
 test: dev-image
 	$(CONTAINER_RUN) sh -c 'PYTHONPATH=/workspace/src python3 -m unittest discover -s tests -v'

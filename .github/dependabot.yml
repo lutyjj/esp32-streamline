@@ -83,6 +83,12 @@ updates:
     multi-ecosystem-group: tools
 
   - package-ecosystem: docker
+    directory: /tools/telemetry
+    patterns:
+      - "*"
+    multi-ecosystem-group: tools
+
+  - package-ecosystem: docker
     directory: /ha-addon
     patterns:
       - "*"

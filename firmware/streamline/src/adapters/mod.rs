@@ -23,4 +23,6 @@ pub mod system;
 pub mod task;
 pub mod tcp;
 pub mod time;
+#[cfg(feature = "otel-poc")]
+pub mod tracing_poc;
 pub mod wifi;

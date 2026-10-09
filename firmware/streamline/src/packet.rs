@@ -8,6 +8,8 @@ pub const MAX_PACKET_BYTES: usize = HEADER_LEN + PAYLOAD_BYTES;
 #[derive(Clone)]
 pub struct AudioPacket {
     bytes: [u8; MAX_PACKET_BYTES],
+    #[cfg(feature = "otel-poc")]
+    pub sample: Option<crate::tracing_poc::Sample>,
 }
 
 impl AudioPacket {
@@ -15,7 +17,11 @@ impl AudioPacket {
         let mut bytes = [0; MAX_PACKET_BYTES];
         bytes[..HEADER_LEN].copy_from_slice(&PacketHeader::new(sequence).encode());
         bytes[HEADER_LEN..].copy_from_slice(pcm);
-        Self { bytes }
+        Self {
+            bytes,
+            #[cfg(feature = "otel-poc")]
+            sample: crate::tracing_poc::Sample::capture(sequence),
+        }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -25,7 +31,11 @@ impl AudioPacket {
     pub fn silence(sequence: u32) -> Self {
         let mut bytes = [0; MAX_PACKET_BYTES];
         bytes[..HEADER_LEN].copy_from_slice(&PacketHeader::silence(sequence).encode());
-        Self { bytes }
+        Self {
+            bytes,
+            #[cfg(feature = "otel-poc")]
+            sample: crate::tracing_poc::Sample::capture(sequence),
+        }
     }
 
     pub fn payload_bytes(&self) -> usize {

@@ -84,7 +84,8 @@ select fixed buffering. Arrival time minus capture-sequence time measures transi
 variation. The range of transit times in a bounded one-minute history supplies
 the delay estimate, retaining burst peaks across quiet arrivals so the target
 does not oscillate within each burst. Sequence gaps therefore do not themselves
-look like network jitter. Duplicate and reordered records do not train the target.
+look like network jitter. Duplicate and reordered records do not update the
+arrival estimator; records behind playout still count as late impairments.
 Rising delay raises the target immediately in approximately 50 ms steps. Missing
 or late packets and disconnects also raise it once per impairment burst. After
 60 seconds of arrivals without an impairment or target increase, the target

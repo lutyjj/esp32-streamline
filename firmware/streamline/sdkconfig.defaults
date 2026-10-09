@@ -1,10 +1,11 @@
-# Bound each TCP connection to eight segments in each direction so concurrent
-# streaming and HTTP clients leave RAM for TLS and authenticated settings writes.
-CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
+# Retain outgoing audio across delayed acknowledgements. Keep receive buffers
+# smaller so HTTP clients leave RAM for streaming and authenticated writes.
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=32768
 CONFIG_LWIP_TCP_WND_DEFAULT=11520
 
-# Aggregate outgoing Wi-Fi frames to amortize airtime and acknowledgements.
-CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=y
+# Acknowledging each outgoing Wi-Fi frame avoids aggregation stalls that
+# exhaust the capture queue despite available CPU and heap.
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
 
 # Boot composes the complete persisted state, including both transport-key
 # slots, before it moves long-running work onto dedicated tasks.

@@ -45,6 +45,13 @@ def make_header(**overrides: int | bytes) -> bytes:
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_silence_is_a_complete_header_only_capture_interval(self) -> None:
+        self.assertEqual(parse_packet(make_header(payload_bytes=0)), (42, 48_000, 256, b""))
+        with self.assertRaises(ValueError):
+            parse_packet(make_header(payload_bytes=0) + b"unexpected")
+        with self.assertRaises(ValueError):
+            parse_header(make_header(version=1))
+
     def test_accepts_the_declared_stream_format(self) -> None:
         header = make_header()
         payload = bytes(DEFAULT_FORMAT.payload_bytes)

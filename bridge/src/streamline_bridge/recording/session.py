@@ -130,6 +130,8 @@ class RecordingSession:
                 packet = self._queue.get(timeout=0.1)
             except queue.Empty:
                 continue
+            if previous_sequence is None and not packet.payload:
+                continue
             gap_packets = 0
             if previous_sequence is not None:
                 distance = seq_distance(previous_sequence, packet.sequence)
@@ -159,7 +161,7 @@ class RecordingSession:
                     break
             if gap_packets:
                 self._append_silence(output, gap_packets)
-            output.append(packet.payload)
+            output.append(packet.payload or bytes(self._format.payload_bytes))
             previous_sequence = packet.sequence
             with self._lock:
                 if self._audio_started_at is None:

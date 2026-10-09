@@ -35,6 +35,7 @@ class AudioPipeline:
         self.clients = ClientFanout(max_client_chunks, now=now) if now is not None else ClientFanout(max_client_chunks)
         self.packet_taps = PacketTapFanout()
         self.levels = AudioLevels()
+        self._silence = bytes(pcm_format.payload_bytes)
         self._worker: threading.Thread | None = None
         if start_worker:
             self._worker = threading.Thread(
@@ -60,7 +61,7 @@ class AudioPipeline:
         """Admit one packet; ``False`` demands the producer's disconnect."""
         if not self.playout.ingest(seq, payload):
             return False
-        self.levels.update(payload)
+        self.levels.update(payload or self._silence)
         self.packet_taps.publish(seq, payload)
         return True
 

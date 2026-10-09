@@ -85,8 +85,7 @@ fn constants() -> Constants {
 }
 
 /// Frames the encoder emits: full 256-frame packets across the sequence
-/// range. The capture engine coalesces short hardware reads before framing,
-/// so full packets are the encoder's entire output vocabulary.
+/// range, plus a header-only intentional silence interval.
 fn valid_frames() -> Vec<ValidFrame> {
     [
         ("full_frame", 1),
@@ -96,6 +95,13 @@ fn valid_frames() -> Vec<ValidFrame> {
     ]
     .into_iter()
     .map(|(name, sequence)| valid_frame(name, sequence))
+    .chain([ValidFrame {
+        name: "intentional_silence".to_owned(),
+        sequence: 123,
+        frames: FRAMES_PER_PACKET,
+        payload_bytes: 0,
+        frame_hex: hex::encode(&PacketHeader::silence(123).encode()),
+    }])
     .collect()
 }
 
@@ -135,7 +141,7 @@ fn invalid_frames() -> Vec<InvalidFrame> {
         }),
         short_frame("short_single_frame", 1),
         short_frame("short_three_frames", 3),
-        bad_payload_size("payload_zero", 0),
+        corrupt("unsupported_version", "version", |frame| frame[4] = 1),
         bad_payload_size("payload_unaligned", PAYLOAD_BYTES - 1),
         bad_payload_size("payload_oversize", PAYLOAD_BYTES + BYTES_PER_FRAME),
         corrupt("payload_length_mismatch", "payload", |frame| {
@@ -213,7 +219,11 @@ mod tests {
     fn every_valid_vector_carries_one_full_packet() {
         for frame in vectors().valid {
             assert_eq!(frame.frames, FRAMES_PER_PACKET, "{}", frame.name);
-            assert_eq!(frame.payload_bytes, PAYLOAD_BYTES as u32, "{}", frame.name);
+            assert!(
+                matches!(frame.payload_bytes as usize, 0 | PAYLOAD_BYTES),
+                "{}",
+                frame.name
+            );
         }
     }
 }

@@ -4,9 +4,7 @@ use crate::protocol::{PacketHeader, HEADER_LEN, PAYLOAD_BYTES};
 
 pub const MAX_PACKET_BYTES: usize = HEADER_LEN + PAYLOAD_BYTES;
 
-/// One complete wire packet: header plus exactly [`PAYLOAD_BYTES`] of PCM.
-/// The capture engine coalesces short hardware reads before building one, so
-/// a partially filled packet cannot exist.
+/// One capture interval: a header and full PCM, or a header-only silence record.
 #[derive(Clone)]
 pub struct AudioPacket {
     bytes: [u8; MAX_PACKET_BYTES],
@@ -21,7 +19,17 @@ impl AudioPacket {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        &self.bytes
+        &self.bytes[..HEADER_LEN + self.payload_bytes()]
+    }
+
+    pub fn silence(sequence: u32) -> Self {
+        let mut bytes = [0; MAX_PACKET_BYTES];
+        bytes[..HEADER_LEN].copy_from_slice(&PacketHeader::silence(sequence).encode());
+        Self { bytes }
+    }
+
+    pub fn payload_bytes(&self) -> usize {
+        u32::from_le_bytes(self.bytes[20..24].try_into().expect("payload length")) as usize
     }
 }
 
@@ -37,5 +45,14 @@ mod tests {
         assert_eq!(packet.as_bytes().len(), MAX_PACKET_BYTES);
         assert_eq!(&packet.as_bytes()[24..28], &pcm[..4]);
         assert_eq!(MAX_PACKET_BYTES, 1048);
+    }
+
+    #[test]
+    fn silence_has_no_pcm_payload_but_retains_its_capture_sequence() {
+        let packet = AudioPacket::silence(u32::MAX);
+        assert_eq!(packet.as_bytes().len(), 24);
+        assert_eq!(packet.payload_bytes(), 0);
+        assert_eq!(&packet.as_bytes()[8..12], &[255; 4]);
+        assert_eq!(&packet.as_bytes()[16..20], &256u32.to_le_bytes());
     }
 }

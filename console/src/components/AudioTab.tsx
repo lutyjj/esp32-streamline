@@ -84,8 +84,8 @@ export function AudioTab({
           <AudioDelivery onSetupBridge={onSetupBridge} />
           {lossCalloutVisible.value && (
             <Notice tone="error">
-              Audio packets are being dropped. Check the Wi-Fi link and bridge; listeners may hear
-              gaps.
+              Streaming was interrupted. Check capture, queue, and send diagnostics below; listeners
+              may hear gaps.
             </Notice>
           )}
           {clipCalloutVisible.value && (
@@ -109,8 +109,11 @@ export function AudioTab({
                 s
                   ? [
                       ['Packets sent', String(s.metrics.packets_total)],
-                      ['Dropped packets', String(s.metrics.queue_drops_total)],
-                      ['Send errors', String(s.metrics.network_errors_total)],
+                      ['Capture intervals lost', String(s.metrics.capture_lost_packets_total)],
+                      ['Queue drops', String(s.metrics.queue_drops_total)],
+                      ['Intentional silence intervals', String(s.metrics.silence_packets_total)],
+                      ['Packets in failed sends', String(s.metrics.send_failed_packets_total)],
+                      ['Send errors (events)', String(s.metrics.network_errors_total)],
                       ['Reconnects', String(s.metrics.reconnects_total)],
                     ]
                   : []

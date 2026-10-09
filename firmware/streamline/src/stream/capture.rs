@@ -114,13 +114,18 @@ impl CaptureEngine {
         status.set_playing(playing);
         status.set_noise_floor(self.detector.noise_floor());
         let sequence = status.next_sequence();
-        if !playing || !status.streaming_enabled() || status.transport_quiesce_requested() {
+        if !status.streaming_enabled() || status.transport_quiesce_requested() {
             return;
         }
         let Some(queue) = queue else {
             return;
         };
-        let packet = AudioPacket::from_pcm(sequence, &self.pcm);
+        let packet = if playing {
+            AudioPacket::from_pcm(sequence, &self.pcm)
+        } else {
+            status.record_silence();
+            AudioPacket::silence(sequence)
+        };
         let (dropped, depth) = queue.push_drop_oldest(packet);
         if dropped {
             status.record_queue_drop();
@@ -145,6 +150,7 @@ impl CaptureEngine {
             .saturating_add(lost_frames.saturating_sub(self.charged_frames));
         self.charged_frames = lost_frames;
         let packets = self.lost_frame_remainder / u64::from(FRAMES_PER_PACKET);
+        status.record_capture_loss(packets);
         status.advance_sequence(packets as u32);
         self.lost_frame_remainder %= u64::from(FRAMES_PER_PACKET);
         let partial_expired = self.packet_started_ms.is_some_and(|start| {
@@ -193,8 +199,7 @@ mod tests {
         }
     }
 
-    /// Idle for the first `idle` reads, then loud forever, so the sequence gap
-    /// left by the silent prefix is visible in the first enqueued packet.
+    /// Idle for the first `idle` reads, then loud forever.
     struct GatedSource {
         idle: usize,
     }
@@ -314,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn idle_input_advances_the_sequence_without_enqueuing() {
+    fn idle_input_enqueues_header_only_intervals_without_charging_audio_loss() {
         let status = StreamStatus::default();
         let queue = PacketQueue::new();
         let mut engine = CaptureEngine::new(1_440);
@@ -327,24 +332,26 @@ mod tests {
                 &status,
                 &RecordingDelay::default(),
             );
+            let (packet, _) = queue.pop_timeout(Duration::ZERO).expect("silence record");
+            assert_eq!(packet.as_bytes().len(), 24);
         }
 
         let snapshot = status.snapshot();
         assert!(!snapshot.playing);
-        // The sequence advanced once per idle packet; a depth of zero proves
-        // nothing reached the queue.
         assert_eq!(snapshot.sequence, 50);
-        assert_eq!(snapshot.queue_depth, 0);
+        assert_eq!(snapshot.silence_packets, 50);
+        assert_eq!(snapshot.capture_lost_packets, 0);
+        assert_eq!(snapshot.queue_drops, 0);
     }
 
     #[test]
-    fn sustained_signal_enqueues_gapped_sequences_and_reports_queue_depth() {
+    fn sustained_signal_follows_silence_without_a_sequence_gap() {
         let status = StreamStatus::default();
         let queue = PacketQueue::new();
         let mut engine = CaptureEngine::new(1_440);
         let mut source = GatedSource { idle: 50 };
 
-        // Drive past the warm-up and the start debounce until the input plays.
+        let mut expected_sequence = 0;
         for _ in 0..2_000 {
             engine.step(
                 &mut source,
@@ -352,20 +359,21 @@ mod tests {
                 &status,
                 &RecordingDelay::default(),
             );
+            let (packet, _) = queue.pop_timeout(Duration::ZERO).expect("capture interval");
+            assert_eq!(sequence_of(&packet), expected_sequence);
+            expected_sequence += 1;
             if status.snapshot().playing {
+                assert_eq!(packet.payload_bytes(), PAYLOAD_BYTES);
                 break;
             }
+            assert_eq!(packet.payload_bytes(), 0);
         }
 
         let snapshot = status.snapshot();
         assert!(snapshot.playing, "sustained signal should start playback");
         assert!(snapshot.queue_depth >= 1);
-        // The 50 idle packets consumed sequence numbers, so the first enqueued
-        // packet is numbered past the silent gap, not from zero.
-        let (packet, _) = queue
-            .pop_timeout(Duration::ZERO)
-            .expect("a packet was enqueued");
-        assert!(sequence_of(&packet) >= 50);
+        assert!(expected_sequence > 50);
+        assert_eq!(snapshot.queue_drops, 0);
     }
 
     #[test]
@@ -567,6 +575,7 @@ mod tests {
         engine.step(&mut source, None, &status, &clock);
         assert_eq!(clock.monotonic_millis(), 60);
         assert_eq!(status.snapshot().sequence, 5); // (60 - 30) ms * 48 / 256
+        assert_eq!(status.snapshot().capture_lost_packets, 5);
         assert_eq!(status.snapshot().read_errors, 2);
     }
 

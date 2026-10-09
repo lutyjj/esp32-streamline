@@ -80,10 +80,22 @@ class ClientSnapshot(ContractModel):
     last_write_at: float | None
 
 
+class QualitySnapshot(ContractModel):
+    window_seconds: Literal[60]
+    observed_seconds: float = Field(ge=0, le=60)
+    audio_packets: int = Field(ge=0)
+    silence_packets: int = Field(ge=0)
+    missing_packets: int = Field(ge=0)
+    late_packets: int = Field(ge=0)
+    underruns: int = Field(ge=0)
+    disconnects: int = Field(ge=0)
+
+
 class SourceSnapshot(ContractModel):
     packets: int = Field(ge=0)
-    lost: int = Field(ge=0)
-    concealed: int = Field(ge=0)
+    missing_packets: int = Field(ge=0)
+    silence_packets: int = Field(ge=0)
+    quality: QualitySnapshot
     late: int = Field(ge=0)
     reordered: int = Field(ge=0)
     duplicate: int = Field(ge=0)

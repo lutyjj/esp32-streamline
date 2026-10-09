@@ -5,10 +5,7 @@ use super::{
     queue::PacketQueue,
     status::StreamStatus,
 };
-use crate::{
-    packet::{AudioPacket, MAX_PACKET_BYTES},
-    protocol::PAYLOAD_BYTES,
-};
+use crate::packet::{AudioPacket, MAX_PACKET_BYTES};
 use std::{sync::Arc, time::Duration};
 
 const SEND_ERROR_BACKOFF_MS: u32 = 250;
@@ -64,21 +61,27 @@ fn step(
     };
     status.set_queue_depth(depth);
     batch.extend_from_slice(packet.as_bytes());
+    let mut packets = 1;
+    let mut payload_bytes = packet.payload_bytes();
     let deadline = clock.monotonic_millis().saturating_add(BATCH_WAIT_MS);
-    while batch.len() < MAX_BATCH_BYTES && sending_allowed(status) {
+    while packets < BATCH_PACKETS && sending_allowed(status) {
         let remaining = deadline.saturating_sub(clock.monotonic_millis());
         let Some((packet, depth)) = queue.pop_timeout(Duration::from_millis(remaining)) else {
             break;
         };
         batch.extend_from_slice(packet.as_bytes());
+        packets += 1;
+        payload_bytes += packet.payload_bytes();
         status.set_queue_depth(depth);
     }
-    send_batch(sink, batch, status, delay, clock);
+    send_batch(sink, batch, packets, payload_bytes, status, delay, clock);
 }
 
 fn send_batch(
     sink: &mut impl PacketSink,
     bytes: &[u8],
+    packets: usize,
+    payload_bytes: usize,
     status: &StreamStatus,
     delay: &impl Delay,
     clock: &impl Clock,
@@ -95,12 +98,11 @@ fn send_batch(
                 status.record_send_stall(elapsed);
                 log::warn!("PCM send stalled for {elapsed} ms");
             }
-            for index in 0..bytes.len() / MAX_PACKET_BYTES {
-                status.record_sent(PAYLOAD_BYTES, reconnected && index == 0);
-            }
+            status.record_sent_batch(packets, payload_bytes, reconnected);
         }
         Ok(None) => {}
         Err(failure) => {
+            status.record_failed_send(packets);
             status.record_network_error(failure.secure_handshake);
             delay.delay_ms(SEND_ERROR_BACKOFF_MS);
         }
@@ -216,6 +218,47 @@ mod tests {
     }
 
     #[test]
+    fn mixed_silence_batches_keep_the_packet_bound_and_payload_accounting() {
+        let time = Time::default();
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        let mut expected = Vec::new();
+        for sequence in 0..5 {
+            let packet = if sequence % 2 == 0 {
+                AudioPacket::silence(sequence)
+            } else {
+                AudioPacket::from_pcm(sequence, &[7; PAYLOAD_BYTES])
+            };
+            if sequence < 4 {
+                expected.extend_from_slice(packet.as_bytes());
+            }
+            queue.push_drop_oldest(packet);
+        }
+        let mut sink = sink(&time);
+        step(&mut sink, &queue, &status, &time, &time, &mut Vec::new());
+        assert_eq!(sink.received, vec![expected]);
+        assert_eq!(status.snapshot().packets, 4);
+        assert_eq!(status.snapshot().bytes, 2048);
+        assert_eq!(status.snapshot().queue_depth, 1);
+    }
+
+    #[test]
+    fn failed_batch_reports_affected_packets_separately_from_the_error_event() {
+        let time = Time::default();
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        for _ in 0..4 {
+            queue.push_drop_oldest(packet());
+        }
+        let mut sink = sink(&time);
+        sink.failure = Some(false);
+        step(&mut sink, &queue, &status, &time, &time, &mut Vec::new());
+        assert_eq!(status.snapshot().network_errors, 1);
+        assert_eq!(status.snapshot().send_failed_packets, 4);
+        assert_eq!(status.snapshot().packets, 0);
+    }
+
+    #[test]
     fn batches_bound_each_write_and_count_reconnections_once() {
         let time = Time::default();
         let status = StreamStatus::default();
@@ -241,7 +284,15 @@ mod tests {
         let mut sink = sink(&time);
         let waiting = packet();
         time.delay_ms(500);
-        send_batch(&mut sink, waiting.as_bytes(), &status, &time, &time);
+        send_batch(
+            &mut sink,
+            waiting.as_bytes(),
+            1,
+            PAYLOAD_BYTES,
+            &status,
+            &time,
+            &time,
+        );
         assert_eq!(sink.calls, 1);
         assert_eq!(sink.writes, 1);
         assert_eq!(status.snapshot().packets, 1);
@@ -254,7 +305,15 @@ mod tests {
         let status = StreamStatus::default();
         let mut sink = sink(&time);
         sink.connect_ms = 2_000;
-        send_batch(&mut sink, packet().as_bytes(), &status, &time, &time);
+        send_batch(
+            &mut sink,
+            packet().as_bytes(),
+            1,
+            PAYLOAD_BYTES,
+            &status,
+            &time,
+            &time,
+        );
         assert_eq!(sink.calls, 1);
         assert_eq!(sink.writes, 1);
         assert_eq!(status.snapshot().packets, 1);
@@ -268,7 +327,15 @@ mod tests {
             status.mark_transport_present();
             let mut sink = sink(&time);
             sink.control = Some((&status, quiesce));
-            send_batch(&mut sink, packet().as_bytes(), &status, &time, &time);
+            send_batch(
+                &mut sink,
+                packet().as_bytes(),
+                1,
+                PAYLOAD_BYTES,
+                &status,
+                &time,
+                &time,
+            );
             assert_eq!(sink.writes, 0);
             assert!(!status.transport_quiesced());
         }
@@ -282,7 +349,15 @@ mod tests {
             status.mark_transport_present();
             let mut sink = sink(&time);
             sink.failure = Some(secure);
-            send_batch(&mut sink, packet().as_bytes(), &status, &time, &time);
+            send_batch(
+                &mut sink,
+                packet().as_bytes(),
+                1,
+                PAYLOAD_BYTES,
+                &status,
+                &time,
+                &time,
+            );
             assert_eq!(sink.calls, 1);
             assert_eq!(status.snapshot().network_errors, 1);
             assert_eq!(status.snapshot().tls_handshake_failures, u64::from(secure));
@@ -296,10 +371,26 @@ mod tests {
         let time = Time::default();
         let status = StreamStatus::default();
         let mut sink = sink(&time);
-        send_batch(&mut sink, packet().as_bytes(), &status, &time, &time);
+        send_batch(
+            &mut sink,
+            packet().as_bytes(),
+            1,
+            PAYLOAD_BYTES,
+            &status,
+            &time,
+            &time,
+        );
         assert_eq!(status.snapshot().reconnects, 0);
         sink.write_ms = SEND_STALL_MS as u32;
-        send_batch(&mut sink, packet().as_bytes(), &status, &time, &time);
+        send_batch(
+            &mut sink,
+            packet().as_bytes(),
+            1,
+            PAYLOAD_BYTES,
+            &status,
+            &time,
+            &time,
+        );
         let snapshot = status.snapshot();
         assert_eq!(snapshot.packets, 2);
         assert_eq!(snapshot.bytes, 2 * PAYLOAD_BYTES as u64);

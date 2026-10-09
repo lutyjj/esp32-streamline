@@ -18,6 +18,9 @@ struct Totals {
     read_errors: u64,
     short_reads: u64,
     queue_drops: u64,
+    capture_lost_packets: u64,
+    silence_packets: u64,
+    send_failed_packets: u64,
     network_errors: u64,
     tls_handshake_failures: u64,
     reconnects: u64,
@@ -175,8 +178,7 @@ impl StreamStatus {
             .store(u32::from(noise_floor), Ordering::Relaxed);
     }
 
-    /// Take the next packet sequence number. Idle packets consume one too, so a
-    /// gap tells the bridge how much time passed while the input was silent.
+    /// Take the next capture sequence number for either PCM or explicit silence.
     pub(crate) fn next_sequence(&self) -> u32 {
         self.advance_sequence(1)
     }
@@ -189,19 +191,38 @@ impl StreamStatus {
         self.totals().queue_drops += 1;
     }
 
+    pub(crate) fn record_capture_loss(&self, packets: u64) {
+        if packets > 0 {
+            self.totals().capture_lost_packets += packets;
+        }
+    }
+
+    pub(crate) fn record_silence(&self) {
+        self.totals().silence_packets += 1;
+    }
+
+    pub(crate) fn record_failed_send(&self, packets: usize) {
+        self.totals().send_failed_packets += packets as u64;
+    }
+
     pub(crate) fn set_queue_depth(&self, depth: usize) {
         self.queue_depth.store(depth as u32, Ordering::Relaxed);
     }
 
-    /// Account one delivered packet. A send on a fresh connection counts as a
+    /// Account a delivered batch. A send on a fresh connection counts as a
     /// reconnect only after the first success, so the initial connect is not
     /// miscounted.
-    pub(crate) fn record_sent(&self, payload_bytes: usize, reconnected: bool) {
+    pub(crate) fn record_sent_batch(
+        &self,
+        packets: usize,
+        payload_bytes: usize,
+        reconnected: bool,
+    ) {
         let mut totals = self.totals();
         if reconnected && totals.packets > 0 {
             totals.reconnects += 1;
         }
-        totals.packets += 1;
+        totals.packets += packets as u64;
         totals.bytes += payload_bytes as u64;
     }
 
@@ -231,6 +252,9 @@ impl StreamStatus {
             read_errors: totals.read_errors,
             short_reads: totals.short_reads,
             queue_drops: totals.queue_drops,
+            capture_lost_packets: totals.capture_lost_packets,
+            silence_packets: totals.silence_packets,
+            send_failed_packets: totals.send_failed_packets,
             network_errors: totals.network_errors,
             tls_handshake_failures: totals.tls_handshake_failures,
             reconnects: totals.reconnects,
@@ -257,6 +281,9 @@ pub struct StreamSnapshot {
     pub read_errors: u64,
     pub short_reads: u64,
     pub queue_drops: u64,
+    pub capture_lost_packets: u64,
+    pub silence_packets: u64,
+    pub send_failed_packets: u64,
     pub network_errors: u64,
     pub tls_handshake_failures: u64,
     pub reconnects: u64,
@@ -281,8 +308,8 @@ mod tests {
     fn totals_accumulate_past_the_32_bit_boundary() {
         let status = StreamStatus::default();
 
-        status.record_sent(usize::try_from(u32::MAX).unwrap(), false);
-        status.record_sent(10, false);
+        status.record_sent_batch(1, usize::try_from(u32::MAX).unwrap(), false);
+        status.record_sent_batch(1, 10, false);
 
         let snapshot = status.snapshot();
         assert_eq!(snapshot.packets, 2);

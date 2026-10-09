@@ -3,7 +3,7 @@ import { act } from 'preact/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BridgeApp, bridgeView } from '../src/bridge/BridgeApp';
 import { Recordings } from '../src/bridge/Recordings';
-import { receptionSummary } from '../src/bridge/reception';
+import { qualitySummary, receptionSummary } from '../src/bridge/reception';
 import { IncomingSource } from '../src/bridge/Sources';
 import { bridge } from '../src/bridge/state';
 import type { RecordingSnapshot, SourceSnapshot } from '../src/generated/bridge';
@@ -11,8 +11,18 @@ import type { RecordingSnapshot, SourceSnapshot } from '../src/generated/bridge'
 function source(rms: number): SourceSnapshot {
   return {
     packets: 1,
-    lost: 0,
-    concealed: 0,
+    missing_packets: 0,
+    silence_packets: 0,
+    quality: {
+      window_seconds: 60,
+      observed_seconds: 60,
+      audio_packets: 1,
+      silence_packets: 0,
+      missing_packets: 0,
+      late_packets: 0,
+      underruns: 0,
+      disconnects: 0,
+    },
     late: 0,
     reordered: 0,
     duplicate: 0,
@@ -305,7 +315,12 @@ it('points to recent player delivery trouble without alarming on historical coun
   expect(receptionSummary({ ...previous, client_queue_drops: 6 }, previous)).toContain(
     'player is falling behind',
   );
-  expect(receptionSummary({ ...previous, concealed: 1 }, previous)).toContain('Audio gaps');
+  expect(
+    receptionSummary(
+      { ...previous, quality: { ...previous.quality, missing_packets: 1 } },
+      previous,
+    ),
+  ).toContain('Playback gaps');
 });
 
 it('carries source B through unlocking and an already mounted recording workspace', async () => {
@@ -369,4 +384,24 @@ it('carries source B through unlocking and an already mounted recording workspac
   expect(host.querySelector<HTMLSelectElement>('#rec-source')?.value).toBe('B');
   start.mockRestore();
   render(null, host);
+});
+
+it('reports a bounded quality window without treating silence as loss', () => {
+  const current = { ...source(0), buffer_ready_at: 1 };
+  current.quality.audio_packets = 0;
+  current.quality.silence_packets = 11250;
+  expect(receptionSummary(current)).toContain('quiet input');
+  expect(qualitySummary(current)).toContain('audio quality not measured');
+  current.quality.audio_packets = 100;
+  current.quality.observed_seconds = 12;
+  expect(qualitySummary(current)).toBe('Measuring (12 / 60 seconds)');
+  current.quality.observed_seconds = 60;
+  expect(qualitySummary(current)).toBe('Quality target met');
+  current.quality.missing_packets = 1;
+  expect(qualitySummary(current)).toBe('Quality target met');
+  current.quality.missing_packets = 2;
+  expect(qualitySummary(current)).toBe('Quality target not met');
+  current.quality.missing_packets = 0;
+  current.quality.disconnects = 1;
+  expect(qualitySummary(current)).toBe('Quality target not met');
 });

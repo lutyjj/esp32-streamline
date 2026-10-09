@@ -172,3 +172,22 @@ settings unlock, for the same reason the endpoint needs the key.
 Reach for [`make firmware-monitor`](../README.md#development) when the device
 does not reach the network at all or when the earliest boot lines matter.
 Everything else is readable over the API.
+
+
+## Streaming counters
+
+Device `/api/status` and `/metrics` distinguish where streaming was interrupted.
+Each interval represents 256 stereo frames at 48 kHz.
+
+| Status counter | Meaning |
+|---|---|
+| `capture_lost_packets_total` | Missing capture intervals estimated from elapsed time beyond DMA retention |
+| `queue_drops_total` | Captured intervals discarded when the sender queue fills |
+| `silence_packets_total` | Intentional silence records offered to the sender queue |
+| `send_failed_packets_total` | Records in failed send batches; the peer may have received part of a batch |
+| `network_errors_total` | Failed send events, not a packet count |
+
+Do not add send errors to packet counts or assume that a short read means lost
+audio: the capture engine assembles short reads into complete intervals.
+The [bridge quality window](pcm-protocol.md#quality-measurements) measures
+playout gaps separately from capture and transport diagnostics.

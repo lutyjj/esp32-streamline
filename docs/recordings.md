@@ -58,10 +58,12 @@ positions with silence.
 
 ## Timeline and integrity
 
-The first received packet defines frame zero. For every later packet, the
+The first received PCM packet defines frame zero; leading silence records do
+not start a recording. For every later packet, the
 recorder compares its sequence with the expected next value:
 
-- the expected sequence appends the packet;
+- the expected sequence appends PCM or zero-valued frames for an explicit
+  silence record; intentional silence does not increment gap counters;
 - a forward gap inserts the exact number of silent packet frames and increments
   the gap counters;
 - a duplicate is ignored and counted;

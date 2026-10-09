@@ -176,6 +176,21 @@ impl<W: Write> PrometheusWriter<W> {
             snapshot.stream.queue_drops_total,
         )?;
         self.counter(
+            "streamline_capture_lost_packets_total",
+            "Capture intervals lost beyond DMA retention.",
+            snapshot.stream.capture_lost_packets_total,
+        )?;
+        self.counter(
+            "streamline_silence_packets_total",
+            "Intentional silence intervals offered to the sender queue.",
+            snapshot.stream.silence_packets_total,
+        )?;
+        self.counter(
+            "streamline_send_failed_packets_total",
+            "Packets in failed sends; delivery may be partial.",
+            snapshot.stream.send_failed_packets_total,
+        )?;
+        self.counter(
             "streamline_network_errors_total",
             "TCP send errors.",
             snapshot.stream.network_errors_total,
@@ -441,6 +456,15 @@ streamline_queue_depth 3\n\
 # HELP streamline_queue_drops_total Packets dropped because the capture queue is full.\n\
 # TYPE streamline_queue_drops_total counter\n\
 streamline_queue_drops_total 4\n\
+# HELP streamline_capture_lost_packets_total Capture intervals lost beyond DMA retention.\n\
+# TYPE streamline_capture_lost_packets_total counter\n\
+streamline_capture_lost_packets_total 2\n\
+# HELP streamline_silence_packets_total Intentional silence intervals offered to the sender queue.\n\
+# TYPE streamline_silence_packets_total counter\n\
+streamline_silence_packets_total 3\n\
+# HELP streamline_send_failed_packets_total Packets in failed sends; delivery may be partial.\n\
+# TYPE streamline_send_failed_packets_total counter\n\
+streamline_send_failed_packets_total 4\n\
 # HELP streamline_network_errors_total TCP send errors.\n\
 # TYPE streamline_network_errors_total counter\n\
 streamline_network_errors_total 6\n\
@@ -552,6 +576,9 @@ streamline_ota_busy 0\n"
                 short_reads_total: 2,
                 queue_depth: 3,
                 queue_drops_total: 4,
+                capture_lost_packets_total: 2,
+                silence_packets_total: 3,
+                send_failed_packets_total: 4,
                 network_errors_total: 6,
                 tls_handshake_failures_total: 8,
                 reconnects_total: 7,

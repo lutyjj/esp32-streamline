@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 HEADER = struct.Struct("<4sBBBBIIII")
 MAGIC = b"ELI1"
-VERSION = 1
+VERSION = 2
 
 DEFAULT_RATE = 48_000
 DEFAULT_CHANNELS = 2
@@ -74,7 +74,7 @@ def parse_header(
         expected_format.frames_per_packet,
     ):
         raise ValueError(f"unsupported format: rate={rate} channels={channels} bits={bits} frames={frames}")
-    if payload_bytes != expected_format.payload_bytes:
+    if payload_bytes not in (0, expected_format.payload_bytes):
         raise ValueError(f"payload size does not match format: {payload_bytes} != {expected_format.payload_bytes}")
 
     return seq, rate, frames, payload_bytes

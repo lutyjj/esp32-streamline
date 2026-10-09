@@ -4,6 +4,7 @@ import struct
 import threading
 import unittest
 from itertools import pairwise
+from typing import cast
 
 from streamline_bridge.fanout import ClientFanout
 from streamline_bridge.playout import MAX_UINT32, PlayoutBuffer, PlayoutWorker
@@ -68,7 +69,43 @@ class PlayoutBufferTests(unittest.TestCase):
         self.assertEqual(buffer.next_chunk(), source)
         self.assertEqual(buffer.next_chunk(), payload(5000))
         self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
-        self.assertEqual(buffer.snapshot()["concealed"], 2)
+        self.assertEqual(buffer.snapshot()["missing_packets"], 2)
+
+    def test_explicit_silence_keeps_playout_ready_without_loss_or_underruns(self) -> None:
+        buffer = self.make_buffer()
+        buffer.ingest(0, payload(1000))
+        buffer.next_chunk()
+        for seq in range(1, 501):
+            buffer.ingest(seq, b"")
+            self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+            self.clock.current += buffer.packet_interval
+        snapshot = buffer.snapshot()
+        self.assertEqual(snapshot["silence_packets"], 500)
+        self.assertEqual(snapshot["missing_packets"], 0)
+        self.assertEqual(snapshot["underruns"], 0)
+        quality = cast("dict[str, int | float]", snapshot["quality"])
+        self.assertEqual(quality["silence_packets"], 500)
+        self.assertEqual(quality["audio_packets"], 1)
+        self.assertEqual(quality["missing_packets"], 0)
+        self.assertIsNotNone(snapshot["buffer_ready_at"])
+        # An absent record remains unknown loss, even if its neighbours are silence.
+        buffer.next_chunk()
+        self.assertEqual(buffer.snapshot()["missing_packets"], 1)
+        buffer.ingest(502, payload(2000))
+        self.assertEqual(buffer.next_chunk(), payload(2000))
+
+    def test_duplicate_and_late_silence_do_not_inflate_intentional_playout(self) -> None:
+        buffer = self.make_buffer()
+        buffer.ingest(MAX_UINT32, b"")
+        buffer.ingest(MAX_UINT32, b"")
+        buffer.next_chunk()
+        buffer.ingest(MAX_UINT32, b"")
+        buffer.ingest(0, payload(3000))
+        self.assertEqual(buffer.next_chunk(), payload(3000))
+        snapshot = buffer.snapshot()
+        self.assertEqual(snapshot["silence_packets"], 1)
+        self.assertEqual(snapshot["duplicate"], 1)
+        self.assertEqual(snapshot["late"], 1)
 
     def test_long_loss_rebuffers_then_new_packet_starts_a_new_run(self) -> None:
         buffer = self.make_buffer(outage_packets=1)
@@ -79,7 +116,9 @@ class PlayoutBufferTests(unittest.TestCase):
         for _ in range(100):
             self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
         self.assertEqual(buffer.snapshot()["underruns"], 1)
-        self.assertEqual(buffer.snapshot()["lost"], 2, "waiting for resumed audio is not further packet loss")
+        self.assertEqual(
+            buffer.snapshot()["missing_packets"], 2, "waiting for resumed audio is not further packet loss"
+        )
         buffer.ingest(20, payload(2000))
         self.assertEqual(buffer.next_chunk(), payload(2000))
 

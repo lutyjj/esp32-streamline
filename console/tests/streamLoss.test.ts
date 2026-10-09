@@ -24,6 +24,14 @@ beforeEach(() => {
 });
 
 describe('stream loss callout', () => {
+  it('separates intentional silence from capture loss', () => {
+    status.value = deviceStatus({ metrics: { silence_packets_total: 10 } });
+    status.value = deviceStatus({ metrics: { silence_packets_total: 1000 } });
+    expect(lossCalloutVisible.value).toBe(false);
+    status.value = deviceStatus({ metrics: { capture_lost_packets_total: 2 } });
+    expect(lossCalloutVisible.value).toBe(true);
+    expect(episodeDrops.value).toBe(2);
+  });
   it('stays hidden without status and on the first poll, whatever its total', () => {
     expect(lossCalloutVisible.value).toBe(false);
     status.value = withDrops(500);
@@ -37,11 +45,15 @@ describe('stream loss callout', () => {
     expect(episodeDrops.value).toBe(30);
   });
 
-  it('counts packets lost to a failed send', () => {
-    status.value = deviceStatus({ metrics: { network_errors_total: 2 } });
-    status.value = deviceStatus({ metrics: { network_errors_total: 3 } });
+  it('counts affected packets rather than failed-send events', () => {
+    status.value = deviceStatus({
+      metrics: { network_errors_total: 2, send_failed_packets_total: 8 },
+    });
+    status.value = deviceStatus({
+      metrics: { network_errors_total: 3, send_failed_packets_total: 12 },
+    });
     expect(lossCalloutVisible.value).toBe(true);
-    expect(episodeDrops.value).toBe(1);
+    expect(episodeDrops.value).toBe(4);
   });
 
   it('accumulates across bursts and survives clean polls in between', () => {

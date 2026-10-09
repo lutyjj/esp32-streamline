@@ -1,7 +1,7 @@
 //! Byte-exact encoding of the StreamLine TCP PCM header.
 
 pub const MAGIC: [u8; 4] = *b"ELI1";
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2;
 pub const HEADER_LEN: usize = 24;
 pub const SAMPLE_RATE_HZ: u32 = 48_000;
 pub const CHANNELS: u8 = 2;
@@ -16,11 +16,22 @@ pub const PAYLOAD_BYTES: usize = FRAMES_PER_PACKET as usize * BYTES_PER_FRAME;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PacketHeader {
     pub sequence: u32,
+    silence: bool,
 }
 
 impl PacketHeader {
     pub const fn new(sequence: u32) -> Self {
-        Self { sequence }
+        Self {
+            sequence,
+            silence: false,
+        }
+    }
+
+    pub const fn silence(sequence: u32) -> Self {
+        Self {
+            sequence,
+            silence: true,
+        }
     }
 
     pub fn encode(self) -> [u8; HEADER_LEN] {
@@ -33,7 +44,12 @@ impl PacketHeader {
         bytes[8..12].copy_from_slice(&self.sequence.to_le_bytes());
         bytes[12..16].copy_from_slice(&SAMPLE_RATE_HZ.to_le_bytes());
         bytes[16..20].copy_from_slice(&FRAMES_PER_PACKET.to_le_bytes());
-        bytes[20..24].copy_from_slice(&(PAYLOAD_BYTES as u32).to_le_bytes());
+        let payload_bytes = if self.silence {
+            0
+        } else {
+            PAYLOAD_BYTES as u32
+        };
+        bytes[20..24].copy_from_slice(&payload_bytes.to_le_bytes());
         bytes
     }
 }
@@ -50,7 +66,7 @@ mod tests {
         assert_eq!(
             header,
             [
-                b'E', b'L', b'I', b'1', 1, 24, 2, 16, 0x11, 0x22, 0x33, 0x44, 0x80, 0xbb, 0, 0, 0,
+                b'E', b'L', b'I', b'1', 2, 24, 2, 16, 0x11, 0x22, 0x33, 0x44, 0x80, 0xbb, 0, 0, 0,
                 1, 0, 0, 0, 4, 0, 0,
             ]
         );

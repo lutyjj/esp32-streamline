@@ -14,6 +14,22 @@ from streamline_bridge.recording import SILENCE_BATCH_PACKETS
 class RecordingTimelineTests(RecordingServiceHarness):
     """Timeline policy: gaps, duplicates, ordering, and empty sessions."""
 
+    def test_explicit_silence_waits_for_audio_then_preserves_time_without_counting_loss(self) -> None:
+        started = self.service.start("192.0.2.10", "Quiet intervals")
+        self.source.hub.ingest(8, b"")
+        self.source.hub.ingest(9, payload(100))
+        self.source.hub.ingest(10, b"")
+        self.source.hub.ingest(11, payload(200))
+        stopped = self.service.stop(started["id"])
+        self.assertEqual(stopped["frames"], 3 * DEFAULT_FORMAT.frames_per_packet)
+        self.assertEqual(stopped["gap_packets"], 0)
+        opened = self.store.open_file(started["id"])
+        with opened.source, wave.open(opened.source, "rb") as recording:
+            self.assertEqual(
+                recording.readframes(3 * DEFAULT_FORMAT.frames_per_packet),
+                payload(100) + bytes(DEFAULT_FORMAT.payload_bytes) + payload(200),
+            )
+
     def test_sequence_gaps_become_silence_and_duplicates_do_not_repeat_audio(self) -> None:
         started = self.service.start("192.0.2.10", "Rare album")
         self.source.hub.ingest(10, payload(100))
@@ -72,6 +88,7 @@ class RecordingTimelineTests(RecordingServiceHarness):
 
     def test_stop_before_audio_discards_the_empty_part(self) -> None:
         started = self.service.start("192.0.2.10", "Nothing played")
+        self.source.hub.ingest(1, b"")
 
         stopped = self.service.stop(started["id"])
 

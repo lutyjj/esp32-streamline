@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from streamline_bridge.protocol import DEFAULT_FORMAT, DEFAULT_RATE, PcmFormat
+from streamline_bridge.quality import QualityWindow
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -44,8 +45,8 @@ class SystemClock:
 @dataclass
 class ReceiverStats:
     packets: int = 0
-    lost: int = 0
-    concealed: int = 0
+    missing_packets: int = 0
+    silence_packets: int = 0
     late: int = 0
     reordered: int = 0
     duplicate: int = 0
@@ -112,6 +113,7 @@ class PlayoutBuffer:
         self._last_payload_size = pcm_format.payload_bytes
         self._loss_run = 0
         self._outage_conceal_packets = 0
+        self._quality = QualityWindow()
         self.stats = ReceiverStats(
             started_at=self._clock.time(),
             playout_buffer_packets=self._playout_buffer_packets,
@@ -152,6 +154,7 @@ class PlayoutBuffer:
             self.stats.last_packet_at = self._clock.time()
             if self.stats.playout_seq is not None and seq_distance(self.stats.playout_seq, seq) < 0:
                 self.stats.late += 1
+                self._quality.record("late_packets", self._clock.monotonic())
                 return True
             if seq in self._packets:
                 self.stats.duplicate += 1
@@ -162,7 +165,6 @@ class PlayoutBuffer:
             if self.stats.highest_seq is not None and seq_distance(self.stats.highest_seq, seq) < 0:
                 self.stats.reordered += 1
             self._packets[seq] = payload
-            self._last_payload_size = len(payload)
             self.stats.highest_seq = (
                 seq
                 if self.stats.highest_seq is None or seq_distance(self.stats.highest_seq, seq) > 0
@@ -189,12 +191,18 @@ class PlayoutBuffer:
             seq = self.stats.playout_seq
             payload = self._packets.pop(seq, None)
             if payload is None:
-                self.stats.lost += 1
-                self.stats.concealed += 1
+                self.stats.missing_packets += 1
+                self._quality.record("missing_packets", self._clock.monotonic())
                 self._loss_run += 1
                 self._outage_conceal_packets += 1
                 payload = self._conceal_payload()
             else:
+                if payload:
+                    self._quality.record("audio_packets", self._clock.monotonic())
+                else:
+                    self.stats.silence_packets += 1
+                    self._quality.record("silence_packets", self._clock.monotonic())
+                    payload = bytes(self._last_payload_size)
                 self._loss_run = 0
                 self._outage_conceal_packets = 0
                 self._last_payload = payload
@@ -203,6 +211,7 @@ class PlayoutBuffer:
             if self._outage_conceal_packets > self._max_outage_silence_packets:
                 self._clear_for_rebuffer()
                 self.stats.underruns += 1
+                self._quality.record("underruns", self._clock.monotonic())
             return payload
 
     def reset_source_session(self) -> None:
@@ -218,6 +227,7 @@ class PlayoutBuffer:
     def note_tcp_disconnect(self) -> None:
         with self._lock:
             self.stats.tcp_disconnects += 1
+            self._quality.record("disconnects", self._clock.monotonic())
 
     def note_tcp_error(self) -> None:
         with self._lock:
@@ -227,6 +237,7 @@ class PlayoutBuffer:
         with self._lock:
             data = asdict(self.stats)
             data["buffered_packets"] = len(self._packets)
+            data["quality"] = self._quality.snapshot(self._clock.monotonic())
         data["uptime_seconds"] = self._clock.time() - float(data["started_at"])
         return data
 

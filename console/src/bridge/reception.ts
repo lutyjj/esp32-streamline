@@ -15,19 +15,34 @@ export function receptionSummary(current: SourceSnapshot, previous?: SourceSnaps
   ) {
     return 'A player is falling behind. Check its connection or reconnect the player.';
   }
-  if (
-    comparable &&
-    (current.concealed > previous.concealed ||
-      current.underruns > previous.underruns ||
-      current.late > previous.late)
-  ) {
-    return 'Audio gaps detected. Check the device’s Wi-Fi and its connection to the bridge.';
+  const quality = current.quality;
+  if (quality.missing_packets || quality.late_packets || quality.underruns) {
+    return 'Playback gaps in the last minute. Check capture, queue, and connection diagnostics.';
+  }
+  if (quality.disconnects) {
+    return 'The device connection was interrupted in the last minute.';
   }
   if (current.buffer_ready_at === null && current.lifecycle.state === 'connected')
     return 'Buffering audio before sending it to players.';
   if (current.lifecycle.state !== 'connected')
     return 'Waiting for this device. Play its source and check its connection if audio does not arrive.';
+  if (quality.observed_seconds < quality.window_seconds)
+    return 'Measuring reception. A full minute of observations is not available yet.';
+  if (quality.audio_packets === 0 && quality.silence_packets > 0)
+    return 'The device reports a quiet input. Intentional silence is not packet loss.';
   return current.clients
     ? 'Audio is available to connected players. Check your player to confirm sound.'
     : 'Ready for a player. Copy the stream address to begin listening.';
+}
+
+/** The gate applies to observed playout intervals, not inferred Wi-Fi packet loss. */
+export function qualitySummary(source: SourceSnapshot): string {
+  const q = source.quality;
+  if (q.missing_packets > 1 || q.underruns || q.disconnects) return 'Quality target not met';
+  if (source.lifecycle.state !== 'connected' || source.buffer_ready_at === null)
+    return 'Waiting for a stream';
+  if (q.observed_seconds < q.window_seconds)
+    return `Measuring (${Math.floor(q.observed_seconds)} / ${q.window_seconds} seconds)`;
+  if (q.audio_packets === 0) return 'Quiet input; audio quality not measured';
+  return 'Quality target met';
 }

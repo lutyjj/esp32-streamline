@@ -1,6 +1,6 @@
 # PCM transport
 
-The firmware sends the unchanged [ELI1 PCM frame](pcm-protocol.md) over one
+The firmware sends the [ELI1 PCM frame](pcm-protocol.md) over one
 persistent TCP byte stream. It supports explicit `cleartext` and `tls-psk`
 modes. Cleartext is the compatibility default; encrypted mode is owner-enabled
 after a device proves its staged key against the bridge.
@@ -64,7 +64,8 @@ source admission.
 - pause: stop enqueueing and admitting sends, close the connection, discard
   queued audio, and release queue and batch storage; an already-started write
   may finish
-- packet: 24-byte header plus 1,024 PCM bytes
+- packet: 24-byte header plus 1,024 PCM bytes for audio, or only the header
+  for intentional silence
 - send batch: up to four whole packets in one write; collect for at most
   40 ms after the first packet, then flush even if capture has stopped;
   the sender reuses a 4,192-byte internal-RAM buffer
@@ -89,8 +90,7 @@ complete packet clears playing status, including when reads return fragments.
 
 Live audio changes relearn the input's noise floor. An existing stream stays
 open through the learning and start-debounce window (about 2.1 seconds), then
-follows the new input's detected state. An idle input does not start streaming
-just because its settings changed.
+follows the new input's detected state. An idle input sends silence records.
 
 Queued audio survives connection setup and slow sends within the queue's
 fixed capacity. A failed send discards that batch and backs off for 250 ms
@@ -99,9 +99,9 @@ before processing the queue.
 An established producer keeps its TCP connection during detected silence.
 The bridge's source idle timeout bounds the first packet and incomplete
 frames. Between complete packets, native TCP keepalive checks the connection
-without sending PCM. Its probe interval rounds the configured timeout up to
+alongside the regular silence records. Its probe interval rounds the configured timeout up to
 whole seconds, with a one-second minimum; three unanswered probes close a
-dead connection. Audio resumes on the existing connection when the gate opens.
+dead connection. The gate selects PCM or header-only silence on the same connection.
 
 The firmware chooses the transport once while composing the network task.
 Cleartext uses Rust `std::net` over lwIP. TLS uses ESP-TLS only in the adapter;
@@ -254,8 +254,8 @@ other protocol.
 
 Use continuous input for a ten-minute local run. Expect authenticated source identity,
 zero network errors, a bridge with no underruns after startup, and no recurring
-heap decline. Exclude deliberate maintenance pauses and interpret
-[signal-gated silence](pcm-protocol.md#receiver-playout) separately.
+heap decline. Exclude deliberate maintenance pauses and verify
+[explicit silence accounting](pcm-protocol.md#quality-measurements).
 Qualification also covers bridge restart, Wi-Fi reconnect, device
 reboot, wrong and unknown keys, downgrade rejection, rotation, rollback,
 recovery, and restoration of the original device state.

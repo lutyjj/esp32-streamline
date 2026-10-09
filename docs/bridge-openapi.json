@@ -226,6 +226,64 @@
         "title": "LevelSnapshot",
         "type": "object"
       },
+      "QualitySnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "audio_packets": {
+            "minimum": 0.0,
+            "title": "Audio Packets",
+            "type": "integer"
+          },
+          "disconnects": {
+            "minimum": 0.0,
+            "title": "Disconnects",
+            "type": "integer"
+          },
+          "late_packets": {
+            "minimum": 0.0,
+            "title": "Late Packets",
+            "type": "integer"
+          },
+          "missing_packets": {
+            "minimum": 0.0,
+            "title": "Missing Packets",
+            "type": "integer"
+          },
+          "observed_seconds": {
+            "maximum": 60.0,
+            "minimum": 0.0,
+            "title": "Observed Seconds",
+            "type": "number"
+          },
+          "silence_packets": {
+            "minimum": 0.0,
+            "title": "Silence Packets",
+            "type": "integer"
+          },
+          "underruns": {
+            "minimum": 0.0,
+            "title": "Underruns",
+            "type": "integer"
+          },
+          "window_seconds": {
+            "const": 60,
+            "title": "Window Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_seconds",
+          "observed_seconds",
+          "audio_packets",
+          "silence_packets",
+          "missing_packets",
+          "late_packets",
+          "underruns",
+          "disconnects"
+        ],
+        "title": "QualitySnapshot",
+        "type": "object"
+      },
       "RecordingCapabilities": {
         "additionalProperties": false,
         "properties": {
@@ -647,11 +705,6 @@
             "title": "Clients",
             "type": "integer"
           },
-          "concealed": {
-            "minimum": 0.0,
-            "title": "Concealed",
-            "type": "integer"
-          },
           "duplicate": {
             "minimum": 0.0,
             "title": "Duplicate",
@@ -719,11 +772,6 @@
           "lifecycle": {
             "$ref": "#/components/schemas/SourceLifecycle"
           },
-          "lost": {
-            "minimum": 0.0,
-            "title": "Lost",
-            "type": "integer"
-          },
           "max_buffered_packets": {
             "minimum": 1.0,
             "title": "Max Buffered Packets",
@@ -732,6 +780,11 @@
           "max_outage_silence_packets": {
             "minimum": 1.0,
             "title": "Max Outage Silence Packets",
+            "type": "integer"
+          },
+          "missing_packets": {
+            "minimum": 0.0,
+            "title": "Missing Packets",
             "type": "integer"
           },
           "overflows": {
@@ -778,6 +831,9 @@
             ],
             "title": "Playout Seq"
           },
+          "quality": {
+            "$ref": "#/components/schemas/QualitySnapshot"
+          },
           "rate": {
             "exclusiveMinimum": 0.0,
             "title": "Rate",
@@ -786,6 +842,11 @@
           "reordered": {
             "minimum": 0.0,
             "title": "Reordered",
+            "type": "integer"
+          },
+          "silence_packets": {
+            "minimum": 0.0,
+            "title": "Silence Packets",
             "type": "integer"
           },
           "slow_clients": {
@@ -825,8 +886,9 @@
         },
         "required": [
           "packets",
-          "lost",
-          "concealed",
+          "missing_packets",
+          "silence_packets",
+          "quality",
           "late",
           "reordered",
           "duplicate",

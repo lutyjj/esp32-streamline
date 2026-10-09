@@ -37,6 +37,24 @@ def make_pipeline() -> AudioPipeline:
 
 
 class TcpAdapterTests(unittest.TestCase):
+    def test_silence_between_pcm_packets_does_not_consume_the_next_header(self) -> None:
+        _registry, lease, server, peer = self.prepare()
+        try:
+            silence = bytearray(packet(10)[: HEADER.size])
+            silence[20:24] = bytes(4)
+            peer.sendall(packet(9) + silence + packet(11))
+            peer.shutdown(socket.SHUT_WR)
+            receive_source(lease, server, ("192.0.2.10", 39000))
+            self.assertEqual(lease.hub.snapshot()["packets"], 3)
+            self.assertEqual(lease.hub.snapshot()["tcp_errors"], 0)
+            for _ in range(3):
+                self.assertEqual(lease.hub.playout.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+            self.assertEqual(lease.hub.snapshot()["silence_packets"], 1)
+            self.assertEqual(lease.hub.snapshot()["missing_packets"], 0)
+
+        finally:
+            peer.close()
+
     def prepare(self) -> tuple[SourceRegistry[AudioPipeline], SourceLease[AudioPipeline], socket.socket, socket.socket]:
         registry = SourceRegistry(make_pipeline, max_sources=1)
         server, peer = socket.socketpair()

@@ -7,7 +7,7 @@ import { dbfs } from '../lib/format';
 import { formatBytes, formatDuration } from './format';
 import { bridgeBase } from './http';
 import { playbackUrl } from './playback';
-import { receptionSummary } from './reception';
+import { qualitySummary, receptionSummary } from './reception';
 import { StateChip } from './StateChip';
 import { bridge } from './state';
 
@@ -51,18 +51,32 @@ export function IncomingSource({ ip, source }: { ip: string; source: SourceSnaps
               : `${source.clients} player connection${source.clients === 1 ? '' : 's'}`}
         </p>
         {!bridge.unreachable.value && <p>{summary}</p>}
+        {!bridge.unreachable.value && (
+          <Kv
+            rows={[
+              ['Last minute', qualitySummary(source)],
+              ['Missing packets', String(source.quality.missing_packets)],
+              [
+                'Intentional silence',
+                `${((source.quality.silence_packets * (source.packet_frames ?? 0)) / source.rate).toFixed(1)} s`,
+              ],
+              ['Playback underruns', String(source.quality.underruns)],
+              ['Connection interruptions', String(source.quality.disconnects)],
+            ]}
+          />
+        )}
         <Disclosure title="Reception details">
           <Kv
             rows={[
               ['Received', formatBytes(source.bytes)],
-              ['Lost packets', String(source.lost)],
+              ['Missing packets (lifetime)', String(source.missing_packets)],
+              ['Intentional silence packets (lifetime)', String(source.silence_packets)],
               ['Uptime', formatDuration(source.uptime_seconds)],
               ['Buffered packets', `${source.buffered_packets} / ${source.playout_buffer_packets}`],
-              ['Concealed packets (session)', String(source.concealed)],
-              ['Late packets (session)', String(source.late)],
-              ['Buffer underruns (session)', String(source.underruns)],
-              ['Slow players (session)', String(source.slow_clients)],
-              ['Player queue drops (session)', String(source.client_queue_drops)],
+              ['Late packets (lifetime)', String(source.late)],
+              ['Buffer underruns (lifetime)', String(source.underruns)],
+              ['Slow players (lifetime)', String(source.slow_clients)],
+              ['Player queue drops (lifetime)', String(source.client_queue_drops)],
               ...source.client_streams.map((client): [string, string] => [
                 `Player ${client.id}`,
                 `${client.queue_depth} queued, ${client.queue_drops} dropped`,

@@ -54,11 +54,12 @@ source admission.
   setup; check streaming controls again before writing
 - pause: stop enqueueing and admitting sends, then close the connection and
   clear queued audio; an already-started write may finish
-- packet: 24-byte header plus up to 1,024 PCM bytes, coalesced into one write
-- `TCP_NODELAY` on both transports: each packet is one sub-MSS write on the
-  capture clock, and Nagle would hold every write for the previous one's
-  acknowledgement. This would limit throughput to one packet per round trip
-  and force the queue to drop excess capture packets
+- packet: 24-byte header plus 1,024 PCM bytes
+- send batch: up to eight whole packets in one write; collect for at most
+  40 ms after the first packet, then flush even if capture has stopped;
+  the sender reuses an 8,384-byte internal-RAM buffer
+- `TCP_NODELAY` on both transports: flush a partial batch without waiting for
+  another acknowledgement; full batches allow TCP to fill network segments
 - cleartext connect/write deadline: 250 ms
 - TLS handshake and socket deadline: 2 seconds through ESP-TLS
 - a successful send slower than 100 ms counts as a send stall

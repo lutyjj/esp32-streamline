@@ -83,7 +83,7 @@ impl TcpClient {
 }
 
 impl PacketSink for TcpClient {
-    /// Send one packet, logging any failure here at the device edge and marking
+    /// Send complete packets, logging any failure at the device edge and marking
     /// TLS handshake rejections so the pipeline can count them separately.
     fn send(
         &mut self,
@@ -302,12 +302,8 @@ fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
 /// Disable Nagle on the socket ESP-TLS opened, matching the cleartext stream's
 /// `set_nodelay`.
 ///
-/// Every packet is one record well under the MSS, produced on the capture
-/// clock. Nagle holds each such write until the previous one is acknowledged,
-/// so the stream advances a packet per round trip instead of per capture
-/// interval and the queue drops the difference. ESP-TLS exposes no
-/// configuration for this, so reach the socket it owns and clear the option
-/// there.
+/// Partial batches must flush even when capture stops. ESP-TLS exposes no
+/// configuration for this, so set the option on the socket it owns.
 fn disable_nagle(handle: *mut sys::esp_tls_t) -> Result<()> {
     let mut socket: core::ffi::c_int = -1;
     if unsafe { sys::esp_tls_get_conn_sockfd(handle, &mut socket) } != sys::ESP_OK {

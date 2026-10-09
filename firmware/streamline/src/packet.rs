@@ -23,10 +23,6 @@ impl AudioPacket {
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
-
-    pub const fn payload_bytes(&self) -> usize {
-        PAYLOAD_BYTES
-    }
 }
 
 #[cfg(test)]
@@ -40,7 +36,6 @@ mod tests {
         let packet = AudioPacket::from_pcm(4, &pcm);
         assert_eq!(packet.as_bytes().len(), MAX_PACKET_BYTES);
         assert_eq!(&packet.as_bytes()[24..28], &pcm[..4]);
-        assert_eq!(packet.payload_bytes(), PAYLOAD_BYTES);
         assert_eq!(MAX_PACKET_BYTES, 1048);
     }
 }

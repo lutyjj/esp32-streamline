@@ -22,9 +22,9 @@ pub trait PcmSource {
     fn read(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<usize, ReadFailed>;
 }
 
-/// One framed packet sent over the transport selected at boot.
+/// Complete framed packets sent over the transport selected at boot.
 pub trait PacketSink {
-    /// Send one packet. `Ok(Some(true))` reports a freshly established connection, so
+    /// Send a batch. `Ok(Some(true))` reports a freshly established connection, so
     /// the pipeline can count reconnects; `Err` reports a failed send.
     /// `ready` is checked after connection setup, before any packet bytes are written.
     /// `Ok(None)` retains the connection without sending the rejected packet.

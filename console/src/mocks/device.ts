@@ -382,14 +382,10 @@ export class FakeDevice {
   private nextStatus(): StatusResponse {
     const metrics = this.status.metrics;
     metrics.sequence += 100;
-    if (
-      metrics.playing &&
-      this.status.stream.enabled &&
-      this.config.target_host &&
-      this.status.mode !== 'setup'
-    ) {
+    if (this.status.stream.enabled && this.config.target_host && this.status.mode !== 'setup') {
       metrics.packets_total += 100;
-      metrics.bytes_total += 102400;
+      if (metrics.playing) metrics.bytes_total += 102400;
+      else metrics.silence_packets_total += 100;
     }
     if (metrics.playing) {
       const peak = PEAK_STEPS[this.poll % PEAK_STEPS.length];

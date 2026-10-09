@@ -147,7 +147,7 @@ impl<W: Write> PrometheusWriter<W> {
         )?;
         self.counter(
             "streamline_stream_packets_total",
-            "PCM packets sent to the bridge.",
+            "Capture records sent to the bridge, including PCM and explicit silence.",
             snapshot.stream.packets_total,
         )?;
         self.counter(
@@ -438,7 +438,7 @@ streamline_stream_enabled 1\n\
 # HELP streamline_stream_sequence Latest capture sequence number.\n\
 # TYPE streamline_stream_sequence gauge\n\
 streamline_stream_sequence 15\n\
-# HELP streamline_stream_packets_total PCM packets sent to the bridge.\n\
+# HELP streamline_stream_packets_total Capture records sent to the bridge, including PCM and explicit silence.\n\
 # TYPE streamline_stream_packets_total counter\n\
 streamline_stream_packets_total 12\n\
 # HELP streamline_stream_bytes_total PCM payload bytes sent to the bridge.\n\

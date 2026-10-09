@@ -5,7 +5,7 @@ import { NetworkTab } from '../src/components/NetworkTab';
 import { SystemTab } from '../src/components/SystemTab';
 import { forgetAdminKey, unlockSettings } from '../src/lib/adminKey';
 import { deviceConfig, deviceStatus } from '../src/mocks/fixtures';
-import { config, packetsMoving, status, unreachable } from '../src/state/device';
+import { audioMoving, config, status, unreachable } from '../src/state/device';
 
 const host = document.createElement('div');
 afterEach(() => {
@@ -19,7 +19,7 @@ afterEach(() => {
 it('does not describe a failed poll as quiet audio or connected Wi-Fi', () => {
   status.value = deviceStatus({ auth_required: false });
   config.value = deviceConfig({ target_host: '192.0.2.20' });
-  packetsMoving.value = true;
+  audioMoving.value = true;
   render(<NetworkTab onSetupBridge={() => {}} />, host);
   act(() => {
     unreachable.value = true;

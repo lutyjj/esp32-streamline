@@ -147,9 +147,10 @@ volumes:
 ```
 
 The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
-Music Assistant as a radio/URL stream, with audio playing on the input:
-an idle device sends no audio, and Music Assistant rejects a stream it cannot
-probe. With several ESP32 sources, select one with
+Music Assistant as a radio/URL stream. A connected device with streaming enabled
+provides a playable stream even when its input is quiet; see the
+[silence contract](docs/pcm-protocol.md#receiver-playout).
+With several ESP32 sources, select one with
 `http://<bridge-host>:8088/streamline.wav?source=<source-id>`. `/status` serves
 per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning
 flags.

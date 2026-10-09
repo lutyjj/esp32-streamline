@@ -44,7 +44,7 @@ audio creates no empty file.
 
 | Boundary | Responsibility |
 | --- | --- |
-| Firmware | Capture PCM, increment the packet sequence continuously, and send packets while the signal gate is open. |
+| Firmware | Capture audio and send sequenced PCM or explicit silence records as defined by the [PCM protocol](pcm-protocol.md). |
 | Bridge source pipeline | Admit the producer and expose received `(sequence, PCM)` packets to non-blocking consumers. |
 | Recording service | Validate commands, own session states, reconstruct the source timeline, and enforce resource limits. |
 | Recording store | Create, recover, list, download, and delete files inside one configured directory. |

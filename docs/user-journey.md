@@ -106,7 +106,8 @@ Bridge Listen shows known sources, levels, connection state, playback addresses,
 and reception details. Recordings separates capture from the file library.
 Record this audio carries the selected source through unlocking; a missing
 source never silently becomes a different input. Storage headroom stays visible
-during capture. An unseen source must play once for discovery before selection. Start recording
+during capture. A source appears when its device connects with streaming enabled,
+including during quiet input. Start recording
 before the desired passage, observe its state, then stop and save. The active
 session replaces the new-recording form; another recording is an explicit action.
 Finalized files offer download and confirmed deletion. [Recordings](recordings.md)

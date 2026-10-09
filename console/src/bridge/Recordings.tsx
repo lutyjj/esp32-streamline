@@ -88,7 +88,7 @@ function RecordingWorkspace({ requestedSource }: { requestedSource: string }) {
   const composer = (
     <Section
       title="New recording"
-      lead={`${sources.length ? 'Choose a known source. Start recording, then play it.' : 'Play audio on your device once so the bridge can discover it. Then pause, select the source here, and start recording before playing again.'}${perMinute ? ` WAV uses about ${perMinute} per minute.` : ''}`}
+      lead={`${sources.length ? 'Choose a known source. Start recording, then play it.' : 'Enable streaming on your device and point it at this bridge so its source appears here. Start recording before playing the passage you want to keep.'}${perMinute ? ` WAV uses about ${perMinute} per minute.` : ''}`}
     >
       <form
         onSubmit={async (event) => {

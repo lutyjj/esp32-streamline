@@ -33,7 +33,10 @@ describe('mock audio transport', () => {
     const before = await getStatus();
     const flowing = await getStatus();
     expect(flowing.metrics.playing).toBe(false);
-    expect(flowing.metrics.packets_total).toBe(before.metrics.packets_total);
+    expect(flowing.metrics.packets_total).toBeGreaterThan(before.metrics.packets_total);
+    expect(flowing.metrics.silence_packets_total).toBeGreaterThan(
+      before.metrics.silence_packets_total,
+    );
     expect(flowing.metrics.bytes_total).toBe(before.metrics.bytes_total);
     expect(flowing.metrics.sequence).toBeGreaterThan(before.metrics.sequence);
 

@@ -3,7 +3,7 @@ import { act } from 'preact/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BridgeWizard } from '../src/components/BridgeWizard';
 import { deviceConfig, deviceStatus, transportStatus } from '../src/mocks/fixtures';
-import { config, packetsMoving, status } from '../src/state/device';
+import { audioMoving, config, status } from '../src/state/device';
 import { setupWizardRequested } from '../src/state/transport';
 
 function labels(host: HTMLElement): string[] {
@@ -19,7 +19,7 @@ describe('BridgeWizard', () => {
   beforeEach(() => {
     status.value = deviceStatus({ auth_required: false, target: { target_host: '' } });
     config.value = deviceConfig({ target_host: '' });
-    packetsMoving.value = false;
+    audioMoving.value = false;
     setupWizardRequested.value = false;
     window.location.hash = '';
   });
@@ -52,7 +52,7 @@ describe('BridgeWizard', () => {
   it('skips the save when the target already matches and narrates Sending', () => {
     config.value = deviceConfig({ target_host: '192.0.2.20', target_port: 39000 });
     status.value = deviceStatus({ auth_required: false, metrics: { playing: true } });
-    packetsMoving.value = true;
+    audioMoving.value = true;
     const host = document.createElement('div');
     render(<BridgeWizard onClose={() => {}} />, host);
 

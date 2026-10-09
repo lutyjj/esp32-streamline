@@ -276,7 +276,7 @@ export function NetworkTab({
                 : connecting
                   ? 'connecting to bridge…'
                   : s?.stream.enabled
-                    ? 'idle — nothing to send'
+                    ? 'input is quiet'
                     : 'streaming paused'}
           </Chip>
         )}

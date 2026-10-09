@@ -173,7 +173,6 @@ Reach for [`make firmware-monitor`](../README.md#development) when the device
 does not reach the network at all or when the earliest boot lines matter.
 Everything else is readable over the API.
 
-
 ## Streaming counters
 
 Device `/api/status` and `/metrics` distinguish where streaming was interrupted.

@@ -110,8 +110,8 @@ export function BridgeApp() {
               ) : (
                 <EmptyState>
                   {status && status.transport.mode === 'tls-psk' && status.transport.key_ids.length
-                    ? `No audio right now. ${status.transport.key_ids.length === 1 ? 'The enrolled device appears' : `${status.transport.key_ids.length} enrolled devices appear`} here while their audio plays.`
-                    : `Connect your device to this bridge on TCP port ${status?.transport.port ?? 39000}, then play audio. Its source and playback URL will appear here.`}
+                    ? `No devices connected. ${status.transport.key_ids.length === 1 ? 'The enrolled device appears' : `${status.transport.key_ids.length} enrolled devices appear`} here when connected with streaming enabled, even if the input is quiet.`
+                    : `Connect your device to this bridge on TCP port ${status?.transport.port ?? 39000} and enable streaming. Its source and playback URL will appear here, even if the input is quiet.`}
                 </EmptyState>
               )}
             </div>

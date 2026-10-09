@@ -136,9 +136,9 @@ Set each ESP32 target to the bridge host and port `39000`; the bridge and device
 select cleartext or TLS for that same destination. Add
 `http://<bridge-host>:8088/streamline.wav` to Music Assistant as a radio URL, or
 `http://<bridge-host>:8088/streamline.wav?source=<source-id>` to pick one of
-several sources. Start audio on the source before adding the URL: an idle device
-sends no audio, and Music Assistant rejects a stream it cannot probe. To serve a
-client that needs an encoded stream, put Liquidsoap/Icecast after the bridge to
+several sources. A connected device with streaming enabled provides a playable
+stream during quiet input; see the [silence contract](pcm-protocol.md#receiver-playout).
+To serve a client that needs an encoded stream, put Liquidsoap/Icecast after the bridge to
 publish FLAC/MP3/Opus.
 
 ## Board support

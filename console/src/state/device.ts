@@ -73,10 +73,10 @@ export const statusAt = signal(0);
 export const pollFailures = signal(0);
 /** Peak-hold marks for the level meters. */
 export const peakHold = signal<PeakHold>({ left: 0, right: 0, at: 0 });
-/** Packets seen on the previous poll, to tell whether audio still flows. */
-let lastPackets = -1;
-/** True when the packet counter moved between the last two polls. */
-export const packetsMoving = signal(false);
+/** PCM bytes seen on the previous poll, to tell whether audio still flows. */
+let lastPcmBytes = -1;
+/** True when PCM bytes increased between the last two polls. */
+export const audioMoving = signal(false);
 
 export const setupMode = computed(() => status.value?.mode === 'setup');
 /** Provisioned but no bridge configured yet: capture runs, nothing streams. */
@@ -89,7 +89,7 @@ export const noBridge = computed(
 
 /**
  * The bridge link as one word, derived once so the Overview tile and the setup
- * wizard narrate the same state and cannot drift. `sending` means packets moved
+ * wizard narrate the same state and cannot drift. `sending` means PCM bytes moved
  * between the last two polls. Reception and playback require separate evidence.
  */
 export type BridgeConnection =
@@ -105,8 +105,8 @@ export const bridgeConnection = computed<BridgeConnection>(() => {
   if (!s) return 'unset';
   if (s.mode === 'setup') return 'setup';
   if (!s.target.target_host) return 'unset';
-  if (packetsMoving.value) return 'sending';
-  return s.stream.enabled && s.metrics.playing ? 'connecting' : 'idle';
+  if (!s.stream.enabled || !s.metrics.playing) return 'idle';
+  return audioMoving.value ? 'sending' : 'connecting';
 });
 
 let refreshing = false;
@@ -123,8 +123,8 @@ export async function refresh(): Promise<void> {
     unreachable.value = false;
   } catch {
     pollFailures.value += 1;
-    packetsMoving.value = false;
-    lastPackets = -1;
+    audioMoving.value = false;
+    lastPcmBytes = -1;
     if (!rebootWaitTick(true) && !resetHandoff.value) unreachable.value = true;
   } finally {
     refreshing = false;
@@ -141,8 +141,8 @@ function applyStatus(s: StatusResponse): void {
     now,
   );
 
-  packetsMoving.value = lastPackets >= 0 && s.metrics.packets_total > lastPackets;
-  lastPackets = s.metrics.packets_total;
+  audioMoving.value = lastPcmBytes >= 0 && s.metrics.bytes_total > lastPcmBytes;
+  lastPcmBytes = s.metrics.bytes_total;
   status.value = s;
   document.title = s.device_name ? `${s.device_name} — StreamLine` : 'StreamLine';
 }

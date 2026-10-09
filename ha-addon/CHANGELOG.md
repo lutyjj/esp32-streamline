@@ -1,6 +1,21 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.15.0](https://github.com/lutyjj/esp32-streamline/compare/v0.14.0...v0.15.0) (2026-10-09)
+
+
+### Features
+
+* **bridge:** adapt playout buffering to arrival delays ([2d4de1d](https://github.com/lutyjj/esp32-streamline/commit/2d4de1d79c8e3da8b11861938db2c9b425df2309))
+* **ha-addon:** enforce AppArmor confinement ([bc1024f](https://github.com/lutyjj/esp32-streamline/commit/bc1024ff5af53de4fe108aa068e15da10d439ad0))
+* **streaming:** distinguish intentional silence from missing audio ([dadb040](https://github.com/lutyjj/esp32-streamline/commit/dadb04055c7bbdafbcd5aa453d7299ca40a419dc))
+
+
+### Bug Fixes
+
+* **console:** keep silence distinct from audio transmission ([9e366cf](https://github.com/lutyjj/esp32-streamline/commit/9e366cf057d85b14bdda439f5b13056bb3df1fc6))
+* **firmware:** preserve audio through network stalls and maintenance ([325273f](https://github.com/lutyjj/esp32-streamline/commit/325273f03cc9dc578a88d156b85cdd8f4e486613))
+
 ## [0.14.0](https://github.com/lutyjj/esp32-streamline/compare/v0.13.0...v0.14.0) (2026-09-23)
 
 

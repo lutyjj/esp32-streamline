@@ -175,7 +175,7 @@ Everything else is readable over the API.
 
 ## Streaming counters
 
-Device `/api/status` and `/metrics` distinguish where streaming was interrupted.
+Device `/api/status` and `/api/metrics` distinguish where streaming was interrupted.
 Each interval represents 256 stereo frames at 48 kHz.
 
 | Status counter | Meaning |

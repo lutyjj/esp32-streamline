@@ -65,18 +65,7 @@ pub fn mark_current_valid() -> Result<()> {
 }
 
 pub fn signing_key_sha256() -> &'static str {
-    static DIGEST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    DIGEST.get_or_init(|| {
-        let mut digests: sys::esp_image_sig_public_key_digests_t = unsafe { core::mem::zeroed() };
-        let result = unsafe {
-            sys::esp_secure_boot_get_signature_blocks_for_running_app(true, &mut digests)
-        };
-        if result == sys::ESP_OK && digests.num_digests > 0 {
-            crate::hex::encode(&digests.key_digests[0])
-        } else {
-            String::new()
-        }
-    })
+    ""
 }
 
 /// The inactive OTA slot when it holds a valid, bootable image; `None` when

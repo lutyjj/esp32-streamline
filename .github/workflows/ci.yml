@@ -104,7 +104,7 @@ jobs:
       - name: Check
         if: ${{ needs.changes.outputs.firmware == 'true' || inputs.sign_firmware }}
         run: |
-          make firmware-check \
+          make firmware-test \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
 
       - name: Build hardware image for manual signing

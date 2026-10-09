@@ -620,7 +620,7 @@ mod tests {
             &status,
             &clock,
         );
-        queue.clear();
+        while queue.pop_timeout(Duration::ZERO).is_some() {}
         let mut source = ScriptedSource::new([Ok(512), Ok(512)]);
         engine.step(&mut source, Some(&queue), &status, &clock);
         clock.delay_ms(10);

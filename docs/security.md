@@ -95,9 +95,9 @@ Secure Boot v2 is the roadmap step that closes that gap.
 
 ## PCM transport
 
-TLS 1.3 PSK authenticates encrypted PCM connections. OTA installs pause the
-transport to release its socket and TLS buffers. Release checks keep audio
-running and retry a failed fetch once. The [OTA reference](ota.md#update-flow)
+TLS 1.3 PSK authenticates encrypted PCM connections. Firmware checks and installs
+pause the transport to release its socket and TLS buffers. Release checks retry
+a failed fetch once. The [OTA reference](ota.md#update-flow)
 owns these resource and retry policies.
 
 Encrypted PCM uses the exact TLS 1.3 profile in the

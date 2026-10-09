@@ -8,7 +8,7 @@ use embedded_svc::wifi::{
     AccessPointConfiguration, AuthMethod, ClientConfiguration, Configuration,
 };
 use esp_idf_svc::{
-    eventloop::EspSystemEventLoop,
+    eventloop::{EspSubscription, EspSystemEventLoop, System},
     hal::{delay::FreeRtos, modem::Modem},
     nvs::EspDefaultNvsPartition,
     sys::{
@@ -21,12 +21,28 @@ use esp_idf_svc::{
         ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED,
         ESP_IPADDR_TYPE_V4, ESP_OK,
     },
-    wifi::{BlockingWifi, EspWifi},
+    wifi::{BlockingWifi, EspWifi, WifiEvent},
 };
 
 use crate::{config::RuntimeConfig, identity, setup_network::SetupNetwork};
 
 pub type WifiController<'d> = BlockingWifi<EspWifi<'d>>;
+
+/// Keep radio disconnect reasons in the retained boot log without recording
+/// network names or access-point identifiers.
+pub fn log_station_events(
+    event_loop: &EspSystemEventLoop,
+) -> Result<EspSubscription<'static, System>> {
+    Ok(event_loop.subscribe::<WifiEvent, _>(|event| match event {
+        WifiEvent::StaConnected(_) => log::info!("Wi-Fi station associated"),
+        WifiEvent::StaDisconnected(event) => log::warn!(
+            "Wi-Fi station disconnected: reason={} rssi={}",
+            event.reason(),
+            event.rssi()
+        ),
+        _ => {}
+    })?)
+}
 
 pub fn create<'d>(
     modem: Modem<'d>,
@@ -91,7 +107,18 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
 
     let mut attempt = 1;
     loop {
-        match wifi.connect().and_then(|()| wifi.wait_netif_up()) {
+        let connected = wifi
+            .connect()
+            .map_err(|error| anyhow!("Wi-Fi association failed ({}): {error}", error.code()))
+            .and_then(|()| {
+                wifi.wait_netif_up().map_err(|error| {
+                    anyhow!(
+                        "Wi-Fi address acquisition failed ({}): {error}",
+                        error.code()
+                    )
+                })
+            });
+        match connected {
             Ok(()) => return Ok(()),
             Err(error) if attempt < CONNECT_ATTEMPTS => {
                 log::warn!("Wi-Fi connect attempt {attempt}/{CONNECT_ATTEMPTS} failed: {error}");
@@ -100,7 +127,7 @@ pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) ->
                 attempt += 1;
             }
             Err(error) => {
-                return Err(anyhow::anyhow!(error).context(format!(
+                return Err(error.context(format!(
                     "Wi-Fi connect failed after {CONNECT_ATTEMPTS} attempts"
                 )))
             }

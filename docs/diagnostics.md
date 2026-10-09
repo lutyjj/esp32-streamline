@@ -55,6 +55,12 @@ association and loss, the codec bring-up, TLS handshake failures, OTA progress
 and its verdict, and each warning any component raises. Serial output is
 unchanged, so `make firmware-monitor` still shows the same lines.
 
+Wi-Fi disconnects include the SDK reason code and signal level. Connection
+failures distinguish association from address acquisition and include the
+numeric SDK error. HTTP route-registration messages are suppressed so they
+cannot fill the retained log before the console becomes reachable; HTTP
+warnings and errors remain enabled.
+
 Allocation failures are recorded before the abort that follows them, with the
 size requested, the caller, the free heap, and the largest free block. On a
 device that runs out of memory that record is the diagnosis, and it survives
@@ -121,6 +127,8 @@ heap counters, plus the bridge's loss and underrun counters. Retransmissions
 show TCP recovery; zero windows show receiver backpressure. Gaps alone do not
 identify their cause. Check capture drops before attributing missing packets
 to the connection. Captures contain network addresses and stay local.
+For silence-gated sources, interpret the
+[playout counters](pcm-protocol.md#receiver-playout) alongside `playing` state.
 
 ## Crash dumps
 

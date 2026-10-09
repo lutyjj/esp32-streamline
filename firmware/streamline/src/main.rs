@@ -67,6 +67,8 @@ fn run() -> Result<()> {
 
     let peripherals = Peripherals::take()?;
     let event_loop = EspSystemEventLoop::take()?;
+    #[cfg(not(feature = "qemu"))]
+    let _wifi_events = wifi::log_station_events(&event_loop)?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let store = Arc::new(Mutex::new(ConfigStore::open(nvs_partition.clone())?));
     let board_catalog = Arc::new(

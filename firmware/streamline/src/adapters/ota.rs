@@ -20,7 +20,7 @@ use crate::{
         task, time,
     },
     mutation::MutationError,
-    stream::StreamStatus,
+    stream::{pause_transport, StreamStatus},
     update::{
         self,
         progress::{OtaProgress, Phase},
@@ -36,10 +36,6 @@ const REPO: &str = "lutyjj/esp32-streamline";
 /// default worker.
 const INSTALL_STACK_BYTES: usize = 10_240;
 const CHECK_STACK_BYTES: usize = 8_192;
-/// How often the install worker rechecks whether the PCM transport released
-/// its connection, and how long it waits before giving up on the pause.
-const QUIESCE_POLL_MS: u32 = 100;
-const QUIESCE_TIMEOUT_MS: u32 = 10_000;
 /// Guard against a malformed or hostile checksum listing exhausting the heap.
 const MAX_SUMS_BYTES: usize = 8_192;
 
@@ -156,15 +152,18 @@ enum Action {
 /// Check GitHub for a newer release without installing anything. The HTTP
 /// handler returns immediately; callers poll [`OtaProgress::snapshot`] for the
 /// result (`up-to-date` or `update-available`).
-pub fn spawn_check(progress: Arc<OtaProgress>) -> Result<(), MutationError> {
-    spawn(progress, Action::Check, None, None)
+pub fn spawn_check(
+    progress: Arc<OtaProgress>,
+    stream: Option<Arc<StreamStatus>>,
+) -> Result<(), MutationError> {
+    spawn(progress, Action::Check, None, stream)
 }
 
 /// Kick off an install on a worker thread. The HTTP handler returns
 /// immediately; callers poll [`OtaProgress::snapshot`] for status. A successful
 /// install reboots the device into the new slot; the outcome is persisted in
 /// `store` so it survives the reboot (and a possible rollback). The install
-/// pauses `stream` while it runs — see [`quiesce_streaming`] — and resumes it
+/// pauses `stream` while it runs and resumes it
 /// on failure.
 pub fn spawn_update(
     progress: Arc<OtaProgress>,
@@ -224,14 +223,36 @@ fn run(
     store: Option<&Mutex<ConfigStore>>,
     stream: Option<&StreamStatus>,
 ) {
+    progress.set_message("pausing audio for firmware maintenance");
+    let pause = match stream
+        .map(|stream| pause_transport(stream, esp_idf_svc::hal::delay::FreeRtos::delay_ms))
+        .transpose()
+    {
+        Ok(pause) => pause,
+        Err(error) => {
+            note_outcome(store, error);
+            return progress.fail(error.to_owned());
+        }
+    };
+    let outcome = run_paused(progress, action, store);
+    drop(pause);
+    match outcome {
+        Ok(phase) => progress.set_phase(phase),
+        Err(error) => progress.fail(error),
+    }
+}
+
+fn run_paused(
+    progress: &OtaProgress,
+    action: Action,
+    store: Option<&Mutex<ConfigStore>>,
+) -> Result<Phase, String> {
     if let Action::Install(Source::Custom(image)) = &action {
         // A custom image is digest-pinned and version-agnostic, so no release
         // check. Clock sync exists only for TLS certificate validation; a
         // plain-HTTP image skips it so an offline dev bench can still install.
         if image.needs_tls() {
-            if let Err(error) = sync_clock(progress) {
-                return progress.fail(error);
-            }
+            sync_clock(progress)?;
         }
         return install_and_reboot(
             &image.url,
@@ -239,37 +260,30 @@ fn run(
             image.display_name(),
             progress,
             store,
-            stream,
         );
     }
 
     let current = env!("CARGO_PKG_VERSION");
-    if let Err(error) = sync_clock(progress) {
-        return progress.fail(error);
-    }
+    sync_clock(progress)?;
     progress.set_message("checking latest release");
-    let release = match update::check_release(
+    let release = update::check_release(
         || fetch_checksums().map_err(|error| format!("{error:#}")),
         || {
-            progress.set_message("retrying release check; audio continues");
+            progress.set_message("retrying release check; audio paused");
             esp_idf_svc::hal::delay::FreeRtos::delay_ms(1_000);
         },
-    ) {
-        Ok(release) => release,
-        Err(error) => return progress.fail(format!("update check failed: {error:#}")),
-    };
+    )
+    .map_err(|error| format!("update check failed: {error:#}"))?;
     progress.set_latest(&release.version);
 
     if !update::is_newer(current, &release.version) {
         progress.set_message(&format!("already on the latest release ({current})"));
-        progress.set_phase(Phase::UpToDate);
-        return;
+        return Ok(Phase::UpToDate);
     }
 
     if let Action::Check = action {
         progress.set_message(&format!("update {} available", release.version));
-        progress.set_phase(Phase::UpdateAvailable);
-        return;
+        return Ok(Phase::UpdateAvailable);
     }
 
     install_and_reboot(
@@ -278,28 +292,7 @@ fn run(
         &release.version,
         progress,
         store,
-        stream,
-    );
-}
-
-/// Pause streaming and wait until the network task closes the PCM connection,
-/// freeing the socket and TLS buffers the download and flash writes need. A
-/// device without a live pipeline passes through immediately; a transport that
-/// will not release fails the install cleanly, keeping both firmware slots
-/// intact.
-fn quiesce_streaming(stream: Option<&StreamStatus>, progress: &OtaProgress) -> Result<(), String> {
-    let Some(stream) = stream else { return Ok(()) };
-    progress.set_message("pausing audio to install the update");
-    stream.request_transport_quiesce();
-    for _ in 0..QUIESCE_TIMEOUT_MS / QUIESCE_POLL_MS {
-        if stream.transport_quiesced() {
-            progress.set_message("audio paused while the update installs");
-            return Ok(());
-        }
-        esp_idf_svc::hal::delay::FreeRtos::delay_ms(QUIESCE_POLL_MS);
-    }
-    stream.end_transport_quiesce();
-    Err("audio streaming did not pause in time".to_owned())
+    )
 }
 
 fn sync_clock(progress: &OtaProgress) -> Result<(), String> {
@@ -318,24 +311,15 @@ fn install_and_reboot(
     what: &str,
     progress: &OtaProgress,
     store: Option<&Mutex<ConfigStore>>,
-    stream: Option<&StreamStatus>,
-) {
-    if let Err(error) = quiesce_streaming(stream, progress) {
-        let message = format!("install {what} failed: {error}");
-        note_outcome(store, &message);
-        return progress.fail(message);
-    }
+) -> Result<Phase, String> {
     progress.set_phase(Phase::Downloading);
     // Written before the download so a crash mid-install still leaves evidence;
     // overwritten by the final outcome below.
     note_outcome(store, &format!("installing {what} (did not finish)"));
     if let Err(error) = install(url, sha256, progress) {
-        if let Some(stream) = stream {
-            stream.end_transport_quiesce();
-        }
         let message = format!("install {what} failed: {error:#}");
         note_outcome(store, &message);
-        return progress.fail(message);
+        return Err(message);
     }
 
     let message = format!("installed {what}; rebooting");
@@ -350,7 +334,7 @@ fn install_and_reboot(
     // Let the console's status poll (1.5 s interval) observe the final state
     // before the reboot; a shorter window can fall between two polls.
     esp_idf_svc::hal::delay::FreeRtos::delay_ms(3_000);
-    unsafe { esp_idf_svc::sys::esp_restart() };
+    unsafe { esp_idf_svc::sys::esp_restart() }
 }
 
 /// Persist the install outcome, tagged with the version that ran the install,
@@ -378,7 +362,7 @@ fn download_url(asset: &str) -> String {
 /// filename and expected digest.
 fn fetch_checksums() -> Result<String> {
     let url = download_url("SHA256SUMS");
-    // The check runs beside a live stream; per-record buffers keep it small.
+    // PCM is paused; release each record allocation after consuming it.
     let mut response = HttpGet::get(&url, TlsRxBuffer::PerRecord)?;
     let status = response.status();
     if status != 200 {

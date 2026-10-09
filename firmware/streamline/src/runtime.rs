@@ -17,7 +17,8 @@ use crate::{
 };
 
 const CAPTURE_STACK_BYTES: usize = 6_144;
-const NETWORK_STACK_BYTES: usize = 8_192;
+// TLS handshakes share this stack with packet batching and socket setup.
+const NETWORK_STACK_BYTES: usize = 12_288;
 /// The audio pipeline outranks every request-serving task: ESP-IDF httpd runs
 /// at priority 5, and a burst of status scrapes must never starve capture or
 /// the sender into dropping audio. Both engines block on I2S, the queue, or

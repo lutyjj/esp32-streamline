@@ -125,6 +125,13 @@ pub fn install() {
         unsafe { esp_log_set_vprintf(Some(capture_line)) };
         log::set_logger(&RUST_LOGGER).expect("Rust logger is installed once");
         RUST_LOGGER.0.filter().initialize();
+        // Route registration must not evict radio and boot diagnostics before
+        // the console becomes reachable. Server warnings and errors stay live.
+        RUST_LOGGER
+            .0
+            .filter()
+            .set_target_level("esp_idf_svc::http::server", log::LevelFilter::Warn)
+            .expect("valid HTTP server log target");
         if unsafe { heap_caps_register_failed_alloc_callback(Some(note_allocation_failure)) }
             != ESP_OK
         {

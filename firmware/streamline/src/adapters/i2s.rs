@@ -5,7 +5,8 @@ use esp_idf_svc::hal::{
     delay::TickType,
     i2s::{
         config::{
-            Config, DataBitWidth, SlotMode, StdClkConfig, StdConfig, StdGpioConfig, StdSlotConfig,
+            ClockSource, Config, DataBitWidth, SlotMode, StdClkConfig, StdConfig, StdGpioConfig,
+            StdSlotConfig,
         },
         I2sDriver, I2sRx, I2S0,
     },
@@ -29,14 +30,14 @@ impl Capture {
     const FRAMES_PER_BUFFER: u32 = 240;
     pub const BUFFERED_FRAMES: u32 = Self::DMA_BUFFERS * Self::FRAMES_PER_BUFFER;
 
-    /// Configure Philips standard format, 48 kHz/16-bit stereo, MCLK at 256x
-    /// the sample rate to clock the codec.
+    /// Configure Philips standard format, 48 kHz/16-bit stereo, with the audio
+    /// PLL supplying MCLK at 256x the sample rate.
     pub fn new(i2s: I2S0<'static>, pins: I2sBusPins<'static>) -> Result<Self> {
         let config = StdConfig::new(
             Config::default()
                 .dma_buffer_count(Self::DMA_BUFFERS)
                 .frames_per_buffer(Self::FRAMES_PER_BUFFER),
-            StdClkConfig::from_sample_rate_hz(SAMPLE_RATE_HZ),
+            StdClkConfig::from_sample_rate_hz(SAMPLE_RATE_HZ).clk_src(ClockSource::Apll),
             StdSlotConfig::philips_slot_default(DataBitWidth::Bits16, SlotMode::Stereo),
             StdGpioConfig::default(),
         );

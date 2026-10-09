@@ -1,4 +1,4 @@
-//! Bounded release-check retry without disturbing audio transport.
+//! Retry a transient release-check fetch failure once.
 
 use super::{parse_release, OtaRelease};
 

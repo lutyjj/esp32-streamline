@@ -40,27 +40,43 @@ source admission.
 ## Runtime boundaries
 
 - capture: I2S RX on core 1, FreeRTOS priority 7
-- transport: TCP sender on core 1, FreeRTOS priority 6
+- audio clock: dedicated APLL, 48 kHz stereo with 12.288 MHz MCLK
+- transport: TCP sender on core 1, FreeRTOS priority 6, 12 KiB task stack
+  shared by batching and TLS handshakes
 - both audio tasks outrank httpd (priority 5); shared locks and network work
   can still delay streaming
 - radio: Wi-Fi power save and transmit aggregation off; frames receive
   individual acknowledgements
-- TCP: eight-segment send and receive windows bound concurrent connections;
+- TCP: 11,520-byte send buffers and receive windows;
   Wi-Fi uses the SDK's default buffer pools
+- TCP timers: 25 ms fast ticks and 50 ms retransmission ticks; the initial
+  retransmission timeout stays at the SDK's 1.5 seconds, then adapts to measured
+  round-trip time
+- scheduling: both PCM transports request IP precedence 4 (`IP_TOS=0x80`),
+  which ESP-IDF maps to the Wi-Fi media access category
 - capture reads: 20 ms per DMA wait; failures back off for 10 ms
 - DMA: six buffers of 240 stereo frames, or 30 ms at 48 kHz
-- queue: 32 fixed-capacity packets; on pressure, discard the oldest packet
+- queue: 48 packets (256 ms) in six fixed-capacity allocations; on pressure,
+  discard the oldest packet. Each allocation holds eight packets so resuming
+  after HTTPS needs only 8,384 contiguous bytes per allocation
 - send admission: retain queued audio through network delays and connection
   setup; check streaming controls again before writing
-- pause: stop enqueueing and admitting sends, then close the connection and
-  clear queued audio; an already-started write may finish
-- packet: 24-byte header plus up to 1,024 PCM bytes, coalesced into one write
-- `TCP_NODELAY` on both transports: each packet is one sub-MSS write on the
-  capture clock, and Nagle would hold every write for the previous one's
-  acknowledgement. This would limit throughput to one packet per round trip
-  and force the queue to drop excess capture packets
-- cleartext connect/write deadline: 250 ms
-- TLS handshake and socket deadline: 2 seconds through ESP-TLS
+- pause: stop enqueueing and admitting sends, close the connection, discard
+  queued audio, and release queue and batch storage; an already-started write
+  may finish
+- packet: 24-byte header plus 1,024 PCM bytes
+- send batch: up to four whole packets in one write; collect for at most
+  40 ms after the first packet, then flush even if capture has stopped;
+  the sender reuses a 4,192-byte internal-RAM buffer
+- TLS outgoing content budget: 4,208 bytes, including the inner content type
+  and padding; the adapter verifies that the negotiated payload capacity holds
+  one complete send batch. Dynamic record buffers release this allocation
+  after use
+- `TCP_NODELAY` on both transports: flush a partial batch without waiting for
+  another acknowledgement; full batches allow TCP to fill network segments
+- cleartext connect and individual socket-write timeouts: 250 ms;
+  completing a batch can require several writes
+- TLS handshake and socket-operation timeouts: 2 seconds through ESP-TLS
 - a successful send slower than 100 ms counts as a send stall
   (`send_stalls_total` and `longest_send_stall_ms` in `/api/status` metrics)
   and logs a warning to help diagnose a stalling radio link
@@ -77,7 +93,7 @@ follows the new input's detected state. An idle input does not start streaming
 just because its settings changed.
 
 Queued audio survives connection setup and slow sends within the queue's
-fixed capacity. A failed send discards that packet and backs off for 250 ms
+fixed capacity. A failed send discards that batch and backs off for 250 ms
 before processing the queue.
 
 An established producer keeps its TCP connection during detected silence.
@@ -236,8 +252,10 @@ other protocol.
 
 ## Hardware smoke criteria
 
-For a ten-minute local run, expect continuous authenticated source identity,
+Use continuous input for a ten-minute local run. Expect authenticated source identity,
 zero network errors, a bridge with no underruns after startup, and no recurring
-heap decline. Qualification also covers bridge restart, Wi-Fi reconnect, device
+heap decline. Exclude deliberate maintenance pauses and interpret
+[signal-gated silence](pcm-protocol.md#receiver-playout) separately.
+Qualification also covers bridge restart, Wi-Fi reconnect, device
 reboot, wrong and unknown keys, downgrade rejection, rotation, rollback,
 recovery, and restoration of the original device state.

@@ -45,9 +45,9 @@ must use a separate bridge instance or a future protocol version that also defin
 how connected HTTP clients receive a new WAV header. This keeps the live endpoint's
 media contract deterministic.
 
-Sequence numbers increment by one per packet and wrap naturally at `uint32_t`.
-The receiver uses them to reorder packets, detect loss, and preserve the audio
-timeline when a packet cannot be recovered before its playout deadline.
+Sequence numbers follow capture time and advance over omitted audio, including
+signal-gated silence. They wrap naturally at `uint32_t`. The receiver uses them
+to preserve the audio timeline when a packet is absent at its playout deadline.
 
 ## Conformance vectors
 
@@ -55,7 +55,7 @@ timeline when a packet cannot be recovered before its playout deadline.
 (`firmware/streamline/src/protocol.rs`) and the Python parser
 (`bridge/src/streamline_bridge/protocol.py`) agree byte for byte. It lists valid
 full 256-frame packets across the sequence range, and malformed frames the
-parser must reject, one per failure category — including short packets, which
+parser must reject, one per failure category, including short packets, which
 the encoder cannot represent. Both
 component test suites consume it. Regenerate it with `make firmware-pcm-frame-vectors`
 after a protocol change: `firmware-test` fails until the file matches the
@@ -65,9 +65,10 @@ encoder, and `bridge-test` fails until the parser matches the file.
 
 The HTTP bridge uses a playout buffer before publishing audio to clients. By
 default it waits for about 1 second of packets, then plays one packet duration at
-a time from the expected sequence number. Over TCP, packets arrive ordered and
-without loss, so the buffer mainly smooths timing jitter; the reordering and
-loss-concealment paths matter only around disconnects.
+a time from the expected sequence number. TCP delivers admitted bytes in order.
+Capture queue overflow, signal gating, or late arrival can still leave missing
+PCM at a playout deadline. The buffer smooths timing jitter; concealment handles
+those gaps.
 
 HTTP stream clients get their own output queues. The bridge batches small PCM
 packets into short writes so slow proxy/player reads are less likely to starve
@@ -83,3 +84,6 @@ dropping time from the stream:
 
 The `/status` endpoint reports packet, loss, concealment, underrun, late,
 reordered, duplicate, and client queue drop counters for each source.
+Loss and concealment count missing playout positions, including signal-gated
+silence. Compare them with the device's `playing`, queue-drop, and network-error
+counters before attributing a gap to transport loss.

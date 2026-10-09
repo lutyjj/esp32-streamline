@@ -5,6 +5,7 @@ use std::{
     fmt,
     io::Write,
     net::{SocketAddr, TcpStream, ToSocketAddrs},
+    os::fd::AsRawFd,
     time::Duration,
 };
 
@@ -26,6 +27,13 @@ const TLS_TIMEOUT_MS: i32 = 2_000;
 const TLS_CIPHERSUITES: [i32; 2] = [sys::MBEDTLS_TLS1_3_AES_128_GCM_SHA256 as i32, 0];
 const TLS_VERSION: &[u8] = b"TLSv1.3";
 const TLS_CIPHERSUITE: &[u8] = b"TLS1-3-AES-128-GCM-SHA256";
+
+// TLS 1.3 reserves an inner content type and rounds plaintext up for padding.
+const _: () = assert!(
+    sys::CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN as usize
+        >= crate::stream::MAX_BATCH_BYTES
+            + sys::MBEDTLS_SSL_CID_TLS1_3_PADDING_GRANULARITY as usize
+);
 
 #[derive(Clone)]
 enum TransportSecurity {
@@ -83,7 +91,7 @@ impl TcpClient {
 }
 
 impl PacketSink for TcpClient {
-    /// Send one packet, logging any failure here at the device edge and marking
+    /// Send complete packets, logging any failure at the device edge and marking
     /// TLS handshake rejections so the pipeline can count them separately.
     fn send(
         &mut self,
@@ -154,6 +162,7 @@ impl PcmConnector for AdapterConnector {
                     .with_context(|| format!("TCP connect to {} failed", socket))
                     .map_err(TcpSendError::io)?;
                 stream.set_nodelay(true).map_err(TcpSendError::io)?;
+                set_media_priority(stream.as_raw_fd()).map_err(TcpSendError::io)?;
                 stream
                     .set_write_timeout(Some(CLEARTEXT_TIMEOUT))
                     .map_err(TcpSendError::io)?;
@@ -218,10 +227,15 @@ impl TlsConnection {
             unsafe { sys::esp_tls_conn_destroy(handle) };
             return Err(anyhow!("{}", failure.describe(&target)));
         }
-        if let Err(error) = validate_tls_profile(handle).and_then(|()| disable_nagle(handle)) {
+        if let Err(error) = validate_tls_profile(handle).and_then(|()| configure_tls_socket(handle))
+        {
             unsafe { sys::esp_tls_conn_destroy(handle) };
             return Err(error);
         }
+        // A null handle selects the task performing this handshake.
+        log::info!("TLS PCM stack minimum free: {} bytes", unsafe {
+            sys::uxTaskGetStackHighWaterMark(std::ptr::null_mut())
+        });
         Ok(Self {
             handle,
             _key: key,
@@ -299,16 +313,11 @@ fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
     crate::transport_diagnostics::classify_tls_failure(last_error, captured_stack)
 }
 
-/// Disable Nagle on the socket ESP-TLS opened, matching the cleartext stream's
-/// `set_nodelay`.
+/// Apply the PCM socket options to the socket ESP-TLS opened.
 ///
-/// Every packet is one record well under the MSS, produced on the capture
-/// clock. Nagle holds each such write until the previous one is acknowledged,
-/// so the stream advances a packet per round trip instead of per capture
-/// interval and the queue drops the difference. ESP-TLS exposes no
-/// configuration for this, so reach the socket it owns and clear the option
-/// there.
-fn disable_nagle(handle: *mut sys::esp_tls_t) -> Result<()> {
+/// Partial batches must flush even when capture stops. ESP-TLS exposes no
+/// configuration for this, so set the option on the socket it owns.
+fn configure_tls_socket(handle: *mut sys::esp_tls_t) -> Result<()> {
     let mut socket: core::ffi::c_int = -1;
     if unsafe { sys::esp_tls_get_conn_sockfd(handle, &mut socket) } != sys::ESP_OK {
         return Err(anyhow!("TLS connection exposes no socket"));
@@ -325,6 +334,24 @@ fn disable_nagle(handle: *mut sys::esp_tls_t) -> Result<()> {
     };
     if result != 0 {
         return Err(anyhow!("cannot disable Nagle on the TLS socket"));
+    }
+    set_media_priority(socket)
+}
+
+/// Request ESP-IDF's Wi-Fi media queue for the PCM connection.
+fn set_media_priority(socket: core::ffi::c_int) -> Result<()> {
+    let priority: core::ffi::c_int = 4 << 5;
+    let result = unsafe {
+        sys::lwip_setsockopt(
+            socket,
+            sys::IPPROTO_IP as core::ffi::c_int,
+            sys::IP_TOS as core::ffi::c_int,
+            (&priority as *const core::ffi::c_int).cast(),
+            core::mem::size_of_val(&priority) as sys::socklen_t,
+        )
+    };
+    if result != 0 {
+        return Err(anyhow!("cannot set PCM socket media priority"));
     }
     Ok(())
 }
@@ -348,6 +375,12 @@ fn validate_tls_profile(handle: *mut sys::esp_tls_t) -> Result<()> {
     if !unsafe { sys::mbedtls_ssl_get_peer_cert(ssl) }.is_null() {
         return Err(anyhow!(
             "bridge did not authenticate with the transport PSK"
+        ));
+    }
+    let payload_capacity = unsafe { sys::mbedtls_ssl_get_max_out_record_payload(ssl) };
+    if payload_capacity < crate::stream::MAX_BATCH_BYTES as i32 {
+        return Err(anyhow!(
+            "TLS outgoing payload capacity {payload_capacity} cannot hold a PCM send batch"
         ));
     }
     Ok(())

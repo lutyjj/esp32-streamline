@@ -20,7 +20,10 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     server.handler(api::OTA_CHECK, move |request| {
         ota_accepted(
             request,
-            ota_adapter::spawn_check(Arc::clone(&state_for_check.ota)),
+            ota_adapter::spawn_check(
+                Arc::clone(&state_for_check.ota),
+                state_for_check.stream.clone(),
+            ),
         )
     })?;
 

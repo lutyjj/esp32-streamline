@@ -7,28 +7,29 @@ Settings → Updates controls the schedule and offers manual checks and installs
 
 ## Update flow
 
-`POST /api/ota/check` checks for a newer release without writing flash or pausing
-audio. `POST /api/ota/update` installs it. Both require digest authentication and
-return `202` after reserving their background worker. An active worker returns
+`POST /api/ota/check` checks for a newer release without writing flash.
+`POST /api/ota/update` installs it. Both pause audio for the operation, require
+digest authentication, and return `202` after reserving their background worker.
+An active worker returns
 `409`; a worker that cannot start returns `503` and leaves OTA available to retry.
 An installed image keeps the worker reserved and reports `ota.busy: true` until
 the device reboots.
 An automatic attempt that cannot start retries after one minute, still waiting
 for idle audio and respecting the disabled schedule.
 
-1. HTTPS requires a usable wall clock. A clock at or after January 1, 2025 skips
+1. The worker pauses streaming and waits for the sender to close its PCM
+   connection before opening HTTP or HTTPS. This releases the capture queue,
+   send batch, socket, and TLS memory;
+   meters stay live. A timeout leaves firmware slots intact and resumes audio.
+   A device without a sender proceeds immediately.
+2. HTTPS requires a usable wall clock. A clock at or after January 1, 2025 skips
    the SNTP wait; certificate validity dates remain enforced by mbedTLS. An unset
    clock waits up to 45 seconds for synchronization. Plain HTTP skips this step.
-2. The worker fetches `releases/latest/download/SHA256SUMS`. The `-ota.bin` entry
+3. The worker fetches `releases/latest/download/SHA256SUMS`. The `-ota.bin` entry
    supplies the release version and expected digest. A failed fetch retries once
-   after one second, with the failed connection released. Checks do not request
-   a streaming pause.
-3. A check reports `up-to-date` or `update-available` and stops. An install
+   after one second, with the failed connection released.
+4. A check reports `up-to-date` or `update-available` and resumes audio. An install
    proceeds only if the release is newer than the running firmware.
-4. Before downloading the image, the installer pauses streaming and waits for
-   the sender to close its PCM connection, freeing socket and TLS buffers. Audio
-   meters stay live. If the sender cannot release, the install fails with both
-   slots intact. A device without a sender proceeds immediately.
 5. The image streams into the inactive slot while SHA-256 is calculated. The TLS
    receive buffer is allocated once after the handshake and held until download
    finishes, avoiding repeated large allocations on a fragmenting heap.
@@ -59,6 +60,12 @@ remain in the request; status, logs, and diagnostics identify the source only as
 
 ### Signing keys and development builds
 
+For a device enrolled with the development key, build with
+`make firmware-artifacts VERSION=dev` and install
+`dist/firmware/streamline-dev-ota.bin` through the custom-image API. Keep the
+same development key between builds. This path needs no CI signing. Disable
+automatic release updates while the device trusts a development key.
+
 To test a revision on a release-key device, dispatch the **CI** workflow on its
 branch with **Sign this revision for testing on release-key devices** enabled:
 
@@ -87,10 +94,18 @@ ESP-IDF signed-on-update mode compares only block 0 of the incoming image agains
 that key. Adding a second signature block does not switch the trusted key.
 
 A development-signed device cannot install a release-signed image. A
-release-signed device cannot install a development-signed image. Switching keys
-requires a serial flash of the destination key's `-full.bin`. Repeated OTA
-attempts cannot change this: they download the image and consume the inactive
-slot before signature verification rejects it.
+release-signed device cannot install a development-signed image through the
+normal installer. Serial-flashing the destination key's `-full.bin` enrolls
+that key. Repeated ordinary OTA attempts cannot change trust: they download
+the image and consume the inactive slot before signature verification rejects it.
+
+A maintainer with the current signing key can also authorize a one-time
+enrollment firmware. Such an image must pin exactly one destination image's
+SHA-256 before opening its download or flash slot, retain admin authentication
+and checksum verification, and boot back into signature-enforcing firmware.
+This requires a separately reviewed, signed bootstrap build; the normal
+firmware exposes no signature-bypass setting. Returning to release trust needs
+the same authorization from the development key or a serial flash.
 
 `GET /api/status` reports `ota.signing_key_sha256`, the SHA-256 of the running
 image's block-0 public key, or an empty string if it cannot be read. Settings →

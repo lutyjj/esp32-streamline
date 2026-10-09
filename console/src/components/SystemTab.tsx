@@ -249,7 +249,7 @@ function FirmwareCard() {
     <Section
       gated
       title="Firmware updates"
-      lead="Check your installed version and update when you are ready. Installation interrupts streaming."
+      lead="Check your installed version and update when you are ready. Checks and installs pause audio; streaming resumes when they finish."
     >
       <div class="formgrid section-body">
         <Kv rows={rows} />

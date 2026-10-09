@@ -21,8 +21,7 @@ const REQUEST_BUFFER_BYTES: i32 = 1_024;
 /// connections ignore it.
 #[derive(Clone, Copy)]
 pub enum TlsRxBuffer {
-    /// Allocate per record and free after: the smallest footprint beside a
-    /// live PCM stream, right for small bodies.
+    /// Allocate per record and free after: a small footprint for short bodies.
     PerRecord,
     /// Allocate once after the handshake and hold until close
     /// (`ESP_TLS_DYN_BUF_RX_STATIC`). A full-size record otherwise costs a

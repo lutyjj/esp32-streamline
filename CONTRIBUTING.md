@@ -15,6 +15,12 @@ make test    # component tests and firmware release build
 Flashing and serial need `espflash` on the host (`cargo install espflash`);
 see [README.md](README.md).
 
+GitHub-hosted build jobs use Google's `mirror.gcr.io` cache for Docker Hub
+images through the [runner setup action](.github/actions/docker-mirror/action.yml).
+Docker keeps the image references and digest checks and falls back to Docker Hub
+on cache misses. The cache reduces shared-runner pull-limit failures; it does
+not guarantee availability for every image. Local Docker configuration is unchanged.
+
 Working against a real device? Copy [.env.example](.env.example) to `.env`
 (gitignored) and set your device's address there. Makefiles read
 it, so `make console-dev` proxies to your node without extra flags.

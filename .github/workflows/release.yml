@@ -65,6 +65,10 @@ jobs:
           ref: mainline
           fetch-depth: 0
 
+      # Runner setup must happen before switching to the release tree so a
+      # recovery run can use current infrastructure with the original sources.
+      - uses: ./.github/actions/docker-mirror
+
       - name: Verify the release commit is a promoted mainline commit
         id: commit
         env:

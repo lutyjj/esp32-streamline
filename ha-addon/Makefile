@@ -48,7 +48,7 @@ lint: apparmor-image
 	@test "$(BUILD_ARCH)" = "amd64" -o "$(BUILD_ARCH)" = "aarch64" || (echo "BUILD_ARCH must be amd64 or aarch64" >&2; exit 2)
 	@test "$(VERSION)" = "$(CONFIG_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(CONFIG_VERSION))" >&2; exit 2)
 	$(APPARMOR_RUN) apparmor_parser --skip-kernel-load --skip-cache \
-		--features-file /etc/apparmor.d/abi/3.0 --warn=all --Werror /apparmor.txt
+		--kernel-features /etc/apparmor.d/abi/3.0 --warn=all --Werror /apparmor.txt
 	@test "$$($(APPARMOR_RUN) apparmor_parser --skip-cache --names /apparmor.txt)" = "streamline_bridge" || (echo "expected one streamline_bridge AppArmor profile" >&2; exit 2)
 
 # A standard Home Assistant add-on context: the bridge distribution plus the
@@ -105,6 +105,7 @@ apparmor-test: image
 	loader --add; loaded=yes; \
 	$(CONTAINER) run --rm -i --platform $(PLATFORM) \
 		--security-opt "apparmor=$$profile" --tmpfs /data --tmpfs /tmp \
+		-v "$(REPO_ROOT)/docs/pcm-frame-vectors.json:/tmp/pcm-frame-vectors.json:ro" \
 		-e "STREAMLINE_TEST_PROFILE=$$profile" --entrypoint python3 \
 		"$(IMAGE):$(VERSION)" - < ../tools/src/streamline_tools/addon_confinement.py
 

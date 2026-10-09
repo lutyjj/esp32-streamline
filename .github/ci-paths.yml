@@ -66,6 +66,7 @@ ha-addon:
   - *shared
   - 'ha-addon/**'
   - 'tools/src/streamline_tools/addon_confinement.py'
+  - 'docs/pcm-frame-vectors.json'
   - 'console/**'
   - 'repository.yaml'
   - 'bridge/pyproject.toml'

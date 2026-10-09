@@ -1,6 +1,7 @@
 # Confinement for the bundled Python bridge. Supervisor rewrites the profile
 # name to the installed add-on's repository-prefixed slug.
 
+abi <abi/3.0>,
 #include <tunables/global>
 
 profile streamline_bridge flags=(attach_disconnected,mediate_deleted) {

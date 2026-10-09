@@ -39,8 +39,8 @@ Supervisor applies the bundled AppArmor profile on supported hosts. The
 and limits. `make ha-addon-lint` compiles the profile with AppArmor's parser;
 compilation alone does not verify kernel enforcement.
 `make ha-addon-apparmor-test` uses a disposable enforcing profile to check the
-production image's startup, storage, HTTP health, shutdown, and denied writes
-and shell execution. It requires an AppArmor-enabled Docker host and removes
+production image's startup, key persistence, recording download and recovery,
+shutdown, and denied writes and shell execution. It requires an AppArmor-enabled Docker host and removes
 the test profile afterward. The add-on check runs both gates.
 
 ## Use

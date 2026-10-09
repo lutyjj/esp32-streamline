@@ -4,7 +4,10 @@ IMAGE := esp32-streamline-firmware
 SRC := streamline
 TARGET := xtensa-esp32-espidf
 PROFILE ?= release
-ELF := target/$(TARGET)/$(PROFILE)/streamline-firmware
+# Cargo shares output directories between its built-in dev/test and release/bench profiles.
+PROFILE_DIR := $(if $(filter dev test,$(PROFILE)),debug,$(if $(filter bench,$(PROFILE)),release,$(PROFILE)))
+BUILD_DIR := target/$(TARGET)/$(PROFILE_DIR)
+ELF := $(BUILD_DIR)/streamline-firmware
 VERSION ?= dev
 FEATURES ?=
 PORT ?= /dev/cu.usbserial-0001
@@ -117,7 +120,7 @@ build: image console-asset
 # diff's flash cost has a name before the OTA size gate refuses it. The
 # analysis lives in tools; this target owns building its input.
 size-report: build
-	$(MAKE) -C ../tools size-report FIRMWARE_BUILD_DIR=/repo/firmware/$(SRC)/target/$(TARGET)/$(PROFILE)
+	$(MAKE) -C ../tools size-report FIRMWARE_BUILD_DIR=/repo/firmware/$(SRC)/$(BUILD_DIR)
 
 # The QEMU image variant: network over emulated Ethernet, audio skipped. It
 # shares the hardware image's bootloader, partition table, and console asset,
@@ -154,7 +157,7 @@ pcm-frame-vectors: image
 # slot, silently running the old image. Config in NVS survives.
 flash: build
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	espflash flash --chip esp32 --port $(PORT) --baud 921600 --flash-size $(FLASH_SIZE) --bootloader $(SRC)/target/$(TARGET)/$(PROFILE)/bootloader.bin --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
+	espflash flash --chip esp32 --port $(PORT) --baud 921600 --flash-size $(FLASH_SIZE) --bootloader $(SRC)/$(BUILD_DIR)/bootloader.bin --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
 
 monitor:
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
@@ -201,7 +204,7 @@ signing-key: image
 #      install boots too. The table comes from partitions.csv (the layout applied
 #      at flash time), not the ESP-IDF build's default single-app table.
 define sign_and_package
-	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); GENPART="$$IDF_PATH/components/partition_table/gen_esp32part.py"; REL=target/$(TARGET)/$(PROFILE); "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
+	$(CONTAINER) run $(CONTAINER_FLAGS) -v "$(DIST_DIR):/dist" $(IMAGE) bash -c 'set -e; $(IDF_PYTHON_ENV); GENPART="$$IDF_PATH/components/partition_table/gen_esp32part.py"; REL=$(BUILD_DIR); "$$PY" "$$ESPTOOL" --chip esp32 elf2image --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) --secure-pad-v2 -o /dist/firmware/$(1)-ota.bin $(ELF); espsecure.py sign_data --version 2 --keyfile $(SIGNING_KEY) -o /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; mv /dist/firmware/$(1)-ota.bin.signed /dist/firmware/$(1)-ota.bin; "$$PY" "$$GENPART" partitions.csv /tmp/$(1)-partitions.bin; "$$PY" "$$ESPTOOL" --chip esp32 merge_bin --flash_mode dio --flash_freq 40m --flash_size $(FLASH_SIZE_UPPER) -o /dist/firmware/$(1)-full.bin 0x1000 $$REL/bootloader.bin 0x8000 /tmp/$(1)-partitions.bin 0x20000 /dist/firmware/$(1)-ota.bin'
 endef
 
 # `-full.bin` is the serial-flash image: it bundles the OTA-capable partition
@@ -273,7 +276,7 @@ signature-check:
 repro-check:
 	@test -f "$(SRC)/$(ELF)" || (echo "build first: make build VERSION=$(VERSION)" >&2; exit 2)
 	@set -eu; snapshot="$$(mktemp -d)"; trap 'rm -rf "$$snapshot"' EXIT INT TERM; \
-		rel="$(SRC)/target/$(TARGET)/$(PROFILE)"; \
+		rel="$(SRC)/$(BUILD_DIR)"; \
 		files="streamline-firmware bootloader.bin partition-table.bin"; \
 		for f in $$files; do cp "$$rel/$$f" "$$snapshot/"; done; \
 		$(MAKE) clean; \

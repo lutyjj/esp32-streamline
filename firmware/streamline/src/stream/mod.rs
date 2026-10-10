@@ -2,7 +2,7 @@
 //!
 //! The device [`crate::runtime`] wires I2S capture, FreeRTOS tasks, and the TCP
 //! sender to these engines through the [`effects`] seams. Queue pressure,
-//! signal gating, retry accounting, and the status counters live here, so the
+//! playback detection, retry accounting, and the status counters live here, so the
 //! latency and loss behavior is proven on the host rather than only on a board.
 
 mod capture;

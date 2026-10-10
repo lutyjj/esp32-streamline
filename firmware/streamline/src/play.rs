@@ -1,6 +1,6 @@
 //! Play-state detection from per-packet level measurements.
 //!
-//! Decides whether the line input is carrying a signal worth streaming. The
+//! Estimates whether the line input is playing for status reporting. The
 //! detector calibrates itself to whatever is plugged in — it tracks the
 //! input's idle level and derives both decision thresholds from it, so no
 //! constant has to fit every source, cable, and attenuation setting. Four

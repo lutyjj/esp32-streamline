@@ -37,7 +37,7 @@ Payload starts immediately after the 24-byte header.
 
 Every record represents exactly 256 frames. An audio record carries 1,024 PCM
 bytes. A silence record carries no payload and declares `payload bytes = 0`;
-it explicitly represents an interval suppressed by the source's signal gate.
+it represents exactly 256 frames whose samples are all zero.
 All other payload lengths are invalid. The firmware coalesces shorter hardware
 reads before framing. Both sender and receiver must implement version 2;
 other versions are rejected without fallback.

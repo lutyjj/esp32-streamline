@@ -18,8 +18,8 @@ HTTP consumer can read it too.
   audio levels. A per-device admin key gates every write through digest
   authentication, so the key never crosses the network; reads stay open,
   apart from the device log and crash dumps.
-- **Signal-gated streaming:** the device pauses PCM on sustained silence and
-  resumes on the same connection when the input plays.
+- **Lossless capture:** the device streams every captured sample. Only
+  all-zero packets use compact silence records; playback detection is informational.
 - **Local analog output:** supported boards can send the selected input
   directly through the codec to a local output while capture and streaming
   continue independently.

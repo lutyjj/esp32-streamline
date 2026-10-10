@@ -88,20 +88,20 @@ and discards partial audio while preserving stereo frame alignment. This is
 a timing estimate, not an exact DMA overrun count. Two seconds without a
 complete packet clears playing status, including when reads return fragments.
 
-Live audio changes relearn the input's noise floor. An existing stream stays
-open through the learning and start-debounce window (about 2.1 seconds), then
-follows the new input's detected state. An idle input sends silence records.
+Live audio changes relearn the input's noise floor for playback status.
+Detection never suppresses captured samples. Only all-zero packets use
+header-only silence records.
 
 Queued audio survives connection setup and slow sends within the queue's
 fixed capacity. A failed send discards that batch and backs off for 250 ms
 before processing the queue.
 
-An established producer keeps its TCP connection during detected silence.
+An established producer keeps its TCP connection during silence.
 The bridge's source idle timeout bounds the first packet and incomplete
 frames. Between complete packets, native TCP keepalive checks the connection
 alongside the regular silence records. Its probe interval rounds the configured timeout up to
 whole seconds, with a one-second minimum; three unanswered probes close a
-dead connection. The gate selects PCM or header-only silence on the same connection.
+dead connection. PCM and header-only silence use the same connection.
 
 The firmware chooses the transport once while composing the network task.
 Cleartext uses Rust `std::net` over lwIP. TLS uses ESP-TLS only in the adapter;

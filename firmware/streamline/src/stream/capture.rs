@@ -120,11 +120,11 @@ impl CaptureEngine {
         let Some(queue) = queue else {
             return;
         };
-        let packet = if playing {
-            AudioPacket::from_pcm(sequence, &self.pcm)
-        } else {
+        let packet = if self.pcm.iter().all(|&byte| byte == 0) {
             status.record_silence();
             AudioPacket::silence(sequence)
+        } else {
+            AudioPacket::from_pcm(sequence, &self.pcm)
         };
         let (dropped, depth) = queue.push_drop_oldest(packet);
         if dropped {
@@ -319,6 +319,30 @@ mod tests {
     }
 
     #[test]
+    fn playback_detection_never_discards_nonzero_samples() {
+        for sample in [1, -1, 20, LOUD] {
+            let status = StreamStatus::default();
+            let queue = PacketQueue::new();
+            let mut engine = CaptureEngine::new(1_440);
+            let mut source = ConstantSource { sample };
+            for _ in 0..500 {
+                engine.step(
+                    &mut source,
+                    Some(&queue),
+                    &status,
+                    &RecordingDelay::default(),
+                );
+                let (packet, _) = queue.pop_timeout(Duration::ZERO).expect("captured audio");
+                assert_eq!(packet.payload_bytes(), PAYLOAD_BYTES);
+                for frame_sample in packet.as_bytes()[24..].chunks_exact(2) {
+                    assert_eq!(frame_sample, sample.to_le_bytes());
+                }
+            }
+            assert_eq!(status.snapshot().silence_packets, 0);
+        }
+    }
+
+    #[test]
     fn idle_input_enqueues_header_only_intervals_without_charging_audio_loss() {
         let status = StreamStatus::default();
         let queue = PacketQueue::new();
@@ -366,7 +390,14 @@ mod tests {
                 assert_eq!(packet.payload_bytes(), PAYLOAD_BYTES);
                 break;
             }
-            assert_eq!(packet.payload_bytes(), 0);
+            assert_eq!(
+                packet.payload_bytes(),
+                if expected_sequence <= 50 {
+                    0
+                } else {
+                    PAYLOAD_BYTES
+                }
+            );
         }
 
         let snapshot = status.snapshot();

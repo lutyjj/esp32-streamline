@@ -70,7 +70,7 @@ recorder compares its sequence with the expected next value:
 - a backwards sequence interrupts the recording because the source timeline
   may have reset.
 
-This preserves track gaps created by the device's signal gate, including across
+This preserves the device's captured timeline, including across
 a TCP reconnect when the device sequence continues. The bridge interrupts a
 recording rather than creating an unbounded file when one gap exceeds five
 minutes, the session reaches four hours, writable storage falls below 256 MiB,

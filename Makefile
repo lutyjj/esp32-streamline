@@ -31,25 +31,25 @@ OSV_SCANNER_IMAGE := ghcr.io/google/osv-scanner:v2.4.0@sha256:5116601dedc01c1c58
 export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE REF CAP
 
 .PHONY: check help lint test format clean smoke-qemu \
-	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test repository-dependency-audit docs-check api-contract-check version-check
+	api-check bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test repository-dependency-audit docs-check api-contract-check version-check
 
-check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
+check: api-check bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
 
 help:
 	@echo "Cross-project targets:"
 	@echo "  make lint | test | check | format   run across every component"
 	@echo "  make smoke-qemu                      build QEMU images and smoke the emulated device"
-	@echo "  make <c>-check                       c = bridge | console | firmware | tools | webflasher | ha-addon"
+	@echo "  make <c>-check                       c = api | bridge | console | firmware | tools | webflasher | ha-addon"
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
 	@echo "                                        e.g. firmware-flash PORT=..., bridge-run, bridge-up"
 	@echo "  make repository-check                  validate docs, metadata, release versions, and dependency advisories"
 	@echo "  make version-check VERSION=X.Y.Z     require one version across the release-owned files"
 
-format: bridge-format console-format firmware-format tools-format ha-addon-format
+format: api-format bridge-format console-format firmware-format tools-format ha-addon-format
 
-lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
+lint: api-lint bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
 
-test: bridge-test console-test firmware-test firmware-build tools-test ha-addon-test
+test: api-test bridge-test console-test firmware-test firmware-build tools-test ha-addon-test
 
 # One command to smoke the firmware pre-silicon: build the QEMU variant images,
 # then boot the emulated device and run the device suite against it. The same
@@ -67,15 +67,16 @@ clean: firmware-clean
 # Per-component check aggregates. The trailing `;` gives each an empty recipe so
 # the `<component>-%` forwarding rules do not also fire a `check` sub-target. CI
 # fans out over these by name.
+api-check: api-lint api-test api-build api-openapi-check ;
 bridge-check: bridge-lock-check bridge-lint bridge-test bridge-openapi-check bridge-image ;
 console-check: console-lint console-test console-build ;
-firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-ota-size-self-test firmware-build ;
+firmware-check: firmware-lock-check firmware-lint firmware-test firmware-ota-size-self-test firmware-build ;
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-validate ha-addon-test ha-addon-apparmor-test ;
 repository-check: version-check repository-container-contract repository-secret-check repository-dependency-audit
 	$(READONLY_REPO_RUN) $(ACTIONLINT_IMAGE) -color
-	$(READONLY_REPO_RUN) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs firmware/streamline/README.md ha-addon/DOCS.md ha-addon/README.md tools/README.md
+	$(READONLY_REPO_RUN) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs api/README.md firmware/streamline/README.md ha-addon/DOCS.md ha-addon/README.md tools/README.md
 	$(READONLY_REPO_RUN) $(LYCHEE_IMAGE) --config /repo/lychee.toml /repo
 	$(READONLY_REPO_RUN) --entrypoint sh $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval --exit-status "." {} \; >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; find docs -type f -name "*.json" -exec yq eval --exit-status "." {} \; >/dev/null'
 	@test -z "$$(git grep -n 'actions/cache' -- .github/workflows)" || (echo "firmware cache actions belong in .github/actions/firmware-cache" >&2; exit 1)
@@ -127,10 +128,13 @@ repository-secret-scanner-self-test:
 			set +e; gitleaks dir /scan --no-banner --no-color --redact >/dev/null 2>&1; status=$$?; set -e; \
 			test "$$status" -eq 1'
 docs-check: repository-check ;
-api-contract-check: firmware-openapi-check console-lint ;
+api-contract-check: api-openapi-check console-lint ;
 
 # Forward any `<component>-<verb>` to that component's Makefile. Pass-through
 # variables reach the sub-make through `export` above.
+api-%:
+	$(MAKE) -C api $*
+
 bridge-%:
 	$(MAKE) -C bridge $*
 
@@ -156,4 +160,3 @@ version-check:
 	@test "$(VERSION)" = "$(FIRMWARE_LOCK_VERSION)" || (echo "VERSION=$(VERSION) does not match firmware/streamline/Cargo.lock ($(FIRMWARE_LOCK_VERSION))" >&2; exit 2)
 	@test "$(VERSION)" = "$(ADDON_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(ADDON_VERSION))" >&2; exit 2)
 	@printf '%s' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || (echo "VERSION must be a stable X.Y.Z release version" >&2; exit 2)
-

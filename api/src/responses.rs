@@ -8,7 +8,7 @@ use crate::{board::Board, health::HealthReport};
 use super::requests::AutoUpdateScheduleRequest;
 
 #[derive(Debug, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Ack {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ok: Option<bool>,
@@ -45,7 +45,7 @@ impl Ack {
 }
 
 #[derive(Debug, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ErrorResponse<'a> {
     pub error: &'a str,
 }
@@ -54,9 +54,9 @@ pub struct ErrorResponse<'a> {
 /// read endpoint; it appears only inside the factory-reset response, the
 /// one moment the owner is deliberately heading back to commissioning.
 #[derive(Debug, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
-    feature = "api-spec",
+    feature = "openapi",
     schema(example = json!({"ssid": "esp32-streamline-1AA8B2", "password": "abcd-efgh-ijkm-npqr"}))
 )]
 pub struct SetupNetworkResponse<'a> {
@@ -69,15 +69,15 @@ pub struct SetupNetworkResponse<'a> {
 /// pre-flashed unit's label — and this response shows it before the device
 /// leaves the network.
 #[derive(Debug, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FactoryResetResponse<'a> {
     pub rebooting: bool,
     pub setup_network: SetupNetworkResponse<'a>,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::settings())))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = json!(crate::examples::settings())))]
 pub struct SettingsResponse<'a> {
     pub device_name: &'a str,
     pub ssid: &'a str,
@@ -97,24 +97,24 @@ pub struct SettingsResponse<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LedRoleStatus<'a> {
     pub id: &'a str,
-    pub role: crate::led::LedRole,
+    pub role: crate::controls::LedRole,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ButtonActionStatus<'a> {
     pub id: &'a str,
-    pub action: crate::button::ButtonAction,
+    pub action: crate::controls::ButtonAction,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TransportStatus<'a> {
     pub contract_version: u8,
-    pub mode: crate::transport::TransportMode,
+    pub mode: crate::controls::TransportMode,
     pub active_key_id: Option<&'a str>,
     pub pending_key_id: Option<&'a str>,
     pub pending_verified: bool,
@@ -122,17 +122,17 @@ pub struct TransportStatus<'a> {
 }
 
 #[derive(Debug, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TransportKeyResponse {
     pub contract_version: u8,
     pub key_id: String,
     /// Shown once. The device never returns this PSK through a read endpoint.
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[0-9a-f]{64}$"))]
+    #[cfg_attr(feature = "openapi", schema(pattern = r"^[0-9a-f]{64}$"))]
     pub psk: String,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BoardCatalogResponse<'a> {
     pub selected_board_id: &'a str,
     pub selected_board: CapabilitiesStatus<'a>,
@@ -140,13 +140,13 @@ pub struct BoardCatalogResponse<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-#[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::status())))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = json!(crate::examples::status())))]
 pub struct StatusResponse<'a> {
     pub firmware_version: &'a str,
-    pub firmware_variant: crate::telemetry::FirmwareVariant,
+    pub firmware_variant: crate::controls::FirmwareVariant,
     pub device_name: &'a str,
-    #[cfg_attr(feature = "api-spec", schema(inline))]
+    #[cfg_attr(feature = "openapi", schema(inline))]
     pub mode: &'a str,
     pub config_source: &'a str,
     pub web_server: bool,
@@ -167,7 +167,7 @@ pub struct StatusResponse<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CapabilitiesStatus<'a> {
     pub board_id: &'a str,
     pub board: &'a str,
@@ -182,28 +182,28 @@ pub struct CapabilitiesStatus<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CodecStatus<'a> {
     pub driver: &'a str,
     pub i2c_address: u8,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PinMapStatus {
     pub i2c: I2cPinsStatus,
     pub i2s: I2sPinsStatus,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct I2cPinsStatus {
     pub sda: u8,
     pub scl: u8,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct I2sPinsStatus {
     pub mclk: u8,
     pub bclk: u8,
@@ -212,34 +212,34 @@ pub struct I2sPinsStatus {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LedCapabilityStatus<'a> {
     pub id: &'a str,
     pub label: &'a str,
     pub gpio: u8,
     pub active_low: bool,
-    pub default_role: crate::led::LedRole,
+    pub default_role: crate::controls::LedRole,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ButtonCapabilityStatus<'a> {
     pub id: &'a str,
     pub label: &'a str,
     pub gpio: u8,
     pub active_low: bool,
-    pub default_action: crate::button::ButtonAction,
+    pub default_action: crate::controls::ButtonAction,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct InputLineStatus<'a> {
     pub line: u8,
     pub label: &'a str,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnalogPassthroughCapabilityStatus<'a> {
     pub output_line: u8,
     pub label: &'a str,
@@ -309,7 +309,7 @@ impl<'a> CapabilitiesStatus<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DiagnosticsStatus<'a> {
     pub reset_reason: &'a str,
     pub last_fallback: &'a str,
@@ -318,7 +318,7 @@ pub struct DiagnosticsStatus<'a> {
 
 /// Device resource headroom: RAM, NVS storage, uptime, and task count.
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SystemStatus {
     pub uptime_seconds: u64,
     pub task_count: u32,
@@ -328,7 +328,7 @@ pub struct SystemStatus {
 
 /// Byte-addressable internal RAM heap, in bytes.
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct HeapStatus {
     pub free_bytes: u32,
     pub total_bytes: u32,
@@ -338,7 +338,7 @@ pub struct HeapStatus {
 
 /// NVS configuration partition usage, in 32-byte entries.
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NvsStatus {
     pub used_entries: u32,
     pub available_entries: u32,
@@ -346,7 +346,7 @@ pub struct NvsStatus {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WifiStatus<'a> {
     pub hostname: &'a str,
     pub ssid: &'a str,
@@ -357,7 +357,7 @@ pub struct WifiStatus<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TargetStatus<'a> {
     pub target_host: &'a str,
     pub target_port: u16,
@@ -365,7 +365,7 @@ pub struct TargetStatus<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AudioStatus {
     pub input_line: u8,
     pub input_gain: u8,
@@ -376,7 +376,7 @@ pub struct AudioStatus {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MetricsStatus {
     pub sequence: u32,
     pub packets_total: u64,
@@ -404,7 +404,7 @@ pub struct MetricsStatus {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OtaStatus<'a> {
     pub phase: &'a str,
     pub bytes_written: u32,
@@ -423,7 +423,7 @@ pub struct OtaStatus<'a> {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnalogPassthroughStatus<'a> {
     pub enabled: bool,
     pub active: bool,
@@ -433,13 +433,13 @@ pub struct AnalogPassthroughStatus<'a> {
 /// Runtime streaming control, flipped by `POST /api/stream` and the
 /// `toggle_stream` button action. Not persisted: a reboot resumes streaming.
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StreamControlStatus {
     pub enabled: bool,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct IndicatorStatus {
     pub available: bool,
     pub state: &'static str,
@@ -451,7 +451,7 @@ pub struct IndicatorStatus {
 /// the reboot and any rollback. `GET /api/coredump/image` downloads the bytes
 /// for `espcoredump.py`; `POST /api/coredump/erase` clears them.
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CoredumpResponse {
     /// Whether the partition holds a valid dump from an earlier panic.
     pub present: bool,
@@ -461,7 +461,7 @@ pub struct CoredumpResponse {
 
 /// The device's captured log, as `GET /api/logs` returns it.
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LogsResponse {
     pub current: BootLog,
     /// The boot before this one. `null` after a power cycle, which clears the
@@ -477,7 +477,7 @@ pub struct LogsResponse {
 /// does not have to spare; `first_sequence` still names every line for a
 /// reader that wants to track them individually.
 #[derive(Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BootLog {
     /// Identifies the run of the firmware these lines came from. A poller
     /// compares it to tell more lines from a restart that began counting
@@ -491,91 +491,4 @@ pub struct BootLog {
     pub dropped: u64,
     /// The held lines, oldest first, separated by newlines.
     pub text: String,
-}
-
-impl LogsResponse {
-    /// Copy both buffers into a response.
-    ///
-    /// Owned rather than borrowed because the caller holds the capture lock
-    /// while this runs and every task that logs waits behind it: one copy of
-    /// the stored block per boot, then the lock is free before the response
-    /// reaches the socket.
-    pub fn from_buffers<const CURRENT: usize, const PREVIOUS: usize>(
-        current: &crate::logs::LogBuffer<CURRENT>,
-        previous: Option<&crate::logs::LogBuffer<PREVIOUS>>,
-    ) -> Self {
-        Self {
-            current: BootLog::from_buffer(current),
-            previous: previous.map(BootLog::from_buffer),
-        }
-    }
-}
-
-impl BootLog {
-    fn from_buffer<const N: usize>(buffer: &crate::logs::LogBuffer<N>) -> Self {
-        Self {
-            boot: buffer.boot(),
-            first_sequence: buffer.first_sequence(),
-            dropped: buffer.dropped(),
-            text: buffer.text().into_owned(),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn capabilities_report_a_resolved_board_descriptor() {
-        let catalog = crate::board::builtin_catalog().expect("valid catalog");
-        let board = crate::board::resolve(&catalog, None).expect("default board");
-        let json = serde_json::to_string(&CapabilitiesStatus::from_board(board))
-            .expect("serializable capabilities");
-        assert!(json.contains(r#""board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
-        assert!(json.contains(r#""codec":{"driver":"es8388","i2c_address":16}"#));
-        assert!(json.contains(
-            r#""pins":{"i2c":{"sda":33,"scl":32},"i2s":{"mclk":0,"bclk":27,"ws":25,"din":35}}"#
-        ));
-        assert!(json.contains(
-            r#""leds":[{"id":"status","label":"Status light (D4)","gpio":22,"active_low":true,"default_role":"status"}]"#
-        ));
-        assert!(json.contains(
-            r#""buttons":[{"id":"key1","label":"Key 1","gpio":36,"active_low":true,"default_action":"toggle_stream"}"#
-        ));
-        assert!(json.contains(
-            r#"{"id":"key6","label":"Key 6","gpio":5,"active_low":true,"default_action":"restart"}]"#
-        ));
-        assert!(json.contains(r#""analog_passthrough":{"output_line":2,"label":"3.5 mm output"}"#));
-    }
-
-    #[test]
-    fn board_catalog_reports_the_active_preset_and_built_ins() {
-        let catalog = crate::board::builtin_catalog().expect("valid catalog");
-        let selected_board = crate::board::resolve(&catalog, None).expect("default board");
-        let boards = catalog.iter().map(CapabilitiesStatus::from_board).collect();
-        let json = serde_json::to_string(&BoardCatalogResponse {
-            selected_board_id: selected_board.id.as_str(),
-            selected_board: CapabilitiesStatus::from_board(selected_board),
-            boards,
-        })
-        .expect("serializable board catalog");
-
-        assert!(json.contains(r#""selected_board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
-        assert!(json
-            .contains(r#""selected_board":{"board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
-        assert!(json.contains(r#""boards":[{"board_id":"ai-thinker-esp32-audio-kit-v2-2-es8388""#));
-    }
-
-    #[test]
-    fn acknowledgement_variants_serialize_through_one_dto() {
-        assert_eq!(
-            serde_json::to_string(&Ack::rebooting()).expect("serializable"),
-            r#"{"ok":true,"rebooting":true}"#
-        );
-        assert_eq!(
-            serde_json::to_string(&Ack::started()).expect("serializable"),
-            r#"{"ok":true,"started":true}"#
-        );
-    }
 }

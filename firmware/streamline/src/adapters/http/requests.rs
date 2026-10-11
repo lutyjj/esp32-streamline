@@ -4,12 +4,13 @@ use embedded_svc::http::Headers;
 use embedded_svc::io::Read;
 use serde::de::DeserializeOwned;
 
-use crate::{board, mutation::MutationError};
+use crate::mutation::MutationError;
 
 /// A form-urlencoded byte can expand to `%XX`, so a descriptor upload can be
 /// three times its raw size on the wire; the rest of the fields fit in 512.
 const URL_ENCODED_EXPANSION: usize = 3;
-const MAX_REQUEST_BYTES: usize = board::MAX_DESCRIPTOR_BYTES * URL_ENCODED_EXPANSION + 512;
+const MAX_REQUEST_BYTES: usize =
+    streamline_api::board::MAX_DESCRIPTOR_BYTES * URL_ENCODED_EXPANSION + 512;
 
 /// Parse a form-urlencoded body. Every failure is a malformed request the
 /// caller must fix, so it surfaces as [`MutationError::InvalidInput`].

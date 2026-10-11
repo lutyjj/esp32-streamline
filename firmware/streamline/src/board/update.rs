@@ -1,8 +1,9 @@
 //! Board selection update policy.
 
 use std::fmt;
+use streamline_api::board::MAX_DESCRIPTOR_BYTES;
 
-use super::{find, parse_descriptor, Board, BoardLoadError, MAX_DESCRIPTOR_BYTES};
+use super::{find, parse_descriptor, Board, BoardLoadError};
 
 #[derive(Debug)]
 pub enum BoardUpdate {
@@ -122,7 +123,7 @@ mod tests {
         assert_eq!(update.board().id, "ai-thinker-esp32-audio-kit-v2-2-es8388");
     }
 
-    fn descriptor(board: &board::Board) -> String {
+    fn descriptor(board: &streamline_api::board::Board) -> String {
         serde_json::to_string(board).expect("json")
     }
 

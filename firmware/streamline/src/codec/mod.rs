@@ -3,7 +3,7 @@
 //! Board descriptors own GPIO shape and user-facing labels. Each codec driver
 //! owns the lines, ranges, and control-bus addresses it can actually apply.
 
-use crate::board::Board;
+use streamline_api::board::Board;
 
 mod control;
 mod es8388;

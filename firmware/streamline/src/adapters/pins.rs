@@ -6,7 +6,7 @@
 
 use esp_idf_svc::hal::gpio::{AnyIOPin, AnyInputPin};
 
-use crate::board::PinMap;
+use streamline_api::board::PinMap;
 
 pub struct AudioPins<'d> {
     pub i2c: I2cBusPins<'d>,

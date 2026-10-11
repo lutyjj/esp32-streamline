@@ -2,7 +2,8 @@
 
 use anyhow::Result;
 
-use crate::{adapters::logs, api};
+use crate::adapters::logs;
+use streamline_api as api;
 
 use super::super::{
     responses::{json_response, unavailable},
@@ -18,7 +19,7 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
         // Copy under the capture lock, serialize after it: the response goes
         // out over a socket, and holding the lock for that would block every
         // task that logs.
-        match logs::with_buffers(api::LogsResponse::from_buffers) {
+        match logs::with_buffers(crate::logs::logs_response) {
             Some(captured) => json_response(request, 200, &captured),
             None => unavailable(request, "log capture is not running"),
         }

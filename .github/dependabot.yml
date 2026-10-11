@@ -4,6 +4,9 @@
 version: 2
 
 multi-ecosystem-groups:
+  api:
+    schedule:
+      interval: weekly
   bridge:
     schedule:
       interval: weekly
@@ -94,3 +97,13 @@ updates:
       - "*"
     multi-ecosystem-group: webflasher
 
+
+  - package-ecosystem: cargo
+    directory: /api
+    patterns: ["*"]
+    multi-ecosystem-group: api
+
+  - package-ecosystem: docker
+    directory: /api
+    patterns: ["*"]
+    multi-ecosystem-group: api

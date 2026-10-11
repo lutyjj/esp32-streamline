@@ -40,7 +40,7 @@ export function setTransport(next: FetchLike): void {
  * staying open matters: the status poll runs every couple of seconds and
  * should not spend digest round trips.
  *
- * `tests/api.test.ts` pins this list to the operations `docs/openapi.json`
+ * `tests/api.test.ts` pins this list to the operations `api/openapi.json`
  * declares `digest_auth` on, so a new authenticated read cannot forget it.
  */
 export const AUTHENTICATED_READS: ReadonlySet<string> = new Set([

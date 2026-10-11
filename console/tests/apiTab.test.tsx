@@ -64,7 +64,7 @@ describe('curl example disposition for every served operation', () => {
   // The committed device contract is the input, so a contract change reruns
   // every disposition here instead of leaving stale examples silently passing.
   const artifact = JSON.parse(
-    readFileSync(resolve(import.meta.dirname, '../../docs/openapi.json'), 'utf8'),
+    readFileSync(resolve(import.meta.dirname, '../../api/openapi.json'), 'utf8'),
   ) as ApiDocument;
 
   const operations = Object.entries(artifact.paths ?? {}).flatMap(([path, item]) =>

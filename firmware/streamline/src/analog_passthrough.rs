@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::config::AudioSettings;
+use streamline_api::audio::AudioSettings;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AnalogPassthroughRoute {

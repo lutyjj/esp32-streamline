@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Rules for AI coding agents in this repository. Humans follow them too — see
+Rules for AI coding agents in this repository. Humans follow them too; see
 [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the PR flow.
 
 ## Understand before changing
@@ -22,7 +22,7 @@ board.
 
 ## Write for the present, not the past
 
-Document and comment the current state only. Never frame things as history —
+Document and comment the current state only. Never frame things as history:
 no "previously X, now Y", "was/now", "changed from", or changelog narration in
 docs or code comments. Write as if the code was always this way. History
 lives in git.
@@ -48,7 +48,7 @@ Application logic lives in host-testable crate-root modules. ESP-IDF, the
 network, and flash live behind `adapters/`; `main.rs` remains the composition
 root and `runtime.rs` wires device tasks. New logic goes in the core;
 adapters stay thin wiring. When the core must reach hardware, define a small
-trait it owns and implement that trait in the adapter — never call a concrete
+trait it owns and implement that trait in the adapter. Never call a concrete
 driver from the core. `update::install_verified` and its adapter in
 `adapters/ota.rs` are the pattern to copy.
 
@@ -56,8 +56,8 @@ The console follows the same rule: behavior lives in `console/src/lib` and
 `console/src/state` and is tested with vitest on the host; components stay
 thin renderers over that state. A console behavior change ships with its
 test. To exercise a console without hardware, use `make console-dev-mock`
-or `make console-e2e` — the fake device in `console/src/mocks` beside a
-real bridge container — instead of a throwaway harness; a new device
+or `make console-e2e`. These run the fake device in `console/src/mocks` beside a
+real bridge container; use them instead of a throwaway harness. A new device
 endpoint must gain its mock handler or the coverage test fails.
 
 ## Write meaningful unit tests
@@ -79,7 +79,7 @@ from its name and the first line of its doc comment.
 ## Simple, with seams
 
 Write the simplest thing that works; do not add abstraction on speculation.
-But isolate what changes — URLs, transports, sinks, clocks — behind a narrow
+But isolate URLs, transports, sinks and clocks behind a narrow
 interface so it can be swapped or faked in a test. Abstract when it removes
 duplication or unlocks a test, not before.
 
@@ -102,22 +102,22 @@ can reach, put the API in first and the UI on top.
 ## Derive cross-boundary contracts
 
 When components share a wire format or API shape, define it once and derive
-every representation that tooling supports. The Rust `api` module generates
-`docs/openapi.json`; the firmware adapter uses its routes and DTOs, and the
+every representation that tooling supports. The independent Rust `api/` crate generates
+`api/openapi.json`; the firmware adapter uses its routes and DTOs, and the
 console generates its client types from the artifact, which also carries the
 canonical example device (the `StatusResponse` and `SettingsResponse` schema
 examples) that client fixtures derive from instead of hand-writing device
-state. Run `make firmware-openapi` after a contract change. `docs/pcm-protocol.md` owns the
+state. Run `make api-openapi` after a contract change. `docs/pcm-protocol.md` owns the
 PCM frame that `src/protocol.rs` and the bridge's `protocol.py` implement
 byte-exactly; its two implementations remain a deliberate exception until that
 protocol has generation tooling.
 
 ## Components share one build contract
 
-Each component (`bridge/`, `console/`, `firmware/`, `tools/`, `webflasher/`,
+Each component (`api/`, `bridge/`, `console/`, `firmware/`, `tools/`, `webflasher/`,
 `ha-addon/`) owns its Makefile, container image or build target, dependency
 pins, and tool config. Component Makefiles expose the same verbs where they
-apply — `format`, `lint`, `test`, `image` — and include `mk/common.mk` for
+apply (`format`, `lint`, `test`, `image`) and include `mk/common.mk` for
 cross-cutting values. The root `Makefile` is the public interface:
 `make <component>-<verb>` forwards to the component, and
 `make lint | test | check | format` fan out across all of them. Prefer these
@@ -128,7 +128,7 @@ Makefile, and a filter entry in `.github/ci-paths.yml`.
 ## Self-contained beats shared
 
 Every component builds standalone: its Dockerfile starts `FROM` a public
-image and its pins live in its own files. Accept small pin duplication —
+image and its pins live in its own files. Accept small pin duplication;
 Dependabot refreshes it according to the dependency boundary in
 [`docs/architecture.md`](docs/architecture.md#components). Do not introduce
 local base images or hidden include chains; a contributor must understand any
@@ -157,7 +157,7 @@ or test firmware.
 
 A change also updates any documentation it makes stale, in the same change. If
 the diff alters behavior a doc, comment, or example describes, correct that
-prose too — a `README.md`, `docs/` page, or contract table that now describes
+prose too. A `README.md`, `docs/` page, or contract table that describes
 the old behavior is part of the change, not a follow-up. Grep the docs for the
 names and paths the change touches before calling it ready.
 
@@ -188,12 +188,12 @@ recovery. Your device's address and admin key live in the gitignored root
 
 Real device addresses, hostnames, network names, and keys belong only in the
 gitignored `.env`. Never put them in code, tests, docs, commits, issues, or
-pull requests — use documentation addresses (`192.0.2.x`) and neutral
+pull requests. Use documentation addresses (`192.0.2.x`) and neutral
 hostnames in examples. Check the artifact before publishing, not after.
 
 ## Run in Docker, do not pollute the host
 
-Run builds and checks in containers — the Makefiles already do. The only
+Run builds and checks in containers. The Makefiles already do. The only
 host-side tools are `espflash` and the serial port, which containers cannot
 reach on macOS.
 
@@ -218,10 +218,10 @@ release-please maintains the release PR from Conventional Commits:
 `release-please-config.json` declares every checked-in version owner and
 lockfile, and merging the release PR creates the `vX.Y.Z` tag and a draft
 GitHub release that publication completes. Never bump version files or edit
-`ha-addon/CHANGELOG.md` by hand — land a Conventional Commit and let the
+`ha-addon/CHANGELOG.md` by hand. Land a Conventional Commit and let the
 release PR carry it. See the [README release steps](README.md#releases).
 
 ## Docs win on conflict
 
 If anything here conflicts with `README.md` or `docs/`, the docs win and this
-file is stale — update it.
+file is stale; update it.

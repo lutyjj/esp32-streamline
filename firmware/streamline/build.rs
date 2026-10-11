@@ -18,7 +18,7 @@ fn compress_embedded_assets() {
     let out_dir = std::env::var("OUT_DIR").expect("cargo sets OUT_DIR");
     for (source, compressed) in [
         ("../../console/dist/index.html", "index.html.gz"),
-        ("../../docs/openapi.json", "openapi.json.gz"),
+        ("../../api/openapi.json", "openapi.json.gz"),
     ] {
         println!("cargo::rerun-if-changed={source}");
         let Ok(bytes) = std::fs::read(source) else {

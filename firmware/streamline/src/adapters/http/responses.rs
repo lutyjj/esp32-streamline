@@ -4,7 +4,9 @@ use anyhow::Result;
 use embedded_svc::io::Write;
 use serde::Serialize;
 
-use crate::{api, buffered_writer::BufferedWriter, mutation::MutationError};
+use crate::buffered_writer::BufferedWriter;
+use crate::mutation::MutationError;
+use streamline_api as api;
 
 /// Hand off to the reserved restart worker before writing the response.
 /// A disconnected client cannot cancel a committed configuration change.

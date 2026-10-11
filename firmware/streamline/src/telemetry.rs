@@ -1,5 +1,7 @@
 //! Runtime telemetry shared by status and metrics renderers.
 
+use streamline_api::controls::FirmwareVariant;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TelemetrySnapshot {
     pub firmware_version: &'static str,
@@ -148,23 +150,12 @@ pub struct OtaTelemetry {
     pub signed_updates: bool,
     pub signing_key_sha256: String,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-pub enum FirmwareVariant {
-    Standard,
-    Qemu,
-    TestSource,
-}
-
-impl FirmwareVariant {
-    pub const fn current() -> Self {
-        if cfg!(feature = "qemu") {
-            Self::Qemu
-        } else if cfg!(feature = "test-source") {
-            Self::TestSource
-        } else {
-            Self::Standard
-        }
+pub const fn firmware_variant() -> FirmwareVariant {
+    if cfg!(feature = "qemu") {
+        FirmwareVariant::Qemu
+    } else if cfg!(feature = "test-source") {
+        FirmwareVariant::TestSource
+    } else {
+        FirmwareVariant::Standard
     }
 }

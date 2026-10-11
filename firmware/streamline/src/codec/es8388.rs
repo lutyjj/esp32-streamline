@@ -1,9 +1,10 @@
 //! ES8388 capture and analog-output register policy.
 
 use super::{CodecError, RegisterBus};
-use crate::board::Board;
-use crate::{analog_passthrough::AnalogPassthroughRoute, config::AudioSettings};
+use crate::analog_passthrough::AnalogPassthroughRoute;
 use anyhow::{anyhow, Result};
+use streamline_api::audio::AudioSettings;
+use streamline_api::board::Board;
 
 /// ES8388 ADC codec.
 pub(super) struct Es8388;
@@ -216,7 +217,7 @@ mod tests {
         attenuation_register, input_controls, input_gain_register, input_register, ADC_CONTROL1,
         ADC_CONTROL2, ADC_CONTROL8, ADC_CONTROL9,
     };
-    use crate::config::AudioSettings;
+    use streamline_api::audio::AudioSettings;
 
     #[test]
     fn maps_audio_controls_to_documented_register_values() {

@@ -69,7 +69,7 @@ CAPTURE_SECS ?= 20
 # resource containers cannot reach).
 CAPTURE_SCRIPT := ../tools/src/streamline_tools/serial_capture.py
 
-.PHONY: image console-asset format lint lock lock-check build test openapi openapi-check pcm-frame-vectors flash monitor capture clean artifacts package repro-check ota-size-check ota-size-self-test signature-check signing-key size-report
+.PHONY: image console-asset format lint lock lock-check build test pcm-frame-vectors flash monitor capture clean artifacts package repro-check ota-size-check ota-size-self-test signature-check signing-key size-report
 
 image:
 	$(CONTAINER) build -f $(SRC)/Dockerfile -t $(IMAGE) $(SRC)
@@ -101,8 +101,8 @@ lint: image console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --locked --lib -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --lib --tests -- -D warnings
-	$(CONTAINER_RUN) cargo clippy --locked --features api-spec,pcm-frame-vectors \
-		--lib --bin streamline-openapi --bin streamline-pcm-frame-vectors -- -D warnings
+	$(CONTAINER_RUN) cargo clippy --locked --features pcm-frame-vectors \
+		--lib --bin streamline-pcm-frame-vectors -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu-fail-management -- -D warnings
@@ -125,14 +125,6 @@ qemu-build: image console-asset
 
 test: image console-asset
 	$(CONTAINER_RUN) cargo test --locked --lib
-
-# Rust DTOs and endpoint declarations are the API source. The host-only
-# `api-spec` feature keeps utoipa out of the device image.
-openapi: image
-	$(CONTAINER_RUN) cargo run --locked --quiet --features api-spec --bin streamline-openapi -- $(CONTAINER_WORKSPACE)/docs/openapi.json
-
-openapi-check: image
-	$(CONTAINER_RUN) bash -c 'cargo run --locked --quiet --features api-spec --bin streamline-openapi -- /tmp/openapi.json && diff -u $(CONTAINER_WORKSPACE)/docs/openapi.json /tmp/openapi.json'
 
 # Regenerate the cross-language PCM frame conformance corpus from the encoder.
 # `firmware-test` fails until the committed file matches; `bridge-test` fails

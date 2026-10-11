@@ -1,15 +1,15 @@
 //! HTTP route table and OpenAPI generation.
 //!
 //! The `endpoint!` macro declares each route's metadata and, under the
-//! `api-spec` feature, the utoipa operation that generates its OpenAPI path.
+//! `openapi` feature, the utoipa operation that generates its OpenAPI path.
 //! Request and response DTOs live in the sibling `requests`/`responses`
 //! modules and are imported here for that generation pass.
 
-#[cfg(feature = "api-spec")]
+#[cfg(feature = "openapi")]
 use super::{requests::*, responses::*};
-#[cfg(feature = "api-spec")]
+#[cfg(feature = "openapi")]
 use crate::health::HealthReport;
-#[cfg(feature = "api-spec")]
+#[cfg(feature = "openapi")]
 use crate::profiles::AudioProfileCatalog;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -32,7 +32,7 @@ pub enum ResponseContract {
     /// Endpoint-specific responses, written out in the declaration.
     Custom,
     /// A device-configuration mutation: one success status plus the complete
-    /// [`crate::mutation::MutationError`] taxonomy and the auth failure. The
+    /// runtime mutation error taxonomy and the auth failure. The
     /// `mutation` macro arm declares the set once; a test pins the generated
     /// artifact to the runtime taxonomy.
     Mutation { success: u16 },
@@ -46,7 +46,7 @@ macro_rules! endpoint {
             auth: false,
             contract: ResponseContract::Custom,
         };
-        #[cfg(feature = "api-spec")]
+        #[cfg(feature = "openapi")]
         #[allow(dead_code)]
         #[utoipa::path($verb, path = $path, $($contract)*)]
         fn $operation() {}
@@ -58,7 +58,7 @@ macro_rules! endpoint {
             auth: true,
             contract: ResponseContract::Custom,
         };
-        #[cfg(feature = "api-spec")]
+        #[cfg(feature = "openapi")]
         #[allow(dead_code)]
         #[utoipa::path(
             $verb,
@@ -81,7 +81,7 @@ macro_rules! endpoint {
             auth: true,
             contract: ResponseContract::Mutation { success: $success },
         };
-        #[cfg(feature = "api-spec")]
+        #[cfg(feature = "openapi")]
         #[allow(dead_code)]
         #[utoipa::path(
             $verb,
@@ -592,7 +592,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     FACTORY_RESET,
 ];
 
-#[cfg(feature = "api-spec")]
+#[cfg(feature = "openapi")]
 mod spec {
     use super::*;
     use utoipa::OpenApi;
@@ -648,23 +648,23 @@ mod spec {
         let schemas = &json["components"]["schemas"];
         assert_eq!(
             schemas["WifiSettingsRequest"]["properties"]["admin_key"]["pattern"],
-            format!("^$|{}", crate::config::ADMIN_KEY_PATTERN)
+            format!("^$|{}", crate::settings::ADMIN_KEY_PATTERN)
         );
         assert_eq!(
             schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["pattern"],
-            crate::config::ADMIN_KEY_PATTERN
+            crate::settings::ADMIN_KEY_PATTERN
         );
         assert_eq!(
             schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["minLength"],
-            crate::config::ADMIN_KEY_HEX_CHARS
+            crate::settings::ADMIN_KEY_HEX_CHARS
         );
         assert_eq!(
             schemas["AdminKeySettingsRequest"]["properties"]["admin_key"]["maxLength"],
-            crate::config::ADMIN_KEY_HEX_CHARS
+            crate::settings::ADMIN_KEY_HEX_CHARS
         );
         assert_eq!(
             schemas["NameSettingsRequest"]["properties"]["name"]["maxLength"],
-            crate::config::MAX_DEVICE_NAME_CHARS
+            crate::settings::MAX_DEVICE_NAME_CHARS
         );
         assert_eq!(
             schemas["BoardSettingsRequest"]["properties"]["descriptor"]["maxLength"],
@@ -693,17 +693,17 @@ mod spec {
         // fixtures instead of hand-writing coherent state (see examples.rs).
         assert_eq!(
             schemas["StatusResponse"]["example"],
-            crate::api::examples::status()
+            crate::examples::status()
         );
         assert_eq!(
             schemas["SettingsResponse"]["example"],
-            crate::api::examples::settings()
+            crate::examples::settings()
         );
         document
     }
 }
 
-#[cfg(feature = "api-spec")]
+#[cfg(feature = "openapi")]
 pub fn openapi_json() -> String {
     spec::openapi().to_json().expect("serializable OpenAPI")
 }
@@ -711,48 +711,6 @@ pub fn openapi_json() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn every_mutation_endpoint_declares_the_complete_runtime_taxonomy() {
-        use std::collections::BTreeSet;
-
-        use crate::mutation::MutationError;
-
-        let spec: serde_json::Value =
-            serde_json::from_str(include_str!("../../../../docs/openapi.json"))
-                .expect("docs/openapi.json parses");
-        // The error statuses the runtime mapping can emit, straight from the
-        // taxonomy, plus the adapter's auth failure.
-        let mut expected_errors: BTreeSet<u16> = [
-            MutationError::InvalidInput(String::new()),
-            MutationError::Conflict(String::new()),
-            MutationError::Unavailable(String::new()),
-            MutationError::Persistence(String::new()),
-            MutationError::Internal(String::new()),
-        ]
-        .iter()
-        .map(MutationError::status)
-        .collect();
-        expected_errors.insert(401);
-
-        let mut mutations = 0;
-        for endpoint in ENDPOINTS {
-            let ResponseContract::Mutation { success } = endpoint.contract else {
-                continue;
-            };
-            mutations += 1;
-            let declared: BTreeSet<u16> = spec["paths"][endpoint.path]["post"]["responses"]
-                .as_object()
-                .unwrap_or_else(|| panic!("responses for {}", endpoint.path))
-                .keys()
-                .map(|code| code.parse().expect("numeric status"))
-                .collect();
-            let mut expected = expected_errors.clone();
-            expected.insert(success);
-            assert_eq!(declared, expected, "response set for {}", endpoint.path);
-        }
-        assert!(mutations > 0, "no mutation endpoints found");
-    }
 
     #[test]
     fn endpoint_method_and_path_pairs_are_unique() {

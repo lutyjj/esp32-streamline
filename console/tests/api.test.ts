@@ -125,7 +125,7 @@ describe('api transport', () => {
 
   it('gates exactly the reads the contract marks as authenticated', () => {
     // vitest runs with the console package as its working directory.
-    const contract = JSON.parse(readFileSync(resolve('..', 'docs', 'openapi.json'), 'utf8')) as {
+    const contract = JSON.parse(readFileSync(resolve('..', 'api', 'openapi.json'), 'utf8')) as {
       paths: Record<string, Record<string, { security?: unknown[] }>>;
     };
     const gated = Object.entries(contract.paths)

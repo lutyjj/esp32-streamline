@@ -3,7 +3,7 @@ import { defineConfig } from 'orval';
 export default defineConfig({
   device: {
     input: {
-      target: '../docs/openapi.json',
+      target: '../api/openapi.json',
     },
     output: {
       client: 'fetch',

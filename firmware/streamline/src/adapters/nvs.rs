@@ -8,14 +8,17 @@ use esp_idf_svc::{
 };
 use std::ffi::CString;
 
-use crate::{
-    board::{self, Board, BoardSelection},
-    config::{ConfigError, RuntimeConfig},
-    profiles::AudioProfileCatalog,
-    random::RandomBytes,
-    setup_network,
-    state::{GenerationStorage, PersistentState, StateStore},
-};
+use crate::board;
+use crate::board::BoardSelection;
+use crate::config::ConfigError;
+use crate::config::RuntimeConfig;
+use crate::random::RandomBytes;
+use crate::setup_network;
+use crate::state::GenerationStorage;
+use crate::state::PersistentState;
+use crate::state::StateStore;
+use streamline_api::board::Board;
+use streamline_api::profiles::AudioProfileCatalog;
 
 const NAMESPACE: &str = "streamline";
 const KEY_LAST_FALLBACK: &str = "last_fallback";
@@ -134,11 +137,11 @@ impl ConfigStore {
         }
         let board_descriptor = if custom {
             let descriptor = serde_json::to_string(board)?;
-            if descriptor.len() > crate::board::MAX_DESCRIPTOR_BYTES {
+            if descriptor.len() > streamline_api::board::MAX_DESCRIPTOR_BYTES {
                 bail!(
                     "board descriptor is too large: {} bytes, max {}",
                     descriptor.len(),
-                    crate::board::MAX_DESCRIPTOR_BYTES
+                    streamline_api::board::MAX_DESCRIPTOR_BYTES
                 );
             }
             Some(descriptor)

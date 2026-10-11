@@ -18,20 +18,21 @@ use anyhow::{bail, Result};
 use embedded_svc::http::Method;
 use esp_idf_svc::http::server::{Configuration, EspHttpConnection, EspHttpServer};
 
-use crate::{
-    adapters::{codec::DeviceCodec, mdns::MdnsAdvertisement, nvs::ConfigStore},
-    analog_passthrough::AnalogPassthroughState,
-    api::{self, Endpoint, HttpMethod},
-    board,
-    config::RuntimeConfig,
-    health::HealthReport,
-    mode::Mode,
-    profiles::AudioProfileCatalog,
-    setup_network::SetupNetwork,
-    stream::StreamStatus,
-    transport::KeyVerifier,
-    update::progress::OtaProgress,
-};
+use crate::adapters::codec::DeviceCodec;
+use crate::adapters::mdns::MdnsAdvertisement;
+use crate::adapters::nvs::ConfigStore;
+use crate::analog_passthrough::AnalogPassthroughState;
+use crate::config::RuntimeConfig;
+use crate::mode::Mode;
+use crate::setup_network::SetupNetwork;
+use crate::stream::StreamStatus;
+use crate::transport::KeyVerifier;
+use crate::update::progress::OtaProgress;
+use streamline_api as api;
+use streamline_api::health::HealthReport;
+use streamline_api::profiles::AudioProfileCatalog;
+use streamline_api::Endpoint;
+use streamline_api::HttpMethod;
 
 // Stored gzipped (build.rs compresses them into OUT_DIR) and served with
 // `Content-Encoding: gzip`: raw, these two assets cost 194 KB of the OTA slot.
@@ -45,8 +46,8 @@ pub struct ApiState {
     pub button_action: crate::task_start::TaskSlot,
     pub mode: Mode,
     pub hostname: String,
-    pub board_catalog: Arc<Vec<board::Board>>,
-    pub board: Arc<board::Board>,
+    pub board_catalog: Arc<Vec<streamline_api::board::Board>>,
+    pub board: Arc<streamline_api::board::Board>,
     pub config: Arc<Mutex<RuntimeConfig>>,
     pub audio_profiles: Arc<Mutex<AudioProfileCatalog>>,
     pub store: Arc<Mutex<ConfigStore>>,

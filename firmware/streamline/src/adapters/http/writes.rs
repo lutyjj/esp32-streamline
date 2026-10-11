@@ -6,13 +6,13 @@
 //! [`crate::mode::Mode::require_commissioned`] for the operations that opt out
 //! of staging.
 
-use crate::{
-    config::{ConfigError, RuntimeConfig},
-    mode::ConfigWrite,
-    mutation::MutationError,
-    profiles::{AudioProfileCatalog, AudioProfileError},
-    recovery,
-};
+use crate::config::ConfigError;
+use crate::config::RuntimeConfig;
+use crate::mode::ConfigWrite;
+use crate::mutation::MutationError;
+use crate::recovery;
+use streamline_api::profiles::AudioProfileCatalog;
+use streamline_api::profiles::AudioProfileError;
 
 use super::ApiState;
 

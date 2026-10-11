@@ -23,6 +23,7 @@ repository:
   - 'bridge/uv.lock'
   - 'console/package-lock.json'
   - 'firmware/streamline/Cargo.lock'
+  - 'api/Cargo.lock'
   - 'tools/uv.lock'
 
 bridge:
@@ -42,7 +43,7 @@ console:
   - 'bridge/**'
   - 'docs/bridge-openapi.json'
   # The curl-example disposition test pins every device-contract operation.
-  - 'docs/openapi.json'
+  - 'api/openapi.json'
 
 # The e2e journeys drive the device console against its contract-derived
 # mock and the bridge console against the real bridge, so the console, the
@@ -51,7 +52,7 @@ console_e2e:
   - *shared
   - 'console/**'
   - 'bridge/**'
-  - 'docs/openapi.json'
+  - 'api/openapi.json'
   - 'docs/bridge-openapi.json'
 
 tools:
@@ -74,21 +75,26 @@ ha-addon:
   - 'bridge/src/**'
   - 'bridge/tests/**'
 
+api:
+  - *shared
+  - 'api/**'
+
 firmware:
   - *shared
   - 'firmware/**'
+  - 'api/**'
   - 'docs/pcm-protocol.md'
   - 'docs/pcm-transport.json'
   - 'docs/pcm-frame-vectors.json'
 
 api_contract:
   - *shared
-  - 'docs/openapi.json'
+  - 'api/**'
 
 qemu_smoke:
   - *shared
   - 'firmware/**'
-  - 'docs/openapi.json'
+  - 'api/**'
   - 'tools/Dockerfile'
   - 'tools/Makefile'
   - 'tools/pyproject.toml'

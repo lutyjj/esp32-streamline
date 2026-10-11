@@ -25,7 +25,7 @@ class CiPathOwnershipTests(unittest.TestCase):
             "ha-addon/DOCS.md": {"ha-addon", "repository"},
             "tools/README.md": {"repository", "tools"},
             "docs/pcm-protocol.md": {"bridge", "firmware", "repository"},
-            "docs/openapi.json": {"api_contract", "console", "console_e2e", "qemu_smoke", "repository"},
+            "api/openapi.json": {"api", "api_contract", "console", "console_e2e", "firmware", "qemu_smoke"},
             "tools/Dockerfile": {"qemu_smoke", "tools"},
             "tools/uv.lock": {"qemu_smoke", "repository", "tools"},
             "osv-scanner.toml": {"repository"},
@@ -34,7 +34,8 @@ class CiPathOwnershipTests(unittest.TestCase):
             "tools/src/streamline_tools/device/api.py": {"qemu_smoke", "tools"},
             "tools/src/streamline_tools/smoke.py": {"qemu_smoke", "tools"},
             "tools/src/streamline_tools/analysis/report.py": {"tools"},
-            "firmware/streamline/src/api.rs": {"firmware", "qemu_smoke"},
+            "api/src/lib.rs": {"api", "api_contract", "firmware", "qemu_smoke"},
+            "api/Cargo.lock": {"api", "api_contract", "firmware", "qemu_smoke", "repository"},
         }
         filters = load_filters()
 
@@ -49,6 +50,7 @@ class CiPathOwnershipTests(unittest.TestCase):
 
 
 ALL_FILTERS = {
+    "api",
     "api_contract",
     "bridge",
     "console",

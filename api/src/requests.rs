@@ -6,61 +6,61 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct WifiSettingsRequest {
     /// Wi-Fi network name: 1 to 32 UTF-8 bytes, without NUL.
-    #[cfg_attr(feature = "api-spec", schema(min_length = 1))]
+    #[cfg_attr(feature = "openapi", schema(min_length = 1))]
     pub ssid: String,
     /// WPA2 password: 8 to 63 bytes or a 64-digit hexadecimal PSK, without NUL.
     /// Empty preserves the stored password; first commissioning requires one.
     #[serde(default)]
     pub password: String,
     /// Optional bridge host set during first commissioning.
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/]*$"))]
+    #[cfg_attr(feature = "openapi", schema(pattern = r"^[^:/]*$"))]
     pub target_host: Option<String>,
-    #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
+    #[cfg_attr(feature = "openapi", schema(minimum = 1))]
     pub target_port: Option<u16>,
     /// Generated 48-character lowercase-hex admin key. Empty preserves the
     /// stored key.
     #[serde(default)]
-    #[cfg_attr(feature = "api-spec", schema(pattern = "^$|^[0-9a-f]{48}$"))]
+    #[cfg_attr(feature = "openapi", schema(pattern = "^$|^[0-9a-f]{48}$"))]
     pub admin_key: String,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TargetSettingsRequest {
     /// Hostname or IP without a scheme, port, or path. Empty clears the target.
     #[serde(default)]
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/]*$"))]
+    #[cfg_attr(feature = "openapi", schema(pattern = r"^[^:/]*$"))]
     pub target_host: String,
-    #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
+    #[cfg_attr(feature = "openapi", schema(minimum = 1))]
     pub target_port: Option<u16>,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TransportSettingsRequest {
     pub contract_version: u8,
-    pub mode: crate::transport::TransportMode,
+    pub mode: crate::controls::TransportMode,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 /// Select exactly one built-in id or a JSON-encoded custom descriptor.
 pub struct BoardSettingsRequest {
     pub board_id: Option<String>,
     /// JSON-encoded descriptor, capped at 3072 UTF-8 bytes by the device.
-    #[cfg_attr(feature = "api-spec", schema(max_length = 3072))]
+    #[cfg_attr(feature = "openapi", schema(max_length = 3072))]
     pub descriptor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 /// Audio values are validated against `/api/status.capabilities`.
 pub struct AudioSettingsRequest {
@@ -70,32 +70,32 @@ pub struct AudioSettingsRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AnalogPassthroughSettingsRequest {
     pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 /// Assign one board LED, named by its capabilities id, a new role.
 pub struct LedSettingsRequest {
     pub id: String,
-    pub role: crate::led::LedRole,
+    pub role: crate::controls::LedRole,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 /// Assign one board button, named by its capabilities id, a new action.
 pub struct ButtonSettingsRequest {
     pub id: String,
-    pub action: crate::button::ButtonAction,
+    pub action: crate::controls::ButtonAction,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 /// Runtime streaming control; the choice is not persisted and a reboot
 /// resumes streaming.
@@ -104,7 +104,7 @@ pub struct StreamRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AudioProfilesSettingsRequest {
     /// JSON-encoded `AudioProfileCatalog`.
@@ -112,7 +112,7 @@ pub struct AudioProfilesSettingsRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ActiveAudioProfileRequest {
     /// Empty returns to custom audio settings.
@@ -121,35 +121,35 @@ pub struct ActiveAudioProfileRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct NameSettingsRequest {
     #[serde(default)]
-    #[cfg_attr(feature = "api-spec", schema(max_length = 32))]
+    #[cfg_attr(feature = "openapi", schema(max_length = 32))]
     pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AdminKeySettingsRequest {
     /// Generated 48-character lowercase-hex admin key.
     #[cfg_attr(
-        feature = "api-spec",
+        feature = "openapi",
         schema(min_length = 48, max_length = 48, pattern = "^[0-9a-f]{48}$")
     )]
     pub admin_key: String,
 }
 
 #[derive(Debug, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct FirmwareSettingsRequest {
     pub auto_update_schedule: AutoUpdateScheduleRequest,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum AutoUpdateScheduleRequest {
     Disabled,
@@ -157,29 +157,19 @@ pub enum AutoUpdateScheduleRequest {
     Weekly,
 }
 
-impl From<crate::config::AutoUpdateSchedule> for AutoUpdateScheduleRequest {
-    fn from(value: crate::config::AutoUpdateSchedule) -> Self {
-        match value {
-            crate::config::AutoUpdateSchedule::Disabled => Self::Disabled,
-            crate::config::AutoUpdateSchedule::Daily => Self::Daily,
-            crate::config::AutoUpdateSchedule::Weekly => Self::Weekly,
-        }
-    }
-}
-
 #[derive(Default, Deserialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 /// Empty installs the latest release. A custom install requires both fields.
 pub struct OtaUpdateRequest {
     /// HTTP(S) download URL. Query parameters are preserved; userinfo and
     /// fragments are rejected.
     #[cfg_attr(
-        feature = "api-spec",
+        feature = "openapi",
         schema(pattern = r"^https?://[^/?#@\s]+(?:[/?][^#\s]*)?$")
     )]
     pub url: Option<String>,
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[0-9A-Fa-f]{64}$"))]
+    #[cfg_attr(feature = "openapi", schema(pattern = r"^[0-9A-Fa-f]{64}$"))]
     pub sha256: Option<String>,
 }
 

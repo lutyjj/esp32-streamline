@@ -11,8 +11,23 @@ use esp_idf_svc::{
     hal::{delay::FreeRtos, peripherals::Peripherals},
     nvs::EspDefaultNvsPartition,
 };
+use streamline_api::board::Board;
+use streamline_api::health::HealthReport;
+use streamline_api::profiles::AudioProfileCatalog;
+use streamline_firmware::adapters::buttons;
+use streamline_firmware::adapters::codec;
+use streamline_firmware::adapters::http;
+use streamline_firmware::adapters::http::ApiState;
+use streamline_firmware::adapters::logs;
+use streamline_firmware::adapters::mdns::MdnsAdvertisement;
+use streamline_firmware::adapters::nvs::ConfigStore;
 #[cfg(feature = "qemu")]
 use streamline_firmware::adapters::openeth;
+use streamline_firmware::adapters::ota;
+use streamline_firmware::adapters::random::EspRandom;
+use streamline_firmware::adapters::status_light;
+use streamline_firmware::adapters::time;
+use streamline_firmware::adapters::wifi;
 #[cfg(not(feature = "qemu"))]
 use streamline_firmware::adapters::{
     captive_portal::DnsResponder,
@@ -20,30 +35,17 @@ use streamline_firmware::adapters::{
     pins::{AudioPins, I2cBusPins},
     tcp::{TargetAddress, TlsKeyVerifier},
 };
-use streamline_firmware::{
-    adapters::{
-        buttons, codec,
-        http::{self, ApiState},
-        logs,
-        mdns::MdnsAdvertisement,
-        nvs::ConfigStore,
-        ota,
-        random::EspRandom,
-        status_light, time, wifi,
-    },
-    analog_passthrough::AnalogPassthroughState,
-    board::{self, Board},
-    config::RuntimeConfig,
-    health::{BootFacts, HealthReport},
-    identity,
-    mode::Mode,
-    profiles::AudioProfileCatalog,
-    recovery,
-    setup_network::SetupNetwork,
-    stream,
-    transport::KeyVerifier,
-    update,
-};
+use streamline_firmware::analog_passthrough::AnalogPassthroughState;
+use streamline_firmware::board;
+use streamline_firmware::config::RuntimeConfig;
+use streamline_firmware::health::BootFacts;
+use streamline_firmware::identity;
+use streamline_firmware::mode::Mode;
+use streamline_firmware::recovery;
+use streamline_firmware::setup_network::SetupNetwork;
+use streamline_firmware::stream;
+use streamline_firmware::transport::KeyVerifier;
+use streamline_firmware::update;
 
 #[cfg(not(feature = "qemu"))]
 use streamline_firmware::{analog_passthrough::AnalogPassthroughRoute, reconnect, runtime};
@@ -369,7 +371,7 @@ fn network_boot(
                 if let Err(reason) = &audio.result {
                     log::warn!("{reason}; staying provisioned so the fault is reachable");
                 }
-                let health = Arc::new(HealthReport::assess(&BootFacts {
+                let health = Arc::new(streamline_firmware::health::assess(&BootFacts {
                     audio: Some(audio.result),
                     bridge_configured: !config.target_host.is_empty(),
                     board_name: board.name.clone(),
@@ -426,7 +428,7 @@ fn network_boot(
             // No I2S or codec exists under emulation, and a probe against
             // missing hardware stalls instead of failing fast, so emulated
             // boots skip audio and surface the fault through health.
-            let health = Arc::new(HealthReport::assess(&BootFacts {
+            let health = Arc::new(streamline_firmware::health::assess(&BootFacts {
                 audio: Some(Err("audio capture is not emulated".to_string())),
                 bridge_configured: !config.target_host.is_empty(),
                 board_name: board.name.clone(),

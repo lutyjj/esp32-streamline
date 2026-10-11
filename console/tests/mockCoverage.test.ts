@@ -20,7 +20,7 @@ const METHODS = ['get', 'post', 'put', 'delete', 'patch'];
 /** Contract operations as "METHOD /path", with `{param}` in MSW's `:param` form. */
 function contractOperations(document: string): string[] {
   // vitest runs with the console package as its working directory.
-  const api = JSON.parse(readFileSync(resolve('..', 'docs', document), 'utf8')) as ApiPaths;
+  const api = JSON.parse(readFileSync(resolve('..', 'api', document), 'utf8')) as ApiPaths;
   return Object.entries(api.paths).flatMap(([path, operations]) =>
     Object.keys(operations)
       .filter((method) => METHODS.includes(method))

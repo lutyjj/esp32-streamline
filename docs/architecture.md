@@ -31,6 +31,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 
 | Component | Owns | Does not own |
 |---|---|---|
+| `api` | Device wire types, endpoint declarations, shared value models and OpenAPI export | HTTP execution, device state, hardware, persistence |
 | `firmware/streamline` | Board selection, codec and I2S capture, signal gating, device configuration, telemetry, HTTP API, TCP sender, OTA | Jitter buffering, audio encoding, playback |
 | `console` | Device and bridge consoles, WebFlasher UI, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
 | `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
@@ -103,13 +104,17 @@ For each captured packet, portable code computes levels and updates the signal g
 
 ### Device API
 
-`firmware/streamline/src/api.rs` owns device routes, methods, authentication metadata, request and response DTOs, and OpenAPI annotations. The ESP-IDF HTTP adapter registers those declarations and binds them to runtime operations.
+The independent [`streamline-api` crate](../api/README.md) owns device routes,
+methods, authentication metadata, request and response DTOs, shared value
+models, and OpenAPI annotations. Firmware imports those definitions directly.
+The ESP-IDF HTTP adapter registers the declarations and binds them to runtime
+operations. Boot assessment, hardware support and persistence stay in firmware.
 
-`make firmware-openapi` generates `docs/openapi.json`. Console checks generate TypeScript types from that artifact. The device serves the same artifact at `GET /api/openapi.json`.
+`make api-openapi` generates `api/openapi.json`. Console checks generate TypeScript types from that artifact. The device serves the same artifact at `GET /api/openapi.json`.
 
 ```mermaid
 flowchart LR
-  rust["Rust API declarations and DTOs"] --> spec["docs/openapi.json"]
+  rust["Rust API declarations and DTOs"] --> spec["api/openapi.json"]
   rust --> server["ESP-IDF handler registration"]
   spec --> types["Generated console types"]
   types --> ui["Console API client"]
@@ -174,9 +179,9 @@ compatibility reader or migration runs at boot.
 
 | Contract | Source of truth | Derived or checked consumers |
 |---|---|---|
-| Device HTTP API | Rust `api` module | OpenAPI artifact, device registration check, console types |
-| Board descriptor | Rust `board` model and descriptor validation | Built-in JSON catalog, NVS custom descriptor, API capabilities, console controls |
-| Audio profile catalog | Rust `profiles` model | NVS records, HTTP JSON, generated console shape |
+| Device HTTP API | Independent `streamline-api` crate | Firmware imports, OpenAPI artifact, device registration check, console types |
+| Board descriptor | API crate's `board` model and structural validation; firmware validates codec support | Built-in JSON catalog, NVS custom descriptor, API capabilities, console controls |
+| Audio profile catalog | API crate's `profiles` model | NVS records, HTTP JSON, generated console shape |
 | PCM frame | [PCM protocol](pcm-protocol.md) | Rust encoder and Python parser, checked byte-for-byte against [conformance vectors](pcm-frame-vectors.json) in both component tests |
 | PCM transport constants | [Machine contract](pcm-transport.json) | Rust and Python constants, mechanically checked by both component tests |
 | Bridge device-key map | Bridge transport store | Private versioned file with bounded atomic replacement |
@@ -204,7 +209,7 @@ systems.
 
 Make is the public command interface. Each component Makefile exposes the verbs that apply to it, and the root Makefile forwards `make <component>-<verb>`. Keep build mechanics behind these targets so local runs and CI execute the same commands.
 
-CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. Branch protection requires `CI complete`, which aggregates change detection, component checks, firmware builds, and the device API contract check. It does not wait for advisory jobs.
+CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. An `api/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. Branch protection requires `CI complete`, which aggregates change detection, component checks, firmware builds, and the device API contract check. It does not wait for advisory jobs.
 
 `QEMU device smoke (advisory)` runs automatically for device-contract,
 smoke-harness, QEMU helper, tools-image, and firmware changes, using images

@@ -6,11 +6,11 @@
 //! serialized by the real serializer, so it cannot drift from the schema:
 //! a field change breaks compilation here before any consumer sees it.
 //! Values use documentation addresses only; capabilities come from the
-//! built-in default board and health from the real assessor.
+//! example descriptor and an explicit healthy report.
 
 use serde_json::Value;
 
-use crate::health::{BootFacts, HealthReport};
+use crate::health::{CheckStatus, HealthCheck, HealthReport, Severity};
 
 use super::requests::AutoUpdateScheduleRequest;
 use super::responses::*;
@@ -24,16 +24,12 @@ const BRIDGE_PORT: u16 = 39000;
 
 /// A healthy, provisioned, streaming device, as `GET /api/status` reports it.
 pub fn status() -> Value {
-    let catalog = crate::board::builtin_catalog().expect("valid built-in catalog");
-    let board = crate::board::resolve(&catalog, None).expect("default board");
-    let health = HealthReport::assess(&BootFacts {
-        audio: Some(Ok(())),
-        bridge_configured: true,
-        board_name: board.name.clone(),
-    });
+    let descriptor = example_board();
+    let board = &descriptor;
+    let health = HealthReport { status: Severity::Ok, checks: vec![HealthCheck { id: "codec", status: CheckStatus::Ok, severity: Severity::Ok, detail: "The Ai-Thinker ESP32 Audio Kit v2.2 (ES8388) audio codec answered and is streaming-ready.".to_owned(), remedy: None, fixable: false },HealthCheck { id: "bridge", status: CheckStatus::Ok, severity: Severity::Ok, detail: "A bridge target is set.".to_owned(), remedy: None, fixable: false }] };
     let status = StatusResponse {
         firmware_version: FIRMWARE_VERSION,
-        firmware_variant: crate::telemetry::FirmwareVariant::Standard,
+        firmware_variant: crate::controls::FirmwareVariant::Standard,
         device_name: "",
         mode: "provisioned",
         config_source: "nvs",
@@ -136,8 +132,8 @@ pub fn status() -> Value {
 
 /// The same device's stored settings, as `GET /api/settings` reports them.
 pub fn settings() -> Value {
-    let catalog = crate::board::builtin_catalog().expect("valid built-in catalog");
-    let board = crate::board::resolve(&catalog, None).expect("default board");
+    let descriptor = example_board();
+    let board = &descriptor;
     let settings = SettingsResponse {
         device_name: "",
         ssid: SSID,
@@ -145,7 +141,7 @@ pub fn settings() -> Value {
         target_port: BRIDGE_PORT,
         transport: TransportStatus {
             contract_version: 1,
-            mode: crate::transport::TransportMode::Cleartext,
+            mode: crate::controls::TransportMode::Cleartext,
             active_key_id: None,
             pending_key_id: None,
             pending_verified: false,
@@ -175,4 +171,8 @@ pub fn settings() -> Value {
         config_source: "nvs",
     };
     serde_json::to_value(&settings).expect("serializable settings example")
+}
+
+fn example_board() -> crate::board::Board {
+    serde_json::from_str(include_str!("../examples/board.json")).expect("valid example descriptor")
 }

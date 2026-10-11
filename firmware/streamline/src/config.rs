@@ -2,38 +2,26 @@
 //! board descriptor (`crate::board`), so validation stays host-testable
 //! and cannot diverge from what the device advertises.
 
+use streamline_api::audio::AudioSettings;
+use streamline_api::settings::{is_canonical_admin_key, MAX_DEVICE_NAME_CHARS};
+
 use std::{collections::BTreeMap, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    board::{Board, Button, Led},
-    button::ButtonAction,
-    led::LedRole,
-    transport::{TransportError, TransportSettings},
-};
+use crate::transport::TransportError;
+use crate::transport::TransportSettings;
+use streamline_api::board::Board;
+use streamline_api::board::Button;
+use streamline_api::board::Led;
+use streamline_api::controls::ButtonAction;
+use streamline_api::controls::LedRole;
 
 pub const MIN_PORT: u16 = 1;
-/// Longest friendly device name, in characters. Fits an NVS string entry and
-/// a browser tab title.
-pub const MAX_DEVICE_NAME_CHARS: usize = 32;
-/// Admin keys are generated, never composed by hand: exactly 24 random bytes
-/// rendered as lowercase hexadecimal. One exact shape keeps runtime
-/// validation, the OpenAPI schema, and every client in agreement.
-pub const ADMIN_KEY_HEX_CHARS: usize = 48;
-/// The canonical admin-key shape as the OpenAPI schema declares it.
-pub const ADMIN_KEY_PATTERN: &str = "^[0-9a-f]{48}$";
 /// A valid admin key for tests across modules, in the canonical form.
 #[cfg(test)]
 pub(crate) const TEST_ADMIN_KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef";
 
-/// Whether an admin key is in the canonical generated form.
-pub fn is_canonical_admin_key(secret: &str) -> bool {
-    secret.len() == ADMIN_KEY_HEX_CHARS
-        && secret
-            .bytes()
-            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-}
 /// Version stamped into persisted configuration. An incompatible stored version is
 /// treated as unconfigured so the device re-commissions rather than booting without
 /// an admin key.
@@ -70,43 +58,6 @@ impl AutoUpdateSchedule {
             Self::Disabled => None,
             Self::Daily => Some(Duration::from_secs(24 * 60 * 60)),
             Self::Weekly => Some(Duration::from_secs(7 * 24 * 60 * 60)),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-#[serde(deny_unknown_fields)]
-pub struct AudioSettings {
-    /// Selected input, one of the resolved board's advertised lines.
-    pub input_line: u8,
-    pub input_gain: u8,
-    pub adc_attenuation_db: u8,
-}
-
-impl AudioSettings {
-    pub fn validate(self, board: &Board) -> Result<Self, ConfigError> {
-        if !board.accepts_line(self.input_line) {
-            return Err(ConfigError::InvalidInputLine);
-        }
-        if self.input_gain > board.input_gain_max {
-            return Err(ConfigError::InvalidInputGain);
-        }
-        if self.adc_attenuation_db > board.adc_atten_max_db {
-            return Err(ConfigError::InvalidAdcAttenuation);
-        }
-        Ok(self)
-    }
-
-    pub fn compatible_with(self, board: &Board) -> Self {
-        Self {
-            input_line: if board.accepts_line(self.input_line) {
-                self.input_line
-            } else {
-                board.default_line()
-            },
-            input_gain: self.input_gain.min(board.input_gain_max),
-            adc_attenuation_db: self.adc_attenuation_db.min(board.adc_atten_max_db),
         }
     }
 }
@@ -305,16 +256,44 @@ impl RuntimeConfig {
     }
 }
 
+impl From<crate::config::AutoUpdateSchedule> for streamline_api::AutoUpdateScheduleRequest {
+    fn from(value: crate::config::AutoUpdateSchedule) -> Self {
+        match value {
+            crate::config::AutoUpdateSchedule::Disabled => Self::Disabled,
+            crate::config::AutoUpdateSchedule::Daily => Self::Daily,
+            crate::config::AutoUpdateSchedule::Weekly => Self::Weekly,
+        }
+    }
+}
+
+impl From<streamline_api::audio::AudioSettingsError> for ConfigError {
+    fn from(value: streamline_api::audio::AudioSettingsError) -> Self {
+        match value {
+            streamline_api::audio::AudioSettingsError::InvalidInputLine => Self::InvalidInputLine,
+            streamline_api::audio::AudioSettingsError::InvalidInputGain => Self::InvalidInputGain,
+            streamline_api::audio::AudioSettingsError::InvalidAdcAttenuation => {
+                Self::InvalidAdcAttenuation
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
     use super::{AudioSettings, AutoUpdateSchedule, ConfigError, NetworkSettings, RuntimeConfig};
-    use crate::board::{
-        self, Board, Button, CodecSpec, I2cPins, I2sPins, InputOption, Led, PinMap,
-    };
-    use crate::button::ButtonAction;
-    use crate::led::LedRole;
+    use crate::board;
+    use streamline_api::board::Board;
+    use streamline_api::board::Button;
+    use streamline_api::board::CodecSpec;
+    use streamline_api::board::I2cPins;
+    use streamline_api::board::I2sPins;
+    use streamline_api::board::InputOption;
+    use streamline_api::board::Led;
+    use streamline_api::board::PinMap;
+    use streamline_api::controls::ButtonAction;
+    use streamline_api::controls::LedRole;
 
     #[test]
     fn accepts_the_deployed_network_shape() {
@@ -367,7 +346,7 @@ mod tests {
                 adc_attenuation_db: 0,
             }
             .validate(&board),
-            Err(ConfigError::InvalidInputLine)
+            Err(streamline_api::audio::AudioSettingsError::InvalidInputLine)
         );
         assert_eq!(
             AudioSettings {
@@ -376,7 +355,7 @@ mod tests {
                 adc_attenuation_db: 0,
             }
             .validate(&board),
-            Err(ConfigError::InvalidInputGain)
+            Err(streamline_api::audio::AudioSettingsError::InvalidInputGain)
         );
         assert_eq!(
             AudioSettings {
@@ -385,7 +364,7 @@ mod tests {
                 adc_attenuation_db: board.adc_atten_max_db + 1,
             }
             .validate(&board),
-            Err(ConfigError::InvalidAdcAttenuation)
+            Err(streamline_api::audio::AudioSettingsError::InvalidAdcAttenuation)
         );
     }
 

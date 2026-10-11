@@ -14,15 +14,13 @@ use esp_idf_svc::hal::{
     gpio::{Input, PinDriver, Pull},
 };
 
-use crate::{
-    adapters::{
-        http::{self, ApiState},
-        pins,
-    },
-    board,
-    button::{self, ButtonAction, PressDetector},
-    config::AudioSettings,
-};
+use crate::adapters::http;
+use crate::adapters::http::ApiState;
+use crate::adapters::pins;
+use crate::button;
+use crate::button::PressDetector;
+use streamline_api::audio::AudioSettings;
+use streamline_api::controls::ButtonAction;
 
 const POLL_MS: u32 = 20;
 
@@ -53,7 +51,7 @@ const PROBE_SETTLE_MS: u32 = 10;
 /// that opens the AP for one boot when the password is unavailable (a worn
 /// label, a lost note). The pin driver is dropped before the poll task
 /// claims it. A board without buttons has no override.
-pub fn setup_override_held(board: &board::Board) -> bool {
+pub fn setup_override_held(board: &streamline_api::board::Board) -> bool {
     let Some(spec) = board.buttons.first() else {
         return false;
     };
@@ -73,7 +71,7 @@ pub fn setup_override_held(board: &board::Board) -> bool {
 /// The pull a button pin needs: internal pulls live on the output-capable
 /// pads; input-only pins (GPIO 34–39) rely on the board's own resistor.
 fn button_pull(gpio: u8, active_low: bool) -> Pull {
-    if !board::is_output_gpio(gpio) {
+    if !streamline_api::board::is_output_gpio(gpio) {
         Pull::Floating
     } else if active_low {
         Pull::Up
@@ -223,7 +221,7 @@ fn execute(state: &Arc<ApiState>, action: ButtonAction) {
 fn change_audio(
     state: &Arc<ApiState>,
     action: ButtonAction,
-    next: impl FnOnce(&crate::board::Board, AudioSettings) -> AudioSettings,
+    next: impl FnOnce(&streamline_api::board::Board, AudioSettings) -> AudioSettings,
 ) {
     let current = match state.config.lock() {
         Ok(config) => config.audio,

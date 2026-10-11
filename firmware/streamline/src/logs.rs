@@ -306,6 +306,31 @@ fn sanitize(raw: &[u8], line: &mut [u8; MAX_LINE_BYTES]) -> usize {
     length
 }
 
+/// Copy both buffers into a response.
+///
+/// Owned rather than borrowed because the caller holds the capture lock
+/// while this runs and every task that logs waits behind it: one copy of
+/// the stored block per boot, then the lock is free before the response
+/// reaches the socket.
+pub fn logs_response<const CURRENT: usize, const PREVIOUS: usize>(
+    current: &crate::logs::LogBuffer<CURRENT>,
+    previous: Option<&crate::logs::LogBuffer<PREVIOUS>>,
+) -> streamline_api::LogsResponse {
+    streamline_api::LogsResponse {
+        current: boot_log(current),
+        previous: previous.map(boot_log),
+    }
+}
+
+fn boot_log<const N: usize>(buffer: &crate::logs::LogBuffer<N>) -> streamline_api::BootLog {
+    streamline_api::BootLog {
+        boot: buffer.boot(),
+        first_sequence: buffer.first_sequence(),
+        dropped: buffer.dropped(),
+        text: buffer.text().into_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

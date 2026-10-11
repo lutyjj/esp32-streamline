@@ -66,7 +66,7 @@ describe('contract reader', () => {
   it('matches the generated device contract', () => {
     // vitest runs with the console package as its working directory.
     const generated = JSON.parse(
-      readFileSync(resolve('../docs/openapi.json'), 'utf8'),
+      readFileSync(resolve('../api/openapi.json'), 'utf8'),
     ) as ApiDocument;
     expect(audioProfileConstraints(generated)).toEqual({
       maxProfiles: 8,

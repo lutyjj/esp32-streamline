@@ -4,13 +4,12 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{
-    adapters::random::EspRandom,
-    api,
-    config::RuntimeConfig,
-    mutation::MutationError,
-    transport::{self, TransportMode},
-};
+use crate::adapters::random::EspRandom;
+use crate::config::RuntimeConfig;
+use crate::mutation::MutationError;
+use crate::transport;
+use streamline_api as api;
+use streamline_api::controls::TransportMode;
 
 use super::super::{
     requests::form,

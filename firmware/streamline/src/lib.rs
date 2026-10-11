@@ -7,7 +7,6 @@
 //! prevents board/runtime concerns from leaking into application logic.
 
 pub mod analog_passthrough;
-pub mod api;
 pub mod auth;
 pub mod board;
 pub mod boot_health;
@@ -31,7 +30,6 @@ pub mod mode;
 pub mod mutation;
 pub mod packet;
 pub mod play;
-pub mod profiles;
 pub mod protocol;
 pub mod random;
 pub mod reconnect;
@@ -51,3 +49,9 @@ pub mod wall_clock;
 pub mod adapters;
 #[cfg(target_os = "espidf")]
 pub mod runtime;
+
+#[cfg(test)]
+mod contract_tests {
+    mod endpoints;
+    mod responses;
+}

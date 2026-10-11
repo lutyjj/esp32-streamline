@@ -1,17 +1,16 @@
 //! Register-boundary failure injection through the production codec controller.
 
 use super::{CodecControl, Driver, RegisterBus};
-use crate::{
-    analog_passthrough::{AnalogPassthroughControl, AnalogPassthroughRoute},
-    config::AudioSettings,
-    mutation::MutationError,
-};
+use crate::analog_passthrough::AnalogPassthroughControl;
+use crate::analog_passthrough::AnalogPassthroughRoute;
+use crate::mutation::MutationError;
 use anyhow::{bail, Result};
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
+use streamline_api::audio::AudioSettings;
 
 #[derive(Default)]
 struct BusState {

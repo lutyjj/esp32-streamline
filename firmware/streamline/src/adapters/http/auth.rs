@@ -1,10 +1,9 @@
 //! Digest authorization for mutating HTTP requests.
 
-use crate::{
-    adapters::random::EspRandom,
-    api::{Endpoint, HttpMethod},
-    auth::Verdict,
-};
+use crate::adapters::random::EspRandom;
+use crate::auth::Verdict;
+use streamline_api::Endpoint;
+use streamline_api::HttpMethod;
 
 use super::ApiState;
 

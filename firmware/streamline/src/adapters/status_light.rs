@@ -11,10 +11,13 @@ use esp_idf_svc::hal::{
     gpio::{Output, PinDriver},
 };
 
-use crate::{
-    adapters::pins, board::Board, config::RuntimeConfig, health::Severity, indicator, led::LedRole,
-    stream::StreamStatus,
-};
+use crate::adapters::pins;
+use crate::config::RuntimeConfig;
+use crate::indicator;
+use crate::stream::StreamStatus;
+use streamline_api::board::Board;
+use streamline_api::controls::LedRole;
+use streamline_api::health::Severity;
 
 const REFRESH_MS: u32 = 50;
 
@@ -66,7 +69,7 @@ pub fn start(
                     .unwrap_or_default();
                 for led in &mut leds {
                     let role = roles.get(&led.id).copied().unwrap_or(led.default_role);
-                    let lit = role.is_lit_at(state, elapsed);
+                    let lit = crate::led::is_lit_at(role, state, elapsed);
                     let drive_high = lit != led.active_low;
                     let result = if drive_high {
                         led.output.set_high()

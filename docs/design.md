@@ -330,14 +330,15 @@ uptime, and task count on demand.
 
 ## HTTP API Shape
 
-The host-testable Rust `api` module owns endpoint paths, methods, authentication,
+The independent Rust `streamline-api` crate owns endpoint paths, methods, authentication,
 request bodies, response bodies, and schema constraints. The ESP-IDF adapter
 registers those endpoint declarations and serializes or deserializes their DTOs.
 It contains no independent route strings or form-field map.
 
-A host-only `utoipa` feature generates [the OpenAPI 3.1 contract](openapi.json)
-from the Rust module. `make firmware-openapi` refreshes the checked-in artifact;
-`make firmware-openapi-check` fails when it is stale. The device serves the same
+A host-only `openapi` feature uses Utoipa to generate
+[the OpenAPI 3.1 contract](../api/openapi.json) from the crate.
+`make api-openapi` refreshes the checked-in artifact;
+`make api-openapi-check` fails when it is stale. The device serves the same
 artifact at `GET /api/openapi.json`. The firmware stores this artifact and the
 embedded console gzipped and serves both with `Content-Encoding: gzip`.
 The pair occupies 194 KB raw or 50 KB compressed. Browsers and HTTP

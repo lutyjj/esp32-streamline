@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    audio::{AudioSettings, AudioSettingsError},
     board::Board,
-    config::{AudioSettings, ConfigError},
 };
 
 pub const AUDIO_PROFILE_SCHEMA_VERSION: u8 = 1;
@@ -22,27 +22,27 @@ pub const MAX_AUDIO_PROFILE_NAME_CHARS: usize = 32;
 pub const AUDIO_PROFILE_ID_PATTERN: &str = "^[a-z0-9][a-z0-9-]*$";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AudioProfile {
     #[cfg_attr(
-        feature = "api-spec",
+        feature = "openapi",
         schema(pattern = "^[a-z0-9][a-z0-9-]*$", max_length = 32)
     )]
     pub id: String,
-    #[cfg_attr(feature = "api-spec", schema(max_length = 32))]
+    #[cfg_attr(feature = "openapi", schema(max_length = 32))]
     pub name: String,
     pub audio: AudioSettings,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AudioProfileCatalog {
     pub schema_version: u8,
     pub board_id: String,
     pub active_profile_id: Option<String>,
-    #[cfg_attr(feature = "api-spec", schema(max_items = 8))]
+    #[cfg_attr(feature = "openapi", schema(max_items = 8))]
     pub profiles: Vec<AudioProfile>,
 }
 
@@ -109,9 +109,8 @@ impl AudioProfileCatalog {
         Ok(Some(profile.audio))
     }
 
-    /// A selected profile only remains active while its settings are the ones
-    /// actually applied. This repairs interrupted multi-key NVS writes and any
-    /// store whose active marker diverges from the applied settings.
+    /// A selected profile remains active only while its settings match the
+    /// applied audio values.
     pub fn reconcile_active_audio(&mut self, current: AudioSettings) {
         if self.active_audio().is_some_and(|audio| audio != current) {
             self.active_profile_id = None;
@@ -150,7 +149,7 @@ pub enum AudioProfileError {
     DuplicateId,
     InvalidId,
     InvalidName,
-    InvalidAudio(ConfigError),
+    InvalidAudio(AudioSettingsError),
     UnknownActiveProfile,
 }
 
@@ -160,13 +159,10 @@ mod tests {
         AudioProfile, AudioProfileCatalog, AudioProfileError, AUDIO_PROFILE_ID_PATTERN,
         MAX_AUDIO_PROFILES, MAX_AUDIO_PROFILE_ID_CHARS,
     };
-    use crate::{board, config::AudioSettings};
+    use crate::audio::AudioSettings;
 
-    fn board() -> board::Board {
-        let catalog = board::builtin_catalog().expect("valid catalog");
-        board::resolve(&catalog, None)
-            .expect("default board")
-            .clone()
+    fn board() -> crate::board::Board {
+        serde_json::from_str(include_str!("../examples/board.json")).expect("example descriptor")
     }
 
     fn profile(id: &str, name: &str, attenuation: u8) -> AudioProfile {

@@ -2,10 +2,9 @@
 
 use anyhow::Result;
 
-use crate::{
-    adapters::coredump::{self, CoredumpState},
-    api,
-};
+use crate::adapters::coredump;
+use crate::adapters::coredump::CoredumpState;
+use streamline_api as api;
 
 use super::super::{
     responses::{body_writer, json_response, not_found, unavailable},

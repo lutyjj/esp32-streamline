@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{adapters::ota as ota_adapter, api, mutation::MutationError, update};
+use crate::adapters::ota as ota_adapter;
+use crate::mutation::MutationError;
+use crate::update;
+use streamline_api as api;
 
 use super::super::{
     requests::form,

@@ -1,6 +1,7 @@
 //! Management-plane proof required before confirming pending firmware.
 
-use crate::{api, mode::Mode};
+use crate::mode::Mode;
+use streamline_api as api;
 
 pub const PROBES: [api::Endpoint; 2] = [api::STATUS, api::SETTINGS];
 

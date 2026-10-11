@@ -1,17 +1,16 @@
 //! ESP-IDF I2C binding for the portable codec controller.
 
-use crate::{
-    adapters::pins::I2cBusPins,
-    board::CodecSpec,
-    codec::{Driver, RegisterBus},
-    config::AudioSettings,
-};
+use crate::adapters::pins::I2cBusPins;
+use crate::codec::Driver;
+use crate::codec::RegisterBus;
 use anyhow::{anyhow, Result};
 use esp_idf_svc::hal::{
     delay::FreeRtos,
     i2c::{I2cConfig, I2cDriver, I2C0},
     units::Hertz,
 };
+use streamline_api::audio::AudioSettings;
+use streamline_api::board::CodecSpec;
 
 pub type DeviceCodec<'d> = crate::codec::CodecControl<I2cRegisterBus<'d>>;
 

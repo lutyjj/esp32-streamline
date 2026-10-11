@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{api, mutation::MutationError};
+use crate::mutation::MutationError;
+use streamline_api as api;
 
 use super::super::{
     responses::{

@@ -6,7 +6,7 @@
  * gate: an example that stops satisfying the generated types fails `tsc`.
  */
 
-import contract from '../../../docs/openapi.json';
+import contract from '../../../api/openapi.json';
 import type {
   SettingsResponse,
   SetupNetworkResponse,

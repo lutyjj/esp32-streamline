@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{api, config::AutoUpdateSchedule, mutation::MutationError, recovery};
+use crate::config::AutoUpdateSchedule;
+use crate::mutation::MutationError;
+use crate::recovery;
+use streamline_api as api;
 
 use super::super::{
     requests::form,

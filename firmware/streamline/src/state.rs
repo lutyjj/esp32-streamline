@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{config::RuntimeConfig, profiles::AudioProfileCatalog};
+use crate::config::RuntimeConfig;
+use streamline_api::profiles::AudioProfileCatalog;
 
 /// One NVS string fits one page, leaving pages for replacement and Wi-Fi state.
 pub const MAX_STATE_BYTES: usize = 3_840;
@@ -180,13 +181,13 @@ mod tests {
     use std::{cell::RefCell, collections::BTreeMap};
 
     use super::*;
-    use crate::{
-        board,
-        config::{AudioSettings, AutoUpdateSchedule},
-        profiles::{AudioProfile, AUDIO_PROFILE_SCHEMA_VERSION},
-        random::RandomBytes,
-        transport::TransportMode,
-    };
+    use crate::board;
+    use crate::config::AutoUpdateSchedule;
+    use crate::random::RandomBytes;
+    use streamline_api::audio::AudioSettings;
+    use streamline_api::controls::TransportMode;
+    use streamline_api::profiles::AudioProfile;
+    use streamline_api::profiles::AUDIO_PROFILE_SCHEMA_VERSION;
 
     struct Sequence(u8);
 
@@ -271,11 +272,11 @@ mod tests {
                 analog_passthrough_enabled: true,
                 led_roles: std::collections::BTreeMap::from([(
                     "status".to_owned(),
-                    crate::led::LedRole::On,
+                    streamline_api::controls::LedRole::On,
                 )]),
                 button_actions: std::collections::BTreeMap::from([(
                     "key1".to_owned(),
-                    crate::button::ButtonAction::FactoryReset,
+                    streamline_api::controls::ButtonAction::FactoryReset,
                 )]),
             }),
             board_id: Some(board.id.clone()),

@@ -530,7 +530,7 @@ streamline_ota_busy 0\n"
     fn snapshot() -> TelemetrySnapshot {
         TelemetrySnapshot {
             firmware_version: "0.3.3",
-            firmware_variant: crate::telemetry::FirmwareVariant::Standard,
+            firmware_variant: streamline_api::controls::FirmwareVariant::Standard,
             device_name: "Study CD player".to_owned(),
             mode: "provisioned",
             config_source: "nvs",

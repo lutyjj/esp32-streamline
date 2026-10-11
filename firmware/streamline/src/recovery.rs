@@ -1,10 +1,10 @@
 //! Setup-mode configuration baselines and Wi-Fi recovery edits.
 
-use crate::{
-    board::Board,
-    config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
-    transport::DEFAULT_PORT,
-};
+use crate::config::AutoUpdateSchedule;
+use crate::config::RuntimeConfig;
+use crate::transport::DEFAULT_PORT;
+use streamline_api::audio::AudioSettings;
+use streamline_api::board::Board;
 
 /// The setup AP starts either with no durable configuration or with the last
 /// validated configuration after station association failed.
@@ -90,11 +90,11 @@ mod tests {
             analog_passthrough_enabled: true,
             led_roles: std::collections::BTreeMap::from([(
                 "status".to_owned(),
-                crate::led::LedRole::Off,
+                streamline_api::controls::LedRole::Off,
             )]),
             button_actions: std::collections::BTreeMap::from([(
                 "key1".to_owned(),
-                crate::button::ButtonAction::Restart,
+                streamline_api::controls::ButtonAction::Restart,
             )]),
         }
     }
@@ -147,9 +147,10 @@ mod tests {
         staged.device_name = "Studio".to_owned();
         staged.auto_update_schedule = AutoUpdateSchedule::Weekly;
         staged.audio.input_gain = 3;
-        staged
-            .led_roles
-            .insert(board.leds[0].id.clone(), crate::led::LedRole::Off);
+        staged.led_roles.insert(
+            board.leds[0].id.clone(),
+            streamline_api::controls::LedRole::Off,
+        );
         assert_eq!(staged.validate_staged(&board), Ok(()));
 
         let commissioned = replace_wifi(

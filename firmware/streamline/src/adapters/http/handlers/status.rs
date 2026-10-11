@@ -4,18 +4,22 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{
-    adapters::wifi,
-    api, board,
-    health::{HealthReport, Severity},
-    indicator,
-    levels::CLIP_THRESHOLD_ABS,
-    metrics, protocol,
-    telemetry::{
-        AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
-        StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
-    },
-};
+use crate::adapters::wifi;
+use crate::indicator;
+use crate::levels::CLIP_THRESHOLD_ABS;
+use crate::metrics;
+use crate::protocol;
+use crate::telemetry::AnalogPassthroughTelemetry;
+use crate::telemetry::AudioTelemetry;
+use crate::telemetry::DiagnosticsTelemetry;
+use crate::telemetry::OtaTelemetry;
+use crate::telemetry::StreamTelemetry;
+use crate::telemetry::TargetTelemetry;
+use crate::telemetry::TelemetrySnapshot;
+use crate::telemetry::WifiTelemetry;
+use streamline_api as api;
+use streamline_api::health::HealthReport;
+use streamline_api::health::Severity;
 
 use super::super::{
     responses::{body_writer, json_response},
@@ -31,7 +35,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
         json_response(
             request,
             200,
-            &api::StatusResponse::from_snapshot(
+            &status_response(
                 &snapshot,
                 state_for_status.board.as_ref(),
                 state_for_status.health.as_ref(),
@@ -101,7 +105,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
     let rollback = crate::adapters::ota::rollback_target();
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
-        firmware_variant: crate::telemetry::FirmwareVariant::current(),
+        firmware_variant: crate::telemetry::firmware_variant(),
         device_name: config.device_name.clone(),
         mode,
         config_source: "nvs",
@@ -203,118 +207,116 @@ fn reset_reason() -> &'static str {
     }
 }
 
-impl<'a> api::StatusResponse<'a> {
-    fn from_snapshot(
-        snapshot: &'a TelemetrySnapshot,
-        board: &'a board::Board,
-        health: &'a HealthReport,
-    ) -> Self {
-        let indicator_state = indicator::select(
-            snapshot.mode == "setup",
-            health.status == Severity::Blocking,
-            snapshot.audio.playing,
-        );
-        Self {
-            firmware_version: snapshot.firmware_version,
-            firmware_variant: snapshot.firmware_variant,
-            device_name: &snapshot.device_name,
-            mode: snapshot.mode,
-            config_source: snapshot.config_source,
-            web_server: snapshot.web_server,
-            configuration_writable: snapshot.configuration_writable,
-            auth_required: snapshot.auth_required,
-            capabilities: api::CapabilitiesStatus::from_board(board),
-            wifi: api::WifiStatus {
-                hostname: &snapshot.wifi.hostname,
-                ssid: &snapshot.wifi.ssid,
-                status: snapshot.wifi.status,
-                sta_ip: &snapshot.wifi.sta_ip,
-                ap_ip: &snapshot.wifi.ap_ip,
-                rssi_dbm: snapshot.wifi.rssi_dbm,
+fn status_response<'a>(
+    snapshot: &'a TelemetrySnapshot,
+    board: &'a streamline_api::board::Board,
+    health: &'a HealthReport,
+) -> api::StatusResponse<'a> {
+    let indicator_state = indicator::select(
+        snapshot.mode == "setup",
+        health.status == Severity::Blocking,
+        snapshot.audio.playing,
+    );
+    api::StatusResponse {
+        firmware_version: snapshot.firmware_version,
+        firmware_variant: snapshot.firmware_variant,
+        device_name: &snapshot.device_name,
+        mode: snapshot.mode,
+        config_source: snapshot.config_source,
+        web_server: snapshot.web_server,
+        configuration_writable: snapshot.configuration_writable,
+        auth_required: snapshot.auth_required,
+        capabilities: api::CapabilitiesStatus::from_board(board),
+        wifi: api::WifiStatus {
+            hostname: &snapshot.wifi.hostname,
+            ssid: &snapshot.wifi.ssid,
+            status: snapshot.wifi.status,
+            sta_ip: &snapshot.wifi.sta_ip,
+            ap_ip: &snapshot.wifi.ap_ip,
+            rssi_dbm: snapshot.wifi.rssi_dbm,
+        },
+        target: api::TargetStatus {
+            target_host: &snapshot.target.host,
+            target_port: snapshot.target.port,
+            transport: snapshot.target.transport,
+        },
+        audio: api::AudioStatus {
+            input_line: snapshot.audio.input_line,
+            input_gain: snapshot.audio.input_gain,
+            adc_attenuation_db: snapshot.audio.adc_attenuation_db,
+            sample_rate_hz: snapshot.audio.sample_rate_hz,
+            channels: snapshot.audio.channels,
+            bits_per_sample: snapshot.audio.bits_per_sample,
+        },
+        analog_passthrough: api::AnalogPassthroughStatus {
+            enabled: snapshot.analog_passthrough.enabled,
+            active: snapshot.analog_passthrough.active,
+            fault: snapshot.analog_passthrough.fault.as_deref(),
+        },
+        stream: api::StreamControlStatus {
+            enabled: snapshot.stream.enabled,
+        },
+        metrics: api::MetricsStatus {
+            sequence: snapshot.stream.sequence,
+            packets_total: snapshot.stream.packets_total,
+            bytes_total: snapshot.stream.bytes_total,
+            read_errors_total: snapshot.stream.read_errors_total,
+            short_reads_total: snapshot.stream.short_reads_total,
+            queue_depth: snapshot.stream.queue_depth,
+            queue_drops_total: snapshot.stream.queue_drops_total,
+            capture_lost_packets_total: snapshot.stream.capture_lost_packets_total,
+            silence_packets_total: snapshot.stream.silence_packets_total,
+            send_failed_packets_total: snapshot.stream.send_failed_packets_total,
+            network_errors_total: snapshot.stream.network_errors_total,
+            tls_handshake_failures_total: snapshot.stream.tls_handshake_failures_total,
+            reconnects_total: snapshot.stream.reconnects_total,
+            send_stalls_total: snapshot.stream.send_stalls_total,
+            longest_send_stall_ms: snapshot.stream.longest_send_stall_ms,
+            clip_threshold_abs: snapshot.audio.clip_threshold_abs,
+            peak_abs_left: snapshot.audio.peak_abs_left,
+            peak_abs_right: snapshot.audio.peak_abs_right,
+            rms_left: snapshot.audio.rms_left,
+            rms_right: snapshot.audio.rms_right,
+            noise_floor: snapshot.audio.noise_floor,
+            clipped_samples_total: snapshot.audio.clipped_samples_total,
+            playing: snapshot.audio.playing,
+        },
+        diagnostics: api::DiagnosticsStatus {
+            reset_reason: snapshot.diagnostics.reset_reason,
+            last_fallback: &snapshot.diagnostics.last_fallback,
+            last_ota: &snapshot.diagnostics.last_ota,
+        },
+        system: api::SystemStatus {
+            uptime_seconds: snapshot.system.uptime_seconds,
+            task_count: snapshot.system.task_count,
+            heap: api::HeapStatus {
+                free_bytes: snapshot.system.heap.free_bytes,
+                total_bytes: snapshot.system.heap.total_bytes,
+                minimum_free_bytes: snapshot.system.heap.minimum_free_bytes,
+                largest_free_block_bytes: snapshot.system.heap.largest_free_block_bytes,
             },
-            target: api::TargetStatus {
-                target_host: &snapshot.target.host,
-                target_port: snapshot.target.port,
-                transport: snapshot.target.transport,
+            nvs: api::NvsStatus {
+                used_entries: snapshot.system.nvs.used_entries,
+                available_entries: snapshot.system.nvs.available_entries,
+                total_entries: snapshot.system.nvs.total_entries,
             },
-            audio: api::AudioStatus {
-                input_line: snapshot.audio.input_line,
-                input_gain: snapshot.audio.input_gain,
-                adc_attenuation_db: snapshot.audio.adc_attenuation_db,
-                sample_rate_hz: snapshot.audio.sample_rate_hz,
-                channels: snapshot.audio.channels,
-                bits_per_sample: snapshot.audio.bits_per_sample,
-            },
-            analog_passthrough: api::AnalogPassthroughStatus {
-                enabled: snapshot.analog_passthrough.enabled,
-                active: snapshot.analog_passthrough.active,
-                fault: snapshot.analog_passthrough.fault.as_deref(),
-            },
-            stream: api::StreamControlStatus {
-                enabled: snapshot.stream.enabled,
-            },
-            metrics: api::MetricsStatus {
-                sequence: snapshot.stream.sequence,
-                packets_total: snapshot.stream.packets_total,
-                bytes_total: snapshot.stream.bytes_total,
-                read_errors_total: snapshot.stream.read_errors_total,
-                short_reads_total: snapshot.stream.short_reads_total,
-                queue_depth: snapshot.stream.queue_depth,
-                queue_drops_total: snapshot.stream.queue_drops_total,
-                capture_lost_packets_total: snapshot.stream.capture_lost_packets_total,
-                silence_packets_total: snapshot.stream.silence_packets_total,
-                send_failed_packets_total: snapshot.stream.send_failed_packets_total,
-                network_errors_total: snapshot.stream.network_errors_total,
-                tls_handshake_failures_total: snapshot.stream.tls_handshake_failures_total,
-                reconnects_total: snapshot.stream.reconnects_total,
-                send_stalls_total: snapshot.stream.send_stalls_total,
-                longest_send_stall_ms: snapshot.stream.longest_send_stall_ms,
-                clip_threshold_abs: snapshot.audio.clip_threshold_abs,
-                peak_abs_left: snapshot.audio.peak_abs_left,
-                peak_abs_right: snapshot.audio.peak_abs_right,
-                rms_left: snapshot.audio.rms_left,
-                rms_right: snapshot.audio.rms_right,
-                noise_floor: snapshot.audio.noise_floor,
-                clipped_samples_total: snapshot.audio.clipped_samples_total,
-                playing: snapshot.audio.playing,
-            },
-            diagnostics: api::DiagnosticsStatus {
-                reset_reason: snapshot.diagnostics.reset_reason,
-                last_fallback: &snapshot.diagnostics.last_fallback,
-                last_ota: &snapshot.diagnostics.last_ota,
-            },
-            system: api::SystemStatus {
-                uptime_seconds: snapshot.system.uptime_seconds,
-                task_count: snapshot.system.task_count,
-                heap: api::HeapStatus {
-                    free_bytes: snapshot.system.heap.free_bytes,
-                    total_bytes: snapshot.system.heap.total_bytes,
-                    minimum_free_bytes: snapshot.system.heap.minimum_free_bytes,
-                    largest_free_block_bytes: snapshot.system.heap.largest_free_block_bytes,
-                },
-                nvs: api::NvsStatus {
-                    used_entries: snapshot.system.nvs.used_entries,
-                    available_entries: snapshot.system.nvs.available_entries,
-                    total_entries: snapshot.system.nvs.total_entries,
-                },
-            },
-            ota: api::OtaStatus {
-                phase: snapshot.ota.phase,
-                bytes_written: snapshot.ota.bytes_written,
-                bytes_total: snapshot.ota.bytes_total,
-                latest_version: &snapshot.ota.latest_version,
-                message: &snapshot.ota.message,
-                busy: snapshot.ota.busy,
-                rollback_available: snapshot.ota.rollback_available,
-                rollback_version: &snapshot.ota.rollback_version,
-                signed_updates: snapshot.ota.signed_updates,
-                signing_key_sha256: &snapshot.ota.signing_key_sha256,
-            },
-            indicator: api::IndicatorStatus {
-                available: snapshot.status_indicator_visible,
-                state: indicator_state.as_str(),
-            },
-            health,
-        }
+        },
+        ota: api::OtaStatus {
+            phase: snapshot.ota.phase,
+            bytes_written: snapshot.ota.bytes_written,
+            bytes_total: snapshot.ota.bytes_total,
+            latest_version: &snapshot.ota.latest_version,
+            message: &snapshot.ota.message,
+            busy: snapshot.ota.busy,
+            rollback_available: snapshot.ota.rollback_available,
+            rollback_version: &snapshot.ota.rollback_version,
+            signed_updates: snapshot.ota.signed_updates,
+            signing_key_sha256: &snapshot.ota.signing_key_sha256,
+        },
+        indicator: api::IndicatorStatus {
+            available: snapshot.status_indicator_visible,
+            state: indicator_state.as_str(),
+        },
+        health,
     }
 }

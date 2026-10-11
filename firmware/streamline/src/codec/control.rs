@@ -1,14 +1,12 @@
 //! Codec control ownership after initialization.
 
 use super::{es8388::Es8388, Driver, RegisterBus};
-use crate::{
-    analog_passthrough::{
-        route_for_audio_change, AnalogPassthroughControl, AnalogPassthroughRoute,
-    },
-    config::AudioSettings,
-    mutation::MutationError,
-};
+use crate::analog_passthrough::route_for_audio_change;
+use crate::analog_passthrough::AnalogPassthroughControl;
+use crate::analog_passthrough::AnalogPassthroughRoute;
+use crate::mutation::MutationError;
 use anyhow::{anyhow, Result};
+use streamline_api::audio::AudioSettings;
 
 impl Driver {
     fn configure(self, bus: &mut impl RegisterBus, audio: AudioSettings) -> Result<()> {

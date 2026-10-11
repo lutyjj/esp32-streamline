@@ -17,23 +17,7 @@ pub const TLS_VERSION: &str = "TLSv1.3";
 pub const TLS_CIPHER: &str = "TLS_AES_128_GCM_SHA256";
 pub const TLS_KEY_EXCHANGE: &str = "psk_dhe_ke";
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-#[serde(rename_all = "kebab-case")]
-pub enum TransportMode {
-    #[default]
-    Cleartext,
-    TlsPsk,
-}
-
-impl TransportMode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Cleartext => "cleartext",
-            Self::TlsPsk => "tls-psk",
-        }
-    }
-}
+use streamline_api::controls::TransportMode;
 
 /// Serializes as 64 lowercase hex characters — the one PSK representation
 /// shared by the stage response, the bridge key file, and the NVS record.

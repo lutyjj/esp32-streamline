@@ -12,15 +12,18 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use esp_idf_svc::sys;
 
-use crate::{
-    config::RuntimeConfig,
-    stream::{PacketSink, SendFailed},
-    transport::{
-        write_all_with, KeyVerifier, PcmConnector, PcmStream, ReconnectingSender, TransportKey,
-        TransportMode, WriteAllError,
-    },
-    transport_diagnostics::TlsFailure,
-};
+use crate::config::RuntimeConfig;
+use crate::stream::PacketSink;
+use crate::stream::SendFailed;
+use crate::transport::write_all_with;
+use crate::transport::KeyVerifier;
+use crate::transport::PcmConnector;
+use crate::transport::PcmStream;
+use crate::transport::ReconnectingSender;
+use crate::transport::TransportKey;
+use crate::transport::WriteAllError;
+use crate::transport_diagnostics::TlsFailure;
+use streamline_api::controls::TransportMode;
 
 const CLEARTEXT_TIMEOUT: Duration = Duration::from_millis(250);
 const TLS_TIMEOUT_MS: i32 = 2_000;

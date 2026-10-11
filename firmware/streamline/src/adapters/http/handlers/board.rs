@@ -4,9 +4,11 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::{
-    api, board, mode::ConfigWrite, mutation::MutationError, profiles::AudioProfileCatalog,
-};
+use crate::board;
+use crate::mode::ConfigWrite;
+use crate::mutation::MutationError;
+use streamline_api as api;
+use streamline_api::profiles::AudioProfileCatalog;
 
 use super::super::{
     requests::form,

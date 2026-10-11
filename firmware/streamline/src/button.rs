@@ -1,7 +1,7 @@
 //! Button action policy: what a press does, independent of the GPIO that
 //! carries it.
 //!
-//! A board advertises the buttons it wires (`crate::board::Button`); the user
+//! A board advertises the buttons it wires (`streamline_api::board::Button`); the user
 //! assigns each one an action. Every action is the press-driven twin of an
 //! API capability — `toggle_stream` is `POST /api/stream`, `restart` is
 //! `POST /api/restart` — so a button can never do something a client cannot.
@@ -11,69 +11,10 @@
 //! debounced, edge-triggered, and silent about the boot-time level, so a held
 //! or stuck-at-pressed line (QEMU emulates no pull resistors) never fires.
 
-use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use streamline_api::controls::ButtonAction;
 
-use crate::board::Board;
-
-/// The action assigned to a single board button, fired on a simple press.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum ButtonAction {
-    /// The press does nothing.
-    #[default]
-    None,
-    /// Pause or resume streaming to the bridge; capture and meters continue.
-    ToggleStream,
-    /// Select the next advertised input line, wrapping at the end.
-    CycleInput,
-    /// Raise the input gain one step, up to the board's advertised maximum.
-    GainUp,
-    /// Lower the input gain one step, down to zero.
-    GainDown,
-    /// Attenuate the input [`ATTENUATION_STEP_DB`] more (quieter), up to the
-    /// board's advertised maximum.
-    AttenuationUp,
-    /// Attenuate the input [`ATTENUATION_STEP_DB`] less (louder), down to zero.
-    AttenuationDown,
-    /// Reboot with settings intact.
-    Restart,
-    /// Erase every setting and reboot into first-time setup.
-    FactoryReset,
-}
-
-impl ButtonAction {
-    /// Stable API and storage name for this action.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::ToggleStream => "toggle_stream",
-            Self::CycleInput => "cycle_input",
-            Self::GainUp => "gain_up",
-            Self::GainDown => "gain_down",
-            Self::AttenuationUp => "attenuation_up",
-            Self::AttenuationDown => "attenuation_down",
-            Self::Restart => "restart",
-            Self::FactoryReset => "factory_reset",
-        }
-    }
-
-    /// Decode an action name from the API or storage.
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "none" => Some(Self::None),
-            "toggle_stream" => Some(Self::ToggleStream),
-            "cycle_input" => Some(Self::CycleInput),
-            "gain_up" => Some(Self::GainUp),
-            "gain_down" => Some(Self::GainDown),
-            "attenuation_up" => Some(Self::AttenuationUp),
-            "attenuation_down" => Some(Self::AttenuationDown),
-            "restart" => Some(Self::Restart),
-            "factory_reset" => Some(Self::FactoryReset),
-            _ => None,
-        }
-    }
-}
+use streamline_api::board::Board;
 
 /// The input line after `current` in the board's advertised order, wrapping at
 /// the end. A line the board no longer advertises restarts at the first.
@@ -317,7 +258,7 @@ mod tests {
         assert!(detector.update(true));
     }
 
-    fn default_board() -> board::Board {
+    fn default_board() -> streamline_api::board::Board {
         let catalog = board::builtin_catalog().expect("valid catalog");
         board::resolve(&catalog, None)
             .expect("default board")

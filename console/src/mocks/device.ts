@@ -4,11 +4,11 @@
  * lifecycle, and OTA phases follow the machines the firmware implements.
  * Writes parse `application/x-www-form-urlencoded` bodies, the encoding the
  * contract declares for every device settings operation.
- * `tests/mockCoverage.test.ts` pins the handler set to `docs/openapi.json`.
+ * `tests/mockCoverage.test.ts` pins the handler set to `api/openapi.json`.
  */
 
 import { type HttpHandler, HttpResponse, http, type JsonBodyType } from 'msw';
-import contract from '../../../docs/openapi.json';
+import contract from '../../../api/openapi.json';
 import type {
   AutoUpdateScheduleRequest,
   ButtonAction,

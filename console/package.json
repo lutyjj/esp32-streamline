@@ -20,7 +20,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "vite-plugin-singlefile": "^2.3.0",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "js-yaml": "^4.3.2"

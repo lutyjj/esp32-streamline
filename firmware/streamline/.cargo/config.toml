@@ -1,7 +1,10 @@
 [target.'cfg(target_os = "espidf")']
 linker = "ldproxy"
 runner = "espflash flash --monitor"
-rustflags = ["--cfg", "espidf_time64"]
+# sha2's compact SHA-256 is 8 KB smaller than its default unrolled one. The
+# device hashes OTA downloads, digest-auth inputs, and NVS state checksums,
+# none of them on a hot path.
+rustflags = ["--cfg", "espidf_time64", "--cfg", 'sha2_backend_soft="compact"']
 
 [unstable]
 build-std = ["std", "panic_abort"]

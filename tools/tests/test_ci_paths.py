@@ -4,7 +4,7 @@ import unittest
 from collections.abc import Iterable
 from pathlib import Path
 
-import yaml
+from ruamel.yaml import YAML
 from wcmatch import glob
 
 REPO_ROOT = Path("/repo")
@@ -64,7 +64,7 @@ ALL_FILTERS = {
 
 
 def load_filters() -> dict[str, list[str]]:
-    document = yaml.safe_load(FILTERS_PATH.read_text())
+    document = YAML(typ="safe", pure=True).load(FILTERS_PATH.read_text())
     if not isinstance(document, dict):
         raise TypeError(f"{FILTERS_PATH} must contain a mapping")
     return {str(name): list(flatten(patterns)) for name, patterns in document.items() if name != "shared"}

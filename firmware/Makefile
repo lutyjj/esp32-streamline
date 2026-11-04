@@ -55,7 +55,7 @@ CONTAINER_RUN := $(CONTAINER) run $(CONTAINER_FLAGS) $(IMAGE)
 CONTAINER_RUN_HOST_USER := $(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" $(CONTAINER_MOUNT) $(IMAGE)
 
 # The toolchain's Python environment directory embeds the ESP-IDF and Python
-# versions (`.embuild/.../python_env/idf5.5_py3.11_env/bin`), so an ESP-IDF or
+# versions (`.embuild/.../python_env/idfX.Y_pyX.Y_env/bin`), so an ESP-IDF or
 # Python bump would invalidate any hardcoded path. Locate the environment
 # through a tool that lives in it instead, and put it on PATH so espsecure.py
 # and its siblings resolve. Sets ESPTOOL and PY for callers that need them.

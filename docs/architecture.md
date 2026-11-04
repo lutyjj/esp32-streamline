@@ -57,9 +57,13 @@ same change:
 | `github-actions` | Weekly | Workflow and composite action pins | CI itself, so these stay apart from the updates CI judges |
 
 The grouping couples updates in two ways. The repository check audits every
-lockfile, so an open advisory in any group holds every pull request until its
-fix merges. And an update that needs code changes holds the rest of its group
-until someone fixes it on the update branch.
+lockfile, so an open advisory in any lockfile fails every pull request that
+touches a path the `repository` filter in `.github/ci-paths.yml` owns, such as
+a lockfile, a Markdown file, or `.github/`. When advisories are open in two
+lockfiles, each fix fails on the other: fix both in one pull request, or
+accept one in `osv-scanner.toml` with a reason and an expiry. And an update
+that needs code changes holds the rest of its group until someone fixes it on
+the update branch.
 
 Dependabot reads image pins only from Dockerfiles, so an image a Makefile runs
 takes its pin from a Dockerfile stage, as `.github/tool-images.Dockerfile`

@@ -1,31 +1,33 @@
-# Weekly dependency PRs for every ecosystem in the repository, grouped by the
-# component that owns the build contract. GitHub Actions stay pinned to commit
-# SHAs with upstream version comments, and Dependabot updates both together.
+# Dependency updates, grouped by the proof each needs. One weekly pull request
+# carries every host-side ecosystem, which CI proves on its own. The firmware
+# group runs monthly because its proof includes the QEMU smoke and, for
+# network, TLS, or audio changes, a device. GitHub Actions stay separate
+# because they change the CI that judges the other groups. Version updates for
+# uv and Cargo also refresh transitive dependencies, so routine updates carry
+# most advisory fixes; security updates still open as soon as an advisory
+# lands. Pins stay immutable: actions by commit SHA and images by digest, each
+# with a readable version.
 version: 2
 
 multi-ecosystem-groups:
-  bridge:
+  host:
     schedule:
       interval: weekly
-  console:
-    schedule:
-      interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
   firmware:
     schedule:
-      interval: weekly
-  ha-addon:
-    schedule:
-      interval: weekly
-  tools:
-    schedule:
-      interval: weekly
-  webflasher:
-    schedule:
-      interval: weekly
+      interval: monthly
+    commit-message:
+      prefix: build
+      include: scope
 
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: weekly
     groups:
@@ -38,19 +40,9 @@ updates:
     directory: /firmware/streamline
     patterns:
       - "*"
+    allow:
+      - dependency-type: all
     multi-ecosystem-group: firmware
-
-  - package-ecosystem: uv
-    directory: /bridge
-    patterns:
-      - "*"
-    multi-ecosystem-group: bridge
-
-  - package-ecosystem: docker
-    directory: /bridge
-    patterns:
-      - "*"
-    multi-ecosystem-group: bridge
 
   - package-ecosystem: docker
     directory: /firmware/streamline
@@ -58,39 +50,61 @@ updates:
       - "*"
     multi-ecosystem-group: firmware
 
-  - package-ecosystem: npm
-    directory: /console
+  - package-ecosystem: uv
+    directory: /bridge
     patterns:
       - "*"
-    multi-ecosystem-group: console
-
-  - package-ecosystem: docker
-    directory: /console
-    patterns:
-      - "*"
-    multi-ecosystem-group: console
+    allow:
+      - dependency-type: all
+    multi-ecosystem-group: host
 
   - package-ecosystem: uv
     directory: /tools
     patterns:
       - "*"
-    multi-ecosystem-group: tools
+    allow:
+      - dependency-type: all
+    multi-ecosystem-group: host
+
+  - package-ecosystem: npm
+    directory: /console
+    patterns:
+      - "*"
+    multi-ecosystem-group: host
+
+  # The root Makefile's repository-check tool images.
+  - package-ecosystem: docker
+    directory: /.github
+    patterns:
+      - "*"
+    multi-ecosystem-group: host
+
+  - package-ecosystem: docker
+    directory: /bridge
+    patterns:
+      - "*"
+    multi-ecosystem-group: host
+
+  - package-ecosystem: docker
+    directory: /console
+    patterns:
+      - "*"
+    multi-ecosystem-group: host
 
   - package-ecosystem: docker
     directory: /tools
     patterns:
       - "*"
-    multi-ecosystem-group: tools
+    multi-ecosystem-group: host
 
   - package-ecosystem: docker
     directory: /ha-addon
     patterns:
       - "*"
-    multi-ecosystem-group: ha-addon
+    multi-ecosystem-group: host
 
   - package-ecosystem: docker
     directory: /webflasher
     patterns:
       - "*"
-    multi-ecosystem-group: webflasher
-
+    multi-ecosystem-group: host

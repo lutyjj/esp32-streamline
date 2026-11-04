@@ -41,15 +41,15 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 
 Each component builds from a public base and owns its dependency and tool
 configuration. Register every new component or dependency surface in
-`.github/dependabot.yml` in the same change. Dependabot reads image pins only
-from Dockerfiles, so an image a Makefile runs takes its pin from a Dockerfile
-stage, as `.github/tool-images.Dockerfile` does for the repository checks. The
-firmware embeds the device console build. The bridge packages the bridge
-console build, and the Home
-Assistant add-on packages the bridge and that console into a self-contained
-context the official Home Assistant builder validates for each published
-architecture. These are deliberate build-time dependencies, not shared runtime
-state.
+`.github/dependabot.yml`, in the update group that matches its proof, in the
+same change. Dependabot reads image pins only from Dockerfiles, so an image a
+Makefile runs takes its pin from a Dockerfile stage, as
+`.github/tool-images.Dockerfile` does for the repository checks. The firmware
+embeds the device console build. The bridge packages the bridge console build,
+and the Home Assistant add-on packages the bridge and that console into a
+self-contained context the official Home Assistant builder validates for each
+published architecture. These are deliberate build-time dependencies, not
+shared runtime state.
 
 The firmware Dockerfile pins the official ESP-IDF source and provides it through
 `IDF_PATH`. Cargo pins the Rust bindings, including upstream revisions needed by

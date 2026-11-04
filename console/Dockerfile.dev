@@ -1,5 +1,5 @@
 # glibc, matching the Playwright e2e image (Dockerfile.e2e): both containers
 # share the repo-mounted node_modules, so native bindings must load in each.
-FROM node:26-slim@sha256:14bf3eac4bf209d906d3c41256597d3ab1f926b2e93a79e9bdfe1efd32454239
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39
 
 WORKDIR /workspace

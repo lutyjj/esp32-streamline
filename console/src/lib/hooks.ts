@@ -123,7 +123,7 @@ export function useTransact(): Transact {
   // State updates do not synchronously re-render the button. Keep the guard in
   // a ref as well so two clicks in the same render cannot start two writes.
   const running = useRef(false);
-  const clearTimer = useRef<ReturnType<typeof setTimeout>>();
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [state, setState] = useState<ActionState>({ text: '', cls: '' });
 
   async function run(work: () => Promise<Ack | undefined>, opts: TransactOpts = {}): Promise<void> {

@@ -1,9 +1,8 @@
-import type { ComponentChildren, JSX } from 'preact';
+import type { ButtonHTMLAttributes, ComponentChildren } from 'preact';
 
 export type ButtonKind = 'primary' | 'secondary' | 'danger';
 
-interface ButtonProps
-  extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'class' | 'className'> {
+interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'class' | 'className'> {
   children: ComponentChildren;
   kind?: ButtonKind;
   busy?: boolean;

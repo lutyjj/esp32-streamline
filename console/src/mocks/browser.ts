@@ -16,5 +16,5 @@ function scenarioFromLocation(): DeviceScenario {
 
 export async function startDeviceMock(): Promise<void> {
   const device = new FakeDevice(scenarioFromLocation());
-  await setupWorker(...device.handlers).start({ onUnhandledRequest: 'bypass' });
+  await setupWorker(...device.handlers).start({ onUnhandledFrame: 'bypass' });
 }

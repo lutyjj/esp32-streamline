@@ -11,7 +11,7 @@ REVISION ?= $(shell git -C $(REPO_ROOT) rev-parse HEAD 2>/dev/null || echo unkno
 
 # `make context` assembles this self-contained add-on tree from the bridge
 # distribution and the freshly built console asset; every build and the
-# validator consume it. Gitignored — it is generated, never committed.
+# legacy builder consume it. It is generated and gitignored, never committed.
 BUILD_CONTEXT := .build-context
 
 # Home Assistant's legacy add-on builder test-builds each requested
@@ -22,15 +22,15 @@ HA_BUILDER := ghcr.io/home-assistant/amd64-builder:2026.03.2@sha256:bb0916d95292
 HA_BUILDER_RUN = $(CONTAINER) run --rm --privileged \
 	-v /var/run/docker.sock:/var/run/docker.sock
 
-# Published add-on image names come from config.yaml's `image:` template — the
-# add-on's own source of truth — so the Makefile and the store agree by
+# Published add-on image names come from config.yaml's `image:` template, the
+# add-on's own source of truth, so the Makefile and the store agree by
 # construction. Override the whole name per arch to publish under another owner.
 IMAGE_TEMPLATE := $(shell sed -n 's/^image: "\(.*\)".*/\1/p' config.yaml)
 ADDON_IMAGE_AMD64 ?= $(subst {arch},amd64,$(IMAGE_TEMPLATE))
 ADDON_IMAGE_AARCH64 ?= $(subst {arch},aarch64,$(IMAGE_TEMPLATE))
 
 # Build arguments shared by every image build so the local image, the release
-# image, and the validator agree on the labels they stamp.
+# image, and the legacy builder's test builds stamp the same labels.
 ADDON_BUILD_ARGS := --build-arg BUILD_VERSION=$(VERSION) --build-arg BUILD_REVISION=$(REVISION)
 
 APPARMOR_IMAGE := esp32-streamline-ha-addon-apparmor
@@ -54,7 +54,7 @@ lint: apparmor-image
 
 # A standard Home Assistant add-on context: the bridge distribution plus the
 # freshly built console asset and config.yaml, with no reach into the bridge
-# source tree. This is what lets the ecosystem builder consume the add-on
+# source tree. This is what lets the legacy builder consume the add-on
 # unchanged and keeps a build from mutating a sibling component.
 context:
 	$(MAKE) -C ../console build-bridge
@@ -74,13 +74,15 @@ validate: context
 		--test --amd64 --aarch64 -t /data --no-latest --no-cache
 	@set -eu; \
 		neg="$$(mktemp -d /tmp/streamline-addon-validate.XXXXXX)"; \
-		trap 'rm -rf "$$neg"' EXIT INT TERM; \
+		log="$$(mktemp /tmp/streamline-addon-validate-log.XXXXXX)"; \
+		trap 'rm -rf "$$neg" "$$log"' EXIT INT TERM; \
 		cp -R $(BUILD_CONTEXT)/. "$$neg"/; \
 		grep -v '^  - amd64$$' $(BUILD_CONTEXT)/config.yaml > "$$neg/config.yaml"; \
-		if $(HA_BUILDER_RUN) -v "$$neg:/data:ro" $(HA_BUILDER) --test --amd64 -t /data --no-latest --no-cache >/dev/null 2>&1; then \
-			echo "validator accepted metadata whose arch list omits the requested amd64" >&2; exit 1; \
+		if $(HA_BUILDER_RUN) -v "$$neg:/data:ro" $(HA_BUILDER) --test --amd64 -t /data --no-latest --no-cache >"$$log" 2>&1; then \
+			echo "builder accepted a config.yaml that omits the requested amd64" >&2; exit 1; \
 		fi; \
-		echo "validator rejected the malformed-metadata fixture"
+		grep -q 'amd64 not supported for this add-on' "$$log" || { echo "builder failed for another reason:" >&2; cat "$$log" >&2; exit 1; }; \
+		echo "builder refused the config.yaml that omits amd64"
 
 image: lint context
 	$(CONTAINER) build --platform $(PLATFORM) $(ADDON_BUILD_ARGS) \

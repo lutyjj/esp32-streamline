@@ -208,10 +208,11 @@ impl<'a> ContractServer<'a> {
 }
 
 /// A listener with its complete route table. Requests that reach it before
-/// [`start`] publishes the API state wait for that state; a startup that fails
-/// restarts the device instead.
+/// [`start`] publishes the API state wait for that state. The listener lives
+/// until the device restarts: dropping it would unregister routes while the
+/// server task may still be matching requests.
 pub struct Listener {
-    server: EspHttpServer<'static>,
+    _server: EspHttpServer<'static>,
     state: Arc<OnceLock<Arc<ApiState>>>,
 }
 
@@ -250,12 +251,15 @@ pub fn bind() -> Result<Listener> {
             None => responses::not_found(request, "no endpoint matches this path"),
         }
     })?;
-    Ok(Listener { server, state })
+    Ok(Listener {
+        _server: server,
+        state,
+    })
 }
 
 /// Serve `state` from the listener's routes, and restart the device once an
 /// endpoint schedules a restart.
-pub fn start(listener: Listener, state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
+pub fn start(listener: &Listener, state: Arc<ApiState>) -> Result<()> {
     let restart = Arc::clone(&state.restart);
     crate::adapters::task::prepare(
         esp_idf_svc::hal::task::thread::ThreadSpawnConfiguration {
@@ -272,5 +276,5 @@ pub fn start(listener: Listener, state: Arc<ApiState>) -> Result<EspHttpServer<'
     if listener.state.set(state).is_err() {
         bail!("API state is already published");
     }
-    Ok(listener.server)
+    Ok(())
 }

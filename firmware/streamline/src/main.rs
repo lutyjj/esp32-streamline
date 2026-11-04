@@ -49,13 +49,16 @@ use streamline_firmware::{
 use streamline_firmware::{analog_passthrough::AnalogPassthroughRoute, reconnect, runtime};
 
 fn main() {
-    if let Err(error) = run() {
+    // The HTTP listener outlives `run`, so a fatal error restarts the device
+    // with the server still running instead of tearing it down.
+    let mut listener = None;
+    if let Err(error) = run(&mut listener) {
         log::error!("firmware startup failed: {error:#}");
         unsafe { esp_idf_svc::sys::esp_restart() };
     }
 }
 
-fn run() -> Result<()> {
+fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     // Required by esp-idf-sys to link runtime patches on an ESP-IDF target.
     esp_idf_svc::sys::link_patches();
     // Before anything else logs: this both starts the capture and rescues the
@@ -113,7 +116,8 @@ fn run() -> Result<()> {
 
     // Finish the HTTP callback registry and route table before any interface
     // accepts connections.
-    let listener = http::bind().map_err(|error| management_startup_error(&store, error))?;
+    let listener =
+        &*listener.insert(http::bind().map_err(|error| management_startup_error(&store, error))?);
     log::info!("management listener initialized");
 
     // The network is the one seam between the hardware image and the QEMU
@@ -206,13 +210,13 @@ fn run() -> Result<()> {
     if let Err(error) = buttons::start(Arc::clone(&state)) {
         log::warn!("buttons unavailable: {error:#}");
     }
-    let server = streamline_firmware::boot_health::start(
+    streamline_firmware::boot_health::start(
         mode,
         || http::start(listener, Arc::clone(&state)),
         http::probe,
         ota::mark_current_valid,
-    );
-    let _server = server.map_err(|error| management_startup_error(&state.store, error))?;
+    )
+    .map_err(|error| management_startup_error(&state.store, error))?;
     log::info!("console ready");
     #[cfg(not(feature = "qemu"))]
     let _dns_responder = match captive_portal_address {

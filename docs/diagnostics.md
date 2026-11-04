@@ -156,6 +156,16 @@ curl -s --digest -u "admin:$STREAMLINE_ADMIN_KEY" \
 espcoredump.py info_corefile -t raw -c crash.bin streamline-X.Y.Z.elf
 ```
 
+Firmware verifies only the checksum its own ESP-IDF line writes: SHA-256 on
+ESP-IDF 6 and CRC32 on ESP-IDF 5. After an update or rollback between the two
+lines, a stored dump reads as `"present": false` and the API cannot serve it.
+Read it over USB from the `coredump` partition instead, then analyze it as
+above:
+
+```sh
+esptool.py -p /dev/ttyUSB0 read_flash 0x12000 0xE000 crash.bin
+```
+
 `POST /api/coredump/erase` clears the stored dump; an empty partition also
 succeeds. The device keeps one dump: a later panic overwrites an earlier one.
 

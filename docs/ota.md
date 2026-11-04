@@ -118,8 +118,9 @@ nothing about signing-key compatibility.
 
 The rollback-enabled bootloader starts a newly installed slot in
 *pending-verify*. Firmware confirms it only after the device reaches its home
-network, registers every management route, and successfully reads complete
-responses from `/api/status` and `/api/settings` through the HTTP server.
+network, publishes its state to the management routes, and successfully reads
+complete responses from `/api/status` and `/api/settings` through the HTTP
+server.
 
 The HTTP listener, its callback registry, and every route are initialized
 before Wi-Fi or Ethernet starts, because ESP-IDF's route table is not safe to

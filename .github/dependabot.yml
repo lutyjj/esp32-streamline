@@ -1,12 +1,7 @@
-# Dependency updates, grouped by the proof each needs. One weekly pull request
-# carries every host-side ecosystem, which CI proves on its own. The firmware
-# group runs monthly because its proof includes the QEMU smoke and, for
-# network, TLS, or audio changes, a device. GitHub Actions stay separate
-# because they change the CI that judges the other groups. Version updates for
-# uv and Cargo also refresh transitive dependencies, so routine updates carry
-# most advisory fixes; security updates still open as soon as an advisory
-# lands. Pins stay immutable: actions by commit SHA and images by digest, each
-# with a readable version.
+# Updates grouped by the proof each needs; docs/architecture.md#components owns
+# the grouping and its tradeoffs. Version updates for uv and Cargo also refresh
+# transitive dependencies, so routine updates carry most advisory fixes. Pins
+# stay immutable: actions by commit SHA and images by digest.
 version: 2
 
 multi-ecosystem-groups:

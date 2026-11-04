@@ -17,7 +17,9 @@ BUILD_CONTEXT := .build-context
 # The official Home Assistant add-on builder is the owning ecosystem's tool:
 # it loads config.yaml, maps architectures, and builds the image the store
 # builds. `--test` validates and builds without pushing. Pinned by digest.
-HA_BUILDER := ghcr.io/home-assistant/amd64-builder:2025.09.0@sha256:ca73413c439709af27251a205fbcda9f50e6e9e556c6adb856ec123e36c26799
+# Home Assistant retired this builder, and 2026.03.2 is its final release, so
+# no updater tracks the pin.
+HA_BUILDER := ghcr.io/home-assistant/amd64-builder:2026.03.2@sha256:bb0916d95292d912aaf9a02f0568db336f81d12f6f9b617a93d362efa8bc5d2f
 HA_BUILDER_RUN = $(CONTAINER) run --rm --privileged \
 	-v /var/run/docker.sock:/var/run/docker.sock
 

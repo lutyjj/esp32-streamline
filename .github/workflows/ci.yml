@@ -33,7 +33,7 @@ jobs:
   # maps paths to component names; this job turns the ones a change touched
   # into a matrix. Adding a lightweight component is two declarative edits and
   # no new job: a filter entry there, plus a `<name>-check` target in the
-  # Makefile. `firmware` is deliberately excluded from the matrix — its
+  # Makefile. `firmware` is deliberately excluded from the matrix: its
   # toolchain caching makes it fundamentally different, so it keeps a bespoke
   # job below.
   changes:
@@ -246,7 +246,7 @@ jobs:
   # required check in branch protection: it passes when the relevant jobs pass
   # and treats skipped (unchanged) components as a pass, so path-filtering never
   # leaves a PR stuck waiting on a check that will not report. It needs no edit
-  # when a component is added — the matrix job covers all of them.
+  # when a component is added: the matrix job covers all of them.
   ci-complete:
     name: CI complete
     if: ${{ always() }}

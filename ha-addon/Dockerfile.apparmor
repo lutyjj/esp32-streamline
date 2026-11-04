@@ -1,6 +1,8 @@
 # AppArmor's policy compiler. Compilation checks syntax; enforcement requires
 # an AppArmor-enabled Linux host. This image contains no application code.
-FROM debian:bookworm-slim@sha256:63a496b5d3b99214b39f5ed70eb71a61e590a77979c79cbee4faf991f8c0783e
+# Bookworm ships the AppArmor 3 parser that Home Assistant OS loads profiles
+# with; later Debian releases ship AppArmor 4 and its newer policy ABI.
+FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends apparmor \

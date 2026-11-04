@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import preact from '@preact/preset-vite';
+import { msw } from 'msw/vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { defineConfig, type Plugin } from 'vitest/config';
 
@@ -28,23 +29,6 @@ const embeddedFontLicense: Plugin = {
   },
 };
 
-// The dev server's public dir is the read-only WebFlasher mount, so the MSW
-// worker script is served from the installed msw package instead.
-function mockWorkerScript(): Plugin {
-  return {
-    name: 'streamline-mock-worker',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/mockServiceWorker.js', (_req, res) => {
-        res.setHeader('Content-Type', 'text/javascript');
-        res.end(
-          readFileSync(resolve(import.meta.dirname, 'node_modules/msw/lib/mockServiceWorker.js')),
-        );
-      });
-    },
-  };
-}
-
 // In mock mode the device page's requests never reach the network (MSW
 // intercepts them), so `/api` can proxy to the real bridge for the bridge
 // page, along with the bridge's root-level routes.
@@ -63,7 +47,10 @@ const proxy = bridge
 // The dev server proxies the API to a real device (`make dev DEVICE=<ip>`)
 // or serves the fake device beside a real bridge (`make dev-mock`).
 export default defineConfig({
-  plugins: [preact(), viteSingleFile(), mockWorkerScript(), embeddedFontLicense],
+  // MSW serves its worker script on the dev server, whose public dir is the
+  // read-only WebFlasher mount. It emits the script only beside a bundle that
+  // imports `virtual:msw`, which no console entry does.
+  plugins: [preact(), viteSingleFile(), msw(), embeddedFontLicense],
   publicDir: webflasherDir,
   // Replaced statically so production builds drop the mock branch entirely.
   define: {

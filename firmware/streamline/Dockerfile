@@ -15,5 +15,12 @@ RUN git init /opt/streamline-idf \
     && find /opt/streamline-idf -name .git -prune -exec rm -rf '{}' +
 ENV IDF_PATH=/opt/streamline-idf
 
+# ESP-IDF commit 06983453 on release/v6.1, which the v6.1 tag predates, keeps
+# the OpenETH interrupt's log strings in DRAM. Without it the QEMU image panics
+# when that interrupt logs while a flash operation has the cache disabled.
+# Remove the patch once the pin is a tag that contains the commit.
+COPY patches/openeth-cache-safe-log.patch /tmp/openeth-cache-safe-log.patch
+RUN cd /opt/streamline-idf && git apply /tmp/openeth-cache-safe-log.patch
+
 USER esp
 WORKDIR /workspace

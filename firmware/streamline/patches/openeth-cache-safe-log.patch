@@ -1,0 +1,34 @@
+From 069834537cdacb77a57054198adf0074e6f83e1c Mon Sep 17 00:00:00 2001
+From: Dhimas Ardinata <dhimasardinatapp@gmail.com>
+Date: Sun, 24 May 2026 22:29:54 +0700
+Subject: [PATCH] fix(esp_eth): make openeth ISR log DRAM-safe
+
+Keep the ISR from touching flash-resident log strings while cache is disabled.
+
+Closes #18644
+---
+ components/esp_eth/src/openeth/esp_eth_mac_openeth.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/components/esp_eth/src/openeth/esp_eth_mac_openeth.c b/components/esp_eth/src/openeth/esp_eth_mac_openeth.c
+index 2883a64680f8..6f7dc89e5323 100644
+--- a/components/esp_eth/src/openeth/esp_eth_mac_openeth.c
++++ b/components/esp_eth/src/openeth/esp_eth_mac_openeth.c
+@@ -28,7 +28,7 @@
+ #include "esp_mac.h"
+ #include "esp_eth_mac_openeth.h"
+ 
+-static const char *TAG = "opencores.emac";
++ESP_LOG_ATTR_TAG_DRAM(TAG, "opencores.emac");
+ 
+ // Driver state structure
+ typedef struct {
+@@ -63,7 +63,7 @@ static IRAM_ATTR void emac_opencores_isr_handler(void *args)
+     }
+ 
+     if (status & OPENETH_INT_BUSY) {
+-        ESP_EARLY_LOGW(TAG, "%s: RX frame dropped (0x%" PRIx32 ")", __func__, status);
++        ESP_DRAM_LOGW(TAG, "RX frame dropped (0x%" PRIx32 ")", status);
+     }
+ 
+     // Clear interrupt

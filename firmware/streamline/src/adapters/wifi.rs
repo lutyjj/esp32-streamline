@@ -17,9 +17,10 @@ use esp_idf_svc::{
         esp_netif_dhcps_start, esp_netif_dhcps_stop, esp_netif_dns_info_t,
         esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN, esp_netif_get_handle_from_ifkey,
         esp_netif_get_ip_info, esp_netif_ip_info_t, esp_netif_set_dns_info, esp_wifi_set_ps,
-        esp_wifi_sta_get_ap_info, wifi_ap_record_t, wifi_ps_type_t_WIFI_PS_NONE, EspError,
-        ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED,
-        ESP_IPADDR_TYPE_V4, ESP_OK,
+        esp_wifi_sta_get_ap_info, wifi_ap_record_t, wifi_init_config_t,
+        wifi_ps_type_t_WIFI_PS_NONE, EspError, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED,
+        ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED, ESP_IPADDR_TYPE_V4, ESP_OK,
+        WIFI_PRIVACY_ENHANCEMENTS_ENABLED, WIFI_RMAC_AUTO_RESET_INTERVAL,
     },
     wifi::{BlockingWifi, EspWifi, WifiEvent},
 };
@@ -54,6 +55,47 @@ pub fn create<'d>(
         system_event_loop,
     )?)
 }
+
+/// `EspWifi::new` fills `wifi_init_config_t` field by field and zeroes the
+/// rest, so a field esp-idf-svc does not know starts at zero, not at its
+/// `WIFI_INIT_CONFIG_DEFAULT` value. Naming every field fails the build when an
+/// ESP-IDF bump adds one; check its default before adding it here.
+const _: fn(wifi_init_config_t) = |config| {
+    let wifi_init_config_t {
+        osi_funcs: _,
+        wpa_crypto_funcs: _,
+        static_rx_buf_num: _,
+        dynamic_rx_buf_num: _,
+        tx_buf_type: _,
+        static_tx_buf_num: _,
+        dynamic_tx_buf_num: _,
+        rx_mgmt_buf_type: _,
+        rx_mgmt_buf_num: _,
+        cache_tx_buf_num: _,
+        csi_enable: _,
+        ampdu_rx_enable: _,
+        ampdu_tx_enable: _,
+        amsdu_tx_enable: _,
+        nvs_enable: _,
+        nano_enable: _,
+        rx_ba_win: _,
+        wifi_task_core_id: _,
+        beacon_max_len: _,
+        mgmt_sbuf_num: _,
+        feature_caps: _,
+        sta_disconnected_pm: _,
+        espnow_max_encrypt_num: _,
+        tx_hetb_queue_num: _,
+        dump_hesigb_enable: _,
+        privacy_enhancements: _,
+        rmac_auto_reset_int: _,
+        magic: _,
+    } = config;
+};
+
+/// esp-idf-svc zeroes these two fields, which matches ESP-IDF only while their
+/// Kconfig options stay off.
+const _: () = assert!(WIFI_PRIVACY_ENHANCEMENTS_ENABLED == 0 && WIFI_RMAC_AUTO_RESET_INTERVAL == 0);
 
 /// Transient association or DHCP failures are common right after a reboot (the
 /// access point still holds state for this MAC), and a setup-AP fallback on a

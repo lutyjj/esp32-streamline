@@ -3,9 +3,9 @@
 FROM docker.io/espressif/idf-rust:esp32_1.95.0.0@sha256:1f90203f191cc94d7da1acf4da0e0e87aac128165115c1512f30668359f09dc6
 
 USER root
-# ESP-IDF v6.1. esp-idf-svc builds `wifi_init_config_t` field by field and
-# zeroes the rest, so check each ESP-IDF bump for new fields whose default is
-# not zero. QEMU never starts Wi-Fi; only a device boot proves it.
+# ESP-IDF v6.1. esp-idf-svc zeroes the `wifi_init_config_t` fields it does not
+# set, and `src/adapters/wifi.rs` fails the build when a bump changes that
+# struct. QEMU never starts Wi-Fi, so only a device boot proves a bump.
 ARG ESP_IDF_REV=fff9895c82d744c7237be8847347bdd1b07c6643
 RUN git init /opt/streamline-idf \
     && git -C /opt/streamline-idf remote add origin https://github.com/espressif/esp-idf.git \

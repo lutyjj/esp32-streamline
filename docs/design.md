@@ -66,7 +66,7 @@ TLS 1.2 PSK, TLS 1.3 PSK, VPN encapsulation, DTLS, and QUIC.
 | VPN | Depends on deployment | Depends on deployment | Makes device security depend on external infrastructure |
 | DTLS or QUIC | Yes | Yes | Replaces the proven ordered stream without a product need |
 
-[ESP-TLS](https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32/api-reference/protocols/esp_tls.html)
+[ESP-TLS](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/protocols/esp_tls.html)
 and [Python/OpenSSL](https://docs.python.org/3.15/library/ssl.html#ssl.SSLContext.set_psk_server_callback)
 provide the selected client and server boundaries. The firmware enables only
 TLS 1.3 PSK with ephemeral key exchange. The bridge requires the exact TLS

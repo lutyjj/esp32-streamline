@@ -2,7 +2,7 @@
 name = "streamline-firmware"
 version = "0.15.0" # x-release-please-version
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.95"
 license = "AGPL-3.0-or-later"
 
 [[bin]]
@@ -23,14 +23,16 @@ opt-level = "z"
 # Host-testable core logic, so these must build for every target, not only the
 # device: `sha2` backs the verifying-download pipeline in `update`; serde backs
 # the board descriptor model in `board`, parsed and validated on the host.
-sha2 = { version = "0.10", default-features = false }
+sha2 = { version = "0.11", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_urlencoded = "0.7"
 log = "0.4"
 anyhow = "1"
+# utoipa 6 omits empty response descriptions, which the OpenAPI 3.1 document it
+# emits requires. Stay on 5.x until every response declares a description.
 utoipa = { version = "5.5.0", optional = true }
-unicode-normalization = "0.1.25"
+unicode-normalization = "0.1.26"
 
 [features]
 api-spec = ["dep:utoipa"]
@@ -51,20 +53,21 @@ regex = "1"
 
 [target.'cfg(target_os = "espidf")'.dependencies]
 embedded-svc = "0.29"
-esp-idf-svc = { version = "0.52.1", features = ["critical-section"] }
-
-[patch.crates-io]
-# Upstream support for ESP-IDF 5.5.5's SD host configuration.
-esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal", rev = "c2dac82f5243b0b7036c392f8218e6a2b4f7e375" }
+esp-idf-svc = { version = "0.53.0", features = ["critical-section"] }
 
 [build-dependencies]
-embuild = { version = "0.33.4", features = ["espidf"] }
+embuild = { version = "0.33.7", features = ["espidf"] }
 # Gzips the embedded console and OpenAPI artifact at build time; the image
 # stores and serves them compressed (docs/design.md "HTTP API Shape").
 flate2 = "1"
 
 [[package.metadata.esp-idf-sys.extra_components]]
-remote_component = { name = "espressif/mdns", version = "1.8.2" }
+remote_component = { name = "espressif/mdns", version = "1.15.0" }
+
+# ESP-IDF 6 ships Ethernet PHY drivers as components; esp-idf-svc's OpenETH
+# driver for the QEMU image needs DP83848. Hardware images do not link it.
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/dp83848", version = "1.1.0" }
 
 [[package.metadata.esp-idf-sys.extra_components]]
 bindings_header = "bindings.h"

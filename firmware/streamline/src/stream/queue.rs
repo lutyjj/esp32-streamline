@@ -14,7 +14,7 @@ pub const QUEUE_DEPTH: usize = 48;
 // No packet admission or removal allocates after construction.
 const CHUNK_DEPTH: usize = 8;
 const CHUNK_COUNT: usize = QUEUE_DEPTH / CHUNK_DEPTH;
-const _: () = assert!(QUEUE_DEPTH % CHUNK_DEPTH == 0);
+const _: () = assert!(QUEUE_DEPTH.is_multiple_of(CHUNK_DEPTH));
 
 struct PacketStorage<T> {
     chunks: [VecDeque<T>; CHUNK_COUNT],

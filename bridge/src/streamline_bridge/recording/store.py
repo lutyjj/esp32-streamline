@@ -152,7 +152,7 @@ class RecordingStore:
                 if wav_stat.st_size != WAV_HEADER_BYTES + manifest.bytes:
                     continue
                 recordings.append(manifest.snapshot())
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecordingError):
+            except OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecordingError:
                 continue
         return recordings
 
@@ -172,7 +172,7 @@ class RecordingStore:
     def has_file(self, recording_id: str) -> bool:
         try:
             self._regular_stat(self.paths(recording_id).wav.name)
-        except (OSError, RecordingError):
+        except OSError, RecordingError:
             return False
         return True
 
@@ -232,7 +232,7 @@ class RecordingStore:
                         paths.wav.name,
                     )
                 )
-            except (OSError, RecordingError, ValueError):
+            except OSError, RecordingError, ValueError:
                 continue
         for wav_name in self._entry_names(suffix=".wav"):
             recording_id = wav_name[:-4]
@@ -275,7 +275,7 @@ class RecordingStore:
                         wav_name,
                     )
                 )
-            except (OSError, RecordingError, ValueError, wave.Error):
+            except OSError, RecordingError, ValueError, wave.Error:
                 continue
 
     def _open(self, name: str, flags: int, mode: int = 0o600) -> int:

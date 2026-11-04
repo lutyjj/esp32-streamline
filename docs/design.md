@@ -67,12 +67,12 @@ TLS 1.2 PSK, TLS 1.3 PSK, VPN encapsulation, DTLS, and QUIC.
 | DTLS or QUIC | Yes | Yes | Replaces the proven ordered stream without a product need |
 
 [ESP-TLS](https://docs.espressif.com/projects/esp-idf/en/v5.5.3/esp32/api-reference/protocols/esp_tls.html)
-and [Python/OpenSSL](https://docs.python.org/3.14/library/ssl.html#ssl.SSLContext.set_psk_server_callback)
+and [Python/OpenSSL](https://docs.python.org/3.15/library/ssl.html#ssl.SSLContext.set_psk_server_callback)
 provide the selected client and server boundaries. The firmware enables only
 TLS 1.3 PSK with ephemeral key exchange. The bridge requires the exact TLS
 version and cipher before it creates a source.
 
-The supported ESP32 and Python 3.14 bridge negotiate the exact profile with a
+The supported ESP32 and bridge negotiate the exact profile with a
 736.8 ms device handshake. The session consumes 36,476 bytes of device heap,
 keeps at least 75,300 bytes free, and streams more than 140 MB of 48 kHz stereo
 PCM for over ten uninterrupted minutes with zero network errors. The OTA image

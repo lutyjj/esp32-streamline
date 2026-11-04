@@ -460,7 +460,7 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
                     stall_started.set()
                     release_stall.wait(timeout=60)
                     self.wfile.write(payload[4096:])
-                except (BrokenPipeError, ConnectionResetError):
+                except BrokenPipeError, ConnectionResetError:
                     pass
                 return
             self.wfile.write(body)

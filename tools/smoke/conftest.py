@@ -9,6 +9,7 @@ unprovisioned flash, serial boot markers) carry the `emulated` marker and
 are skipped on hardware targets.
 """
 
+import json
 import os
 import shutil
 import socket
@@ -175,6 +176,21 @@ def provisioned_device(boot_device: Callable[..., EmulatedDevice]) -> EmulatedDe
     ready = wait_for_api(device.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
     return device
+
+
+@pytest.fixture(scope="session")
+def api_methods() -> dict[str, frozenset[str]]:
+    """Each path of the generated device API contract and the methods it serves.
+
+    The smoke Make targets mount `docs/openapi.json` and name it in
+    `STREAMLINE_API_CONTRACT`; tests derive their routes from it instead of
+    naming them.
+    """
+    location = os.environ.get("STREAMLINE_API_CONTRACT", "")
+    if not location:
+        pytest.fail("STREAMLINE_API_CONTRACT must name docs/openapi.json; run the suite through its Make target")
+    paths: dict[str, dict[str, Any]] = json.loads(Path(location).read_text())["paths"]
+    return {path: frozenset(operations) for path, operations in paths.items()}
 
 
 @pytest.fixture

@@ -97,6 +97,9 @@ FAILURE_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-fail-management-ota.
 # host can spare, because oversubscription reproduces the "no healthy
 # response" setup flake. Empty runs serially; CI uses two workers.
 SMOKE_JOBS ?=
+# The generated device API contract; smoke tests derive their routes from it.
+API_CONTRACT := $(REPO_ROOT)/docs/openapi.json
+CONTRACT_MOUNT := -v "$(API_CONTRACT):/contract/openapi.json:ro" -e STREAMLINE_API_CONTRACT=/contract/openapi.json
 smoke-qemu: qemu-image
 	@test -f "$(FLASH_IMAGE)" || (echo "FLASH_IMAGE=$(FLASH_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
 	@test -f "$(OTA_IMAGE)" || (echo "OTA_IMAGE=$(OTA_IMAGE) not found; build it with: make -C firmware qemu-artifacts" >&2; exit 2)
@@ -107,7 +110,7 @@ smoke-qemu: qemu-image
 		-v "$(abspath $(OTA_IMAGE)):/ota.bin:ro" \
 		-v "$(abspath $(FAILURE_IMAGE)):/failure.bin:ro" \
 		-v "$(CURDIR)/.smoke-qemu:/evidence" \
-		-v "$(CURDIR):/workspace" -w /workspace \
+		-v "$(CURDIR):/workspace" -w /workspace $(CONTRACT_MOUNT) \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_QEMU_IMAGE=/flash.bin \
 		$(QEMU_IMAGE) pytest smoke -v $(if $(SMOKE_JOBS),-n $(SMOKE_JOBS)) \
 			--basetemp=/evidence/pytest --root-logdir=/evidence/serial
@@ -124,7 +127,7 @@ smoke-device: qemu-image
 	PYTHONPATH=src python3 -m streamline_tools.smoke device --port "$(PORT)" \
 		$(if $(DEVICE),--url "http://$(DEVICE)")
 	$(if $(DEVICE),@{ sed -n 's/^STREAMLINE_ADMIN_KEY=//p' "$(REPO_ROOT)/.env" 2>/dev/null || true; } | $(CONTAINER) run --rm -i \
-		-v "$(CURDIR):/workspace" -w /workspace \
+		-v "$(CURDIR):/workspace" -w /workspace $(CONTRACT_MOUNT) \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_SMOKE_TARGET="http://$(DEVICE)" \
 		-e STREAMLINE_ADMIN_KEY_FD=0 \
 		$(QEMU_IMAGE) pytest smoke -v --capture=sys,@echo "DEVICE is unset: skipping the API contract suite")

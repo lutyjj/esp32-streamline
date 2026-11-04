@@ -38,6 +38,23 @@ def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:
     assert not failed, failed
 
 
+def test_unrouted_requests_answer_404_or_405(device_api: DeviceApi, api_methods: dict[str, frozenset[str]]) -> None:
+    unknown = "/api/no-such-endpoint"
+    assert unknown not in api_methods
+    post_only = min(path for path, methods in api_methods.items() if methods == {"post"})
+    get_only = min(path for path, methods in api_methods.items() if methods == {"get"})
+    code, body = device_api.fetch(unknown)
+    assert code == 404, body
+    assert "error" in json.loads(body)
+    code, body = device_api.post_form(unknown, {})
+    assert code == 404, body
+    # A request under the wrong method is refused before any handler runs.
+    code, body = device_api.fetch(post_only)
+    assert code == 405, (post_only, body)
+    code, body = device_api.post_form(get_only, {})
+    assert code == 405, (get_only, body)
+
+
 def test_signed_firmware_reports_its_trusted_key(device_api: DeviceApi) -> None:
     code, body = device_api.fetch("/api/status")
     assert code == 200

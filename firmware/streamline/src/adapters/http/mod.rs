@@ -227,9 +227,9 @@ pub fn bind() -> Result<Listener> {
         // generation before returning the one-time credential. Keep that work
         // on the HTTP task without approaching FreeRTOS's stack guard.
         stack_size: 14_336,
-        // One slot per API endpoint, the `/` console handler, and the `/*`
-        // fallback, so a new route never silently overflows the table.
-        max_uri_handlers: api::ENDPOINTS.len() + 2,
+        // One slot per API endpoint, the `/` console handler, and the GET and
+        // POST `/*` fallbacks, so a new route never silently overflows the table.
+        max_uri_handlers: api::ENDPOINTS.len() + 3,
         uri_match_wildcard: true,
         ..Default::default()
     })?;
@@ -241,16 +241,28 @@ pub fn bind() -> Result<Listener> {
     let mut routes = ContractServer::new(server, Arc::clone(&state));
     handlers::register(&mut routes)?;
     let mut server = routes.finish()?;
-    let fallback = Arc::clone(&state);
-    server.fn_handler("/*", Method::Get, move |request| {
-        match &fallback.wait().captive_portal {
-            Some(console_url) => {
-                log::info!("redirecting setup HTTP probe to {console_url}");
-                responses::redirect_to_console(request, console_url)
+    // ESP-IDF keeps matching after a path matches under another method, so a
+    // wildcard catches those requests too; the fallback answers them as the
+    // server's own 404 and 405 would.
+    for method in [Method::Get, Method::Post] {
+        let fallback = Arc::clone(&state);
+        server.fn_handler("/*", method, move |request| {
+            if method == Method::Get {
+                if let Some(console_url) = &fallback.wait().captive_portal {
+                    log::info!("redirecting setup HTTP probe to {console_url}");
+                    return responses::redirect_to_console(request, console_url);
+                }
             }
-            None => responses::not_found(request, "no endpoint matches this path"),
-        }
-    })?;
+            match api::RouteMiss::classify(request.uri()) {
+                api::RouteMiss::WrongMethod => {
+                    responses::method_not_allowed(request, "this path does not accept that method")
+                }
+                api::RouteMiss::UnknownPath => {
+                    responses::not_found(request, "no endpoint matches this path")
+                }
+            }
+        })?;
+    }
     Ok(Listener {
         _server: server,
         state,

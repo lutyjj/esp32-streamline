@@ -155,6 +155,17 @@ where
     error_response(request, 404, message)
 }
 
+pub(super) fn method_not_allowed<C>(
+    request: embedded_svc::http::server::Request<C>,
+    message: &str,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    error_response(request, 405, message)
+}
+
 pub(super) fn unavailable<C>(
     request: embedded_svc::http::server::Request<C>,
     message: &str,

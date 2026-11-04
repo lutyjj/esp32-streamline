@@ -592,6 +592,27 @@ pub const ENDPOINTS: &[Endpoint] = &[
     FACTORY_RESET,
 ];
 
+/// Why a request matched no route: its path is served under another method,
+/// or the device serves nothing at that path.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RouteMiss {
+    WrongMethod,
+    UnknownPath,
+}
+
+impl RouteMiss {
+    /// Classify a request URI that no route matched. The console page at `/`
+    /// and every declared endpoint count as served paths; the query is ignored.
+    pub fn classify(uri: &str) -> Self {
+        let path = uri.split_once('?').map_or(uri, |(path, _)| path);
+        if path == "/" || ENDPOINTS.iter().any(|endpoint| endpoint.path == path) {
+            Self::WrongMethod
+        } else {
+            Self::UnknownPath
+        }
+    }
+}
+
 #[cfg(feature = "api-spec")]
 mod spec {
     use super::*;
@@ -752,6 +773,29 @@ mod tests {
             assert_eq!(declared, expected, "response set for {}", endpoint.path);
         }
         assert!(mutations > 0, "no mutation endpoints found");
+    }
+
+    #[test]
+    fn a_served_path_under_another_method_is_a_wrong_method() {
+        assert_eq!(RouteMiss::classify(RESTART.path), RouteMiss::WrongMethod);
+        assert_eq!(RouteMiss::classify("/"), RouteMiss::WrongMethod);
+        assert_eq!(
+            RouteMiss::classify("/api/restart?now=1"),
+            RouteMiss::WrongMethod
+        );
+    }
+
+    #[test]
+    fn a_path_the_device_does_not_serve_is_unknown() {
+        assert_eq!(RouteMiss::classify("/api/missing"), RouteMiss::UnknownPath);
+        assert_eq!(
+            RouteMiss::classify("/api/status/extra"),
+            RouteMiss::UnknownPath
+        );
+        assert_eq!(
+            RouteMiss::classify("/api/missing?/api/status"),
+            RouteMiss::UnknownPath
+        );
     }
 
     #[test]

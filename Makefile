@@ -17,14 +17,17 @@ BRIDGE_IMAGE ?=
 REF ?=
 CAP ?=
 
-# Repository checks use maintained linters in pinned public containers. The
-# version tag names the tool and the digest fixes the supplied image.
-ACTIONLINT_IMAGE := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
-LYCHEE_IMAGE := lycheeverse/lychee:0.24.2@sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d
-MARKDOWNLINT_IMAGE := ghcr.io/igorshubovych/markdownlint-cli:v0.49.0@sha256:ac8605cdc57270579cc445fdc389bcab0ed9401b80b4770e90c05af7199dd40f
-YQ_IMAGE := mikefarah/yq:4.53.3@sha256:11a1f0b604b13dbbdc662260d8db6f644b22d8553122a25c1b5b2e8713ca6977
-GITLEAKS_IMAGE := zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
-OSV_SCANNER_IMAGE := ghcr.io/google/osv-scanner:v2.4.0@sha256:5116601dedc01c1c580eb92371883ec052fc4c13c3fbc109d621a63ac416d475
+# Repository checks use maintained linters in pinned public containers. Each
+# pin is a named stage in .github/tool-images.Dockerfile, where Dependabot
+# updates it: the version tag names the tool and the digest fixes the image.
+TOOL_IMAGES := $(REPO_ROOT)/.github/tool-images.Dockerfile
+tool_image = $(or $(shell sed -n 's/^FROM \([^ ]*\) AS $(1)$$/\1/p' $(TOOL_IMAGES)),$(error no '$(1)' stage in $(TOOL_IMAGES)))
+ACTIONLINT_IMAGE := $(call tool_image,actionlint)
+LYCHEE_IMAGE := $(call tool_image,lychee)
+MARKDOWNLINT_IMAGE := $(call tool_image,markdownlint)
+YQ_IMAGE := $(call tool_image,yq)
+GITLEAKS_IMAGE := $(call tool_image,gitleaks)
+OSV_SCANNER_IMAGE := $(call tool_image,osv-scanner)
 
 # Reach the component sub-makes through the environment so the `<component>-%`
 # forwarding rules below stay argument-free.

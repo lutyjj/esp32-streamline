@@ -9,6 +9,7 @@ device-agnostic API contract lives in `test_device_api.py`.
 import dataclasses
 import hashlib
 import http.server
+import itertools
 import json
 import re
 import socket
@@ -35,7 +36,7 @@ _OTA_URL_CANARY = "ota-url-private-canary"
 
 
 def test_http_connections_during_startup_do_not_abort(
-    boot_device: Callable[..., EmulatedDevice],
+    boot_device: Callable[..., EmulatedDevice], api_methods: dict[str, frozenset[str]]
 ) -> None:
     # Start clients before waiting for the server's serial readiness markers.
     device = boot_device()
@@ -43,18 +44,25 @@ def test_http_connections_during_startup_do_not_abort(
     assert address.hostname is not None and address.port is not None
     stop = threading.Event()
 
-    def connect_and_close() -> None:
-        while not stop.is_set():
+    # Every declared path, so the storm spans the whole route table; a GET to
+    # a POST-only route is refused before its handler runs.
+    paths = sorted(api_methods)
+
+    def connect_and_close(offset: int) -> None:
+        for path in itertools.islice(itertools.cycle(paths), offset, None):
+            if stop.is_set():
+                return
+            request = f"GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n".encode()
             try:
                 with socket.create_connection(
                     (str(address.hostname), int(address.port or 80)), timeout=0.2
                 ) as connection:
-                    connection.sendall(b"GET /api/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                    connection.sendall(request)
             except OSError:
                 pass
             stop.wait(0.01)
 
-    clients = [threading.Thread(target=connect_and_close) for _ in range(4)]
+    clients = [threading.Thread(target=connect_and_close, args=(offset,)) for offset in range(4)]
     for client in clients:
         client.start()
     try:
@@ -68,7 +76,8 @@ def test_http_connections_during_startup_do_not_abort(
     # Every route registers before the network comes up, so no startup request
     # can meet a route table that is still being filled in.
     assert isinstance(startup, bytes)
-    assert b"URI '/api/status' not found" not in startup, "a startup request missed a registered route"
+    missed = re.findall(rb"URI '[^']*' not found", startup)
+    assert not missed, f"startup requests missed registered routes: {missed}"
     ready = wait_for_api(device.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
 

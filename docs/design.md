@@ -72,12 +72,14 @@ provide the selected client and server boundaries. The firmware enables only
 TLS 1.3 PSK with ephemeral key exchange. The bridge requires the exact TLS
 version and cipher before it creates a source.
 
-The supported ESP32 and bridge negotiate the exact profile with a
-736.8 ms device handshake. The session consumes 36,476 bytes of device heap,
-keeps at least 75,300 bytes free, and streams more than 140 MB of 48 kHz stereo
-PCM for over ten uninterrupted minutes with zero network errors. The OTA image
-is 1,687,008 bytes, 83.04% of its application partition. Wrong keys and unknown
-identities fail before source admission.
+Measured against the Python 3.14 bridge, the supported ESP32 negotiates the
+exact profile with a 736.8 ms device handshake. The session consumes 36,476
+bytes of device heap, keeps at least 75,300 bytes free, and streams more than
+140 MB of 48 kHz stereo PCM for over ten uninterrupted minutes with zero network
+errors. The OTA image is 1,687,008 bytes, 83.04% of its application partition.
+Wrong keys and unknown identities fail before source admission. The Python 3.15
+bridge admits the same device profile and rejects an unknown identity; its
+handshake and streaming figures have not been measured.
 
 ## Server Integration Options
 

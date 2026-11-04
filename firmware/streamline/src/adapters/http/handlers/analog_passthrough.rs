@@ -1,7 +1,5 @@
 //! Local analog output setting and live codec reconciliation.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::{analog_passthrough::AnalogPassthroughRoute, api, mutation::MutationError};
@@ -10,12 +8,11 @@ use super::super::{
     requests::form,
     responses::{json_response, mutation_error},
     writes::update_configuration,
-    ApiState, ContractServer,
+    ContractServer,
 };
 
-pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
-    let state = Arc::clone(state);
-    server.handler(api::SET_ANALOG_PASSTHROUGH, move |mut request| {
+pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
+    server.handler(api::SET_ANALOG_PASSTHROUGH, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AnalogPassthroughSettingsRequest = form(&mut request)?;
             let capability = state.board.analog_passthrough.as_ref();
@@ -24,7 +21,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
                     "local analog output is not supported by this board".to_owned(),
                 ));
             }
-            let input_line = update_configuration(&state, |next| {
+            let input_line = update_configuration(state, |next| {
                 next.analog_passthrough_enabled = form.enabled;
                 Ok(next.audio.input_line)
             })?;

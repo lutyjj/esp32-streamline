@@ -1,7 +1,5 @@
 //! Device, network, identity, and update-policy settings handlers.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::{api, config::AutoUpdateSchedule, mutation::MutationError, recovery};
@@ -13,28 +11,23 @@ use super::super::{
     ApiState, ContractServer,
 };
 
-pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
-    let state = Arc::clone(state);
-    server.handler(api::SETTINGS, move |request| {
-        respond_settings(request, &state)
+pub(super) fn register_read(server: &mut ContractServer<'_>) -> Result<()> {
+    server.handler(api::SETTINGS, move |request, state| {
+        respond_settings(request, state)
     })
 }
 
-pub(super) fn register_network_writes(
-    server: &mut ContractServer<'_>,
-    state: &Arc<ApiState>,
-) -> Result<()> {
+pub(super) fn register_network_writes(server: &mut ContractServer<'_>) -> Result<()> {
     // The route table gates every mutating endpoint behind the admin key once
     // one is provisioned; an unconfigured device accepts setup writes so the
     // first key can be set. Wi-Fi and the stream target are separate nouns:
     // each write validates and applies only its own fields, so a malformed
     // target host cannot fail a Wi-Fi save and a Wi-Fi save cannot smuggle in
     // half-typed target edits.
-    let state_for_wifi = Arc::clone(state);
-    server.handler(api::SET_WIFI, move |mut request| {
+    server.handler(api::SET_WIFI, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::WifiSettingsRequest = form(&mut request)?;
-            let current = state_for_wifi.lock_config().clone();
+            let current = state.lock_config().clone();
             // Commissioning may set the initial stream target in the same
             // write, because the device reboots onto the home network right
             // after and the two cannot be posted separately. Absent target
@@ -48,10 +41,10 @@ pub(super) fn register_network_writes(
                 form.target_host,
                 form.target_port,
             );
-            persist_configuration(&state_for_wifi, next)
+            persist_configuration(state, next)
         })();
         match result {
-            Ok(()) => reboot_response(request, &state_for_wifi.restart),
+            Ok(()) => reboot_response(request, &state.restart),
             Err(error) => mutation_error(request, error),
         }
     })?;
@@ -61,37 +54,32 @@ pub(super) fn register_network_writes(
     // clears the target ("no bridge yet"). A target change takes effect on the
     // next boot; applying it to the running stream without a reboot is deferred
     // (the stream target is fixed when the network task spawns).
-    let state_for_target = Arc::clone(state);
-    server.handler(api::SET_TARGET, move |mut request| {
+    server.handler(api::SET_TARGET, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
-            update_configuration(&state_for_target, |next| {
+            update_configuration(state, |next| {
                 next.update_target(Some(form.target_host), form.target_port);
                 Ok(())
             })
         })();
         match result {
-            Ok(()) => reboot_response(request, &state_for_target.restart),
+            Ok(()) => reboot_response(request, &state.restart),
             Err(error) => mutation_error(request, error),
         }
     })
 }
 
-pub(super) fn register_identity_writes(
-    server: &mut ContractServer<'_>,
-    state: &Arc<ApiState>,
-) -> Result<()> {
+pub(super) fn register_identity_writes(server: &mut ContractServer<'_>) -> Result<()> {
     // The friendly device name only labels the console and browser tab, so it
     // applies immediately; no reboot is needed. Blank clears the name.
-    let state_for_name = Arc::clone(state);
-    server.handler(api::SET_NAME, move |mut request| {
+    server.handler(api::SET_NAME, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::NameSettingsRequest = form(&mut request)?;
-            let named = update_configuration(&state_for_name, |next| {
+            let named = update_configuration(state, |next| {
                 next.device_name = form.name.trim().to_owned();
                 Ok(next.device_name.clone())
             })?;
-            refresh_mdns_name(&state_for_name, &named);
+            refresh_mdns_name(state, &named);
             Ok(())
         })();
         match result {
@@ -104,14 +92,11 @@ pub(super) fn register_identity_writes(
     // commissioning write, which also arms authentication. Staging one here
     // would lock an unprovisioned caller out of the very Wi-Fi write that
     // finishes setup, so an uncommissioned device refuses instead.
-    let state_for_admin_key = Arc::clone(state);
-    server.handler(api::SET_ADMIN_KEY, move |mut request| {
+    server.handler(api::SET_ADMIN_KEY, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AdminKeySettingsRequest = form(&mut request)?;
-            state_for_admin_key
-                .mode
-                .require_commissioned("replacing the admin key")?;
-            update_configuration(&state_for_admin_key, |next| {
+            state.mode.require_commissioned("replacing the admin key")?;
+            update_configuration(state, |next| {
                 next.admin_key = form.admin_key;
                 Ok(())
             })
@@ -123,12 +108,8 @@ pub(super) fn register_identity_writes(
     })
 }
 
-pub(super) fn register_firmware_write(
-    server: &mut ContractServer<'_>,
-    state: &Arc<ApiState>,
-) -> Result<()> {
-    let state = Arc::clone(state);
-    server.handler(api::SET_FIRMWARE, move |mut request| {
+pub(super) fn register_firmware_write(server: &mut ContractServer<'_>) -> Result<()> {
+    server.handler(api::SET_FIRMWARE, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::FirmwareSettingsRequest = form(&mut request)?;
             let auto_update_schedule = match form.auto_update_schedule {
@@ -136,7 +117,7 @@ pub(super) fn register_firmware_write(
                 api::AutoUpdateScheduleRequest::Daily => AutoUpdateSchedule::Daily,
                 api::AutoUpdateScheduleRequest::Weekly => AutoUpdateSchedule::Weekly,
             };
-            update_configuration(&state, |next| {
+            update_configuration(state, |next| {
                 next.auto_update_schedule = auto_update_schedule;
                 Ok(())
             })

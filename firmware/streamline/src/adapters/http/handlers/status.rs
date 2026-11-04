@@ -1,7 +1,5 @@
 //! Runtime status, health, telemetry, and metrics handlers.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::{
@@ -24,17 +22,16 @@ use super::super::{
 
 const PROMETHEUS_CONTENT_TYPE: &str = "text/plain; version=0.0.4; charset=utf-8";
 
-pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
-    let state_for_status = Arc::clone(state);
-    server.handler(api::STATUS, move |request| {
-        let snapshot = telemetry_snapshot(&state_for_status);
+pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
+    server.handler(api::STATUS, move |request, state| {
+        let snapshot = telemetry_snapshot(state);
         json_response(
             request,
             200,
             &api::StatusResponse::from_snapshot(
                 &snapshot,
-                state_for_status.board.as_ref(),
-                state_for_status.health.as_ref(),
+                state.board.as_ref(),
+                state.health.as_ref(),
             ),
         )
     })?;
@@ -43,9 +40,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // blocking, 503 when they did. The same verdict rides `/api/status` under
     // `health` for the console; this endpoint is the status code a monitor or
     // `curl` can read without parsing JSON.
-    let state_for_health = Arc::clone(state);
-    server.handler(api::HEALTH, move |request| {
-        let health = &state_for_health.health;
+    server.handler(api::HEALTH, move |request, state| {
+        let health = &state.health;
         let code = if health.status == Severity::Blocking {
             503
         } else {
@@ -54,9 +50,8 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
         json_response(request, code, health.as_ref())
     })?;
 
-    let state_for_metrics = Arc::clone(state);
-    server.handler(api::METRICS, move |request| {
-        let snapshot = telemetry_snapshot(&state_for_metrics);
+    server.handler(api::METRICS, move |request, state| {
+        let snapshot = telemetry_snapshot(state);
         let mut writer = body_writer(request, 200, PROMETHEUS_CONTENT_TYPE)?;
         metrics::render_prometheus_to(&mut FmtToIo(&mut writer), &snapshot)
             .map_err(|_| anyhow::anyhow!("prometheus exposition write failed"))?;

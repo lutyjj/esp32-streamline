@@ -41,20 +41,35 @@ def test_http_connections_during_startup_do_not_abort(
     device = boot_device()
     address = urlsplit(device.api.base_url)
     assert address.hostname is not None and address.port is not None
+    target = (str(address.hostname), int(address.port))
+    request = b"GET /api/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
     stop = threading.Event()
+    status_lines: list[bytes] = []
 
     def connect_and_close() -> None:
         while not stop.is_set():
             try:
-                with socket.create_connection(
-                    (str(address.hostname), int(address.port or 80)), timeout=0.2
-                ) as connection:
-                    connection.sendall(b"GET /api/status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                with socket.create_connection(target, timeout=0.2) as connection:
+                    connection.sendall(request)
+            except OSError:
+                pass
+            stop.wait(0.01)
+
+    def connect_and_read() -> None:
+        # Routes register before the network comes up, so a request that lands
+        # mid-startup waits for its answer instead of matching a missing route.
+        while not stop.is_set():
+            try:
+                with socket.create_connection(target, timeout=0.2) as connection:
+                    connection.sendall(request)
+                    connection.settimeout(30)
+                    status_lines.append(connection.makefile("rb").readline())
             except OSError:
                 pass
             stop.wait(0.01)
 
     clients = [threading.Thread(target=connect_and_close) for _ in range(4)]
+    clients.append(threading.Thread(target=connect_and_read))
     for client in clients:
         client.start()
     try:
@@ -65,6 +80,9 @@ def test_http_connections_during_startup_do_not_abort(
         stop.set()
         for client in clients:
             client.join()
+    answered = [line for line in status_lines if line]
+    assert answered, "no startup request was answered"
+    assert all(line.startswith(b"HTTP/1.1 200") for line in answered), answered
     ready = wait_for_api(device.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
 

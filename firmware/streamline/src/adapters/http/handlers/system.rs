@@ -1,7 +1,5 @@
 //! API contract, authentication check, restart, and factory-reset handlers.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::{api, mutation::MutationError};
@@ -10,23 +8,20 @@ use super::super::{
     responses::{
         json_response, mutation_error, reboot_response, reboot_response_with, respond_gzip,
     },
-    ApiState, ContractServer, OPENAPI_GZ,
+    ContractServer, OPENAPI_GZ,
 };
 
 pub(super) fn register_contract(server: &mut ContractServer<'_>) -> Result<()> {
-    server.handler(api::OPENAPI, move |request| {
+    server.handler(api::OPENAPI, move |request, _| {
         respond_gzip(request, 200, "application/json", OPENAPI_GZ)
     })
 }
 
-pub(super) fn register_actions(
-    server: &mut ContractServer<'_>,
-    state: &Arc<ApiState>,
-) -> Result<()> {
+pub(super) fn register_actions(server: &mut ContractServer<'_>) -> Result<()> {
     // Verify an admin key without changing anything — the route table's
     // authentication gate does all the work — so the console can reject a
     // wrong key at unlock time instead of on the first settings write.
-    server.handler(api::UNLOCK, move |request| {
+    server.handler(api::UNLOCK, move |request, _| {
         json_response(request, 200, &api::Ack::ok())
     })?;
 
@@ -34,17 +29,15 @@ pub(super) fn register_actions(
     // trip to the power plug. The wrapping closure supplies the higher-ranked
     // connection lifetime `handler` demands, which the bare function item
     // cannot satisfy.
-    let state_for_restart = Arc::clone(state);
-    server.handler(api::RESTART, move |request| {
-        reboot_response(request, &state_for_restart.restart)
+    server.handler(api::RESTART, move |request, state| {
+        reboot_response(request, &state.restart)
     })?;
 
     // Factory reset erases the configuration but keeps the setup password:
     // it is device identity, and a pre-flashed unit's label must stay true.
     // The response shows the credentials before the device leaves the
     // network — their only appearance in the API.
-    let state = Arc::clone(state);
-    server.handler(api::FACTORY_RESET, move |request| {
+    server.handler(api::FACTORY_RESET, move |request, state| {
         let result = state
             .lock_store()
             .clear()

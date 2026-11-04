@@ -9,10 +9,7 @@ mod writes;
 /// The audio mutation flow, shared with the button adapter's `cycle_input`.
 pub(in crate::adapters) use handlers::audio::set_audio;
 
-use std::{
-    net::Ipv4Addr,
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use anyhow::{bail, Result};
 use embedded_svc::http::Method;
@@ -66,6 +63,9 @@ pub struct ApiState {
     pub setup_network: SetupNetwork,
     /// Digest-authentication nonce state (see [`crate::auth`]).
     pub auth: Mutex<crate::auth::DigestAuthenticator>,
+    /// The setup console URL that unknown GET paths redirect to while the
+    /// setup network serves clients; `None` answers them 404.
+    pub captive_portal: Option<String>,
 }
 
 pub fn probe(endpoint: Endpoint) -> Result<()> {
@@ -140,12 +140,12 @@ fn method(endpoint: Endpoint) -> Method {
 /// cannot forget the admin-key check, because the route table owns it.
 struct ContractServer<'a> {
     inner: EspHttpServer<'a>,
-    state: Arc<ApiState>,
+    state: Arc<OnceLock<Arc<ApiState>>>,
     registered: u64,
 }
 
 impl<'a> ContractServer<'a> {
-    fn new(inner: EspHttpServer<'a>, state: Arc<ApiState>) -> Self {
+    fn new(inner: EspHttpServer<'a>, state: Arc<OnceLock<Arc<ApiState>>>) -> Self {
         assert!(
             api::ENDPOINTS.len() <= u64::BITS as usize,
             "API endpoint tracker capacity exceeded"
@@ -161,6 +161,7 @@ impl<'a> ContractServer<'a> {
     where
         F: for<'request> Fn(
                 embedded_svc::http::server::Request<&mut EspHttpConnection<'request>>,
+                &Arc<ApiState>,
             ) -> Result<()>
             + Send
             + 'static,
@@ -173,17 +174,18 @@ impl<'a> ContractServer<'a> {
         if self.registered & bit != 0 {
             bail!("duplicate API handler for {}", endpoint.path);
         }
-        let state = Arc::clone(&self.state);
+        let gate = Arc::clone(&self.state);
         self.inner
             .fn_handler(endpoint.path, method(endpoint), move |request| {
+                let state = gate.wait();
                 let _control = state.control.lock().expect("control lock poisoned");
-                if let Err(challenge) = auth::authorized_for(&request, &state, endpoint) {
+                if let Err(challenge) = auth::authorized_for(&request, state, endpoint) {
                     return responses::unauthorized(request, &challenge);
                 }
                 if endpoint.method == HttpMethod::Post && state.restart.is_pending() {
                     return responses::unavailable(request, "device is restarting");
                 }
-                handler(request)
+                handler(request, state)
             })?;
         self.registered |= bit;
         Ok(())
@@ -205,27 +207,55 @@ impl<'a> ContractServer<'a> {
     }
 }
 
-/// Initialize the listener before any network interface can accept traffic.
-pub fn bind() -> Result<EspHttpServer<'static>> {
+/// A listener with its complete route table. Requests that reach it before
+/// [`start`] publishes the API state wait for that state; a startup that fails
+/// restarts the device instead.
+pub struct Listener {
+    server: EspHttpServer<'static>,
+    state: Arc<OnceLock<Arc<ApiState>>>,
+}
+
+/// Initialize the listener and register every route before any network
+/// interface can accept traffic. ESP-IDF publishes a handler-table slot before
+/// it fills that slot in, so a route registered while requests arrive can be
+/// matched half-built.
+pub fn bind() -> Result<Listener> {
     esp_idf_svc::netif::NetifStack::initialize()?;
-    Ok(EspHttpServer::new(&Configuration {
+    let mut server = EspHttpServer::new(&Configuration {
         // Authenticated transport-key writes serialize a complete atomic state
         // generation before returning the one-time credential. Keep that work
         // on the HTTP task without approaching FreeRTOS's stack guard.
         stack_size: 14_336,
-        // One slot per API endpoint, the `/` console handler, and the optional
-        // setup fallback, so a new route never silently overflows the table.
+        // One slot per API endpoint, the `/` console handler, and the `/*`
+        // fallback, so a new route never silently overflows the table.
         max_uri_handlers: api::ENDPOINTS.len() + 2,
         uri_match_wildcard: true,
         ..Default::default()
-    })?)
+    })?;
+    let state = Arc::new(OnceLock::new());
+    server.fn_handler("/", Method::Get, move |request| {
+        responses::respond_gzip(request, 200, "text/html; charset=utf-8", INDEX_GZ)
+    })?;
+
+    let mut routes = ContractServer::new(server, Arc::clone(&state));
+    handlers::register(&mut routes)?;
+    let mut server = routes.finish()?;
+    let fallback = Arc::clone(&state);
+    server.fn_handler("/*", Method::Get, move |request| {
+        match &fallback.wait().captive_portal {
+            Some(console_url) => {
+                log::info!("redirecting setup HTTP probe to {console_url}");
+                responses::redirect_to_console(request, console_url)
+            }
+            None => responses::not_found(request, "no endpoint matches this path"),
+        }
+    })?;
+    Ok(Listener { server, state })
 }
 
-pub fn start(
-    mut server: EspHttpServer<'static>,
-    state: Arc<ApiState>,
-    captive_portal_address: Option<Ipv4Addr>,
-) -> Result<EspHttpServer<'static>> {
+/// Serve `state` from the listener's routes, and restart the device once an
+/// endpoint schedules a restart.
+pub fn start(listener: Listener, state: Arc<ApiState>) -> Result<EspHttpServer<'static>> {
     let restart = Arc::clone(&state.restart);
     crate::adapters::task::prepare(
         esp_idf_svc::hal::task::thread::ThreadSpawnConfiguration {
@@ -239,19 +269,8 @@ pub fn start(
         },
     )?
     .commit();
-    server.fn_handler("/", Method::Get, move |request| {
-        responses::respond_gzip(request, 200, "text/html; charset=utf-8", INDEX_GZ)
-    })?;
-
-    let mut server = ContractServer::new(server, Arc::clone(&state));
-    handlers::register(&mut server, &state)?;
-    let mut server = server.finish()?;
-    if let Some(address) = captive_portal_address {
-        let console_url = crate::captive_portal::console_url(address);
-        server.fn_handler("/*", Method::Get, move |request| {
-            log::info!("redirecting setup HTTP probe to {console_url}");
-            responses::redirect_to_console(request, &console_url)
-        })?;
+    if listener.state.set(state).is_err() {
+        bail!("API state is already published");
     }
-    Ok(server)
+    Ok(listener.server)
 }

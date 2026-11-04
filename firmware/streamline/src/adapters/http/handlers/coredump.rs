@@ -17,7 +17,7 @@ const NO_PARTITION: &str = "this flash layout has no coredump partition; a USB r
 pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
     // Behind the admin key, like /api/logs: a dump is a copy of device memory
     // at the moment of the panic and can hold anything the firmware held.
-    server.handler(api::COREDUMP, move |request| match coredump::state() {
+    server.handler(api::COREDUMP, move |request, _| match coredump::state() {
         CoredumpState::Unavailable => unavailable(request, NO_PARTITION),
         CoredumpState::Empty => json_response(
             request,
@@ -37,8 +37,9 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
         ),
     })?;
 
-    server.handler(api::COREDUMP_IMAGE, move |request| {
-        match coredump::state() {
+    server.handler(
+        api::COREDUMP_IMAGE,
+        move |request, _| match coredump::state() {
             CoredumpState::Unavailable => unavailable(request, NO_PARTITION),
             CoredumpState::Empty => not_found(request, "no crash dump is stored"),
             CoredumpState::Present { .. } => {
@@ -49,16 +50,17 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
                 std::io::Write::flush(&mut writer)?;
                 Ok(())
             }
-        }
-    })?;
+        },
+    )?;
 
-    server.handler(api::COREDUMP_ERASE, move |request| {
-        match coredump::state() {
+    server.handler(
+        api::COREDUMP_ERASE,
+        move |request, _| match coredump::state() {
             CoredumpState::Unavailable => unavailable(request, NO_PARTITION),
             CoredumpState::Empty | CoredumpState::Present { .. } => {
                 coredump::erase()?;
                 json_response(request, 200, &api::Ack::ok())
             }
-        }
-    })
+        },
+    )
 }

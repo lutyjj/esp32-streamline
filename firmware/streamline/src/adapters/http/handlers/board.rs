@@ -1,7 +1,5 @@
 //! Board catalog and descriptor-selection handlers.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::{
@@ -11,12 +9,11 @@ use crate::{
 use super::super::{
     requests::form,
     responses::{json_response, mutation_error, reboot_response},
-    ApiState, ContractServer,
+    ContractServer,
 };
 
-pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
-    let state = Arc::clone(state);
-    server.handler(api::BOARDS, move |request| {
+pub(super) fn register_read(server: &mut ContractServer<'_>) -> Result<()> {
+    server.handler(api::BOARDS, move |request, state| {
         let boards = state
             .board_catalog
             .iter()
@@ -34,9 +31,8 @@ pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiStat
     })
 }
 
-pub(super) fn register_write(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
-    let state = Arc::clone(state);
-    server.handler(api::SET_BOARD, move |mut request| {
+pub(super) fn register_write(server: &mut ContractServer<'_>) -> Result<()> {
+    server.handler(api::SET_BOARD, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::BoardSettingsRequest = form(&mut request)?;
             let update = board::resolve_update(

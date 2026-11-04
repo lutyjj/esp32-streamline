@@ -14,7 +14,7 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
     // the addresses the device talks to. Reads that stay open elsewhere in this
     // API return facts chosen for publication; this one returns whatever the
     // firmware said.
-    server.handler(api::LOGS, move |request| {
+    server.handler(api::LOGS, move |request, _| {
         // Copy under the capture lock, serialize after it: the response goes
         // out over a socket, and holding the lock for that would block every
         // task that logs.

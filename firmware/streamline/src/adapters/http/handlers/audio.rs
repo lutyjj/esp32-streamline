@@ -1,7 +1,5 @@
 //! Audio settings and profile handlers.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::{
@@ -18,29 +16,24 @@ use super::super::{
     ApiState, ContractServer,
 };
 
-pub(super) fn register_read(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
-    let state = Arc::clone(state);
-    server.handler(api::AUDIO_PROFILES, move |request| {
+pub(super) fn register_read(server: &mut ContractServer<'_>) -> Result<()> {
+    server.handler(api::AUDIO_PROFILES, move |request, state| {
         let catalog = state.lock_audio_profiles();
         json_response(request, 200, &*catalog)
     })
 }
 
-pub(super) fn register_writes(
-    server: &mut ContractServer<'_>,
-    state: &Arc<ApiState>,
-) -> Result<()> {
+pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
     // While streaming, audio params are written straight to the running codec
     // and play detection re-baselines to the new input scale; no reboot is
     // needed. Setup mode has no running codec, so the values wait in the
     // configuration and take effect when the device boots into streaming.
-    let state_for_audio = Arc::clone(state);
-    server.handler(api::SET_AUDIO, move |mut request| {
+    server.handler(api::SET_AUDIO, move |mut request, state| {
         // Ok(true) means the settings were applied live.
         let result = (|| -> Result<bool, MutationError> {
             let form: api::AudioSettingsRequest = form(&mut request)?;
             set_audio(
-                &state_for_audio,
+                state,
                 AudioSettings {
                     input_line: form.input_line,
                     input_gain: form.input_gain,
@@ -50,14 +43,13 @@ pub(super) fn register_writes(
         })();
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
-            Ok(false) => reboot_response(request, &state_for_audio.restart),
+            Ok(false) => reboot_response(request, &state.restart),
             Err(error) => mutation_error(request, error),
         }
     })?;
 
     // Replacing definitions never activates a profile as a side effect.
-    let state_for_profile_catalog = Arc::clone(state);
-    server.handler(api::SET_AUDIO_PROFILES, move |mut request| {
+    server.handler(api::SET_AUDIO_PROFILES, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::AudioProfilesSettingsRequest = form(&mut request)?;
             let mut catalog: AudioProfileCatalog =
@@ -65,20 +57,15 @@ pub(super) fn register_writes(
                     MutationError::InvalidInput(format!("invalid audio profile catalog: {error}"))
                 })?;
             catalog.active_profile_id = None;
-            catalog
-                .validate(state_for_profile_catalog.board.as_ref())
-                .map_err(|error| {
-                    MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
-                })?;
-            let previous_active = state_for_profile_catalog
-                .lock_audio_profiles()
-                .active_profile_id
-                .clone();
+            catalog.validate(state.board.as_ref()).map_err(|error| {
+                MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
+            })?;
+            let previous_active = state.lock_audio_profiles().active_profile_id.clone();
             catalog.active_profile_id = previous_active
                 .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));
-            let current_audio = state_for_profile_catalog.lock_config().audio;
+            let current_audio = state.lock_config().audio;
             catalog.reconcile_active_audio(current_audio);
-            save_audio_profiles(&state_for_profile_catalog, catalog)
+            save_audio_profiles(state, catalog)
         })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
@@ -87,28 +74,23 @@ pub(super) fn register_writes(
     })?;
 
     // A stable activation contract also serves external source selectors.
-    let state_for_active_profile = Arc::clone(state);
-    server.handler(api::SET_AUDIO_PROFILE, move |mut request| {
+    server.handler(api::SET_AUDIO_PROFILE, move |mut request, state| {
         let result = (|| -> Result<bool, MutationError> {
             let form: api::ActiveAudioProfileRequest = form(&mut request)?;
-            let mut catalog = state_for_active_profile.lock_audio_profiles().clone();
+            let mut catalog = state.lock_audio_profiles().clone();
             let audio = catalog.activate(Some(&form.profile_id)).map_err(|error| {
                 MutationError::InvalidInput(format!("invalid active audio profile: {error:?}"))
             })?;
             if let Some(audio) = audio {
-                let current = state_for_active_profile.lock_config().clone();
-                return change_audio(
-                    &state_for_active_profile,
-                    RuntimeConfig { audio, ..current },
-                    catalog,
-                );
+                let current = state.lock_config().clone();
+                return change_audio(state, RuntimeConfig { audio, ..current }, catalog);
             }
-            save_audio_profiles(&state_for_active_profile, catalog)?;
+            save_audio_profiles(state, catalog)?;
             Ok(true)
         })();
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
-            Ok(false) => reboot_response(request, &state_for_active_profile.restart),
+            Ok(false) => reboot_response(request, &state.restart),
             Err(error) => mutation_error(request, error),
         }
     })

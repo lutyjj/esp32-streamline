@@ -121,9 +121,11 @@ The rollback-enabled bootloader starts a newly installed slot in
 network, registers every management route, and successfully reads complete
 responses from `/api/status` and `/api/settings` through the HTTP server.
 
-The HTTP listener is initialized before Wi-Fi or Ethernet starts, so its
-callback registry exists before external clients can connect. Routes are
-registered after the device mode and shared state are available.
+The HTTP listener, its callback registry, and every route are initialized
+before Wi-Fi or Ethernet starts, because ESP-IDF's route table is not safe to
+extend while the server matches requests. Startup then publishes the device
+mode and shared state to those routes; a request that arrives earlier waits
+for them.
 
 HTTP startup, route registration, or probe failure leaves the image unconfirmed.
 The firmware records a management startup failure in the persistent OTA note

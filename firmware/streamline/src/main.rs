@@ -111,8 +111,9 @@ fn run() -> Result<()> {
             .ensure_setup_network_password(&mut EspRandom)?,
     };
 
-    // Finish the HTTP callback registry before any interface accepts connections.
-    let server = http::bind().map_err(|error| management_startup_error(&store, error))?;
+    // Finish the HTTP callback registry and route table before any interface
+    // accepts connections.
+    let listener = http::bind().map_err(|error| management_startup_error(&store, error))?;
     log::info!("management listener initialized");
 
     // The network is the one seam between the hardware image and the QEMU
@@ -154,6 +155,19 @@ fn run() -> Result<()> {
     };
 
     #[cfg(not(feature = "qemu"))]
+    let captive_portal_address = match mode {
+        Mode::Setup | Mode::Recovery => match wifi::access_point_address() {
+            Some(address) => Some(address),
+            None => {
+                log::warn!("setup AP address unavailable; captive portal disabled");
+                None
+            }
+        },
+        Mode::Provisioned => None,
+    };
+    #[cfg(feature = "qemu")]
+    let captive_portal_address = None;
+    #[cfg(not(feature = "qemu"))]
     let key_verifier = Some(Arc::new(TlsKeyVerifier) as Arc<dyn KeyVerifier>);
     #[cfg(feature = "qemu")]
     let key_verifier: Option<Arc<dyn KeyVerifier>> = None;
@@ -177,20 +191,9 @@ fn run() -> Result<()> {
         health,
         setup_network,
         auth: Mutex::new(streamline_firmware::auth::DigestAuthenticator::default()),
+        captive_portal: captive_portal_address
+            .map(streamline_firmware::captive_portal::console_url),
     });
-    #[cfg(not(feature = "qemu"))]
-    let captive_portal_address = match mode {
-        Mode::Setup | Mode::Recovery => match wifi::access_point_address() {
-            Some(address) => Some(address),
-            None => {
-                log::warn!("setup AP address unavailable; captive portal disabled");
-                None
-            }
-        },
-        Mode::Provisioned => None,
-    };
-    #[cfg(feature = "qemu")]
-    let captive_portal_address = None;
     if let Err(error) = status_light::start(
         Arc::clone(&state.board),
         Arc::clone(&state.config),
@@ -205,7 +208,7 @@ fn run() -> Result<()> {
     }
     let server = streamline_firmware::boot_health::start(
         mode,
-        || http::start(server, Arc::clone(&state), captive_portal_address),
+        || http::start(listener, Arc::clone(&state)),
         http::probe,
         ota::mark_current_valid,
     );

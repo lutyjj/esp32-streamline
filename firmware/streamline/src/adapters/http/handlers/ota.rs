@@ -9,21 +9,17 @@ use crate::{adapters::ota as ota_adapter, api, mutation::MutationError, update};
 use super::super::{
     requests::form,
     responses::{mutation_error, ota_accepted, reboot_response},
-    ApiState, ContractServer,
+    ContractServer,
 };
 
-pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
+pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
     // Check GitHub for a newer release without installing it. The work runs on a
     // background task; clients poll `/api/status` (the `ota` field) for the
     // outcome (`up-to-date` or `update-available`).
-    let state_for_check = Arc::clone(state);
-    server.handler(api::OTA_CHECK, move |request| {
+    server.handler(api::OTA_CHECK, move |request, state| {
         ota_accepted(
             request,
-            ota_adapter::spawn_check(
-                Arc::clone(&state_for_check.ota),
-                state_for_check.stream.clone(),
-            ),
+            ota_adapter::spawn_check(Arc::clone(&state.ota), state.stream.clone()),
         )
     })?;
 
@@ -32,8 +28,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // image instead (development installs, see docs/ota.md). The work runs on a
     // background task; clients poll `/api/status` (the `ota` field) for
     // progress, and the device reboots into the new image on success.
-    let state_for_ota = Arc::clone(state);
-    server.handler(api::OTA_UPDATE, move |mut request| {
+    server.handler(api::OTA_UPDATE, move |mut request, state| {
         let form: api::OtaUpdateRequest = match form(&mut request) {
             Ok(form) => form,
             Err(error) => return mutation_error(request, error),
@@ -47,10 +42,10 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
         ota_accepted(
             request,
             ota_adapter::spawn_update(
-                Arc::clone(&state_for_ota.ota),
-                Arc::clone(&state_for_ota.store),
+                Arc::clone(&state.ota),
+                Arc::clone(&state.store),
                 source,
-                state_for_ota.stream.clone(),
+                state.stream.clone(),
             ),
         )
     })?;
@@ -59,8 +54,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
     // boot selection first so an unavailable rollback returns an error instead
     // of a false "rebooting"; the device then reboots into the previous image,
     // which its boot path re-confirms.
-    let state = Arc::clone(state);
-    server.handler(api::OTA_ROLLBACK, move |request| {
+    server.handler(api::OTA_ROLLBACK, move |request, state| {
         match ota_adapter::select_rollback_slot() {
             Ok(()) => reboot_response(request, &state.restart),
             // No stored previous image is a state conflict, not a bad request.

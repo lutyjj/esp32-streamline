@@ -1,7 +1,5 @@
 //! Runtime streaming pause/resume handler.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 
 use crate::{api, mutation::MutationError};
@@ -9,12 +7,11 @@ use crate::{api, mutation::MutationError};
 use super::super::{
     requests::form,
     responses::{json_response, mutation_error},
-    ApiState, ContractServer,
+    ContractServer,
 };
 
-pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
-    let state = Arc::clone(state);
-    server.handler(api::SET_STREAM, move |mut request| {
+pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
+    server.handler(api::SET_STREAM, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::StreamRequest = form(&mut request)?;
             let Some(stream) = &state.stream else {

@@ -37,6 +37,12 @@ updates:
       - "*"
     allow:
       - dependency-type: all
+    # firmware/streamline/Cargo.toml holds utoipa on 5.x and says why; drop
+    # this rule when that hold goes.
+    ignore:
+      - dependency-name: utoipa
+        update-types:
+          - version-update:semver-major
     multi-ecosystem-group: firmware
 
   - package-ecosystem: docker

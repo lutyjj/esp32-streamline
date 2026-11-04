@@ -196,7 +196,7 @@ class TlsPskAuthenticator:
             if key_id is None or stream.version() != "TLSv1.3" or cipher is None or cipher[0] != TLS_CIPHER:
                 stream.close()
                 raise ValueError("producer did not negotiate the required TLS profile")
-        except (OSError, ssl.SSLError, ValueError):
+        except OSError, ssl.SSLError, ValueError:
             self._record(False)
             raise
         self._record(True)

@@ -47,7 +47,7 @@ def running_addon() -> Iterator[None]:
                 raise RuntimeError("add-on exited before becoming healthy")
             try:
                 return request("GET", "/health") == b"ok\n"
-            except (URLError, TimeoutError):
+            except URLError, TimeoutError:
                 return False
 
         try:

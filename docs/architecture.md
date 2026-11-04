@@ -71,7 +71,10 @@ does for the repository checks. The retired Home Assistant builder in
 `ha-addon/Makefile` is the one exception: it publishes no further images.
 
 The firmware Dockerfile pins the official ESP-IDF source and provides it through
-`IDF_PATH`. Cargo pins the Rust bindings for that SDK. Validate these pins
+`IDF_PATH`. It also applies upstream ESP-IDF commits that the pinned tag lacks
+from `firmware/streamline/patches/`. Once a pin bump includes a patch's commit,
+`git apply` fails the image build; delete that patch and its Dockerfile step.
+Cargo pins the Rust bindings for that SDK. Validate these pins
 together with the firmware build and QEMU smoke; network, TLS, and audio
 changes also need the hardware proof in `AGENTS.md`.
 

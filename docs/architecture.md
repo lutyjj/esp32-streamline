@@ -42,8 +42,8 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 Each component builds from a public base and owns its dependency and tool
 configuration. The firmware embeds the device console build. The bridge
 packages the bridge console build, and the Home Assistant add-on packages the
-bridge and that console into a self-contained context the official Home
-Assistant builder validates for each published architecture. These are
+bridge and that console into a self-contained context that Home Assistant's
+legacy builder test-builds for each published architecture. These are
 deliberate build-time dependencies, not shared runtime state.
 
 Dependabot groups updates by the proof they need. Every new component or
@@ -63,7 +63,8 @@ until someone fixes it on the update branch.
 
 Dependabot reads image pins only from Dockerfiles, so an image a Makefile runs
 takes its pin from a Dockerfile stage, as `.github/tool-images.Dockerfile`
-does for the repository checks.
+does for the repository checks. The retired Home Assistant builder in
+`ha-addon/Makefile` is the one exception: it publishes no further images.
 
 The firmware Dockerfile pins the official ESP-IDF source and provides it through
 `IDF_PATH`. Cargo pins the Rust bindings, including upstream revisions needed by

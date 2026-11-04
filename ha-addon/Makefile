@@ -14,11 +14,10 @@ REVISION ?= $(shell git -C $(REPO_ROOT) rev-parse HEAD 2>/dev/null || echo unkno
 # validator consume it. Gitignored — it is generated, never committed.
 BUILD_CONTEXT := .build-context
 
-# The official Home Assistant add-on builder is the owning ecosystem's tool:
-# it loads config.yaml, maps architectures, and builds the image the store
-# builds. `--test` validates and builds without pushing. Pinned by digest.
-# Home Assistant retired this builder, and 2026.03.2 is its final release, so
-# no updater tracks the pin.
+# Home Assistant's legacy add-on builder test-builds each requested
+# architecture and refuses one that config.yaml does not list. Home Assistant
+# retired it, and 2026.03.2 is its final image, so no updater tracks this pin.
+# Replace it with Supervisor's own add-on config schema, then delete it.
 HA_BUILDER := ghcr.io/home-assistant/amd64-builder:2026.03.2@sha256:bb0916d95292d912aaf9a02f0568db336f81d12f6f9b617a93d362efa8bc5d2f
 HA_BUILDER_RUN = $(CONTAINER) run --rm --privileged \
 	-v /var/run/docker.sock:/var/run/docker.sock
@@ -66,10 +65,10 @@ context:
 	cp -R ../bridge/src/streamline_bridge $(BUILD_CONTEXT)/src/
 	cp ../console/dist/bridge/bridge.html $(BUILD_CONTEXT)/src/streamline_bridge/console.html
 
-# Run the owning ecosystem's validator and builder tests. The official builder
-# validates config.yaml semantics and builds both published architectures; a
-# malformed-but-valid-YAML fixture proves the gate actually rejects bad
-# metadata. Option and schema parity stays with the bridge (test_ha_addon.py).
+# Test-build both published architectures with the legacy builder. A fixture
+# whose config.yaml omits amd64 proves the builder refuses an unlisted
+# architecture. Option and schema parity stays with the bridge
+# (test_ha_addon.py).
 validate: context
 	$(HA_BUILDER_RUN) -v "$(CURDIR)/$(BUILD_CONTEXT):/data:ro" $(HA_BUILDER) \
 		--test --amd64 --aarch64 -t /data --no-latest --no-cache

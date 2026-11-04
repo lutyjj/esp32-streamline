@@ -159,19 +159,6 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     };
 
     #[cfg(not(feature = "qemu"))]
-    let captive_portal_address = match mode {
-        Mode::Setup | Mode::Recovery => match wifi::access_point_address() {
-            Some(address) => Some(address),
-            None => {
-                log::warn!("setup AP address unavailable; captive portal disabled");
-                None
-            }
-        },
-        Mode::Provisioned => None,
-    };
-    #[cfg(feature = "qemu")]
-    let captive_portal_address = None;
-    #[cfg(not(feature = "qemu"))]
     let key_verifier = Some(Arc::new(TlsKeyVerifier) as Arc<dyn KeyVerifier>);
     #[cfg(feature = "qemu")]
     let key_verifier: Option<Arc<dyn KeyVerifier>> = None;
@@ -195,9 +182,20 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
         health,
         setup_network,
         auth: Mutex::new(streamline_firmware::auth::DigestAuthenticator::default()),
-        captive_portal: captive_portal_address
-            .map(streamline_firmware::captive_portal::console_url),
     });
+    #[cfg(not(feature = "qemu"))]
+    let captive_portal_address = match mode {
+        Mode::Setup | Mode::Recovery => match wifi::access_point_address() {
+            Some(address) => Some(address),
+            None => {
+                log::warn!("setup AP address unavailable; captive portal disabled");
+                None
+            }
+        },
+        Mode::Provisioned => None,
+    };
+    #[cfg(feature = "qemu")]
+    let captive_portal_address = None;
     if let Err(error) = status_light::start(
         Arc::clone(&state.board),
         Arc::clone(&state.config),
@@ -212,7 +210,7 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     }
     streamline_firmware::boot_health::start(
         mode,
-        || http::start(listener, Arc::clone(&state)),
+        || http::start(listener, Arc::clone(&state), captive_portal_address),
         http::probe,
         ota::mark_current_valid,
     )

@@ -45,7 +45,6 @@ def test_unrouted_requests_answer_404_or_405(device_api: DeviceApi, api_methods:
     get_only = min(path for path, methods in api_methods.items() if methods == {"get"})
     code, body = device_api.fetch(unknown)
     assert code == 404, body
-    assert "error" in json.loads(body)
     code, body = device_api.post_form(unknown, {})
     assert code == 404, body
     # A request under the wrong method is refused before any handler runs.

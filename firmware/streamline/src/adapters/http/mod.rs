@@ -9,11 +9,19 @@ mod writes;
 /// The audio mutation flow, shared with the button adapter's `cycle_input`.
 pub(in crate::adapters) use handlers::audio::set_audio;
 
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::{
+    ffi::{CStr, CString},
+    net::Ipv4Addr,
+    sync::{Arc, Mutex, MutexGuard, OnceLock},
+};
 
 use anyhow::{bail, Result};
 use embedded_svc::http::Method;
-use esp_idf_svc::http::server::{Configuration, EspHttpConnection, EspHttpServer};
+use esp_idf_svc::{
+    handle::RawHandle,
+    http::server::{Configuration, EspHttpConnection, EspHttpServer},
+    sys::{self, esp, httpd_err_code_t, httpd_req_t},
+};
 
 use crate::{
     adapters::{codec::DeviceCodec, mdns::MdnsAdvertisement, nvs::ConfigStore},
@@ -63,9 +71,6 @@ pub struct ApiState {
     pub setup_network: SetupNetwork,
     /// Digest-authentication nonce state (see [`crate::auth`]).
     pub auth: Mutex<crate::auth::DigestAuthenticator>,
-    /// The setup console URL that unknown GET paths redirect to while the
-    /// setup network serves clients; `None` answers them 404.
-    pub captive_portal: Option<String>,
 }
 
 pub fn probe(endpoint: Endpoint) -> Result<()> {
@@ -227,9 +232,9 @@ pub fn bind() -> Result<Listener> {
         // generation before returning the one-time credential. Keep that work
         // on the HTTP task without approaching FreeRTOS's stack guard.
         stack_size: 14_336,
-        // One slot per API endpoint, the `/` console handler, and the GET and
-        // POST `/*` fallbacks, so a new route never silently overflows the table.
-        max_uri_handlers: api::ENDPOINTS.len() + 3,
+        // One slot per API endpoint and the `/` console handler, so a new route
+        // never silently overflows the table.
+        max_uri_handlers: api::ENDPOINTS.len() + 1,
         uri_match_wildcard: true,
         ..Default::default()
     })?;
@@ -240,29 +245,14 @@ pub fn bind() -> Result<Listener> {
 
     let mut routes = ContractServer::new(server, Arc::clone(&state));
     handlers::register(&mut routes)?;
-    let mut server = routes.finish()?;
-    // ESP-IDF keeps matching after a path matches under another method, so a
-    // wildcard catches those requests too; the fallback answers them as the
-    // server's own 404 and 405 would.
-    for method in [Method::Get, Method::Post] {
-        let fallback = Arc::clone(&state);
-        server.fn_handler("/*", method, move |request| {
-            if method == Method::Get {
-                if let Some(console_url) = &fallback.wait().captive_portal {
-                    log::info!("redirecting setup HTTP probe to {console_url}");
-                    return responses::redirect_to_console(request, console_url);
-                }
-            }
-            match api::RouteMiss::classify(request.uri()) {
-                api::RouteMiss::WrongMethod => {
-                    responses::method_not_allowed(request, "this path does not accept that method")
-                }
-                api::RouteMiss::UnknownPath => {
-                    responses::not_found(request, "no endpoint matches this path")
-                }
-            }
-        })?;
-    }
+    let server = routes.finish()?;
+    esp!(unsafe {
+        sys::httpd_register_err_handler(
+            server.handle(),
+            sys::httpd_err_code_t_HTTPD_404_NOT_FOUND,
+            Some(not_found),
+        )
+    })?;
     Ok(Listener {
         _server: server,
         state,
@@ -271,7 +261,11 @@ pub fn bind() -> Result<Listener> {
 
 /// Serve `state` from the listener's routes, and restart the device once an
 /// endpoint schedules a restart.
-pub fn start(listener: &Listener, state: Arc<ApiState>) -> Result<()> {
+pub fn start(
+    listener: &Listener,
+    state: Arc<ApiState>,
+    captive_portal_address: Option<Ipv4Addr>,
+) -> Result<()> {
     let restart = Arc::clone(&state.restart);
     crate::adapters::task::prepare(
         esp_idf_svc::hal::task::thread::ThreadSpawnConfiguration {
@@ -285,8 +279,49 @@ pub fn start(listener: &Listener, state: Arc<ApiState>) -> Result<()> {
         },
     )?
     .commit();
-    if listener.state.set(state).is_err() {
+    let console_url = captive_portal_address.map(|address| {
+        CString::new(crate::captive_portal::console_url(address)).expect("a URL has no NUL byte")
+    });
+    if CAPTIVE_PORTAL.set(console_url).is_err() || listener.state.set(state).is_err() {
         bail!("API state is already published");
     }
     Ok(())
+}
+
+/// The setup console URL while the setup network serves clients. ESP-IDF error
+/// handlers receive no context, and the firmware runs one listener.
+static CAPTIVE_PORTAL: OnceLock<Option<CString>> = OnceLock::new();
+const REDIRECT_BODY: &CStr = c"Open the StreamLine setup console.";
+
+/// Answer a request no route matched. While the setup network serves clients,
+/// a GET redirects to the setup console, as captive-portal probes expect;
+/// anything else gets ESP-IDF's own 404.
+unsafe extern "C" fn not_found(
+    request: *mut httpd_req_t,
+    error: httpd_err_code_t,
+) -> sys::esp_err_t {
+    let is_get = unsafe { (*request).method } == sys::http_method_HTTP_GET as i32;
+    match CAPTIVE_PORTAL.wait() {
+        Some(console_url) if is_get => {
+            log::info!(
+                "redirecting setup HTTP probe to {}",
+                console_url.to_string_lossy()
+            );
+            unsafe {
+                sys::httpd_resp_set_status(request, c"303 See Other".as_ptr());
+                sys::httpd_resp_set_type(request, c"text/plain; charset=utf-8".as_ptr());
+                sys::httpd_resp_set_hdr(request, c"Cache-Control".as_ptr(), c"no-store".as_ptr());
+                sys::httpd_resp_set_hdr(request, c"Location".as_ptr(), console_url.as_ptr());
+                sys::httpd_resp_send(
+                    request,
+                    REDIRECT_BODY.as_ptr(),
+                    REDIRECT_BODY.to_bytes().len() as isize,
+                )
+            }
+        }
+        _ => {
+            unsafe { sys::httpd_resp_send_err(request, error, core::ptr::null()) };
+            sys::ESP_FAIL
+        }
+    }
 }

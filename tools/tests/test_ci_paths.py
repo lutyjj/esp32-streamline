@@ -18,6 +18,7 @@ class CiPathOwnershipTests(unittest.TestCase):
             "mk/common.mk": ALL_FILTERS,
             ".github/workflows/ci.yml": ALL_FILTERS,
             ".markdownlint.json": {"repository"},
+            ".github/tool-images.Dockerfile": {"repository"},
             "lychee.toml": {"repository"},
             "SECURITY.md": {"repository"},
             "bridge/README.md": {"bridge", "console", "console_e2e", "repository"},

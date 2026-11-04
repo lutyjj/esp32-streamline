@@ -1,6 +1,23 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.16.0](https://github.com/lutyjj/esp32-streamline/compare/v0.15.0...v0.16.0) (2026-11-04)
+
+
+### Bug Fixes
+
+* **firmware:** answer unrouted requests with 404 or 405 as ESP-IDF does ([c18314d](https://github.com/lutyjj/esp32-streamline/commit/c18314d7d09f275fde883da1b0e82a500f774aba))
+* **firmware:** backport ESP-IDF's DRAM-safe OpenETH interrupt log ([4dea383](https://github.com/lutyjj/esp32-streamline/commit/4dea3833ff8ec0891314fcde7c5083e71a173109))
+* **firmware:** keep the HTTP listener alive through a fatal startup error ([ab2fa77](https://github.com/lutyjj/esp32-streamline/commit/ab2fa7708efaab37338d34a46333109591ace14b))
+* **firmware:** redirect captive probes from ESP-IDF's 404 handler ([e8556fb](https://github.com/lutyjj/esp32-streamline/commit/e8556fb53d5c75174fce5b520030f7d7102b560e))
+* **firmware:** register every HTTP route before the network starts ([b5b7152](https://github.com/lutyjj/esp32-streamline/commit/b5b71520ebdd346f270aa2ae274598423c9c4542))
+* **ha-addon:** check why the builder refuses the negative fixture ([18117fa](https://github.com/lutyjj/esp32-streamline/commit/18117fa000e34c4d2fd1b523d55b5c951a9b9c0c))
+
+
+### Miscellaneous Chores
+
+* cut the 0.16.0 release ([6296fbd](https://github.com/lutyjj/esp32-streamline/commit/6296fbdac052bcebd27d69a00d064c4c590c1dd2))
+
 ## [0.15.0](https://github.com/lutyjj/esp32-streamline/compare/v0.14.0...v0.15.0) (2026-10-09)
 
 

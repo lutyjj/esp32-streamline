@@ -276,29 +276,27 @@ fn run() -> Result<()> {
             // stream. Confirming before the reboot keeps a transient outage right
             // after an OTA from tripping the pending-verify rollback.
             #[cfg(not(feature = "qemu"))]
-            Mode::Recovery => {
-                if reconnect_timer.take_due(booted_at.elapsed()) {
-                    log::info!("recovery: retrying the saved Wi-Fi");
-                    if wifi::reconnect_station(&mut network) {
-                        let probes = streamline_firmware::boot_health::PROBES
-                            .into_iter()
-                            .try_for_each(http::probe);
-                        if let Err(error) = probes {
-                            log::warn!("recovery: management probe failed: {error:#}");
-                            continue;
+            Mode::Recovery if reconnect_timer.take_due(booted_at.elapsed()) => {
+                log::info!("recovery: retrying the saved Wi-Fi");
+                if wifi::reconnect_station(&mut network) {
+                    let probes = streamline_firmware::boot_health::PROBES
+                        .into_iter()
+                        .try_for_each(http::probe);
+                    if let Err(error) = probes {
+                        log::warn!("recovery: management probe failed: {error:#}");
+                        continue;
+                    }
+                    match state.restart.request_when_idle(
+                        &state.control,
+                        &state.ota,
+                        ota::mark_current_valid,
+                    ) {
+                        Ok(true) => log::info!("recovery: rejoining the saved network"),
+                        Ok(false) => {
+                            log::info!("recovery: rejoin deferred while device is busy")
                         }
-                        match state.restart.request_when_idle(
-                            &state.control,
-                            &state.ota,
-                            ota::mark_current_valid,
-                        ) {
-                            Ok(true) => log::info!("recovery: rejoining the saved network"),
-                            Ok(false) => {
-                                log::info!("recovery: rejoin deferred while device is busy")
-                            }
-                            Err(error) => {
-                                log::warn!("recovery: slot confirmation failed: {error:#}")
-                            }
+                        Err(error) => {
+                            log::warn!("recovery: slot confirmation failed: {error:#}")
                         }
                     }
                 }

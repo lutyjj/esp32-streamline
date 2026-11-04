@@ -40,16 +40,30 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | `.github`, root and component Makefiles | Change selection, checks, release assembly, publishing | Component behavior |
 
 Each component builds from a public base and owns its dependency and tool
-configuration. Register every new component or dependency surface in
-`.github/dependabot.yml`, in the update group that matches its proof, in the
-same change. Dependabot reads image pins only from Dockerfiles, so an image a
-Makefile runs takes its pin from a Dockerfile stage, as
-`.github/tool-images.Dockerfile` does for the repository checks. The firmware
-embeds the device console build. The bridge packages the bridge console build,
-and the Home Assistant add-on packages the bridge and that console into a
-self-contained context the official Home Assistant builder validates for each
-published architecture. These are deliberate build-time dependencies, not
-shared runtime state.
+configuration. The firmware embeds the device console build. The bridge
+packages the bridge console build, and the Home Assistant add-on packages the
+bridge and that console into a self-contained context the official Home
+Assistant builder validates for each published architecture. These are
+deliberate build-time dependencies, not shared runtime state.
+
+Dependabot groups updates by the proof they need. Every new component or
+dependency surface joins the matching group in `.github/dependabot.yml` in the
+same change:
+
+| Group | Cadence | Carries | Proof |
+|---|---|---|---|
+| `host` | Weekly | uv, npm, and every Dockerfile outside the firmware | CI without a device; only the advisory QEMU smoke exercises the tools image's QEMU runner |
+| `firmware` | Monthly | Cargo and the firmware image | The QEMU smoke, plus a device for network, TLS, or audio changes |
+| `github-actions` | Weekly | Workflow and composite action pins | CI itself, so these stay apart from the updates CI judges |
+
+The grouping couples updates in two ways. The repository check audits every
+lockfile, so an open advisory in any group holds every pull request until its
+fix merges. And an update that needs code changes holds the rest of its group
+until someone fixes it on the update branch.
+
+Dependabot reads image pins only from Dockerfiles, so an image a Makefile runs
+takes its pin from a Dockerfile stage, as `.github/tool-images.Dockerfile`
+does for the repository checks.
 
 The firmware Dockerfile pins the official ESP-IDF source and provides it through
 `IDF_PATH`. Cargo pins the Rust bindings, including upstream revisions needed by

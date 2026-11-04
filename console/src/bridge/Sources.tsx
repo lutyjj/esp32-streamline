@@ -12,7 +12,7 @@ import { StateChip } from './StateChip';
 import { bridge } from './state';
 
 export function IncomingSource({ ip, source }: { ip: string; source: SourceSnapshot }) {
-  const previous = useRef<SourceSnapshot>();
+  const previous = useRef<SourceSnapshot | undefined>(undefined);
   const summary = useMemo(() => receptionSummary(source, previous.current), [source]);
   useEffect(() => {
     previous.current = bridge.unreachable.value ? undefined : source;

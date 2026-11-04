@@ -75,6 +75,7 @@ test('commissioning key custody is explicit across two browser origins', async (
   await setup.getByLabel('Wi-Fi password').fill('correct horse');
   await setup.getByRole('button', { name: 'Continue' }).click();
   await expect(setup.getByText(/Browser storage only remembers this address/)).toBeVisible();
+  // biome-ignore lint/performance/useDomNodeTextContent: a Playwright locator reads the rendered key the user copies, not a DOM property.
   const savedKey = await setup.locator('.keyblock').innerText();
   await setup.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(setup.getByLabel('Your Wi-Fi network')).toHaveValue('home');

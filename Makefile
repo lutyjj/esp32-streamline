@@ -135,8 +135,7 @@ repository-secret-scanner-self-test:
 docs-check: repository-check ;
 api-contract-check: firmware-openapi-check console-lint ;
 
-# Forward any `<component>-<verb>` to that component's Makefile. Pass-through
-# variables reach the sub-make through `export` above.
+# Forward any `<component>-<verb>` to that component's Makefile.
 bridge-%:
 	$(MAKE) -C bridge $*
 

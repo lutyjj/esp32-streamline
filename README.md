@@ -229,10 +229,19 @@ make bridge-up                            # run the bridge from source
 
 Flashing runs on the host because Docker Desktop on macOS cannot reliably
 expose serial devices. Install the tool once with `cargo install espflash`, or
-use the [Nix shell](CONTRIBUTING.md#development). espflash selects the serial
-port: the one recognized USB serial adapter, or `ESPFLASH_PORT` when set. Set
-it when several serial ports are attached, for example
-`ESPFLASH_PORT=/dev/ttyUSB0 make firmware-flash`.
+use the [Nix shell](CONTRIBUTING.md#development). Flash over serial with
+`make firmware-flash`, not a bare `espflash flash`: the target also writes the
+rollback bootloader and the two-slot partition table that OTA updates depend
+on, with a flash-size header that matches the chip.
+
+espflash selects the serial port. When exactly one USB serial adapter is
+attached and espflash recognizes it (CP210x and CH340 adapters), every serial
+target finds it without configuration. In any other setup, set
+`ESPFLASH_PORT`, for example `ESPFLASH_PORT=/dev/ttyUSB0 make firmware-capture`.
+Without it, `firmware-flash` and `firmware-monitor` take the one recognized
+adapter or ask which port to use, and the scripted `firmware-capture` and
+`tools-smoke-device` either stop with an error or wait at that prompt until
+their time limit.
 
 A device already on the network needs none of that to be read: it serves its
 own log, this boot and the one before it, at `GET /api/logs`, and the crash

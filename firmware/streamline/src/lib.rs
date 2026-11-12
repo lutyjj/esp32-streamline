@@ -37,13 +37,12 @@ pub mod random;
 pub mod reconnect;
 pub mod recovery;
 pub mod restart;
+pub mod runtime_snapshot;
 pub mod setup_network;
 pub mod state;
 pub mod stream;
 pub mod task_start;
 pub mod telemetry;
-#[cfg(feature = "otel-poc")]
-pub mod tracing_poc;
 pub mod transport;
 pub mod transport_diagnostics;
 pub mod update;

@@ -69,7 +69,7 @@ source admission.
 - send batch: up to four whole packets in one write; collect for at most
   40 ms after the first packet, then flush even if capture has stopped;
   the sender reuses a 4,192-byte internal-RAM buffer
-- TLS outgoing content budget: 4,208 bytes, including the inner content type
+- TLS outgoing content budget: 4,432 bytes, including sampled trace context and the inner content type
   and padding; the adapter verifies that the negotiated payload capacity holds
   one complete send batch. Dynamic record buffers release this allocation
   after use

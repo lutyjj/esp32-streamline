@@ -12,6 +12,7 @@ mod settings;
 mod status;
 mod stream;
 mod system;
+mod telemetry;
 mod transport;
 
 use std::sync::Arc;
@@ -22,6 +23,7 @@ use super::{ApiState, ContractServer};
 
 pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -> Result<()> {
     status::register(server, state)?;
+    telemetry::register(server, state)?;
     logs::register(server)?;
     coredump::register(server)?;
     settings::register_read(server, state)?;

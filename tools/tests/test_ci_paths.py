@@ -35,6 +35,9 @@ class CiPathOwnershipTests(unittest.TestCase):
             "tools/src/streamline_tools/smoke.py": {"qemu_smoke", "tools"},
             "tools/src/streamline_tools/analysis/report.py": {"tools"},
             "firmware/streamline/src/api.rs": {"firmware", "qemu_smoke"},
+            "docs/telemetry-api.json": {"api_contract", "bridge", "repository"},
+            "firmware/streamline/src/telemetry/packet.rs": {"firmware", "qemu_smoke", "tools"},
+            "bridge/src/streamline_bridge/semconv.py": {"bridge", "console", "console_e2e", "ha-addon", "tools"},
         }
         filters = load_filters()
 

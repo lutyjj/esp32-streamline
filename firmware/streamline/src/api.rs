@@ -12,6 +12,7 @@ pub mod examples;
 mod requests;
 mod responses;
 
+pub use crate::telemetry::{SessionRequest, TelemetryStatus};
 pub use endpoints::*;
 pub use requests::*;
 pub use responses::*;

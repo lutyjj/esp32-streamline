@@ -33,7 +33,7 @@ pub fn status() -> Value {
     });
     let status = StatusResponse {
         firmware_version: FIRMWARE_VERSION,
-        firmware_variant: crate::telemetry::FirmwareVariant::Standard,
+        firmware_variant: crate::runtime_snapshot::FirmwareVariant::Standard,
         device_name: "",
         mode: "provisioned",
         config_source: "nvs",
@@ -175,4 +175,9 @@ pub fn settings() -> Value {
         config_source: "nvs",
     };
     serde_json::to_value(&settings).expect("serializable settings example")
+}
+pub fn telemetry() -> crate::telemetry::TelemetryStatus {
+    let mut status = crate::telemetry::Telemetry::default().snapshot();
+    status.wall_clock_ready = true;
+    status
 }

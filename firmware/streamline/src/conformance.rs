@@ -102,7 +102,36 @@ fn valid_frames() -> Vec<ValidFrame> {
         payload_bytes: 0,
         frame_hex: hex::encode(&PacketHeader::silence(123).encode()),
     }])
+    .chain([traced_frame(false), traced_frame(true)])
     .collect()
+}
+
+fn traced_frame(silence: bool) -> ValidFrame {
+    let header = if silence {
+        PacketHeader::silence(9)
+    } else {
+        PacketHeader::new(9)
+    };
+    let mut frame = Vec::new();
+    crate::protocol::append_header(
+        &header.encode(),
+        Some(b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
+        &mut frame,
+    );
+    let size = if silence { 0 } else { PAYLOAD_BYTES };
+    frame.extend(payload(size));
+    ValidFrame {
+        name: if silence {
+            "traced_silence"
+        } else {
+            "traced_pcm"
+        }
+        .into(),
+        sequence: 9,
+        frames: FRAMES_PER_PACKET,
+        payload_bytes: size as u32,
+        frame_hex: hex::encode(&frame),
+    }
 }
 
 fn valid_frame(name: &str, sequence: u32) -> ValidFrame {
@@ -146,6 +175,28 @@ fn invalid_frames() -> Vec<InvalidFrame> {
         bad_payload_size("payload_oversize", PAYLOAD_BYTES + BYTES_PER_FRAME),
         corrupt("payload_length_mismatch", "payload", |frame| {
             frame.truncate(HEADER_LEN + PAYLOAD_BYTES - 1)
+        }),
+        corrupt("zero_trace_id", "traceparent", |frame| {
+            frame[5] = crate::protocol::TRACED_HEADER_LEN as u8;
+            frame.splice(
+                HEADER_LEN..HEADER_LEN,
+                b"00-00000000000000000000000000000000-00f067aa0ba902b7-01"
+                    .iter()
+                    .copied(),
+            );
+        }),
+        corrupt("unsupported_trace_version", "traceparent", |frame| {
+            frame[5] = crate::protocol::TRACED_HEADER_LEN as u8;
+            frame.splice(
+                HEADER_LEN..HEADER_LEN,
+                b"01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+                    .iter()
+                    .copied(),
+            );
+        }),
+        corrupt("truncated_trace_context", "traceparent", |frame| {
+            frame[5] = crate::protocol::TRACED_HEADER_LEN as u8;
+            frame.truncate(HEADER_LEN);
         }),
     ]
 }

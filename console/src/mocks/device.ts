@@ -32,7 +32,7 @@ interface MockLogLine {
 }
 
 import { DIGEST_USERNAME, digestResponse, parseDigestFields } from '../lib/digest';
-import { deviceConfig, deviceStatus, setupNetwork } from './fixtures';
+import { deviceConfig, deviceStatus, setupNetwork, telemetryStatus } from './fixtures';
 
 /**
  * The admin key the fake device accepts once provisioned: the canonical
@@ -83,6 +83,7 @@ export class FakeDevice {
   readonly handlers: HttpHandler[];
   private status!: StatusResponse;
   private config!: SettingsResponse;
+  private telemetry = telemetryStatus();
   private profiles!: AudioProfileCatalog;
   /** The accepted admin key; null while the device has none (setup mode). */
   private adminKey!: string | null;
@@ -114,6 +115,20 @@ export class FakeDevice {
       this.read('/api/boards', () => this.boards()),
       this.read('/api/openapi.json', () => contract),
       this.readAuthorized('/api/logs', () => this.nextLogs()),
+      this.readAuthorized('/api/telemetry', () => this.telemetry),
+      this.write('/api/telemetry/start', (body) => {
+        this.telemetry = {
+          ...telemetryStatus(),
+          state: 'running',
+          remaining_seconds: Number(body.duration_seconds),
+        };
+        return this.telemetry;
+      }),
+      this.write('/api/telemetry/stop', () => {
+        this.telemetry.state = 'finished';
+        this.telemetry.remaining_seconds = 0;
+        return this.telemetry;
+      }),
       this.readAuthorized('/api/coredump', () => ({
         present: this.coredump !== null,
         size_bytes: this.coredump?.byteLength ?? 0,

@@ -10,13 +10,15 @@ from urllib.parse import urlsplit
 
 from fastapi.testclient import TestClient
 
-from streamline_bridge.http import make_app, stream_wav_body, wav_header
+from streamline_bridge.http import make_app
+from streamline_bridge.packet_tracing import AudioChunk
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT
 from streamline_bridge.recording import RecordingService, RecordingStore
 from streamline_bridge.recording_http import MAX_DOWNLOAD_TICKETS, RecordingHttpService
 from streamline_bridge.sources import Source, SourceRegistry
 from streamline_bridge.transport import TlsPskAuthenticator, TransportControl, TransportStateStore
+from streamline_bridge.wav_stream import WavStream, wav_header
 
 
 def make_pipeline() -> AudioPipeline:
@@ -154,6 +156,9 @@ class HttpContractTests(SourceTestCase):
             ("/health", "get"): {"200", "503"},
             ("/api/transport", "get"): {"200"},
             ("/api/unlock", "post"): {"200", "401", "503"},
+            ("/api/telemetry", "get"): {"200", "401", "503"},
+            ("/api/telemetry/start", "post"): {"202", "400", "401", "409", "413", "503"},
+            ("/api/telemetry/stop", "post"): {"202", "401", "503"},
             ("/api/transport/mode", "put"): {"200", "400", "401", "413", "503"},
             ("/api/transport/keys/{key_id}", "put"): {"201", "400", "401", "409", "413", "503"},
             ("/api/transport/keys/{key_id}", "delete"): {"200", "400", "401", "404", "503"},
@@ -203,9 +208,9 @@ class HttpContractTests(SourceTestCase):
     def test_wav_stream_releases_client_lifecycle_when_consumer_closes(self) -> None:
         source = self.connect_source("192.0.2.10")
         lease = self.sources.lease_http("192.0.2.10")
-        body = stream_wav_body(lease, "192.0.2.20", "/streamline.wav")
+        body = WavStream(lease, "192.0.2.20", "/streamline.wav")
         self.assertEqual(next(body), wav_header())
-        source.hub.clients.publish(b"pcm")
+        source.hub.clients.publish(AudioChunk(b"pcm"))
         self.assertEqual(next(body), b"pcm")
 
         body.close()

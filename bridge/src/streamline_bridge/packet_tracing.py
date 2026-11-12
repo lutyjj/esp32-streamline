@@ -1,40 +1,73 @@
-"""Sample packet residence in the playout buffer using the OpenTelemetry SDK."""
+"""Sampled packet context and monotonic timing through playout and delivery."""
 
 from __future__ import annotations
 
-import os
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode
+
+from streamline_bridge.semconv import (
+    SAMPLE_INTERVAL,
+    SPAN_STREAMLINE_BRIDGE_CLIENT_SUBMIT,
+    SPAN_STREAMLINE_BRIDGE_PLAYOUT,
+    STREAMLINE_PACKET_SEQUENCE,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from streamline_bridge.telemetry import Telemetry
 
-def configure() -> TracerProvider | None:
-    """Enable the experiment only with an explicit standard OTLP endpoint."""
-    if not (os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")):
-        return None
-    provider = TracerProvider(
-        resource=Resource.create({"service.name": "streamline-bridge", "service.instance.id": str(uuid4())})
-    )
-    provider.add_span_processor(
-        BatchSpanProcessor(
-            OTLPSpanExporter(timeout=0.5),
-            max_queue_size=128,
-            max_export_batch_size=16,
-            schedule_delay_millis=1000,
+
+class TimedSpan:
+    """End once with a duration immune to wall-clock adjustments."""
+
+    def __init__(
+        self,
+        tracer: trace.Tracer,
+        name: str,
+        parent: Context | None = None,
+        sequence: int | None = None,
+        monotonic_ns: Callable[[], int] = time.monotonic_ns,
+        wall_ns: Callable[[], int] = time.time_ns,
+    ) -> None:
+        self._clock = monotonic_ns
+        self._started = monotonic_ns()
+        self._wall = wall_ns()
+        self.span = tracer.start_span(
+            name,
+            context=parent or Context(),
+            start_time=self._wall,
+            attributes={STREAMLINE_PACKET_SEQUENCE: sequence} if sequence is not None else None,
         )
-    )
-    trace.set_tracer_provider(provider)
-    return provider
+        self._ended = False
+
+    def end(self, error: str | None = None) -> None:
+        if not self._ended:
+            if error is not None:
+                self.span.set_status(Status(StatusCode.ERROR, error))
+            self.span.end(end_time=self._wall + self._clock() - self._started)
+            self._ended = True
+
+
+@dataclass(frozen=True)
+class PacketContext:
+    context: Context
+    sequence: int
+    tracer: trace.Tracer
+
+    def delivery(self) -> TimedSpan:
+        return TimedSpan(self.tracer, SPAN_STREAMLINE_BRIDGE_CLIENT_SUBMIT, self.context, self.sequence)
+
+
+@dataclass(frozen=True)
+class AudioChunk:
+    payload: bytes
+    context: PacketContext | None = None
 
 
 class PacketTraces:
@@ -42,36 +75,35 @@ class PacketTraces:
 
     def __init__(
         self,
+        telemetry: Telemetry | None = None,
+        *,
         tracer: trace.Tracer | None = None,
         monotonic_ns: Callable[[], int] = time.monotonic_ns,
         wall_ns: Callable[[], int] = time.time_ns,
     ) -> None:
-        self._tracer = tracer or trace.get_tracer("streamline.audio")
+        self._telemetry = telemetry
+        self._tracer = tracer or trace.NoOpTracer()
         self._monotonic_ns = monotonic_ns
         self._wall_ns = wall_ns
-        self._pending: dict[int, tuple[trace.Span, int, int]] = {}
+        self._pending: dict[int, tuple[TimedSpan, trace.Tracer]] = {}
 
-    def admit(self, sequence: int) -> None:
-        if sequence % 257 or len(self._pending) >= 8:
+    def admit(self, sequence: int, parent: Context | None = None) -> None:
+        if (parent is None and sequence % SAMPLE_INTERVAL) or len(self._pending) >= 8:
             return
-        wall = self._wall_ns()
-        span = self._tracer.start_span(
-            "streamline.bridge.playout",
-            start_time=wall,
-            attributes={"streamline.packet.sequence": sequence},
-        )
-        if span.is_recording():
-            self._pending[sequence] = span, wall, self._monotonic_ns()
+        tracer = self._telemetry.tracer if self._telemetry is not None else self._tracer
+        span = TimedSpan(tracer, SPAN_STREAMLINE_BRIDGE_PLAYOUT, parent, sequence, self._monotonic_ns, self._wall_ns)
+        if span.span.is_recording():
+            self._pending[sequence] = span, tracer
 
-    def played(self, sequence: int, discarded: bool = False) -> None:
-        if pending := self._pending.pop(sequence, None):
-            span, wall, started = pending
-            if discarded:
-                span.set_status(Status(StatusCode.ERROR, "silence removed to reduce buffer"))
-            span.end(end_time=wall + self._monotonic_ns() - started)
+    def played(self, sequence: int, discarded: bool = False) -> PacketContext | None:
+        pending = self._pending.pop(sequence, None)
+        if pending is None:
+            return None
+        span, tracer = pending
+        span.end("silence removed to reduce buffer" if discarded else None)
+        return None if discarded else PacketContext(trace.set_span_in_context(span.span), sequence, tracer)
 
     def reset(self) -> None:
-        for span, wall, started in self._pending.values():
-            span.set_status(Status(StatusCode.ERROR, "source reset before playout"))
-            span.end(end_time=wall + self._monotonic_ns() - started)
+        for span, _tracer in self._pending.values():
+            span.end("source reset before playout")
         self._pending.clear()

@@ -11,6 +11,7 @@ emulator can produce lives in `test_qemu_device.py` behind the `emulated` marker
 import dataclasses
 import json
 import re
+import time
 
 import pytest
 import requests
@@ -30,6 +31,56 @@ _BUTTON_ACTIONS = (
     "restart",
     "factory_reset",
 )
+
+
+def test_telemetry_auth_and_volatile_session_lifecycle(authed_device_api: DeviceApi) -> None:
+    api = authed_device_api
+    stranger = dataclasses.replace(api, admin_key=None)
+    assert stranger.fetch("/api/telemetry")[0] == 401
+    code, body = api.fetch("/api/telemetry")
+    assert code == 200
+    assert json.loads(body)["state"] in ("disabled", "finished"), "smoke requires an idle diagnostic session"
+    config = {"endpoint": "http://192.0.2.1:4318/v1/traces", "duration_seconds": "30"}
+    assert api.post_form("/api/telemetry/start", config)[0] == 400
+    assert stranger.post_form("/api/telemetry/start", config | {"allow_insecure": "true"})[0] == 401
+    try:
+        code, body = api.post_form("/api/telemetry/start", config | {"allow_insecure": "true"})
+        assert code == 202, body
+        assert json.loads(body)["state"] == "running"
+        assert api.post_form("/api/telemetry/start", config | {"allow_insecure": "true"})[0] == 409
+        assert api.post_form("/api/ota/check", {})[0] == 409
+    finally:
+        code, body = api.post_form("/api/telemetry/stop", {})
+        assert code == 202, body
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            code, body = api.fetch("/api/telemetry")
+            if code == 200 and json.loads(body)["state"] == "finished":
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail("telemetry worker did not finish after stop")
+
+
+def test_telemetry_session_expires_without_polling(authed_device_api: DeviceApi) -> None:
+    api = authed_device_api
+    code, body = api.fetch("/api/telemetry")
+    assert code == 200 and json.loads(body)["state"] in ("disabled", "finished")
+    try:
+        code, body = api.post_form(
+            "/api/telemetry/start",
+            {"endpoint": "http://192.0.2.1:4318/v1/traces", "duration_seconds": "30", "allow_insecure": "true"},
+        )
+        assert code == 202, body
+        time.sleep(31)
+        code, body = api.fetch("/api/telemetry")
+        assert code == 200, body
+        state = json.loads(body)
+        assert state["state"] == "finished", state
+        assert state["remaining_seconds"] == 0
+        assert state["pending_spans"] == 0
+    finally:
+        api.post_form("/api/telemetry/stop", {})
 
 
 def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:

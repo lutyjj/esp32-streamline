@@ -1,14 +1,30 @@
 //! Byte-exact encoding of the StreamLine TCP PCM header.
 
 pub const MAGIC: [u8; 4] = *b"ELI1";
-pub const VERSION: u8 = 2;
+pub const VERSION: u8 = 3;
 pub const HEADER_LEN: usize = 24;
+pub const TRACEPARENT_LEN: usize = 55;
+pub const TRACED_HEADER_LEN: usize = HEADER_LEN + TRACEPARENT_LEN;
 pub const SAMPLE_RATE_HZ: u32 = 48_000;
 pub const CHANNELS: u8 = 2;
 pub const BITS_PER_SAMPLE: u8 = 16;
 pub const FRAMES_PER_PACKET: u32 = 256;
 pub const BYTES_PER_FRAME: usize = 4;
 pub const PAYLOAD_BYTES: usize = FRAMES_PER_PACKET as usize * BYTES_PER_FRAME;
+
+/// Append a base header and optional SDK-generated W3C traceparent carrier.
+pub fn append_header(
+    header: &[u8; HEADER_LEN],
+    traceparent: Option<&[u8; TRACEPARENT_LEN]>,
+    output: &mut Vec<u8>,
+) {
+    let offset = output.len();
+    output.extend_from_slice(header);
+    if let Some(context) = traceparent {
+        output[offset + 5] = TRACED_HEADER_LEN as u8;
+        output.extend_from_slice(context);
+    }
+}
 
 /// The header of one wire packet. Every packet carries exactly
 /// [`FRAMES_PER_PACKET`] frames; the capture engine coalesces shorter hardware
@@ -66,7 +82,7 @@ mod tests {
         assert_eq!(
             header,
             [
-                b'E', b'L', b'I', b'1', 2, 24, 2, 16, 0x11, 0x22, 0x33, 0x44, 0x80, 0xbb, 0, 0, 0,
+                b'E', b'L', b'I', b'1', 3, 24, 2, 16, 0x11, 0x22, 0x33, 0x44, 0x80, 0xbb, 0, 0, 0,
                 1, 0, 0, 0, 4, 0, 0,
             ]
         );

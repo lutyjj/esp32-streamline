@@ -15,10 +15,12 @@ from streamline_bridge.source_identity import parse_source_identity
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from opentelemetry.context import Context
+
 
 class AudioPipeline(Protocol):
     def reset_source_session(self) -> None: ...
-    def ingest(self, seq: int, payload: bytes) -> bool: ...
+    def ingest(self, seq: int, payload: bytes, parent: Context | None = None) -> bool: ...
     def close(self) -> None: ...
     def snapshot(self) -> dict[str, object]: ...
     def register_packet_tap(self, sink: Callable[[int, bytes], None]) -> int: ...
@@ -48,11 +50,11 @@ class TcpSourceGate[H: AudioPipeline]:
                 previous.close()
         return generation
 
-    def ingest(self, generation: int, seq: int, payload: bytes) -> bool:
+    def ingest(self, generation: int, seq: int, payload: bytes, parent: Context | None = None) -> bool:
         with self._lock:
             if generation != self._generation:
                 return False
-            return self._hub.ingest(seq, payload)
+            return self._hub.ingest(seq, payload, parent)
 
     def is_active(self, generation: int) -> bool:
         with self._lock:
@@ -127,10 +129,10 @@ class SourceLease[H: AudioPipeline]:
     def hub(self) -> H:
         return self.source.hub
 
-    def ingest(self, seq: int, payload: bytes) -> bool:
+    def ingest(self, seq: int, payload: bytes, parent: Context | None = None) -> bool:
         if self.kind != "producer" or self._generation is None or self._closed:
             return False
-        return self.source.gate.ingest(self._generation, seq, payload)
+        return self.source.gate.ingest(self._generation, seq, payload, parent)
 
     def is_active(self) -> bool:
         return (

@@ -47,6 +47,7 @@ export const AUTHENTICATED_READS: ReadonlySet<string> = new Set([
   '/api/logs',
   '/api/coredump',
   '/api/coredump/image',
+  '/api/telemetry',
 ]);
 
 function needsAdminKey(request: Request): boolean {

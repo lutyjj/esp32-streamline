@@ -97,21 +97,19 @@ lock-check: image
 # skips one is a blind spot the release build never reports. The host passes
 # take the crate core alone and then with the host-only feature bins. Device
 # passes cover the `cfg(espidf)` adapters, `runtime`, and `main.rs` in the
-# standard image and each test variant, including the telemetry profile.
+# standard image and each test variant.
 # Device `#[cfg(test)]` code is the remaining gap: no pass compiles it and no
 # target runs it, so a green lint says nothing about it.
 lint: image console-asset
 	$(CONTAINER_RUN) cargo fmt --all -- --check
 	$(CONTAINER_RUN) cargo clippy --locked --lib -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --lib --tests -- -D warnings
-	$(CONTAINER_RUN) cargo clippy --locked --lib --tests --features otel-poc -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --features api-spec,pcm-frame-vectors \
 		--lib --bin streamline-openapi --bin streamline-pcm-frame-vectors -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features qemu-fail-management -- -D warnings
 	$(CONTAINER_RUN) cargo clippy --locked --release --target $(TARGET) --features test-source -- -D warnings
-	$(CONTAINER_RUN) cargo clippy --locked --profile telemetry --target $(TARGET) --features otel-poc,test-source -- -D warnings
 
 build: image console-asset
 	$(CONTAINER_RUN) cargo build --locked --profile $(PROFILE) --target $(TARGET) $(if $(FEATURES),--features $(FEATURES))
@@ -130,15 +128,14 @@ qemu-build: image console-asset
 
 test: image console-asset
 	$(CONTAINER_RUN) cargo test --locked --lib
-	$(CONTAINER_RUN) cargo test --locked --lib --features otel-poc
 
 # Rust DTOs and endpoint declarations are the API source. The host-only
 # `api-spec` feature keeps utoipa out of the device image.
 openapi: image
-	$(CONTAINER_RUN) cargo run --locked --quiet --features api-spec --bin streamline-openapi -- $(CONTAINER_WORKSPACE)/docs/openapi.json
+	$(CONTAINER_RUN) cargo run --locked --quiet --features api-spec --bin streamline-openapi -- $(CONTAINER_WORKSPACE)/docs/openapi.json $(CONTAINER_WORKSPACE)/docs/telemetry-api.json
 
 openapi-check: image
-	$(CONTAINER_RUN) bash -c 'cargo run --locked --quiet --features api-spec --bin streamline-openapi -- /tmp/openapi.json && diff -u $(CONTAINER_WORKSPACE)/docs/openapi.json /tmp/openapi.json'
+	$(CONTAINER_RUN) bash -c 'cargo run --locked --quiet --features api-spec --bin streamline-openapi -- /tmp/openapi.json /tmp/telemetry-api.json && diff -u $(CONTAINER_WORKSPACE)/docs/openapi.json /tmp/openapi.json && diff -u $(CONTAINER_WORKSPACE)/docs/telemetry-api.json /tmp/telemetry-api.json'
 
 # Regenerate the cross-language PCM frame conformance corpus from the encoder.
 # `firmware-test` fails until the committed file matches; `bridge-test` fails

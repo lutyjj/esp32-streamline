@@ -1,0 +1,13 @@
+params:
+  # Coprime with the four-packet send batch.
+  sample_interval: 257
+whitespace_control:
+  trim_blocks: true
+  lstrip_blocks: true
+templates:
+  - template: semconv.rs.j2
+    filter: '{groups: [.groups[] | select(.id | startswith("registry.streamline") or startswith("span.streamline"))]}'
+    application_mode: single
+  - template: semconv.py.j2
+    filter: '{groups: [.groups[] | select(.id | startswith("registry.streamline") or startswith("span.streamline"))]}'
+    application_mode: single

@@ -1,151 +1,133 @@
-# Pipeline telemetry experiment
+# Pipeline telemetry
 
-The target stack is OpenTelemetry in the firmware and bridge, OTLP over
-HTTP/protobuf, and an external OpenTelemetry Collector. Each component owns
-its instrumentation and SDK lifecycle. The Collector routes signals to a
-backend or writes standard OTLP files for offline inspection.
-
-The opt-in experiment measures device packet construction through sending,
-bridge buffer residence, and the first PCM submission to ASGI. It establishes
-SDK feasibility and local timing boundaries. It does not measure analog
-capture latency, one-way network delay, or sound at a speaker.
+StreamLine uses OpenTelemetry traces to follow sampled audio from device capture
+completion through bridge playout and HTTP submission. Diagnostic sessions are
+disabled by default and expire automatically. They expose local stage durations
+and causal relationships, not speaker latency or a synchronized one-way network
+measurement.
 
 ## Stack and ownership
 
 | Responsibility | Owner |
 |---|---|
-| Span lifecycle, identifiers, attributes, sampling and OTLP encoding | Official Rust and Python OpenTelemetry libraries |
-| ESP32 HTTP requests | ESP-IDF through the Rust exporter's `HttpClient` interface |
-| Audio timing boundaries and bounded admission | The component that performs the measured operation |
-| Domain semantic conventions | [Shared registry](../tools/telemetry/registry/packet.yaml), validated by OTel Weaver |
-| Resource and SDK conventions | The registry's pinned upstream OpenTelemetry dependency |
-| Routing and offline files | Standard Collector receivers and exporters |
-| Configuration and health | Component APIs; OpenAPI remains their contract |
-| Storage and visualization | Operator-selected backends |
+| Span lifecycle, IDs, context and OTLP protobuf | Official Rust and Python OpenTelemetry SDKs |
+| Device HTTP and TLS | ESP-IDF through the Rust exporter's HTTP client interface |
+| Timing boundaries and admission limits | The component performing the operation |
+| Domain names and sampling interval | [Weaver registry and templates](../tools/telemetry/) |
+| Session request and status models | Rust types, generated [OpenAPI](telemetry-api.json) and Python models |
+| Timing histograms, routing and offline files | Standard OpenTelemetry Collector components |
+| Storage and visualization | Operator-selected OTLP backends |
 
-The SDKs derive their OTLP representations from the upstream protocol. There
-is no StreamLine span serialization format or duplicated Rust/Python DTO.
-Weaver checks the shared attribute vocabulary against emitted telemetry.
-The experiment has only one domain attribute; code generation for a larger
-instrumentation catalog belongs to Weaver, not a handwritten generator.
+Each component owns its dependency locks and builds independently. Generated
+contracts are checked in beside their consumers; building the bridge does not
+run Rust or Weaver. `make tools-telemetry-code` refreshes vocabulary constants;
+`make firmware-openapi bridge-telemetry-models` refreshes session models. CI
+checks both for drift. These explicit inputs also suit a Bazel build graph.
 
-Firmware and bridge compile independently and communicate through explicit
-wire contracts. Neither imports the other's implementation or requires a
-running Collector to build or operate. Their dependency locks stay local.
-The existing embedded-console build dependencies remain explicit. The
-developer collection tools own their container pins under
-`tools/telemetry/`; product images do not inherit a local shared base image.
-These boundaries also give a future Bazel graph explicit inputs and outputs.
+The official Rust exporter accepts a native HTTP adapter, avoiding another TLS
+stack, Tokio, gRPC, handwritten identifiers or a custom protobuf encoder.
+The device uses a bounded SDK span processor because the native Rust batch
+processor panics if its worker cannot start. StreamLine reserves its worker
+fallibly before publishing a session. The bridge uses the native batch processor.
 
-## Why this stack
+Existing Prometheus counters remain the unsampled source for audio reliability.
+The Collector's `span_metrics` connector derives diagnostic duration histograms
+from traces, so the device needs no second metrics SDK or export worker. Histograms
+use seconds and bounded stage/outcome dimensions. Packet and trace IDs stay out
+of metric labels; exemplars link histogram observations to traces.
 
-[OTLP](https://opentelemetry.io/docs/specs/otlp/) supplies a common protocol
-for traces, metrics and logs. The official Rust exporter accepts a native
-HTTP client, so firmware can reuse ESP-IDF without a second TLS stack,
-Tokio, gRPC or handwritten protobuf encoding. The Python exporter uses its
-standard bounded batch processor.
+## Session API
 
-The Rust SDK is the first choice because firmware already uses Rust with
-ESP-IDF and `std`. Arduino-oriented embedded OTel libraries add a framework
-and FFI boundary without removing the need to prove memory use. Raw
-protobuf export would remove SDK policy at the cost of owning identifiers,
-resources, lifecycle, errors and aggregation. A proprietary trace backend
-would narrow downstream tooling. Reconsider these alternatives only if the
-official SDK cannot meet measured device budgets.
+Both components expose authenticated `GET /api/telemetry`,
+`POST /api/telemetry/start` and `POST /api/telemetry/stop`. The device accepts form
+fields with its normal digest authentication; the bridge accepts JSON with its
+configured bearer token. The [collection procedure](../tools/telemetry/README.md)
+provides examples.
 
-Prometheus can remain a metrics backend. Convergence means one application
-telemetry model and export protocol, not one storage engine for every signal.
-The [Collector](https://opentelemetry.io/docs/collector/) can serve backend
-formats at the deployment boundary. The experiment leaves the existing
-device Prometheus endpoint intact. Removing it requires metric parity,
-device memory measurements and an explicit deployment cutover; traces alone
-do not replace counters or histograms.
+A start request supplies a complete OTLP HTTP/protobuf traces `endpoint` ending
+in `/v1/traces` and `duration_seconds` between 30 and 3,600. Optional
+`bearer_token` and `ca_certificate_pem` configure HTTPS authentication and trust.
+Credential-free HTTP requires `allow_insecure=true` and a trusted LAN. URLs
+cannot contain credentials, fragments or queries. Redirects are disabled.
+Encrypted PCM and encrypted OTLP are separate connections.
 
-## What the experiment measures
+Sessions are volatile and do not survive restart. State progresses from
+`disabled` to `running`, then `stopping` and `finished`. Stop returns without
+waiting for network I/O. A new session is accepted only after its predecessor
+finishes. Export work can outlast the sampling deadline while a native network
+operation completes. Device firmware maintenance and active telemetry sessions
+are mutually exclusive; stop telemetry and wait for `finished` before OTA.
+
+Status exposes SDK-ended spans, exporter-reported successes, failed spans,
+export failures, pending spans and discarded spans. These are diagnostics about
+export attempts, not acknowledgments of durable backend storage. On the bridge,
+pending includes SDK queue losses until shutdown; final discarded count reconciles
+ended spans against successes and failures. In-flight packet spans are not yet
+ended spans. Status never returns the endpoint, token or trust certificate.
+`wall_clock_ready` reports timestamp readiness; `cross_host_clock_aligned` remains
+false because clock-offset uncertainty is not measured.
+
+## Measurement boundaries
 
 | Span | Start | End |
 |---|---|---|
-| `streamline.device.packet` | PCM or silence packet object construction | Sender batch attempt returns |
-| `streamline.bridge.playout` | Packet admitted to the buffer | Packet removed for playout |
-| `streamline.bridge.first_pcm_submit` | HTTP response streaming begins | First PCM ASGI body send returns |
+| `streamline.device.packet` | Completed capture read | Sender batch attempt returns |
+| `streamline.device.queue` | Queue admission | Sender batch starts |
+| `streamline.device.send` | Sender batch starts | Local transport write attempt returns |
+| `streamline.bridge.playout` | Complete packet admitted | Packet removed for playout |
+| `streamline.bridge.client_submit` | Client queue admission | PCM ASGI send returns |
+| `streamline.bridge.first_pcm_submit` | HTTP response streaming starts | First PCM ASGI send returns |
 
-The device's `send.begin` event separates queue and batching residence from
-the send attempt. A successful send means the local transport accepted the
-batch; it is not proof of bridge receipt. Failed attempts carry error status
-and include the sender's failure backoff. They must be excluded from
-successful-delivery latency distributions.
+The [PCM protocol](pcm-protocol.md) carries SDK-generated W3C `traceparent` for
+sampled packets. Per-client spans branch from the shared playout context.
+Discarded queued packets, source resets, and cancelled submissions end their
+retained spans with error status. A successful device write proves local
+transport acceptance. ASGI send completion proves application submission; the
+server can return after a peer disconnect without delivering those bytes.
+Neither boundary proves downstream playback.
 
-The first-PCM submission span excludes the WAV header and includes silence.
-A thin adapter observes the ASGI send call after it returns. This boundary
-measures application submission, not socket delivery: an ASGI server can
-return without writing when a connection has already closed. Raised write
-errors or cancellation before completion end the span with error status.
-The span excludes request parsing, downstream playback and speaker delay.
-Use a receiving-client observation to prove PCM delivery; this probe cannot
-supply that guarantee.
+Periodic sampling visits every 257th capture sequence, covering all positions
+in four-packet sender batches. Device session start, stream enable and detected
+source onset also trigger samples. `streamline.trigger` distinguishes these on
+the device packet span. `streamline.packet.kind` distinguishes audio from gated
+silence. Source onset starts at signal-gate detection, not the first analog sample.
+HTTP first-PCM submission includes silence and excludes the WAV header and request
+parsing. It must not be called time to first sound.
 
-Both packet probes sample every 257th sequence position. This visits every
-position in the four-packet sender batch. It is a diagnostic sample, not an
-unsampled performance histogram. Lost or reset samples cannot silently
-count as successful delivery. Quantiles need the observation count, window,
-sample policy, error exclusions and workload beside them.
-
-Each duration uses one monotonic clock. A wall-clock anchor gives the span
-its OTLP timestamp; subsequent wall-clock adjustments do not change that
-duration. Device and bridge spans are independent traces. Sequence numbers
-wrap and reset, so they are not globally unique trace identifiers.
+Durations use a monotonic clock anchored to wall time. Wall-clock adjustments
+do not change a local span's duration. Cross-host context correlates packets but
+does not establish clock synchronization. Do not subtract device and bridge
+wall timestamps to claim network delay, sum stage percentiles, or treat sampled
+histograms as full-population latency guarantees. Report sample count, window,
+workload, sampling trigger and error exclusions beside every quantile.
 
 ## Resource and failure policy
 
-The firmware feature is `otel-poc`. Capture and sending use timestamps and
-a bounded four-observation channel; they do not construct SDK spans or
-perform telemetry I/O. A low-priority worker owns the SDK and native HTTP
-client. Congestion discards telemetry rather than waiting in the audio
-task. The worker reports discarded observations in device logs.
+The device retains an eight-span export queue and exports at most four spans per
+batch from a 12 KiB low-priority worker. Capture and sender tasks construct sampled
+SDK spans but never perform export I/O or wait for export queue capacity. Queue
+pressure discards telemetry. Sample metadata is allocated only for sampled audio
+packets. Unsampled packets retain their base wire size.
 
-The worker reserves a 12 KiB stack and reports its minimum unused stack.
-Native HTTP operations use a 500 ms timeout and a response size limit.
-The experiment uses an explicit trusted-LAN HTTP endpoint. Authenticated
-HTTPS telemetry, adversarial collectors and long-duration resource behavior
-are separate acceptance gates; encrypted PCM does not encrypt OTLP traffic.
-The firmware does not require PSRAM.
+Admission checks internal heap, including the largest block, without relying on
+PSRAM. HTTP requires 48 KiB free and HTTPS requires 96 KiB, both with a 16 KiB
+contiguous block. Each export rechecks headroom after SDK encoding and fails the
+diagnostic batch if memory is insufficient. HTTPS can be unavailable on a small
+ESP32 even when HTTP tracing and encrypted PCM fit. Use explicitly enabled
+trusted-LAN HTTP collection in that case; keep PCM encryption enabled.
+Native HTTP operations have a 500 ms timeout, bounded request
+and response bodies, and no application retry loop. These are operation bounds,
+not a hard deadline for all DNS, handshake and header processing. Audio does not
+wait for a collector to recover. Every image must pass the OTA slot reserve gate.
 
-The bridge retains at most eight active packet samples per source and uses
-a 128-span export queue. Source reset and close finish retained samples.
-The Collector file exporter rotates its output. Telemetry contains timing
-and sequence metadata, not PCM, credentials, Wi-Fi names or transport keys.
-
-The `telemetry` Cargo profile isolates size-oriented optimization from the
-normal release profile. Every candidate still passes the physical OTA slot
-and reserve-margin gate. A successful cross-build is insufficient evidence
-for heap, Wi-Fi, TLS coexistence or OTA recovery.
-
-## Completing the pipeline
-
-Production instrumentation needs these additional contracts:
-
-1. Define the audio unit being followed: a boot/session identity and sample
-   range, including intentional silence, capture loss and concealment.
-2. Carry sampled [W3C trace context](https://www.w3.org/TR/trace-context/)
-   across the PCM boundary and retain that context through playout and each
-   client queue. Use SDK propagators, not a new identifier codec. Choose an
-   explicit protocol revision with conformance vectors for its carrier.
-3. Measure capture completion, queue admission, send, receive, playout and
-   HTTP write completion for that same audio unit. Per-client spans branch
-   from the shared packet context. Never add stage p99 values.
-4. Define startup triggers separately: stream enable, source onset and HTTP
-   client admission have different first-delivery paths. Report PCM delivery
-   as such; do not label silence delivery as first sound.
-5. Establish clock-offset uncertainty before reporting one-way network or
-   cross-host age. SNTP wall-clock availability alone is insufficient. Keep
-   local durations usable when cross-host alignment is unavailable.
-6. Add OTel counters and histograms with seconds as the duration unit and
-   bounded stage/outcome attributes. Existing counter owners supply
-   observations; do not maintain a second set of stream counters. Keep
-   packet, trace and client identifiers out of metric labels.
-7. Add API-owned enablement, endpoint policy, resource limits and observable
-   export failures. Prove collector outage/recovery, concurrent management,
-   OTA, heap margin and sustained encrypted streaming before default use.
-
-The [developer procedure](../tools/telemetry/README.md) owns build and capture
-commands. Raw hardware captures and investigation notes stay private.
+The bridge retains at most eight active packet samples per source, uses a
+128-span export queue, and finishes client samples when their queue is closed.
+Its exporter accepts at most 4 KiB of response data and requires identity response
+encoding. It checks a 500 ms body-read budget between native reads. Native DNS,
+header parsing and individual reads can outlast that budget; the session stays
+`stopping` until an outstanding export releases its connection, even if the SDK's
+shutdown wait expires. Another session cannot reserve a worker during that wait.
+The Collector bounds memory, metric cardinality and rotating file output.
+Exported metadata contains timing and sequence identity, never PCM, credentials,
+network names or transport keys. Raw investigations belong in gitignored
+`.private/` directories.

@@ -11,7 +11,7 @@ use crate::{
     indicator,
     levels::CLIP_THRESHOLD_ABS,
     metrics, protocol,
-    telemetry::{
+    runtime_snapshot::{
         AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, OtaTelemetry,
         StreamTelemetry, TargetTelemetry, TelemetrySnapshot, WifiTelemetry,
     },
@@ -101,7 +101,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
     let rollback = crate::adapters::ota::rollback_target();
     TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
-        firmware_variant: crate::telemetry::FirmwareVariant::current(),
+        firmware_variant: crate::runtime_snapshot::FirmwareVariant::current(),
         device_name: config.device_name.clone(),
         mode,
         config_source: "nvs",

@@ -5,11 +5,9 @@ use crate::protocol::{PacketHeader, HEADER_LEN, PAYLOAD_BYTES};
 pub const MAX_PACKET_BYTES: usize = HEADER_LEN + PAYLOAD_BYTES;
 
 /// One capture interval: a header and full PCM, or a header-only silence record.
-#[derive(Clone)]
 pub struct AudioPacket {
     bytes: [u8; MAX_PACKET_BYTES],
-    #[cfg(feature = "otel-poc")]
-    pub sample: Option<crate::tracing_poc::Sample>,
+    pub trace: Option<Box<crate::telemetry::PacketTrace>>,
 }
 
 impl AudioPacket {
@@ -17,25 +15,30 @@ impl AudioPacket {
         let mut bytes = [0; MAX_PACKET_BYTES];
         bytes[..HEADER_LEN].copy_from_slice(&PacketHeader::new(sequence).encode());
         bytes[HEADER_LEN..].copy_from_slice(pcm);
-        Self {
-            bytes,
-            #[cfg(feature = "otel-poc")]
-            sample: crate::tracing_poc::Sample::capture(sequence),
-        }
+        Self { bytes, trace: None }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes[..HEADER_LEN + self.payload_bytes()]
     }
 
+    pub fn append_wire(&self, output: &mut Vec<u8>) {
+        let carrier = self.trace.as_ref().map(|trace| trace.traceparent());
+        let traceparent = carrier
+            .as_ref()
+            .and_then(|value| value.as_bytes().try_into().ok());
+        crate::protocol::append_header(
+            self.bytes[..HEADER_LEN].try_into().expect("fixed header"),
+            traceparent,
+            output,
+        );
+        output.extend_from_slice(&self.as_bytes()[HEADER_LEN..]);
+    }
+
     pub fn silence(sequence: u32) -> Self {
         let mut bytes = [0; MAX_PACKET_BYTES];
         bytes[..HEADER_LEN].copy_from_slice(&PacketHeader::silence(sequence).encode());
-        Self {
-            bytes,
-            #[cfg(feature = "otel-poc")]
-            sample: crate::tracing_poc::Sample::capture(sequence),
-        }
+        Self { bytes, trace: None }
     }
 
     pub fn payload_bytes(&self) -> usize {

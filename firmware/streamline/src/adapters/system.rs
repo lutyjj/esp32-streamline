@@ -10,7 +10,7 @@ use esp_idf_svc::sys::{
     uxTaskGetNumberOfTasks, ESP_OK, MALLOC_CAP_8BIT, MALLOC_CAP_INTERNAL,
 };
 
-use crate::telemetry::{HeapTelemetry, NvsTelemetry, SystemTelemetry};
+use crate::runtime_snapshot::{HeapTelemetry, NvsTelemetry, SystemTelemetry};
 
 /// Sample current resource headroom. Safe from any task: the underlying reads
 /// are non-blocking and internally synchronized.

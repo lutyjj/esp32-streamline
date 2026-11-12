@@ -22,6 +22,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
             request,
             ota_adapter::spawn_check(
                 Arc::clone(&state_for_check.ota),
+                &state_for_check.telemetry,
                 state_for_check.stream.clone(),
             ),
         )
@@ -48,6 +49,7 @@ pub(super) fn register(server: &mut ContractServer<'_>, state: &Arc<ApiState>) -
             request,
             ota_adapter::spawn_update(
                 Arc::clone(&state_for_ota.ota),
+                &state_for_ota.telemetry,
                 Arc::clone(&state_for_ota.store),
                 source,
                 state_for_ota.stream.clone(),

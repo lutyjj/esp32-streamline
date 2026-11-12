@@ -1,7 +1,8 @@
 # Collect pipeline traces
 
-These developer tools receive standard OTLP and write rotating JSONL files.
-They do not change a Home Assistant deployment or require a dashboard.
+These tools receive standard OTLP traces and write rotating `traces.jsonl` and
+`metrics.jsonl` files. They need no dashboard or changes to a deployed bridge.
+[Telemetry contracts](../../docs/telemetry.md) define what the measurements prove.
 
 Start the Collector from the repository root:
 
@@ -9,46 +10,54 @@ Start the Collector from the repository root:
 make tools-telemetry-collect
 ```
 
-It listens on loopback port 4318 and writes to `.private/telemetry/`.
-For a hardware test, set `TELEMETRY_BIND` to the host's trusted LAN address.
-Use `TELEMETRY_OUTPUT` to select another absolute output directory. Stop
-the foreground process with Ctrl-C; the container is disposable.
+The receiver listens on loopback port 4318 and writes to `.private/telemetry/`.
+For a device session, set `TELEMETRY_BIND` to the collector host's trusted LAN
+address. `TELEMETRY_OUTPUT` selects another absolute output directory. Ctrl-C
+stops the disposable container. The supplied receiver uses trusted-LAN HTTP;
+use an operator-managed HTTPS Collector for authenticated export.
 
-Build a signed device experiment with a collector address reachable by the
-device:
+Start a bounded session on a device running matching firmware and bridge
+protocols. Set `DEVICE` and `ADMIN_KEY` in the calling environment:
 
 ```sh
-export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://192.0.2.10:4318/v1/traces
-make firmware-artifacts PROFILE=telemetry FEATURES=otel-poc,test-source \
-  VERSION=telemetry-poc \
-  CONTAINER_EXTRA_FLAGS='-e OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'
+curl --digest -u "admin:$ADMIN_KEY" "http://$DEVICE/api/telemetry/start" \
+  --data-urlencode endpoint=http://192.0.2.20:4318/v1/traces \
+  --data duration_seconds=300 --data allow_insecure=true
 ```
 
-`test-source` supplies synthetic PCM while preserving I2S timing. Omit it
-for normal line-in. The endpoint is compiled into this opt-in experiment;
-the normal release has no exporter. Use the documented
-[custom OTA path](../../docs/ota.md#custom-image-installs-development), then
-restore the original signed normal image after hardware testing.
+For the bridge, set `BRIDGE` and `BRIDGE_TOKEN` and start the same interval:
 
-For the bridge, supply `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or
-`OTEL_EXPORTER_OTLP_ENDPOINT` in its process environment. With neither set,
-the bridge does not start an exporter. Use a disposable bridge for
-experiments. [Timing boundaries](../../docs/telemetry.md) define what its
-spans prove.
+```sh
+curl -H "Authorization: Bearer $BRIDGE_TOKEN" \
+  -H 'Content-Type: application/json' "http://$BRIDGE/api/telemetry/start" \
+  --data '{"endpoint":"http://192.0.2.20:4318/v1/traces","duration_seconds":300,"allow_insecure":true}'
+```
 
-Copy the completed `traces.jsonl` before replaying it. The native Collector
-file receiver and Weaver check the copied telemetry:
+Read `GET /api/telemetry` with the same authentication to check state and export
+health. `POST /api/telemetry/stop` ends admission; wait for `finished` before
+starting another session or installing device firmware. Bridge exporter settings
+come from this API; remove `OTEL_EXPORTER_OTLP*` environment variables before
+starting a session. Sessions do not change stored device or bridge settings.
+
+Normal release images include tracing, disabled until a session starts. For
+hardware validation without an analog source, build with
+`make firmware-artifacts FEATURES=test-source VERSION=telemetry-test`.
+`test-source` preserves I2S timing while supplying synthetic PCM. Use the
+[custom OTA path](../../docs/ota.md#custom-image-installs-development) and restore
+a signed normal image after the test.
+
+Copy a completed trace file before validating it with the native file receiver
+and Weaver:
 
 ```sh
 make tools-telemetry-live-check TELEMETRY_INPUT=/absolute/path/traces.jsonl
 ```
 
 Read Weaver's entity counts as well as its verdict: a run with no received
-telemetry proves nothing. Development-stability advice is expected for this
-experimental registry. Contract violations fail the command. Replay uses
-an isolated Compose network and removes its containers afterward.
+telemetry proves nothing. Contract violations fail the command. Development
+stability advice is expected. Replay uses a disposable Compose network.
 
-For ad hoc inspection, extract span names and durations in milliseconds:
+For ad hoc inspection, extract span names and approximate durations:
 
 ```sh
 jq -r '.resourceSpans[].scopeSpans[].spans[] |
@@ -56,8 +65,7 @@ jq -r '.resourceSpans[].scopeSpans[].spans[] |
   (.startTimeUnixNano | tonumber)) / 1000000] | @csv' traces.jsonl
 ```
 
-For exact nanosecond arithmetic, parse the timestamp strings as integers
-in Python or an analysis tool with 64-bit integer support. Keep error
-spans separate and report sample counts alongside quantiles. The same OTLP
-files can be replayed into a trace backend through standard Collector
-exporters; no StreamLine viewer or conversion format is required.
+For exact arithmetic, parse timestamp strings as integers in Python or an
+analysis tool with 64-bit integer support. Keep error spans separate and report
+sample counts beside quantiles. The OTLP files can also be replayed into a trace
+backend through standard Collector exporters; no StreamLine viewer is required.

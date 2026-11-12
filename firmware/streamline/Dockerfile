@@ -13,5 +13,10 @@ RUN git init /opt/streamline-idf \
     && find /opt/streamline-idf -name .git -prune -exec rm -rf '{}' +
 ENV IDF_PATH=/opt/streamline-idf
 
+# OpenETH's IRAM interrupt must keep its log format and tag in RAM while
+# flash mapping disables the cache. Remove when the pinned SDK includes this fix.
+COPY patches/openeth-cache-safe-log.patch /tmp/openeth-cache-safe-log.patch
+RUN cd /opt/streamline-idf && git apply /tmp/openeth-cache-safe-log.patch
+
 USER esp
 WORKDIR /workspace

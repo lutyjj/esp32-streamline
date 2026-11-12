@@ -7,6 +7,7 @@
  */
 
 import contract from '../../../docs/openapi.json';
+import type { TelemetryStatus } from '../generated/api';
 import type {
   SettingsResponse,
   SetupNetworkResponse,
@@ -19,6 +20,9 @@ import type {
 // mistyped example field fails `tsc` here.
 const STATUS_EXAMPLE = contract.components.schemas.StatusResponse.example as StatusResponse;
 const CONFIG_EXAMPLE = contract.components.schemas.SettingsResponse.example as SettingsResponse;
+export function telemetryStatus(): TelemetryStatus {
+  return structuredClone(contract.components.schemas.TelemetryStatus.example) as TelemetryStatus;
+}
 const SETUP_NETWORK_EXAMPLE = contract.components.schemas.SetupNetworkResponse
   .example as SetupNetworkResponse;
 

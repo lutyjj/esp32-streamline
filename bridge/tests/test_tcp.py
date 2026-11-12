@@ -8,10 +8,17 @@ import unittest
 from typing import cast
 from unittest.mock import MagicMock, patch
 
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
+
+from streamline_bridge.packet_tracing import AudioChunk
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT, HEADER, MAGIC, VERSION
 from streamline_bridge.sources import SourceLease, SourceRegistry
 from streamline_bridge.tcp import AuthenticatedConnection, TcpIngestServer, receive_source
+from streamline_bridge.telemetry import Telemetry
+from streamline_bridge.telemetry_models import SessionRequest
+from streamline_bridge.wav_stream import WavStream
 
 
 def packet(sequence: int, magic: bytes = MAGIC) -> bytes:
@@ -37,6 +44,54 @@ def make_pipeline() -> AudioPipeline:
 
 
 class TcpAdapterTests(unittest.TestCase):
+    def test_context_survives_tcp_playout_fanout_submission_and_client_cancellation(self) -> None:
+        exporter = InMemorySpanExporter()
+        telemetry = Telemetry(lambda _config: exporter)
+        self.addCleanup(telemetry.close)
+        telemetry.start(SessionRequest(endpoint="http://192.0.2.1/v1/traces", allow_insecure=True, duration_seconds=30))
+        registry = SourceRegistry(
+            lambda: AudioPipeline(
+                4, 0.001, 1, 1, start_worker=False, max_playout_buffer_seconds=0.001, telemetry=telemetry
+            ),
+            1,
+        )
+        self.addCleanup(registry.close)
+        server, peer = socket.socketpair()
+        self.addCleanup(peer.close)
+        lease = registry.lease_producer("192.0.2.1", server)
+        first = WavStream(registry.lease_http("192.0.2.1"), "192.0.2.2", "/streamline.wav")
+        second = WavStream(registry.lease_http("192.0.2.1"), "192.0.2.3", "/streamline.wav")
+        self.addCleanup(first.close)
+        self.addCleanup(second.close)
+        frame = bytearray(packet(17))
+        frame[5] = 79
+        carrier = b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        peer.sendall(frame[:24] + carrier + frame[24:] + packet(18))
+        peer.shutdown(socket.SHUT_WR)
+        receive_source(lease, server, ("192.0.2.1", 30000))
+        self.assertEqual(lease.hub.playout.stats.packets, 2)
+        chunk = lease.hub.playout.next_chunk()
+        assert chunk is not None
+        lease.hub.clients.publish(chunk)
+        next(first)
+        self.assertEqual(next(first), bytes(DEFAULT_FORMAT.payload_bytes))
+        first.submitted()
+        first.close()
+        second.close()
+        telemetry.close()
+        spans = exporter.get_finished_spans()
+        self.assertEqual(len(spans), 3)
+        playout = next(span for span in spans if span.name == "streamline.bridge.playout")
+        assert playout.context is not None and playout.parent is not None
+        self.assertEqual(playout.context.trace_id, int("4bf92f3577b34da6a3ce929d0e0e4736", 16))
+        self.assertEqual(playout.parent.span_id, int("00f067aa0ba902b7", 16))
+        deliveries = [span for span in spans if span.name == "streamline.bridge.client_submit"]
+        self.assertEqual(len(deliveries), 2)
+        for span in deliveries:
+            assert span.parent is not None
+            self.assertEqual(span.parent.span_id, playout.context.span_id)
+        self.assertEqual({span.status.status_code for span in deliveries}, {StatusCode.UNSET, StatusCode.ERROR})
+
     def test_silence_between_pcm_packets_does_not_consume_the_next_header(self) -> None:
         _registry, lease, server, peer = self.prepare()
         try:
@@ -48,7 +103,7 @@ class TcpAdapterTests(unittest.TestCase):
             self.assertEqual(lease.hub.snapshot()["packets"], 3)
             self.assertEqual(lease.hub.snapshot()["tcp_errors"], 0)
             for _ in range(3):
-                self.assertEqual(lease.hub.playout.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+                self.assertEqual(lease.hub.playout.next_chunk(), AudioChunk(bytes(DEFAULT_FORMAT.payload_bytes)))
             self.assertEqual(lease.hub.snapshot()["silence_packets"], 1)
             self.assertEqual(lease.hub.snapshot()["missing_packets"], 0)
 

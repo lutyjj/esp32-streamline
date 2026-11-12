@@ -109,7 +109,7 @@ class ConformanceVectorTests(unittest.TestCase):
                 self.assertEqual(rate, DEFAULT_RATE)
                 self.assertEqual(frames, vector["frames"])
                 self.assertEqual(len(payload), vector["payload_bytes"])
-                self.assertEqual(payload, frame[HEADER.size :])
+                self.assertEqual(payload, frame[frame[5] :])
 
     def test_malformed_frames_are_rejected(self) -> None:
         for vector in self.vectors["invalid"]:

@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from streamline_bridge.packet_tracing import AudioChunk, TimedSpan
+
 
 @dataclass
 class ClientStats:
@@ -27,9 +29,19 @@ class ClientStats:
 
 
 @dataclass
+class ClientChunk:
+    payload: bytes
+    span: TimedSpan | None = None
+
+    def end(self, error: str | None = None) -> None:
+        if self.span is not None:
+            self.span.end(error)
+
+
+@dataclass
 class ClientStream:
     stats: ClientStats
-    queue: queue.Queue[bytes | None]
+    queue: queue.Queue[ClientChunk | None]
 
 
 class ClientFanout:
@@ -57,26 +69,28 @@ class ClientFanout:
 
     def unregister(self, client_id: int) -> None:
         with self._lock:
-            self._clients.pop(client_id, None)
+            if stream := self._clients.pop(client_id, None):
+                _drain(stream.queue)
+                stream.queue.put_nowait(None)
 
     def close(self) -> None:
         """End every client stream without counting it as a slow-client drop."""
         with self._lock:
             clients = tuple(self._clients.values())
             self._clients.clear()
-        for stream in clients:
-            _drain(stream.queue)
-            stream.queue.put_nowait(None)
+            for stream in clients:
+                _drain(stream.queue)
+                stream.queue.put_nowait(None)
 
-    def publish(self, payload: bytes) -> None:
+    def publish(self, chunk: AudioChunk) -> None:
         with self._lock:
-            clients = tuple(self._clients.values())
-        for stream in clients:
-            try:
-                stream.queue.put_nowait(payload)
+            for stream in tuple(self._clients.values()):
+                if stream.queue.full():
+                    self._evict(stream)
+                    continue
+                delivery = ClientChunk(chunk.payload, chunk.context.delivery() if chunk.context else None)
+                stream.queue.put_nowait(delivery)
                 stream.stats.queue_depth = stream.queue.qsize()
-            except queue.Full:
-                self._evict(stream)
 
     def record_write(self, client_id: int, byte_count: int, chunk_count: int) -> None:
         with self._lock:
@@ -100,20 +114,19 @@ class ClientFanout:
             }
 
     def _evict(self, stream: ClientStream) -> None:
-        with self._lock:
-            if self._clients.pop(stream.stats.id, None) is None:
-                return
-            stream.stats.queue_drops += 1
-            stream.stats.queue_depth = stream.queue.qsize()
-            self._queue_drops += 1
-            self._slow_clients += 1
+        self._clients.pop(stream.stats.id)
+        stream.stats.queue_drops += 1
+        stream.stats.queue_depth = stream.queue.qsize()
+        self._queue_drops += 1
+        self._slow_clients += 1
         _drain(stream.queue)
         stream.queue.put_nowait(None)
 
 
-def _drain(client_queue: queue.Queue[bytes | None]) -> None:
+def _drain(client_queue: queue.Queue[ClientChunk | None]) -> None:
     while True:
         try:
-            client_queue.get_nowait()
+            if chunk := client_queue.get_nowait():
+                chunk.end("client closed before submission")
         except queue.Empty:
             break

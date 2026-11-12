@@ -36,6 +36,7 @@ struct Totals {
 /// host-testable.
 #[derive(Default)]
 pub struct StreamStatus {
+    pub telemetry: std::sync::Arc<crate::telemetry::Telemetry>,
     sequence: AtomicU32,
     totals: Mutex<Totals>,
     queue_depth: AtomicU32,

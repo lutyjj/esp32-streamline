@@ -1,0 +1,8 @@
+diff --git a/components/esp_eth/src/openeth/esp_eth_mac_openeth.c b/components/esp_eth/src/openeth/esp_eth_mac_openeth.c
+--- a/components/esp_eth/src/openeth/esp_eth_mac_openeth.c
++++ b/components/esp_eth/src/openeth/esp_eth_mac_openeth.c
+@@ -65,3 +65,3 @@ static IRAM_ATTR void emac_opencores_isr_handler(void *args)
+     if (status & OPENETH_INT_BUSY) {
+-        ESP_EARLY_LOGW(TAG, "%s: RX frame dropped (0x%" PRIx32 ")", __func__, status);
++        ESP_DRAM_LOGW(DRAM_STR("opencores.emac"), "RX frame dropped (0x%" PRIx32 ")", status);
+     }

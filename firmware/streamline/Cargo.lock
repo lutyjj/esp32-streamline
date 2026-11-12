@@ -1607,6 +1607,7 @@ dependencies = [
  "embuild",
  "esp-idf-svc",
  "flate2",
+ "futures-executor",
  "log",
  "opentelemetry",
  "opentelemetry-http",

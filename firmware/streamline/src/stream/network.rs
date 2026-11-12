@@ -13,7 +13,8 @@ const CONTROL_POLL_MS: u32 = 100;
 const SEND_STALL_MS: u64 = 100;
 const BATCH_PACKETS: usize = 4;
 const BATCH_WAIT_MS: u64 = 40;
-pub const MAX_BATCH_BYTES: usize = BATCH_PACKETS * MAX_PACKET_BYTES;
+pub const MAX_BATCH_BYTES: usize =
+    BATCH_PACKETS * (MAX_PACKET_BYTES + crate::protocol::TRACEPARENT_LEN);
 
 pub fn run(
     mut sink: impl PacketSink,
@@ -54,41 +55,46 @@ fn step(
     }
     queue.resume();
     batch.reserve_exact(MAX_BATCH_BYTES);
-    let Some((packet, depth)) =
+    let Some((mut packet, depth)) =
         queue.pop_timeout(Duration::from_millis(u64::from(CONTROL_POLL_MS)))
     else {
         return;
     };
     status.set_queue_depth(depth);
-    #[cfg(feature = "otel-poc")]
-    let mut sample = packet.sample;
-    batch.extend_from_slice(packet.as_bytes());
+    let mut traces: [Option<Box<crate::telemetry::PacketTrace>>; BATCH_PACKETS] =
+        std::array::from_fn(|_| None);
+    packet.append_wire(batch);
+    traces[0] = packet.trace.take();
     let mut packets = 1;
     let mut payload_bytes = packet.payload_bytes();
     let deadline = clock.monotonic_millis().saturating_add(BATCH_WAIT_MS);
     while packets < BATCH_PACKETS && sending_allowed(status) {
         let remaining = deadline.saturating_sub(clock.monotonic_millis());
-        let Some((packet, depth)) = queue.pop_timeout(Duration::from_millis(remaining)) else {
+        let Some((mut packet, depth)) = queue.pop_timeout(Duration::from_millis(remaining)) else {
             break;
         };
-        batch.extend_from_slice(packet.as_bytes());
-        #[cfg(feature = "otel-poc")]
-        if packet.sample.is_some() {
-            sample = packet.sample;
-        }
+        packet.append_wire(batch);
+        traces[packets] = packet.trace.take();
         packets += 1;
         payload_bytes += packet.payload_bytes();
         status.set_queue_depth(depth);
     }
-    #[cfg(feature = "otel-poc")]
-    let queued = sample.map(|s| s.started.elapsed());
-    let sent = send_batch(sink, batch, packets, payload_bytes, status, delay, clock);
-    #[cfg(not(feature = "otel-poc"))]
-    let _ = sent;
-    #[cfg(feature = "otel-poc")]
-    if let (Some(sample), Some(queued)) = (sample, queued) {
-        crate::tracing_poc::record(sample, queued, sent);
+    for trace in traces.iter_mut().flatten() {
+        trace.sending();
     }
+    let outcome = send_batch(sink, batch, packets, payload_bytes, status, clock);
+    for trace in traces.into_iter().flatten() {
+        trace.finish(matches!(outcome, SendOutcome::Sent));
+    }
+    if matches!(outcome, SendOutcome::Failed) {
+        delay.delay_ms(SEND_ERROR_BACKOFF_MS);
+    }
+}
+
+enum SendOutcome {
+    Sent,
+    Cancelled,
+    Failed,
 }
 
 fn send_batch(
@@ -97,12 +103,11 @@ fn send_batch(
     packets: usize,
     payload_bytes: usize,
     status: &StreamStatus,
-    delay: &impl Delay,
     clock: &impl Clock,
-) -> bool {
+) -> SendOutcome {
     let ready = || sending_allowed(status);
     if !ready() {
-        return false;
+        return SendOutcome::Cancelled;
     }
     let started = clock.monotonic_millis();
     match sink.send(bytes, ready) {
@@ -113,14 +118,13 @@ fn send_batch(
                 log::warn!("PCM send stalled for {elapsed} ms");
             }
             status.record_sent_batch(packets, payload_bytes, reconnected);
-            true
+            SendOutcome::Sent
         }
-        Ok(None) => false,
+        Ok(None) => SendOutcome::Cancelled,
         Err(failure) => {
             status.record_failed_send(packets);
             status.record_network_error(failure.secure_handshake);
-            delay.delay_ms(SEND_ERROR_BACKOFF_MS);
-            false
+            SendOutcome::Failed
         }
     }
 }
@@ -307,7 +311,6 @@ mod tests {
             PAYLOAD_BYTES,
             &status,
             &time,
-            &time,
         );
         assert_eq!(sink.calls, 1);
         assert_eq!(sink.writes, 1);
@@ -327,7 +330,6 @@ mod tests {
             1,
             PAYLOAD_BYTES,
             &status,
-            &time,
             &time,
         );
         assert_eq!(sink.calls, 1);
@@ -350,7 +352,6 @@ mod tests {
                 PAYLOAD_BYTES,
                 &status,
                 &time,
-                &time,
             );
             assert_eq!(sink.writes, 0);
             assert!(!status.transport_quiesced());
@@ -365,21 +366,60 @@ mod tests {
             status.mark_transport_present();
             let mut sink = sink(&time);
             sink.failure = Some(secure);
-            send_batch(
-                &mut sink,
-                packet().as_bytes(),
-                1,
-                PAYLOAD_BYTES,
-                &status,
-                &time,
-                &time,
-            );
+            let queue = PacketQueue::new();
+            queue.push_drop_oldest(packet());
+            step(&mut sink, &queue, &status, &time, &time, &mut Vec::new());
             assert_eq!(sink.calls, 1);
             assert_eq!(status.snapshot().network_errors, 1);
             assert_eq!(status.snapshot().tls_handshake_failures, u64::from(secure));
             assert!(!status.transport_quiesced());
             assert_eq!(time.monotonic_millis(), u64::from(SEND_ERROR_BACKOFF_MS));
         }
+    }
+
+    #[test]
+    fn failed_send_spans_end_before_retry_backoff() {
+        use crate::telemetry::{CaptureTime, Session, SessionRequest, Telemetry};
+        use opentelemetry_sdk::trace::InMemorySpanExporter;
+        struct Backoff<'a>(&'a Telemetry);
+        impl Delay for Backoff<'_> {
+            fn delay_ms(&self, millis: u32) {
+                assert_eq!(millis, SEND_ERROR_BACKOFF_MS);
+                assert_eq!(self.0.snapshot().ended_spans, 3);
+            }
+        }
+
+        let status = StreamStatus::default();
+        let config = SessionRequest {
+            endpoint: "http://192.0.2.1:4318/v1/traces".into(),
+            duration_seconds: 30,
+            allow_insecure: true,
+            bearer_token: String::new(),
+            ca_certificate_pem: String::new(),
+        };
+        let (session, _job) = Session::prepare(
+            &config,
+            status.telemetry.resource(),
+            InMemorySpanExporter::default(),
+        );
+        status.telemetry.install(session);
+        let queue = PacketQueue::new();
+        let mut sampled = packet();
+        sampled.trace = status.telemetry.capture(0, CaptureTime::now(), false, None);
+        assert!(sampled.trace.is_some());
+        sampled.trace.as_mut().unwrap().queued();
+        queue.push_drop_oldest(sampled);
+        let time = Time::default();
+        let mut sink = sink(&time);
+        sink.failure = Some(false);
+        step(
+            &mut sink,
+            &queue,
+            &status,
+            &Backoff(&status.telemetry),
+            &time,
+            &mut Vec::new(),
+        );
     }
 
     #[test]
@@ -394,7 +434,6 @@ mod tests {
             PAYLOAD_BYTES,
             &status,
             &time,
-            &time,
         );
         assert_eq!(status.snapshot().reconnects, 0);
         sink.write_ms = SEND_STALL_MS as u32;
@@ -404,7 +443,6 @@ mod tests {
             1,
             PAYLOAD_BYTES,
             &status,
-            &time,
             &time,
         );
         let snapshot = status.snapshot();

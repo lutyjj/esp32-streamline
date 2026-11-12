@@ -144,7 +144,7 @@ pub struct BoardCatalogResponse<'a> {
 #[cfg_attr(feature = "api-spec", schema(example = json!(crate::api::examples::status())))]
 pub struct StatusResponse<'a> {
     pub firmware_version: &'a str,
-    pub firmware_variant: crate::telemetry::FirmwareVariant,
+    pub firmware_variant: crate::runtime_snapshot::FirmwareVariant,
     pub device_name: &'a str,
     #[cfg_attr(feature = "api-spec", schema(inline))]
     pub mode: &'a str,

@@ -1,0 +1,147 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "StreamLine telemetry API",
+    "description": "",
+    "license": {
+      "name": "AGPL-3.0-or-later",
+      "identifier": "AGPL-3.0-or-later"
+    },
+    "version": "1.0.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "SessionRequest": {
+        "type": "object",
+        "required": [
+          "endpoint",
+          "duration_seconds"
+        ],
+        "properties": {
+          "allow_insecure": {
+            "type": "boolean",
+            "description": "Explicit consent to send metadata over an unencrypted trusted LAN.",
+            "default": false
+          },
+          "bearer_token": {
+            "type": "string",
+            "description": "Optional credential; accepted only with HTTPS and never returned.",
+            "default": "",
+            "writeOnly": true,
+            "maxLength": 512
+          },
+          "ca_certificate_pem": {
+            "type": "string",
+            "description": "Optional PEM trust anchor for a private HTTPS collector.",
+            "default": "",
+            "maxLength": 2048
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The session expires automatically and never survives a reboot.",
+            "maximum": 3600,
+            "minimum": 30
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "Complete OTLP HTTP/protobuf traces URL, including /v1/traces.",
+            "maxLength": 512
+          }
+        },
+        "additionalProperties": false
+      },
+      "SessionState": {
+        "type": "string",
+        "enum": [
+          "disabled",
+          "running",
+          "stopping",
+          "finished"
+        ]
+      },
+      "TelemetryStatus": {
+        "type": "object",
+        "required": [
+          "state",
+          "remaining_seconds",
+          "sample_interval_packets",
+          "ended_spans",
+          "exported_spans",
+          "failed_spans",
+          "discarded_spans",
+          "export_failures",
+          "pending_spans",
+          "wall_clock_ready",
+          "cross_host_clock_aligned"
+        ],
+        "properties": {
+          "cross_host_clock_aligned": {
+            "type": "boolean",
+            "description": "Cross-host clock offset is not measured; only local durations are authoritative."
+          },
+          "discarded_spans": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "ended_spans": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "export_failures": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "exported_spans": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "failed_spans": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pending_spans": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "remaining_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sample_interval_packets": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionState"
+          },
+          "wall_clock_ready": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "cross_host_clock_aligned": false,
+          "discarded_spans": 0,
+          "ended_spans": 0,
+          "export_failures": 0,
+          "exported_spans": 0,
+          "failed_spans": 0,
+          "pending_spans": 0,
+          "remaining_seconds": 0,
+          "sample_interval_packets": 257,
+          "state": "disabled",
+          "wall_clock_ready": true
+        }
+      }
+    }
+  }
+}

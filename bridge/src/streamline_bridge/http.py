@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import hmac
-import queue
 import re
 import secrets
-import struct
 from importlib.resources import files
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -35,21 +33,23 @@ from streamline_bridge.api_models import (
     UnlockResult,
 )
 from streamline_bridge.http_ingress import HttpIngressGuard
-from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
 from streamline_bridge.recording import RecordingError
 from streamline_bridge.recording_http import RecordingHttpService
 from streamline_bridge.response_tracing import PcmStreamingResponse
 from streamline_bridge.source_identity import TRANSPORT_KEY_ID_PATTERN_TEXT
-from streamline_bridge.sources import SourceLease, SourceRegistry, SourceSelectionError
+from streamline_bridge.sources import SourceRegistry, SourceSelectionError
+from streamline_bridge.telemetry import SessionBusyError
+from streamline_bridge.telemetry_models import SessionRequest, TelemetryStatus
 from streamline_bridge.transport import DEFAULT_PORT, TransportControl
+from streamline_bridge.wav_stream import WavStream
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
     from streamline_bridge.pipeline import AudioPipeline
     from streamline_bridge.recording import RecordingService
+    from streamline_bridge.telemetry import Telemetry
 
-HTTP_MAX_BATCH_CHUNKS = 64
 HTTP_MAX_JSON_BODY_BYTES = 4096
 DEFAULT_MAX_HTTP_CONNECTIONS = 32
 DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS = 10.0
@@ -88,42 +88,6 @@ class BridgeApi(FastAPI):
         return schema
 
 
-def wav_header(pcm_format: PcmFormat = DEFAULT_FORMAT) -> bytes:
-    """Build a WAV header with an unknown-length PCM data chunk."""
-    block_align = pcm_format.channels * pcm_format.bits // 8
-    byte_rate = pcm_format.rate * block_align
-    unknown_size = 0xFFFFFFFF
-    return b"".join(
-        (
-            b"RIFF",
-            struct.pack("<I", unknown_size),
-            b"WAVE",
-            b"fmt ",
-            struct.pack(
-                "<IHHIIHH", 16, 1, pcm_format.channels, pcm_format.rate, byte_rate, block_align, pcm_format.bits
-            ),
-            b"data",
-            struct.pack("<I", unknown_size),
-        )
-    )
-
-
-def collect_http_batch(client_queue: queue.Queue[bytes | None]) -> list[bytes] | None:
-    first = client_queue.get()
-    if first is None:
-        return None
-    chunks = [first]
-    while len(chunks) < HTTP_MAX_BATCH_CHUNKS:
-        try:
-            chunk = client_queue.get_nowait()
-        except queue.Empty:
-            break
-        if chunk is None:
-            return None
-        chunks.append(chunk)
-    return chunks
-
-
 def error_response(status: int, code: str, message: str, headers: Mapping[str, str] | None = None) -> JSONResponse:
     return JSONResponse(
         ErrorResponse(error=ErrorDetail(code=code, message=message)).model_dump(),
@@ -150,22 +114,6 @@ def recording_error(exc: RecordingError) -> JSONResponse:
     return error_response(status, exc.code, exc.message, headers)
 
 
-def stream_wav_body(lease: SourceLease[AudioPipeline], remote_addr: str, path: str) -> Generator[bytes]:
-    """Yield one WAV client stream and release all lifecycle state on close."""
-    stream = None
-    try:
-        stream = lease.hub.register_client(remote_addr, path)
-        yield wav_header()
-        while (chunks := collect_http_batch(stream.queue)) is not None:
-            body = b"".join(chunks)
-            yield body
-            lease.hub.record_client_write(stream.stats.id, len(body), len(chunks))
-    finally:
-        if stream is not None:
-            lease.hub.unregister_client(stream.stats.id)
-        lease.close()
-
-
 def make_app(
     sources: SourceRegistry[AudioPipeline],
     bridge_version: str,
@@ -175,6 +123,7 @@ def make_app(
     healthy: Callable[[], bool] | None = None,
     progress_deadline_seconds: float = DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
     public_url: str = "",
+    telemetry: Telemetry | None = None,
 ) -> FastAPI:
     """Build the runtime app whose routes and models own the OpenAPI contract."""
     app = BridgeApi(
@@ -222,6 +171,58 @@ def make_app(
                 detail={"code": "unauthorized", "message": "Enter the bridge API token configured on this bridge."},
                 headers={"WWW-Authenticate": 'Bearer realm="StreamLine bridge"'},
             )
+
+    def require_telemetry() -> Telemetry:
+        if telemetry is None:
+            raise HTTPException(503, detail={"code": "unavailable", "message": "Telemetry is unavailable."})
+        return telemetry
+
+    @app.get(
+        "/api/telemetry",
+        response_model=TelemetryStatus,
+        dependencies=[Depends(authorize)],
+        operation_id="getTelemetry",
+        responses=error_responses(401, 503),
+    )
+    def telemetry_status() -> TelemetryStatus:
+        return require_telemetry().snapshot()
+
+    @app.post(
+        "/api/telemetry/start",
+        response_model=TelemetryStatus,
+        status_code=202,
+        dependencies=[Depends(authorize)],
+        operation_id="startTelemetry",
+        responses=error_responses(400, 401, 409, 413, 503),
+    )
+    def telemetry_start(config: SessionRequest) -> TelemetryStatus:
+        manager = require_telemetry()
+        try:
+            manager.start(config)
+        except ValueError as exc:
+            raise HTTPException(400, detail={"code": "invalid-request", "message": str(exc)}) from None
+        except SessionBusyError:
+            raise HTTPException(
+                409, detail={"code": "session-busy", "message": "A session is running or stopping."}
+            ) from None
+        except (OSError, RuntimeError):
+            raise HTTPException(
+                503, detail={"code": "unavailable", "message": "Cannot start telemetry worker."}
+            ) from None
+        return manager.snapshot()
+
+    @app.post(
+        "/api/telemetry/stop",
+        response_model=TelemetryStatus,
+        status_code=202,
+        dependencies=[Depends(authorize)],
+        operation_id="stopTelemetry",
+        responses=error_responses(401, 503),
+    )
+    def telemetry_stop() -> TelemetryStatus:
+        manager = require_telemetry()
+        manager.stop()
+        return manager.snapshot()
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
@@ -350,7 +351,8 @@ def make_app(
             return error_response(int(exc.status), "invalid-source", exc.message)
         remote = request.client.host if request.client is not None else "unknown"
         return PcmStreamingResponse(
-            stream_wav_body(lease, remote, str(request.url.path)),
+            WavStream(lease, remote, str(request.url.path)),
+            tracer=telemetry.tracer if telemetry is not None else None,
             media_type="audio/wav",
             headers={"Cache-Control": "no-store", "Connection": "close"},
             background=BackgroundTask(lease.close),

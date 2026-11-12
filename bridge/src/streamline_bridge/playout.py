@@ -9,12 +9,16 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from streamline_bridge.adaptive_buffer import AdaptiveBuffer
-from streamline_bridge.packet_tracing import PacketTraces
+from streamline_bridge.packet_tracing import AudioChunk, PacketTraces
 from streamline_bridge.protocol import DEFAULT_FORMAT, DEFAULT_RATE, PcmFormat
 from streamline_bridge.quality import QualityWindow
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from opentelemetry.context import Context
+
+    from streamline_bridge.telemetry import Telemetry
 
 MAX_UINT32 = 0xFFFFFFFF
 UINT32_MOD = 0x100000000
@@ -103,6 +107,7 @@ class PlayoutBuffer:
         pcm_format: PcmFormat = DEFAULT_FORMAT,
         clock: Clock | None = None,
         max_playout_buffer_seconds: float = 3.0,
+        telemetry: Telemetry | None = None,
     ) -> None:
         self._format = pcm_format
         self._clock = clock or SystemClock()
@@ -121,7 +126,7 @@ class PlayoutBuffer:
         self._ready = threading.Event()
         self._closed = False
         self._packets: dict[int, bytes] = {}
-        self._traces = PacketTraces()
+        self._traces = PacketTraces(telemetry)
         self._last_payload: bytes | None = None
         self._last_payload_size = pcm_format.payload_bytes
         self._loss_run = 0
@@ -159,7 +164,7 @@ class PlayoutBuffer:
             self.stats.buffered_packets = 0
             self._ready.set()
 
-    def ingest(self, seq: int, payload: bytes) -> bool:
+    def ingest(self, seq: int, payload: bytes, parent: Context | None = None) -> bool:
         """Admit one packet; ``False`` demands the producer's disconnect."""
         with self._lock:
             if self._closed:
@@ -188,7 +193,7 @@ class PlayoutBuffer:
             if self.stats.highest_seq is not None and seq_distance(self.stats.highest_seq, seq) < 0:
                 self.stats.reordered += 1
             self._packets[seq] = payload
-            self._traces.admit(seq)
+            self._traces.admit(seq, parent)
             self.stats.highest_seq = (
                 seq
                 if self.stats.highest_seq is None or seq_distance(self.stats.highest_seq, seq) > 0
@@ -204,7 +209,7 @@ class PlayoutBuffer:
                 self._ready.set()
             return True
 
-    def next_chunk(self) -> bytes | None:
+    def next_chunk(self) -> AudioChunk | None:
         """Play buffered PCM or silence while buffering; only close ends output."""
         with self._lock:
             if self._closed:
@@ -212,13 +217,13 @@ class PlayoutBuffer:
             self.stats.played_frames += self._format.frames_per_packet
             self.stats.last_playout_at = self._clock.time()
             if not self._ready.is_set() or self.stats.playout_seq is None:
-                return bytes(self._last_payload_size)
+                return AudioChunk(bytes(self._last_payload_size))
             seq = self.stats.playout_seq
             if self._packets.get(seq) == b"":
                 if self.stats.applied_buffer_packets < self._adaptive.target:
                     self.stats.applied_buffer_packets += 1
                     self.stats.buffer_expansion_packets += 1
-                    return bytes(self._last_payload_size)
+                    return AudioChunk(bytes(self._last_payload_size))
                 following = (seq + 1) & MAX_UINT32
                 if self.stats.applied_buffer_packets > self._adaptive.target and self._packets.get(following) == b"":
                     del self._packets[seq]
@@ -227,7 +232,7 @@ class PlayoutBuffer:
                     self.stats.applied_buffer_packets -= 1
                     self.stats.buffer_reduction_packets += 1
             payload = self._packets.pop(seq, None)
-            self._traces.played(seq)
+            context = self._traces.played(seq)
             if payload is None:
                 self.stats.missing_packets += 1
                 self._quality.record("missing_packets", self._clock.monotonic())
@@ -251,7 +256,7 @@ class PlayoutBuffer:
                 self._clear_for_rebuffer()
                 self.stats.underruns += 1
                 self._quality.record("underruns", self._clock.monotonic())
-            return payload
+            return AudioChunk(payload, context)
 
     def reset_source_session(self) -> None:
         with self._lock:
@@ -307,7 +312,9 @@ class PlayoutBuffer:
 class PlayoutWorker:
     """Drive a ``PlayoutBuffer`` at packet cadence and hand chunks to a sink."""
 
-    def __init__(self, buffer: PlayoutBuffer, publish: Callable[[bytes], None], clock: Clock | None = None) -> None:
+    def __init__(
+        self, buffer: PlayoutBuffer, publish: Callable[[AudioChunk], None], clock: Clock | None = None
+    ) -> None:
         self._buffer = buffer
         self._publish = publish
         self._clock = clock or SystemClock()

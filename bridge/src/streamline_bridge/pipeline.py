@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import threading
+from typing import TYPE_CHECKING
 
 from streamline_bridge.fanout import ClientFanout, ClientStream
 from streamline_bridge.levels import AudioLevels
 from streamline_bridge.packet_tap import PacketSink, PacketTapFanout
 from streamline_bridge.playout import Clock, PlayoutBuffer, PlayoutWorker
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
+
+if TYPE_CHECKING:
+    from opentelemetry.context import Context
+
+    from streamline_bridge.telemetry import Telemetry
 
 
 class AudioPipeline:
@@ -24,6 +30,7 @@ class AudioPipeline:
         clock: Clock | None = None,
         start_worker: bool = True,
         max_playout_buffer_seconds: float = 3.0,
+        telemetry: Telemetry | None = None,
     ) -> None:
         self.playout = PlayoutBuffer(
             playout_buffer_seconds,
@@ -32,6 +39,7 @@ class AudioPipeline:
             pcm_format,
             clock,
             max_playout_buffer_seconds,
+            telemetry,
         )
         now = clock.time if clock is not None else None
         self.clients = ClientFanout(max_client_chunks, now=now) if now is not None else ClientFanout(max_client_chunks)
@@ -59,9 +67,9 @@ class AudioPipeline:
         self.playout.reset_source_session()
         self.levels.reset()
 
-    def ingest(self, seq: int, payload: bytes) -> bool:
+    def ingest(self, seq: int, payload: bytes, parent: Context | None = None) -> bool:
         """Admit one packet; ``False`` demands the producer's disconnect."""
-        if not self.playout.ingest(seq, payload):
+        if not self.playout.ingest(seq, payload, parent):
             return False
         self.levels.update(payload or self._silence)
         self.packet_taps.publish(seq, payload)

@@ -1,25 +1,64 @@
 groups:
   - id: registry.streamline
     type: attribute_group
-    brief: Packet identity within one source session.
+    brief: Sampled audio pipeline timing and identity.
     attributes:
       - id: streamline.packet.sequence
         type: int
         stability: development
-        brief: Unsigned 32-bit capture packet sequence, wrapping within a device boot.
+        brief: Unsigned 32-bit capture packet sequence within a device boot.
         examples: [256, 512]
+      - id: streamline.packet.kind
+        type: string
+        stability: development
+        brief: Audio or an intentional silence record.
+        examples: [audio, silence]
+      - id: streamline.trigger
+        type: string
+        stability: development
+        brief: Reason for sampling the packet.
+        examples: [periodic, session_start, source_onset, stream_enable]
+      - id: streamline.sample.interval
+        type: int
+        stability: development
+        brief: Number of capture packets between periodic samples.
+        examples: [257]
+      - id: streamline.clock.aligned
+        type: boolean
+        stability: development
+        brief: Whether cross-host clock offset has a measured uncertainty bound.
   - id: span.streamline.device.packet
     type: span
     stability: development
-    brief: Packet construction through the end of its sender batch attempt.
+    brief: Capture completion through the end of its sender batch attempt.
     span_kind: internal
     attributes:
       - ref: streamline.packet.sequence
         requirement_level: required
+      - ref: streamline.packet.kind
+      - ref: streamline.trigger
+  - id: span.streamline.device.queue
+    type: span
+    stability: development
+    brief: Queue admission through sender batch start.
+    span_kind: internal
+  - id: span.streamline.device.send
+    type: span
+    stability: development
+    brief: Sender batch start through local transport write completion.
+    span_kind: internal
   - id: span.streamline.bridge.playout
     type: span
     stability: development
     brief: Admitted packet residence until removal from the playout buffer.
+    span_kind: internal
+    attributes:
+      - ref: streamline.packet.sequence
+        requirement_level: required
+  - id: span.streamline.bridge.client_submit
+    type: span
+    stability: development
+    brief: Client queue admission through PCM ASGI send completion.
     span_kind: internal
     attributes:
       - ref: streamline.packet.sequence

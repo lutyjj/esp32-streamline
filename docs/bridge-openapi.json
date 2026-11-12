@@ -580,6 +580,60 @@
         "title": "RecordingStorage",
         "type": "object"
       },
+      "SessionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_insecure": {
+            "default": false,
+            "description": "Explicit consent to send metadata over an unencrypted trusted LAN.",
+            "title": "Allow Insecure",
+            "type": "boolean"
+          },
+          "bearer_token": {
+            "default": "",
+            "description": "Optional credential; accepted only with HTTPS and never returned.",
+            "maxLength": 512,
+            "title": "Bearer Token",
+            "type": "string"
+          },
+          "ca_certificate_pem": {
+            "default": "",
+            "description": "Optional PEM trust anchor for a private HTTPS collector.",
+            "maxLength": 2048,
+            "title": "Ca Certificate Pem",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "description": "The session expires automatically and never survives a reboot.",
+            "maximum": 3600.0,
+            "minimum": 30.0,
+            "title": "Duration Seconds",
+            "type": "integer"
+          },
+          "endpoint": {
+            "description": "Complete OTLP HTTP/protobuf traces URL, including /v1/traces.",
+            "maxLength": 512,
+            "title": "Endpoint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "duration_seconds",
+          "endpoint"
+        ],
+        "title": "SessionRequest",
+        "type": "object"
+      },
+      "SessionState": {
+        "enum": [
+          "disabled",
+          "running",
+          "stopping",
+          "finished"
+        ],
+        "title": "SessionState",
+        "type": "string"
+      },
       "SourceLifecycle": {
         "additionalProperties": false,
         "properties": {
@@ -979,6 +1033,77 @@
           "title"
         ],
         "title": "StartRecordingRequest",
+        "type": "object"
+      },
+      "TelemetryStatus": {
+        "properties": {
+          "cross_host_clock_aligned": {
+            "description": "Cross-host clock offset is not measured; only local durations are authoritative.",
+            "title": "Cross Host Clock Aligned",
+            "type": "boolean"
+          },
+          "discarded_spans": {
+            "minimum": 0.0,
+            "title": "Discarded Spans",
+            "type": "integer"
+          },
+          "ended_spans": {
+            "minimum": 0.0,
+            "title": "Ended Spans",
+            "type": "integer"
+          },
+          "export_failures": {
+            "minimum": 0.0,
+            "title": "Export Failures",
+            "type": "integer"
+          },
+          "exported_spans": {
+            "minimum": 0.0,
+            "title": "Exported Spans",
+            "type": "integer"
+          },
+          "failed_spans": {
+            "minimum": 0.0,
+            "title": "Failed Spans",
+            "type": "integer"
+          },
+          "pending_spans": {
+            "minimum": 0.0,
+            "title": "Pending Spans",
+            "type": "integer"
+          },
+          "remaining_seconds": {
+            "minimum": 0.0,
+            "title": "Remaining Seconds",
+            "type": "integer"
+          },
+          "sample_interval_packets": {
+            "minimum": 0.0,
+            "title": "Sample Interval Packets",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionState"
+          },
+          "wall_clock_ready": {
+            "title": "Wall Clock Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cross_host_clock_aligned",
+          "discarded_spans",
+          "ended_spans",
+          "export_failures",
+          "exported_spans",
+          "failed_spans",
+          "pending_spans",
+          "remaining_seconds",
+          "sample_interval_packets",
+          "state",
+          "wall_clock_ready"
+        ],
+        "title": "TelemetryStatus",
         "type": "object"
       },
       "TransportKeyDeleteResult": {
@@ -1631,6 +1756,175 @@
           }
         ],
         "summary": "Stop and finalize a recording"
+      }
+    },
+    "/api/telemetry": {
+      "get": {
+        "operationId": "getTelemetry",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Telemetry Status"
+      }
+    },
+    "/api/telemetry/start": {
+      "post": {
+        "operationId": "startTelemetry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Content Too Large"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Telemetry Start"
+      }
+    },
+    "/api/telemetry/stop": {
+      "post": {
+        "operationId": "stopTelemetry",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Telemetry Stop"
       }
     },
     "/api/transport": {

@@ -1,6 +1,6 @@
 # PCM Stream Protocol
 
-The ESP32 sends framed PCM to the bridge using a small fixed header followed by
+The ESP32 sends framed PCM to the bridge using a base header, optional trace context, and
 interleaved little-endian stereo PCM. The wire format is identical regardless of
 transport. The firmware carries it over a persistent TCP connection
 selected as cleartext or authenticated TLS 1.3 at boot. See
@@ -23,8 +23,8 @@ All integer fields are little-endian.
 ```text
 offset  size  field
 0       4     magic: "ELI1"
-4       1     version: 2
-5       1     header size: 24
+4       1     version: 3
+5       1     header size: 24 or 79
 6       1     channels
 7       1     bits per sample
 8       4     sequence
@@ -33,13 +33,18 @@ offset  size  field
 20      4     payload bytes
 ```
 
-Payload starts immediately after the 24-byte header.
+Payload starts at the declared header size. A 79-byte header contains a 55-byte
+ASCII W3C `traceparent` immediately after the base header. Only the fixed v00
+form is accepted; invalid or truncated carriers terminate the producer connection.
+SDK propagators generate and parse the carrier. A 24-byte header has no trace
+context. The extension never changes the PCM payload or capture interval.
+See [pipeline telemetry](telemetry.md) for sampling and timing boundaries.
 
 Every record represents exactly 256 frames. An audio record carries 1,024 PCM
 bytes. A silence record carries no payload and declares `payload bytes = 0`;
 it explicitly represents an interval suppressed by the source's signal gate.
 All other payload lengths are invalid. The firmware coalesces shorter hardware
-reads before framing. Both sender and receiver must implement version 2;
+reads before framing. Both sender and receiver must implement version 3;
 other versions are rejected without fallback.
 
 The deployed HTTP WAV bridge is intentionally a single-format endpoint: it accepts

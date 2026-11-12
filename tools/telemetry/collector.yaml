@@ -14,9 +14,33 @@ exporters:
     rotation:
       max_megabytes: 10
       max_backups: 2
+  file/metrics:
+    path: /data/metrics.jsonl
+    rotation:
+      max_megabytes: 10
+      max_backups: 2
+connectors:
+  span_metrics:
+    histogram:
+      unit: s
+      explicit:
+        buckets: [1ms, 5ms, 10ms, 20ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 3s, 5s]
+    aggregation_cardinality_limit: 128
+    metrics_flush_interval: 5s
+    metrics_expiration: 5m
+    resource_metrics_key_attributes: [service.name]
+    dimensions:
+      - name: streamline.trigger
+      - name: streamline.packet.kind
+    exemplars:
+      enabled: true
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter]
-      exporters: [file]
+      exporters: [file, span_metrics]
+    metrics:
+      receivers: [span_metrics]
+      processors: [memory_limiter]
+      exporters: [file/metrics]

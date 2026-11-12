@@ -2,7 +2,7 @@
 
 use core::fmt::{self, Write};
 
-use crate::telemetry::TelemetrySnapshot;
+use crate::runtime_snapshot::TelemetrySnapshot;
 
 /// Render the exposition text into any writer, so the HTTP adapter can stream
 /// it without materializing the whole body.
@@ -357,7 +357,7 @@ impl MetricKind {
 #[cfg(test)]
 mod tests {
     use super::render_prometheus_to;
-    use crate::telemetry::{
+    use crate::runtime_snapshot::{
         AnalogPassthroughTelemetry, AudioTelemetry, DiagnosticsTelemetry, HeapTelemetry,
         NvsTelemetry, OtaTelemetry, StreamTelemetry, SystemTelemetry, TargetTelemetry,
         TelemetrySnapshot, WifiTelemetry,
@@ -530,7 +530,7 @@ streamline_ota_busy 0\n"
     fn snapshot() -> TelemetrySnapshot {
         TelemetrySnapshot {
             firmware_version: "0.3.3",
-            firmware_variant: crate::telemetry::FirmwareVariant::Standard,
+            firmware_variant: crate::runtime_snapshot::FirmwareVariant::Standard,
             device_name: "Study CD player".to_owned(),
             mode: "provisioned",
             config_source: "nvs",

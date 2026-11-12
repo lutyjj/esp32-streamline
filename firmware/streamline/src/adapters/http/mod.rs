@@ -39,6 +39,7 @@ const INDEX_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.html.gz"
 const OPENAPI_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/openapi.json.gz"));
 
 pub struct ApiState {
+    pub telemetry: Arc<crate::telemetry::Telemetry>,
     /// Serializes complete control operations across HTTP and physical buttons.
     pub control: Mutex<()>,
     pub restart: Arc<crate::restart::Restart>,

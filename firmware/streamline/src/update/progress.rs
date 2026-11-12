@@ -60,6 +60,7 @@ impl Phase {
 /// Shared, lock-light progress the HTTP status endpoint reads while an update
 /// runs on its own worker thread.
 pub struct OtaProgress {
+    admission: Mutex<()>,
     phase: AtomicU8,
     written: AtomicU32,
     total: AtomicU32,
@@ -85,6 +86,7 @@ pub struct OtaSnapshot {
 impl Default for OtaProgress {
     fn default() -> Self {
         Self {
+            admission: Mutex::new(()),
             phase: AtomicU8::new(Phase::Idle as u8),
             written: AtomicU32::new(0),
             total: AtomicU32::new(0),
@@ -98,6 +100,7 @@ impl OtaProgress {
         &self,
         start: impl FnOnce() -> Result<(), MutationError>,
     ) -> Result<(), MutationError> {
+        let _admission = self.admission.lock().expect("OTA admission lock poisoned");
         if !self.begin() {
             return Err(MutationError::Conflict(
                 "an update is already in progress".into(),
@@ -108,6 +111,20 @@ impl OtaProgress {
             return Err(error);
         }
         Ok(())
+    }
+
+    /// Admit work that must not overlap a firmware operation.
+    pub fn while_idle(
+        &self,
+        work: impl FnOnce() -> Result<(), MutationError>,
+    ) -> Result<(), MutationError> {
+        let _admission = self.admission.lock().expect("OTA admission lock poisoned");
+        if self.snapshot().busy {
+            return Err(MutationError::Conflict(
+                "a firmware operation is in progress".into(),
+            ));
+        }
+        work()
     }
     pub fn snapshot(&self) -> OtaSnapshot {
         let phase = Phase::from_u8(self.phase.load(Ordering::Relaxed));

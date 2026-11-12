@@ -22,7 +22,9 @@ class PacketTracingTests(unittest.TestCase):
         self.monotonic = 0
         self.wall = 1_000_000_000
         self.traces = PacketTraces(
-            self.provider.get_tracer("streamline.audio"), lambda: self.monotonic, lambda: self.wall
+            tracer=self.provider.get_tracer("streamline.audio"),
+            monotonic_ns=lambda: self.monotonic,
+            wall_ns=lambda: self.wall,
         )
 
     def test_playout_path_measures_one_sample_despite_wall_clock_step_and_duplicate(self) -> None:
@@ -34,7 +36,9 @@ class PacketTracingTests(unittest.TestCase):
         self.assertTrue(buffer.ingest(257, packet))
         self.wall += 9_000_000_000
         self.monotonic = 1_250_000
-        self.assertEqual(buffer.next_chunk(), packet)
+        chunk = buffer.next_chunk()
+        assert chunk is not None
+        self.assertEqual(chunk.payload, packet)
         spans = self.exporter.get_finished_spans()
         self.assertEqual(len(spans), 1)
         self.assertEqual(spans[0].name, "streamline.bridge.playout")

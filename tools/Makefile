@@ -71,6 +71,23 @@ telemetry-images:
 telemetry-check: telemetry-images
 	$(CONTAINER) run --rm -v "$(CURDIR)/telemetry/registry:/registry:ro" streamline-telemetry-weaver registry check -r /registry
 	$(CONTAINER) run --rm streamline-telemetry-collector validate --config=/etc/otelcol-contrib/config.yaml
+	@$(MAKE) telemetry-code-check
+
+TELEMETRY_CODE_DIR ?= $(REPO_ROOT)/.private/telemetry-generated
+TELEMETRY_CODE_RUN = $(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" -v "$(CURDIR)/telemetry:/work:ro" -v "$(TELEMETRY_CODE_DIR):/out" streamline-telemetry-weaver registry generate code /out -r /work/registry -t /work/templates
+
+.PHONY: telemetry-code telemetry-code-check telemetry-code-generate
+telemetry-code-generate: telemetry-images
+	mkdir -p "$(TELEMETRY_CODE_DIR)"
+	$(TELEMETRY_CODE_RUN)
+
+telemetry-code: telemetry-code-generate
+	cp "$(TELEMETRY_CODE_DIR)/semconv.rs" ../firmware/streamline/src/telemetry/semconv.rs
+	cp "$(TELEMETRY_CODE_DIR)/semconv.py" ../bridge/src/streamline_bridge/semconv.py
+
+telemetry-code-check: telemetry-code-generate
+	diff -u ../firmware/streamline/src/telemetry/semconv.rs "$(TELEMETRY_CODE_DIR)/semconv.rs"
+	diff -u ../bridge/src/streamline_bridge/semconv.py "$(TELEMETRY_CODE_DIR)/semconv.py"
 
 telemetry-collect: telemetry-check
 	mkdir -p "$(TELEMETRY_OUTPUT)"

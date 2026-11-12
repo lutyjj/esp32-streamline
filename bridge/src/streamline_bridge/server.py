@@ -12,11 +12,12 @@ import uvicorn
 from streamline_bridge.http import make_app
 from streamline_bridge.http_ingress import ProgressDeadlineH11Protocol
 from streamline_bridge.options import parse_args, validate_args
-from streamline_bridge.packet_tracing import configure as configure_tracing
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.recording import RecordingService, RecordingStore
 from streamline_bridge.sources import SourceRegistry
 from streamline_bridge.tcp import TcpIngestServer
+from streamline_bridge.telemetry import Telemetry
+from streamline_bridge.telemetry_export import make_exporter
 from streamline_bridge.transport import TlsPskAuthenticator, TransportControl, TransportStateStore
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ def bridge_version() -> str:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = validate_args(parse_args())
-    tracing = configure_tracing()
+    tracing = Telemetry(make_exporter)
 
     def make_pipeline() -> AudioPipeline:
         return AudioPipeline(
@@ -42,6 +43,7 @@ def main() -> int:
             max_playout_buffer_seconds=args.max_playout_buffer_seconds,
             max_repeat_conceal_packets=args.max_repeat_conceal_packets,
             max_outage_silence_seconds=args.max_outage_silence_seconds,
+            telemetry=tracing,
         )
 
     sources = SourceRegistry(
@@ -84,6 +86,7 @@ def main() -> int:
                 healthy=lambda: pcm_server.healthy,
                 progress_deadline_seconds=args.http_request_timeout_seconds,
                 public_url=args.public_url,
+                telemetry=tracing,
             ),
             host=args.http_bind,
             port=args.http_port,
@@ -115,8 +118,7 @@ def main() -> int:
         if recordings is not None:
             recordings.shutdown()
         sources.close()
-        if tracing is not None:
-            tracing.shutdown()
+        tracing.close()
     return result
 
 

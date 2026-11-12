@@ -33,6 +33,7 @@ bridge:
   - 'docs/pcm-protocol.md'
   - 'docs/pcm-transport.json'
   - 'docs/pcm-frame-vectors.json'
+  - 'docs/telemetry-api.json'
   # The bridge option-contract test pins the add-on's config.
   - 'ha-addon/config.yaml'
 
@@ -57,8 +58,9 @@ console_e2e:
 tools:
   - *shared
   - 'tools/**'
-  - 'firmware/streamline/src/tracing_poc.rs'
-  - 'firmware/streamline/src/adapters/tracing_poc.rs'
+  - 'firmware/streamline/src/telemetry/**'
+  - 'firmware/streamline/src/adapters/telemetry.rs'
+  - 'bridge/src/streamline_bridge/semconv.py'
   - 'bridge/src/streamline_bridge/packet_tracing.py'
   - 'bridge/src/streamline_bridge/response_tracing.py'
 
@@ -88,6 +90,7 @@ firmware:
 api_contract:
   - *shared
   - 'docs/openapi.json'
+  - 'docs/telemetry-api.json'
 
 qemu_smoke:
   - *shared

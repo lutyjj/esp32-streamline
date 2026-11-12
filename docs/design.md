@@ -369,6 +369,12 @@ board resolution, HTTP API, and embedded console.
 `make -C firmware qemu-artifacts` builds it, and
 `make tools-smoke-qemu` runs the emulated-device test suite against it.
 
+The firmware toolchain applies `patches/openeth-cache-safe-log.patch` to its
+pinned ESP-IDF source. OpenETH's IRAM interrupt logs dropped frames with RAM
+strings, so it can run while OTA partition queries disable the flash cache.
+The startup connection-pressure smoke exercises this path. Remove the patch
+when the pinned SDK supplies the same cache-safe logging.
+
 Two limits bound what emulation can prove. Radio, capture, and codec behavior
 exist only on hardware, so the device smoke stays the release gate. And a
 software restart is out of contract under QEMU: the emulated NIC survives a

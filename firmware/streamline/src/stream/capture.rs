@@ -28,6 +28,7 @@ pub struct CaptureEngine {
     charged_frames: u64,
     lost_frame_remainder: u64,
     buffered_frames: u32,
+    was_streaming: bool,
 }
 
 impl CaptureEngine {
@@ -42,6 +43,7 @@ impl CaptureEngine {
             charged_frames: 0,
             lost_frame_remainder: 0,
             buffered_frames,
+            was_streaming: false,
         }
     }
 
@@ -73,6 +75,7 @@ impl CaptureEngine {
         let offset = self.filled;
         let requested = PAYLOAD_BYTES - offset;
         let result = source.read(&mut self.pcm[offset..], READ_TIMEOUT_MS);
+        let capture_time = crate::telemetry::CaptureTime::now();
         let now = clock.monotonic_millis();
         self.observe_time(now, status);
         let bytes = match result {
@@ -110,22 +113,38 @@ impl CaptureEngine {
         self.charged_frames = 0;
         let levels = LevelStats::analyze(&self.pcm);
         status.record_levels(levels);
+        let was_playing = self.detector.playing();
         let playing = self.detector.update(levels);
         status.set_playing(playing);
         status.set_noise_floor(self.detector.noise_floor());
         let sequence = status.next_sequence();
         if !status.streaming_enabled() || status.transport_quiesce_requested() {
+            self.was_streaming = false;
             return;
         }
         let Some(queue) = queue else {
             return;
         };
-        let packet = if playing {
+        let mut packet = if playing {
             AudioPacket::from_pcm(sequence, &self.pcm)
         } else {
             status.record_silence();
             AudioPacket::silence(sequence)
         };
+        packet.trace = status.telemetry.capture(
+            sequence,
+            capture_time,
+            !playing,
+            if !self.was_streaming {
+                Some("stream_enable")
+            } else {
+                (playing && !was_playing).then_some("source_onset")
+            },
+        );
+        self.was_streaming = true;
+        if let Some(trace) = &mut packet.trace {
+            trace.queued();
+        }
         let (dropped, depth) = queue.push_drop_oldest(packet);
         if dropped {
             status.record_queue_drop();

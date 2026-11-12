@@ -7,6 +7,7 @@ from itertools import pairwise
 from typing import cast
 
 from streamline_bridge.fanout import ClientFanout
+from streamline_bridge.packet_tracing import AudioChunk
 from streamline_bridge.playout import MAX_UINT32, PlayoutBuffer, PlayoutWorker
 from streamline_bridge.protocol import DEFAULT_FORMAT
 
@@ -54,11 +55,11 @@ class PlayoutBufferTests(unittest.TestCase):
         buffer.ingest(1, reordered)
         buffer.ingest(0, zero)
         buffer.ingest(0, zero)
-        self.assertEqual(buffer.next_chunk(), maximum)
-        self.assertEqual(buffer.next_chunk(), zero)
+        self.assertEqual(buffer.next_chunk(), AudioChunk(maximum))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(zero))
         buffer.ingest(MAX_UINT32, maximum)
         snapshot = buffer.snapshot()
-        self.assertEqual(buffer.next_chunk(), reordered)
+        self.assertEqual(buffer.next_chunk(), AudioChunk(reordered))
         self.assertEqual(snapshot["reordered"], 1)
         self.assertEqual(snapshot["duplicate"], 1)
         self.assertEqual(snapshot["late"], 1)
@@ -67,9 +68,9 @@ class PlayoutBufferTests(unittest.TestCase):
         buffer = self.make_buffer()
         source = payload(10_000)
         buffer.ingest(4, source)
-        self.assertEqual(buffer.next_chunk(), source)
-        self.assertEqual(buffer.next_chunk(), payload(5000))
-        self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(source))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(5000)))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(bytes(DEFAULT_FORMAT.payload_bytes)))
         self.assertEqual(buffer.snapshot()["missing_packets"], 2)
 
     def test_explicit_silence_keeps_playout_ready_without_loss_or_underruns(self) -> None:
@@ -78,7 +79,7 @@ class PlayoutBufferTests(unittest.TestCase):
         buffer.next_chunk()
         for seq in range(1, 501):
             buffer.ingest(seq, b"")
-            self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+            self.assertEqual(buffer.next_chunk(), AudioChunk(bytes(DEFAULT_FORMAT.payload_bytes)))
             self.clock.current += buffer.packet_interval
         snapshot = buffer.snapshot()
         self.assertEqual(snapshot["silence_packets"], 500)
@@ -93,7 +94,7 @@ class PlayoutBufferTests(unittest.TestCase):
         buffer.next_chunk()
         self.assertEqual(buffer.snapshot()["missing_packets"], 1)
         buffer.ingest(502, payload(2000))
-        self.assertEqual(buffer.next_chunk(), payload(2000))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(2000)))
 
     def test_duplicate_and_late_silence_do_not_inflate_intentional_playout(self) -> None:
         buffer = self.make_buffer()
@@ -102,7 +103,7 @@ class PlayoutBufferTests(unittest.TestCase):
         buffer.next_chunk()
         buffer.ingest(MAX_UINT32, b"")
         buffer.ingest(0, payload(3000))
-        self.assertEqual(buffer.next_chunk(), payload(3000))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(3000)))
         snapshot = buffer.snapshot()
         self.assertEqual(snapshot["silence_packets"], 1)
         self.assertEqual(snapshot["duplicate"], 1)
@@ -115,20 +116,20 @@ class PlayoutBufferTests(unittest.TestCase):
         self.assertIsNotNone(buffer.next_chunk())
         self.assertIsNotNone(buffer.next_chunk())
         for _ in range(100):
-            self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+            self.assertEqual(buffer.next_chunk(), AudioChunk(bytes(DEFAULT_FORMAT.payload_bytes)))
         self.assertEqual(buffer.snapshot()["underruns"], 1)
         self.assertEqual(
             buffer.snapshot()["missing_packets"], 2, "waiting for resumed audio is not further packet loss"
         )
         buffer.ingest(20, payload(2000))
-        self.assertEqual(buffer.next_chunk(), payload(2000))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(2000)))
 
     def test_session_reset_discards_old_sequence_state(self) -> None:
         buffer = self.make_buffer()
         buffer.ingest(50, payload(10))
         buffer.reset_source_session()
         buffer.ingest(0, payload(20))
-        self.assertEqual(buffer.next_chunk(), payload(20))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(20)))
 
     def test_sustained_flooding_stops_at_the_admission_ceiling(self) -> None:
         buffer = self.make_buffer(buffered_packets=2)
@@ -160,11 +161,11 @@ class PlayoutBufferTests(unittest.TestCase):
         for _ in range(4):
             buffer.next_chunk()
         buffer.ingest(100, payload(2000))
-        self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(bytes(DEFAULT_FORMAT.payload_bytes)))
         self.assertEqual(buffer.snapshot()["playout_seq"], 100)
         buffer.ingest(101, payload(3000))
-        self.assertEqual(buffer.next_chunk(), payload(2000))
-        self.assertEqual(buffer.next_chunk(), payload(3000))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(2000)))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(3000)))
 
     def test_a_closed_buffer_refuses_packets_and_unblocks_its_worker(self) -> None:
         buffer = self.make_buffer()
@@ -195,8 +196,8 @@ class PlayoutBufferTests(unittest.TestCase):
                 before = [adaptive.stats.missing_packets, fixed.stats.missing_packets]
             chunk = adaptive.next_chunk()
             fixed.next_chunk()
-            if chunk and any(chunk):
-                played.append(chunk)
+            if chunk and any(chunk.payload):
+                played.append(chunk.payload)
         self.assertEqual(adaptive.stats.missing_packets - before[0], 0)
         self.assertGreater(fixed.stats.missing_packets - before[1], 0)
         self.assertGreater(adaptive.stats.buffer_expansion_packets, 0)
@@ -226,22 +227,24 @@ class PlayoutBufferTests(unittest.TestCase):
         self.assertEqual(buffer.stats.applied_buffer_packets, applied - 1)
         self.assertEqual(buffer.stats.missing_packets, 0)
         played = [buffer.next_chunk() for _ in range(38)]
-        self.assertEqual([chunk for chunk in played if chunk and any(chunk)], [payload(101), payload(102)])
+        self.assertEqual(
+            [chunk.payload for chunk in played if chunk and any(chunk.payload)], [payload(101), payload(102)]
+        )
 
     def test_active_pcm_defers_growth_and_reconnect_uses_the_learned_target(self) -> None:
         interval = DEFAULT_FORMAT.frames_per_packet / DEFAULT_FORMAT.rate
         buffer = PlayoutBuffer(interval, 0, 5.0, clock=self.clock, max_playout_buffer_seconds=interval * 40)
         buffer.ingest(MAX_UINT32, payload(1))
-        self.assertEqual(buffer.next_chunk(), payload(1))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(1)))
         self.clock.current += 20 * interval
         buffer.ingest(0, payload(2))
-        self.assertEqual(buffer.next_chunk(), payload(2))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(payload(2)))
         self.assertGreater(cast("int", buffer.snapshot()["playout_buffer_packets"]), 1)
         self.assertEqual(buffer.stats.applied_buffer_packets, 1)
         self.assertEqual(buffer.stats.buffer_expansion_packets, 0)
         buffer.reset_source_session()
         buffer.ingest(0, payload(3))
-        self.assertEqual(buffer.next_chunk(), bytes(DEFAULT_FORMAT.payload_bytes))
+        self.assertEqual(buffer.next_chunk(), AudioChunk(bytes(DEFAULT_FORMAT.payload_bytes)))
         self.assertIsNone(buffer.stats.buffer_ready_at)
 
 
@@ -258,7 +261,8 @@ class PlayoutWorkerTests(unittest.TestCase):
         )
         self.published: list[bytes] = []
         self.thread = threading.Thread(
-            target=PlayoutWorker(self.buffer, self.published.append, self.clock).run, daemon=True
+            target=PlayoutWorker(self.buffer, lambda chunk: self.published.append(chunk.payload), self.clock).run,
+            daemon=True,
         )
 
     def close_and_join(self) -> None:
@@ -281,8 +285,8 @@ class PlayoutWorkerTests(unittest.TestCase):
     def test_rebuffering_keeps_output_paced_and_resumes_at_the_new_sequence(self) -> None:
         times: list[float] = []
 
-        def publish(chunk: bytes) -> None:
-            self.published.append(chunk)
+        def publish(chunk: AudioChunk) -> None:
+            self.published.append(chunk.payload)
             times.append(self.clock.monotonic())
             if len(self.published) == 8:
                 self.buffer.ingest(10_000, payload(2000))
@@ -309,8 +313,8 @@ class ClientFanoutTests(unittest.TestCase):
     def test_overflow_evicts_a_slow_client(self) -> None:
         fanout = ClientFanout(1)
         stream = fanout.register("192.0.2.10", "/streamline.wav")
-        fanout.publish(b"first")
-        fanout.publish(b"second")
+        fanout.publish(AudioChunk(b"first"))
+        fanout.publish(AudioChunk(b"second"))
         snapshot = fanout.snapshot()
         self.assertEqual(snapshot["clients"], 0)
         self.assertEqual(snapshot["slow_clients"], 1)
@@ -320,7 +324,7 @@ class ClientFanoutTests(unittest.TestCase):
     def test_close_ends_streams_without_counting_slow_clients(self) -> None:
         fanout = ClientFanout(2)
         stream = fanout.register("192.0.2.10", "/streamline.wav")
-        fanout.publish(b"chunk")
+        fanout.publish(AudioChunk(b"chunk"))
         fanout.close()
         snapshot = fanout.snapshot()
         self.assertEqual(snapshot["clients"], 0)

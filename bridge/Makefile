@@ -26,6 +26,15 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 
 .PHONY: lock-image console-asset dev-image format lint lock lock-upgrade lock-check test openapi openapi-check image run up
 
+MODELS_COMMAND = datamodel-codegen --input /repo/docs/telemetry-api.json --input-file-type openapi --output-model-type pydantic_v2.BaseModel --target-python-version 3.13 --use-standard-collections --use-union-operator --use-annotated --strict-nullable --disable-timestamp --formatters ruff-format ruff-check
+
+.PHONY: telemetry-models telemetry-models-check
+telemetry-models: dev-image
+	$(CONTAINER_RUN) $(MODELS_COMMAND) --output src/streamline_bridge/telemetry_models.py
+
+telemetry-models-check: dev-image
+	$(CONTAINER_RUN) sh -c 'candidate=$$(mktemp src/streamline_bridge/.telemetry-models.XXXXXX.py); trap '\''rm -f "$$candidate"'\'' EXIT; $(MODELS_COMMAND) --output "$$candidate" && diff -u src/streamline_bridge/telemetry_models.py "$$candidate"'
+
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
 

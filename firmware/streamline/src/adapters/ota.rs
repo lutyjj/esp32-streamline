@@ -154,9 +154,10 @@ enum Action {
 /// result (`up-to-date` or `update-available`).
 pub fn spawn_check(
     progress: Arc<OtaProgress>,
+    telemetry: &crate::telemetry::Telemetry,
     stream: Option<Arc<StreamStatus>>,
 ) -> Result<(), MutationError> {
-    spawn(progress, Action::Check, None, stream)
+    spawn(progress, telemetry, Action::Check, None, stream)
 }
 
 /// Kick off an install on a worker thread. The HTTP handler returns
@@ -167,20 +168,29 @@ pub fn spawn_check(
 /// on failure.
 pub fn spawn_update(
     progress: Arc<OtaProgress>,
+    telemetry: &crate::telemetry::Telemetry,
     store: Arc<Mutex<ConfigStore>>,
     source: Source,
     stream: Option<Arc<StreamStatus>>,
 ) -> Result<(), MutationError> {
-    spawn(progress, Action::Install(source), Some(store), stream)
+    spawn(
+        progress,
+        telemetry,
+        Action::Install(source),
+        Some(store),
+        stream,
+    )
 }
 
 fn spawn(
     progress: Arc<OtaProgress>,
+    telemetry: &crate::telemetry::Telemetry,
     action: Action,
     store: Option<Arc<Mutex<ConfigStore>>>,
     stream: Option<Arc<StreamStatus>>,
 ) -> Result<(), MutationError> {
     progress.start(|| {
+        telemetry.can_start()?;
         let worker_progress = Arc::clone(&progress);
         let pending = task::prepare(
             ThreadSpawnConfiguration {

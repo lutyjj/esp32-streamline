@@ -11,6 +11,8 @@ use super::{requests::*, responses::*};
 use crate::health::HealthReport;
 #[cfg(feature = "api-spec")]
 use crate::profiles::AudioProfileCatalog;
+#[cfg(feature = "api-spec")]
+use crate::telemetry::{SessionRequest, TelemetryStatus};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HttpMethod {
@@ -551,7 +553,46 @@ endpoint!(
     )
 );
 
+endpoint!(
+    TELEMETRY_STATUS,
+    get_telemetry,
+    Get,
+    get,
+    "/api/telemetry",
+    authenticated,
+    summary = "Read diagnostic telemetry session and export health",
+    responses(
+        (status = 200, body = TelemetryStatus),
+        (status = 401, body = ErrorResponse)
+    )
+);
+endpoint!(
+    TELEMETRY_START,
+    start_telemetry,
+    Post,
+    post,
+    "/api/telemetry/start",
+    mutation(202, TelemetryStatus),
+    summary = "Start a bounded, volatile OTLP diagnostic session",
+    request_body(
+        content = SessionRequest,
+        content_type = "application/x-www-form-urlencoded"
+    )
+);
+endpoint!(
+    TELEMETRY_STOP,
+    stop_telemetry,
+    Post,
+    post,
+    "/api/telemetry/stop",
+    mutation(202, TelemetryStatus),
+    summary = "Stop recording and release the diagnostic exporter"
+);
+
 pub const ENDPOINTS: &[Endpoint] = &[
+    TELEMETRY_STATUS,
+    TELEMETRY_START,
+    TELEMETRY_STOP,
     STATUS,
     HEALTH,
     METRICS,
@@ -600,7 +641,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_logs, get_coredump, get_coredump_image, post_coredump_erase, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_telemetry, start_telemetry, stop_telemetry, get_status, get_health, get_metrics, get_logs, get_coredump, get_coredump_image, post_coredump_erase, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]

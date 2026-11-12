@@ -10,7 +10,7 @@ import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from streamline_bridge.protocol import HEADER, parse_header
+from streamline_bridge.protocol import HEADER, parse_header, parse_traceparent
 from streamline_bridge.sources import SourceAdmissionError, SourceLease, SourceRegistry
 
 if TYPE_CHECKING:
@@ -135,8 +135,10 @@ def receive_source(
                     seq, _, _, payload_bytes = parse_header(header)
                 except ValueError as exc:
                     raise ValueError(f"bad header from {addr[0]}:{addr[1]}: {exc}") from exc
+                extension = recv_exact(conn, header[5] - HEADER.size)
+                parent = parse_traceparent(extension) if extension else None
                 payload = recv_exact(conn, payload_bytes)
-                if payload is None or not lease.ingest(seq, payload):
+                if payload is None or not lease.ingest(seq, payload, parent):
                     return
                 established = True
         except (OSError, ValueError) as exc:

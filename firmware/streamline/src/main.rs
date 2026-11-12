@@ -158,6 +158,10 @@ fn run() -> Result<()> {
     #[cfg(feature = "qemu")]
     let key_verifier: Option<Arc<dyn KeyVerifier>> = None;
     let state = Arc::new(ApiState {
+        telemetry: stream
+            .as_ref()
+            .map(|stream| Arc::clone(&stream.telemetry))
+            .unwrap_or_default(),
         control: Mutex::new(()),
         restart: Default::default(),
         button_action: Default::default(),
@@ -260,6 +264,7 @@ fn run() -> Result<()> {
                     log::info!("automatic firmware update check started");
                     if let Err(error) = ota::spawn_update(
                         Arc::clone(&state.ota),
+                        &state.telemetry,
                         Arc::clone(&state.store),
                         ota::Source::LatestRelease,
                         state.stream.clone(),

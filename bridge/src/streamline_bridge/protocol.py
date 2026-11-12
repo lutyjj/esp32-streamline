@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from opentelemetry.trace import get_current_span
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+if TYPE_CHECKING:
+    from opentelemetry.context import Context
 
 HEADER = struct.Struct("<4sBBBBIIII")
 MAGIC = b"ELI1"
-VERSION = 2
+VERSION = 3
+TRACEPARENT_SIZE = 55
 
 DEFAULT_RATE = 48_000
 DEFAULT_CHANNELS = 2
@@ -45,7 +53,10 @@ def parse_packet(
 
     seq, rate, frames, payload_bytes = parse_header(data[: HEADER.size], expected_format)
 
-    payload = data[HEADER.size :]
+    header_size = data[5]
+    if header_size > HEADER.size:
+        parse_traceparent(data[HEADER.size : header_size])
+    payload = data[header_size:]
     if len(payload) != payload_bytes:
         raise ValueError(f"payload length mismatch: header={payload_bytes} actual={len(payload)}")
 
@@ -65,7 +76,7 @@ def parse_header(
         raise ValueError(f"bad magic: {magic!r}")
     if version != VERSION:
         raise ValueError(f"unsupported version: {version}")
-    if header_size != HEADER.size:
+    if header_size not in (HEADER.size, HEADER.size + TRACEPARENT_SIZE):
         raise ValueError(f"bad header size: {header_size}")
     if (rate, channels, bits, frames) != (
         expected_format.rate,
@@ -78,6 +89,19 @@ def parse_header(
         raise ValueError(f"payload size does not match format: {payload_bytes} != {expected_format.payload_bytes}")
 
     return seq, rate, frames, payload_bytes
+
+
+def parse_traceparent(carrier: bytes) -> Context:
+    """Decode the protocol's fixed W3C v00 carrier with the standard propagator."""
+    if len(carrier) != TRACEPARENT_SIZE or not carrier.startswith(b"00-"):
+        raise ValueError("invalid traceparent extension")
+    try:
+        context = TraceContextTextMapPropagator().extract({"traceparent": carrier.decode("ascii")})
+    except UnicodeDecodeError as exc:
+        raise ValueError("non-ASCII traceparent") from exc
+    if not get_current_span(context).get_span_context().is_valid:
+        raise ValueError("invalid traceparent context")
+    return context
 
 
 def _unpack_header(header: bytes) -> tuple[bytes, int, int, int, int, int, int, int, int]:

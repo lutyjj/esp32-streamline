@@ -128,10 +128,12 @@ Assistant as late packets with correct times instead of compressed bursts.
 aiosendspin drops capture older than 500 ms, which bounds the stall this path
 can absorb below the HTTP playout buffer's.
 
-aiosendspin's `SendspinClient` reports the source signal only through its
-admitted connection object, which it does not expose publicly. The publisher
-reads that connection in one place; a public client method replaces it when
-aiosendspin provides one.
+aiosendspin's `SendspinClient` exposes neither its admitted connection nor
+whether the server activated the source role. The publisher reads both through
+private members in `sendspin/publisher.py`: `_admitted_connection` to report
+the signal, and the connection's `_is_role_active("source")` to know whether
+the input is enabled. A public client method for each replaces them when
+aiosendspin provides one; check both on every aiosendspin upgrade.
 
 ## HTTP WAV Bridge
 

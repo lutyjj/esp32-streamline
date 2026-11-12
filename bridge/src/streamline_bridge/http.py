@@ -362,7 +362,7 @@ def make_app(
         status_code=201,
         dependencies=authenticated,
         operation_id="createSendspinPairingToken",
-        summary="Replace a source's Sendspin pairing secret and return its one-time pairing token",
+        summary="Replace a source's Sendspin pairing secret and return its pairing token",
     )
     def create_sendspin_pairing_token(source: SourceIdentity) -> Response | SendspinPairingToken:
         if sendspin is None:

@@ -24,7 +24,7 @@ locks all of those controls together.
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 | `/api/transport` | Listener state, enrolled key ids, and authentication counters; never PSKs. |
 | `/api/sendspin` | Music Assistant publishing state of every source; never pairing secrets. |
-| `/api/sendspin/sources/<source>/pairing-token` | Authenticated `POST` that replaces the source's pairing secret and returns its one-time pairing token. |
+| `/api/sendspin/sources/<source>/pairing-token` | Authenticated `POST` that replaces the source's pairing secret and returns its pairing token, shown only in this response. |
 | `/api/transport/mode` | Authenticated `PUT` selecting `cleartext` or `tls-psk`; a change drops live producers. |
 | `/api/transport/keys/<key-id>` | Authenticated `PUT` and `DELETE` key mutations, available in either mode. |
 | `/api/unlock` | Authenticated no-op the console uses to check the bridge API token. |
@@ -54,8 +54,9 @@ its peer is allowlisted. A dynamic source is `connected` while its TCP producer 
 `http-selected` while an HTTP client holds it open, and `disconnected` after
 both end. A bare WAV request waits for the first producer when no source exists.
 With one allowlisted address, it uses that address's pipeline, which the peer's
-authenticated producer can adopt. Explicit `?source=` listeners and recordings
-pin their selected identity and prevent adoption under a different identity.
+authenticated producer can adopt. Explicit `?source=` listeners, recordings,
+and Sendspin streams pin their selected identity and prevent adoption under a
+different identity.
 
 The bridge retains an inactive dynamic source for
 `--source-eviction-idle-seconds` (300 seconds by default). A reconnect during

@@ -1898,7 +1898,7 @@
             "bearer_auth": []
           }
         ],
-        "summary": "Replace a source's Sendspin pairing secret and return its one-time pairing token"
+        "summary": "Replace a source's Sendspin pairing secret and return its pairing token"
       }
     },
     "/api/transport": {

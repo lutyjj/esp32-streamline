@@ -15,6 +15,7 @@ from aiosendspin.models.types import AudioCodec, Roles, SignalState
 from aiosendspin.noise.keys import generate_psk, psk_id_for
 from aiosendspin.noise.pairing_token import PSKPairingToken, encode_psk_token
 from aiosendspin.noise.trust_store import PairingPsk, PskCategory
+from tenacity import before_sleep_log, retry, wait_exponential
 
 from streamline_bridge.protocol import DEFAULT_FORMAT
 from streamline_bridge.sendspin.capture_clock import CaptureClock
@@ -101,6 +102,7 @@ class SendspinPublisher:
         self._runner: asyncio.Task[None] | None = None
         self._stream: asyncio.Task[None] | None = None
         self._reported: SignalState | None = None
+        self._closing = False
 
     @property
     def client_id(self) -> str:
@@ -116,6 +118,7 @@ class SendspinPublisher:
         self._runner = asyncio.create_task(self._run(), name=f"sendspin-{self.source}")
 
     async def close(self) -> None:
+        self._closing = True
         if self._runner is not None:
             self._runner.cancel()
             await asyncio.gather(self._runner, return_exceptions=True)
@@ -176,28 +179,28 @@ class SendspinPublisher:
         return connection if connection is not None and connection.connected else None
 
     async def _run(self) -> None:
-        delay = RECONNECT_INITIAL_SECONDS
         while True:
             self._disconnected.clear()
-            try:
-                await self._client.connect(self._server_url)
-            except Exception as exc:  # The supervisor outlives every connect failure.
-                logger.warning("Sendspin source %s cannot reach %s: %s", self.source, self._server_url, exc)
-                await asyncio.sleep(delay)
-                delay = min(delay * 2, RECONNECT_MAX_SECONDS)
-                continue
-            delay = RECONNECT_INITIAL_SECONDS
+            await self._connect()
             logger.info("Sendspin source %s connected as %s", self.source, self.client_id)
             await self._disconnected.wait()
             logger.info("Sendspin source %s disconnected", self.source)
             self._reported = None
             await self._end_stream()
-            await asyncio.sleep(delay)
+            await asyncio.sleep(RECONNECT_INITIAL_SECONDS)
+
+    @retry(
+        wait=wait_exponential(min=RECONNECT_INITIAL_SECONDS, max=RECONNECT_MAX_SECONDS),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
+    async def _connect(self) -> None:
+        """Dial the server until it admits this client; every failure retries."""
+        await self._client.connect(self._server_url)
 
     def _on_command(self, payload: ServerCommandPayload) -> None:
         # aiosendspin forwards a source command only when it takes effect, so a
         # start always opens a new stream, after any stream still tearing down.
-        if payload.source is None:
+        if payload.source is None or self._closing:
             return
         previous = self._stream
         if previous is not None:

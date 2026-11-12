@@ -71,6 +71,7 @@ class SendspinPublisherTests(unittest.IsolatedAsyncioTestCase):
         app.router.add_get(SendspinServer.API_PATH, self.server.on_client_connect)
         self.http = TestServer(app)
         await self.http.start_server()
+        self.port = self.http.port
         self.feeds: list[FakeFeed] = []
         self.clock = RawMonotonicClock()
         client = build_client(
@@ -148,6 +149,19 @@ class SendspinPublisherTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(snapshot["paired"])
         self.assertFalse(snapshot["input_enabled"])
         self.assertIsNone(snapshot["signal"])
+
+    async def test_keeps_dialing_until_the_server_comes_up(self) -> None:
+        await self.http.close()
+        self.publisher.start()
+        await asyncio.sleep(0.2)
+        self.assertEqual(self.publisher.snapshot()["connection"], "connecting")
+
+        app = web.Application()
+        app.router.add_get(SendspinServer.API_PATH, self.server.on_client_connect)
+        self.http = TestServer(app, port=self.port)
+        await self.http.start_server()
+
+        await eventually(lambda: self.publisher.snapshot()["connection"] == "connected", timeout=10)
 
     async def test_pairing_token_enables_the_input_and_reports_the_line_signal(self) -> None:
         await self._pair()
@@ -259,6 +273,52 @@ class SendspinPublisherTests(unittest.IsolatedAsyncioTestCase):
         handle = await asyncio.wait_for(handles.get(), 5)
 
         self.assertEqual(await self._receive(handle, 1_200 * 4), b"".join(resumed)[: 1_200 * 4])
+
+
+class FakeConnection:
+    def __init__(self) -> None:
+        self.connected = True
+        self.source_active = True
+        self.sent: list[SignalState] = []
+
+    def _is_role_active(self, family: str) -> bool:
+        return family == "source" and self.source_active
+
+    async def send_source_signal(self, signal: SignalState) -> None:
+        self.sent.append(signal)
+
+
+class ConnectedClient:
+    def __init__(self, connection: FakeConnection) -> None:
+        self.identity = Identity.generate()
+        self.client_name = f"StreamLine {SOURCE}"
+        self.noise_psk = None
+        self._admitted_connection = connection
+
+    @property
+    def connected(self) -> bool:
+        return self._admitted_connection.connected
+
+
+class SendspinPublisherInputStateTests(unittest.IsolatedAsyncioTestCase):
+    async def test_input_state_and_signal_follow_the_source_role(self) -> None:
+        connection = FakeConnection()
+        publisher = SendspinPublisher(
+            SOURCE,
+            "ws://192.0.2.30:8927/sendspin",
+            cast("SendspinClient", ConnectedClient(connection)),
+            lambda _source: FakeFeed(),
+        )
+        await publisher.report_signal(SignalState.PRESENT)
+        self.assertEqual((publisher.snapshot()["input_enabled"], publisher.snapshot()["signal"]), (True, "present"))
+
+        connection.source_active = False
+        await publisher.report_signal(SignalState.PRESENT)
+        self.assertEqual((publisher.snapshot()["input_enabled"], publisher.snapshot()["signal"]), (False, None))
+
+        connection.source_active = True
+        await publisher.report_signal(SignalState.PRESENT)
+        self.assertEqual(connection.sent, [SignalState.PRESENT, SignalState.PRESENT])
 
 
 class UnresponsiveClient:

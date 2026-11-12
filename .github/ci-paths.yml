@@ -18,6 +18,8 @@ repository:
   - '*.md'
   - '**/*.md'
   - 'docs/**'
+  - 'flake.nix'
+  - 'flake.lock'
   # The dependency audit owns every committed lockfile and its allowlist.
   - 'osv-scanner.toml'
   - 'bridge/uv.lock'

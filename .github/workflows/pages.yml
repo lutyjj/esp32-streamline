@@ -33,9 +33,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/docker-mirror
 
-      - name: Validate the site manifest
-        run: make webflasher-lint
-
       - name: Build the WebFlasher
         run: make console-build
 
@@ -60,9 +57,8 @@ jobs:
           mv webflasher/manifest.json.tmp webflasher/manifest.json
           cp console/dist/flasher/flasher.html webflasher/index.html
 
-      # The syntax lint ran before patching; this validates what actually
-      # ships: the manifest must describe the exact binary beside it and
-      # carry the release it was patched with.
+      # The manifest must describe the exact binary beside it and carry the
+      # release it was patched with.
       - name: Verify the assembled site
         env:
           GH_TOKEN: ${{ github.token }}

@@ -41,6 +41,7 @@ bridge:
 console:
   - *shared
   - 'console/**'
+  - 'webflasher/**'
   - 'bridge/**'
   - 'docs/bridge-openapi.json'
   # The curl-example disposition test pins every device-contract operation.
@@ -59,10 +60,6 @@ console_e2e:
 tools:
   - *shared
   - 'tools/**'
-
-webflasher:
-  - *shared
-  - 'webflasher/**'
 
 ha-addon:
   - *shared

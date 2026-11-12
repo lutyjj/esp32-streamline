@@ -27,15 +27,15 @@ NIX_IMAGE := $(call tool_image,nix)
 export VERSION
 
 .PHONY: check help lint test format clean smoke-qemu \
-	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test repository-dependency-audit repository-nix-check docs-check api-contract-check version-check
+	bridge-check console-check firmware-check tools-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test repository-dependency-audit repository-nix-check docs-check api-contract-check version-check
 
-check: bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check
+check: bridge-check console-check firmware-check tools-check ha-addon-check repository-check
 
 help:
 	@echo "Cross-project targets:"
 	@echo "  make lint | test | check | format   run across every component"
 	@echo "  make smoke-qemu                      build QEMU images and smoke the emulated device"
-	@echo "  make <c>-check                       c = bridge | console | firmware | tools | webflasher | ha-addon"
+	@echo "  make <c>-check                       c = bridge | console | firmware | tools | ha-addon"
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
 	@echo "                                        e.g. firmware-flash, bridge-run, bridge-up"
 	@echo "  make repository-check                  validate docs, metadata, the Nix shell, release versions, and dependency advisories"
@@ -43,7 +43,7 @@ help:
 
 format: bridge-format console-format firmware-format tools-format ha-addon-format
 
-lint: bridge-lint console-lint firmware-lint tools-lint webflasher-lint ha-addon-lint
+lint: bridge-lint console-lint firmware-lint tools-lint ha-addon-lint
 
 test: bridge-test console-test firmware-test firmware-build tools-test ha-addon-test
 
@@ -67,7 +67,6 @@ bridge-check: bridge-lock-check bridge-lint bridge-test bridge-openapi-check bri
 console-check: console-lint console-test console-build ;
 firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-ota-size-self-test firmware-build ;
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
-webflasher-check: webflasher-lint ;
 ha-addon-check: ha-addon-lint ha-addon-validate ha-addon-test ha-addon-apparmor-test ;
 repository-check: version-check repository-container-contract repository-secret-check repository-dependency-audit repository-nix-check
 	$(READONLY_REPO_RUN) $(ACTIONLINT_IMAGE) -color
@@ -147,9 +146,6 @@ firmware-%:
 
 tools-%:
 	$(MAKE) -C tools $*
-
-webflasher-%:
-	$(MAKE) -C webflasher $*
 
 ha-addon-%:
 	$(MAKE) -C ha-addon $*

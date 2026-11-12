@@ -41,8 +41,9 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | `tools` | Developer-only capture analysis, bounded serial capture, the firmware flash-size attribution report, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
 | `.github`, `flake.nix`, root and component Makefiles | Change selection, checks, the host development shell, release assembly, publishing | Component behavior |
 
-Each component builds from a public base and owns its dependency and tool
-configuration. The firmware embeds the device console build. The bridge
+Each component except the static `webflasher` site builds from a public base
+and owns its dependency and tool configuration. The firmware embeds the device
+console build. The bridge
 packages the bridge console build, and the Home Assistant add-on packages the
 bridge and that console into a self-contained context that Home Assistant's
 legacy builder test-builds for each published architecture. These are

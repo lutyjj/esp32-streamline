@@ -118,9 +118,3 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: host
-
-  - package-ecosystem: docker
-    directory: /webflasher
-    patterns:
-      - "*"
-    multi-ecosystem-group: host

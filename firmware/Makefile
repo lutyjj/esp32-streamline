@@ -141,7 +141,8 @@ pcm-frame-vectors: image
 
 # The serial targets below run espflash on the host, because Docker Desktop on
 # macOS cannot pass serial devices through. espflash selects the port:
-# ESPFLASH_PORT when set, else the one recognized USB serial adapter.
+# ESPFLASH_PORT when set, else the only attached USB serial adapter if espflash
+# recognizes it. README.md#development covers every other setup.
 
 # Writes a consistent set for FLASH_SIZE — the rollback-enabled bootloader, the
 # two-slot table, and the app, all with matching flash-size headers — so a dev

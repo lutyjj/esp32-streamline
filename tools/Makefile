@@ -7,14 +7,13 @@ QEMU_IMAGE := esp32-streamline-tools-qemu
 REF ?=
 CAP ?=
 
-# Smoke-harness inputs: the QEMU variant image for the emulated run; the
-# serial port and device address for the hardware run. DEVICE resolves from
-# the root .env when present, else stays empty and the hardware run skips API
-# checks. The hardware admin key streams from the root .env over container
-# stdin, so it never appears in Make output, process arguments, or container
-# metadata; without it those dual-target tests skip.
+# Smoke-harness inputs: the QEMU variant image for the emulated run and the
+# device address for the hardware run. DEVICE resolves from the root .env when
+# present, else stays empty and the hardware run skips API checks. The hardware
+# admin key streams from the root .env over container stdin, so it never appears
+# in Make output, process arguments, or container metadata; without it those
+# dual-target tests skip.
 FLASH_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-full.bin
-PORT ?= /dev/cu.usbserial-0001
 DEVICE ?= $(call dotenv,STREAMLINE_DEVICE)
 
 # Run a check in the tools image with the source mounted and the shared
@@ -124,8 +123,7 @@ smoke-qemu: qemu-image
 # the admin key rides in on that descriptor — without this the authenticated
 # tests silently skip as "key unavailable".
 smoke-device: qemu-image
-	PYTHONPATH=src python3 -m streamline_tools.smoke device --port "$(PORT)" \
-		$(if $(DEVICE),--url "http://$(DEVICE)")
+	PYTHONPATH=src python3 -m streamline_tools.smoke device $(if $(DEVICE),--url "http://$(DEVICE)")
 	$(if $(DEVICE),@{ sed -n 's/^STREAMLINE_ADMIN_KEY=//p' "$(REPO_ROOT)/.env" 2>/dev/null || true; } | $(CONTAINER) run --rm -i \
 		-v "$(CURDIR):/workspace" -w /workspace $(CONTRACT_MOUNT) \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_SMOKE_TARGET="http://$(DEVICE)" \

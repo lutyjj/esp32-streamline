@@ -3,9 +3,10 @@
 
 `espflash monitor` blocks forever waiting on a terminal — correct for a human,
 unusable from a script. This runs it for a fixed number of seconds, streams its
-output through unchanged, then stops it. espflash still owns the reset handshake
-and panic-backtrace decoding; this only adds the time box, using the one timeout
-primitive present on macOS, Linux, and Windows alike: Python's own subprocess.
+output through unchanged, then stops it. espflash still owns port selection, the
+reset handshake, and panic-backtrace decoding; this only adds the time box,
+using the one timeout primitive present on macOS, Linux, and Windows alike:
+Python's own subprocess.
 """
 
 import argparse
@@ -16,7 +17,6 @@ import sys
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seconds", type=int, default=20, help="capture window")
-    parser.add_argument("--port", required=True)
     parser.add_argument("--chip", default="esp32")
     parser.add_argument("--elf", help="ELF image for symbol/backtrace resolution")
     args, passthrough = parser.parse_known_args()
@@ -27,8 +27,6 @@ def main() -> int:
         "--non-interactive",
         "--chip",
         args.chip,
-        "--port",
-        args.port,
     ]
     if args.elf:
         command += ["--elf", args.elf]

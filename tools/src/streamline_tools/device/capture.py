@@ -1,9 +1,9 @@
 """Bounded serial capture of one device boot.
 
 Reads a serial-emitting process line by line until a boot-complete marker,
-end of stream, or a deadline. espflash owns the serial port, the reset
-handshake, and panic decoding, exactly like `make firmware-capture`; opening
-the lab adapter always resets the board.
+end of stream, or a deadline. espflash selects and owns the serial port, the
+reset handshake, and panic decoding, exactly like `make firmware-capture`;
+opening the USB serial adapter resets the board.
 """
 
 import queue
@@ -73,7 +73,7 @@ def pump_process(command: Sequence[str], markers: Sequence[str], timeout: float)
         process.wait()
 
 
-def serial_boot(port: str, markers: Sequence[str], timeout: float) -> tuple[str, str | None]:
+def serial_boot(markers: Sequence[str], timeout: float) -> tuple[str, str | None]:
     """Reset the USB-connected board and capture one boot over serial."""
-    command = ("espflash", "monitor", "--non-interactive", "--chip", "esp32", "--port", port)
+    command = ("espflash", "monitor", "--non-interactive", "--chip", "esp32")
     return pump_process(command, markers, timeout)

@@ -6,7 +6,6 @@ TARGET := xtensa-esp32-espidf
 ELF := target/$(TARGET)/release/streamline-firmware
 VERSION ?= dev
 FEATURES ?=
-PORT ?= /dev/cu.usbserial-0001
 # Flash size baked into the release images. Keep in step with
 # CONFIG_ESPTOOLPY_FLASHSIZE in streamline/sdkconfig.defaults, which sizes the
 # bootloader for the same chip. espflash wants it lowercase, esptool uppercase.
@@ -140,8 +139,10 @@ openapi-check: image
 pcm-frame-vectors: image
 	$(CONTAINER_RUN) cargo run --locked --quiet --features pcm-frame-vectors --bin streamline-pcm-frame-vectors -- $(CONTAINER_WORKSPACE)/docs/pcm-frame-vectors.json
 
-# Serial devices are host resources; Docker Desktop on macOS cannot expose the
-# /dev/cu.* device reliably. Install espflash on the host for these two targets.
+# The serial targets below run espflash on the host, because Docker Desktop on
+# macOS cannot pass serial devices through. espflash selects the port:
+# ESPFLASH_PORT when set, else the one recognized USB serial adapter.
+
 # Writes a consistent set for FLASH_SIZE — the rollback-enabled bootloader, the
 # two-slot table, and the app, all with matching flash-size headers — so a dev
 # flash lands the same layout a release `-full.bin` does. Without an explicit
@@ -151,19 +152,18 @@ pcm-frame-vectors: image
 # slot, silently running the old image. Config in NVS survives.
 flash: build
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	espflash flash --chip esp32 --port $(PORT) --baud 921600 --flash-size $(FLASH_SIZE) --bootloader $(SRC)/target/$(TARGET)/release/bootloader.bin --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
+	espflash flash --chip esp32 --baud 921600 --flash-size $(FLASH_SIZE) --bootloader $(SRC)/target/$(TARGET)/release/bootloader.bin --partition-table $(SRC)/partitions.csv --erase-parts otadata $(SRC)/$(ELF)
 
 monitor:
 	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	espflash monitor --chip esp32 --port $(PORT)
+	espflash monitor --chip esp32
 
 # Time-boxed, non-interactive capture for CI and agents that cannot drive the
 # blocking interactive monitor. `make capture CAPTURE_SECS=30` resets the device
 # and reads its serial output for a fixed window, then stops. Pass extra espflash
 # monitor flags through CAPTURE_ARGS.
 capture:
-	@command -v espflash >/dev/null || (echo "install espflash on the host: cargo install espflash" >&2; exit 2)
-	python3 $(CAPTURE_SCRIPT) --seconds $(CAPTURE_SECS) --port $(PORT) --chip esp32 $(if $(wildcard $(SRC)/$(ELF)),--elf $(SRC)/$(ELF),) $(CAPTURE_ARGS)
+	python3 $(CAPTURE_SCRIPT) --seconds $(CAPTURE_SECS) --chip esp32 $(if $(wildcard $(SRC)/$(ELF)),--elf $(SRC)/$(ELF),) $(CAPTURE_ARGS)
 
 clean: image
 	$(CONTAINER_RUN) cargo clean

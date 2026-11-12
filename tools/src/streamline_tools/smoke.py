@@ -25,8 +25,8 @@ _API_TIMEOUT = 60.0
 _TRANSCRIPT_TAIL_LINES = 40
 
 
-def run_device(port: str, url: str | None, boot_timeout: float, api_timeout: float) -> tuple[list[CheckResult], str]:
-    transcript, matched = serial_boot(port, DEVICE_BOOT_COMPLETE, boot_timeout)
+def run_device(url: str | None, boot_timeout: float, api_timeout: float) -> tuple[list[CheckResult], str]:
+    transcript, matched = serial_boot(DEVICE_BOOT_COMPLETE, boot_timeout)
     completed = (
         CheckResult("boot-completed", True, f"reached {matched!r}")
         if matched is not None
@@ -66,14 +66,13 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
 
     device = commands.add_parser("device", help="reset the USB-connected board, check boot, then the HTTP API")
-    device.add_argument("--port", required=True, help="serial port, e.g. /dev/cu.usbserial-0001")
     device.add_argument("--url", help="device base URL for API checks, e.g. http://192.0.2.10")
     device.add_argument("--boot-timeout", type=float, default=_BOOT_TIMEOUT)
     device.add_argument("--api-timeout", type=float, default=_API_TIMEOUT)
 
     args = parser.parse_args()
     try:
-        results, transcript = run_device(args.port, args.url, args.boot_timeout, args.api_timeout)
+        results, transcript = run_device(args.url, args.boot_timeout, args.api_timeout)
     except FileNotFoundError as error:
         print(f"missing prerequisite: {error}", file=sys.stderr)
         return 2

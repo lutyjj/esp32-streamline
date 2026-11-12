@@ -8,14 +8,6 @@ FIRMWARE_LOCK_VERSION := $(shell awk '\
   package && /^version = "/ { split($$0, fields, "\""); print fields[2]; exit }' firmware/streamline/Cargo.lock)
 ADDON_VERSION := $(shell sed -n 's/^version: "\([^"]*\)".*/\1/p' ha-addon/config.yaml)
 VERSION ?= $(PROJECT_VERSION)
-PORT ?= /dev/cu.usbserial-0001
-CAPTURE_SECS ?= 20
-CAPTURE_ARGS ?=
-BRIDGE_ARGS ?=
-BRIDGE_PORTS ?= -p 39000:39000 -p 8088:8088
-BRIDGE_IMAGE ?=
-REF ?=
-CAP ?=
 
 # Repository checks use maintained linters in pinned public containers. Each
 # pin is a named stage in .github/tool-images.Dockerfile, where Dependabot
@@ -30,9 +22,9 @@ GITLEAKS_IMAGE := $(call tool_image,gitleaks)
 OSV_SCANNER_IMAGE := $(call tool_image,osv-scanner)
 NIX_IMAGE := $(call tool_image,nix)
 
-# Reach the component sub-makes through the environment so the `<component>-%`
-# forwarding rules below stay argument-free.
-export VERSION PORT CAPTURE_SECS CAPTURE_ARGS BRIDGE_ARGS BRIDGE_PORTS BRIDGE_IMAGE REF CAP
+# Component builds default to the project version. Command-line variables such
+# as FEATURES reach the component sub-makes through MAKEFLAGS without an export.
+export VERSION
 
 .PHONY: check help lint test format clean smoke-qemu \
 	bridge-check console-check firmware-check tools-check webflasher-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test repository-dependency-audit repository-nix-check docs-check api-contract-check version-check
@@ -45,7 +37,7 @@ help:
 	@echo "  make smoke-qemu                      build QEMU images and smoke the emulated device"
 	@echo "  make <c>-check                       c = bridge | console | firmware | tools | webflasher | ha-addon"
 	@echo "  make <c>-<verb>                       forward <verb> to that component's Makefile,"
-	@echo "                                        e.g. firmware-flash PORT=..., bridge-run, bridge-up"
+	@echo "                                        e.g. firmware-flash, bridge-run, bridge-up"
 	@echo "  make repository-check                  validate docs, metadata, the Nix shell, release versions, and dependency advisories"
 	@echo "  make version-check VERSION=X.Y.Z     require one version across the release-owned files"
 

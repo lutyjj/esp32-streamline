@@ -240,8 +240,7 @@ target finds it without configuration. In any other setup, set
 `ESPFLASH_PORT`, for example `ESPFLASH_PORT=/dev/ttyUSB0 make firmware-capture`.
 Without it, `firmware-flash` and `firmware-monitor` take the one recognized
 adapter or ask which port to use, and the scripted `firmware-capture` and
-`tools-smoke-device` either stop with an error or wait at that prompt until
-their time limit.
+`tools-smoke-device` stop with espflash's error.
 
 A device already on the network needs none of that to be read: it serves its
 own log, this boot and the one before it, at `GET /api/logs`, and the crash

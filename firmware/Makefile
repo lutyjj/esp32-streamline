@@ -140,9 +140,8 @@ pcm-frame-vectors: image
 	$(CONTAINER_RUN) cargo run --locked --quiet --features pcm-frame-vectors --bin streamline-pcm-frame-vectors -- $(CONTAINER_WORKSPACE)/docs/pcm-frame-vectors.json
 
 # The serial targets below run espflash on the host, because Docker Desktop on
-# macOS cannot pass serial devices through. espflash selects the port:
-# ESPFLASH_PORT when set, else the only attached USB serial adapter if espflash
-# recognizes it. README.md#development covers every other setup.
+# macOS cannot pass serial devices through. espflash selects the port;
+# README.md#development says when to set ESPFLASH_PORT.
 
 # Writes a consistent set for FLASH_SIZE — the rollback-enabled bootloader, the
 # two-slot table, and the app, all with matching flash-size headers — so a dev

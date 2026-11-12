@@ -66,6 +66,9 @@ accept one in `osv-scanner.toml` with a reason and an expiry. And an update
 that needs code changes holds the rest of its group until someone fixes it on
 the update branch.
 
+The e2e image and `@playwright/test` skip Dependabot's 3-day hold so they move
+together; `console/tests/playwrightImage.test.ts` fails while they differ.
+
 Dependabot reads image pins only from Dockerfiles, so an image a Makefile runs
 takes its pin from a Dockerfile stage, as `.github/tool-images.Dockerfile`
 does for the repository checks. The retired Home Assistant builder in

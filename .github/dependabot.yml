@@ -71,6 +71,10 @@ updates:
     directory: /console
     patterns:
       - "*"
+    # Moves with the Playwright e2e image (docs/architecture.md).
+    cooldown:
+      exclude:
+        - "@playwright/test"
     multi-ecosystem-group: host
 
   # The development shell's nixpkgs revision in flake.lock.
@@ -97,6 +101,10 @@ updates:
     directory: /console
     patterns:
       - "*"
+    # Moves with @playwright/test (docs/architecture.md).
+    cooldown:
+      exclude:
+        - "playwright"
     multi-ecosystem-group: host
 
   - package-ecosystem: docker

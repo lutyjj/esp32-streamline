@@ -1,6 +1,7 @@
 # Runs the console journey specs (`make console-e2e`). The image version and
 # the package.json @playwright/test pin move together: the image carries only
-# its own version's browsers, so a mismatch fails loudly.
+# its own version's browsers, and tests/playwrightImage.test.ts fails
+# `make console-test` until both name the same version.
 FROM mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
 
 WORKDIR /workspace

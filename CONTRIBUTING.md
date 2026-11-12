@@ -12,8 +12,20 @@ make lint    # rustfmt, clippy, ruff, mypy --strict, biome
 make test    # component tests and firmware release build
 ```
 
-Flashing and serial need `espflash` on the host (`cargo install espflash`);
-see [README.md](README.md).
+Flashing (`make firmware-flash`), serial capture (`make firmware-capture`),
+and the device smoke (`make tools-smoke-device`) run on the host. They need
+`espflash` (`cargo install espflash`) and Python 3 with `requests`; see
+[README.md](README.md). On Linux, your user also needs the serial device's
+group, usually `dialout`.
+
+With Nix, `nix develop` opens a shell with `make`, `espflash`, and that Python,
+pinned by `flake.lock`. To load it on entering the checkout with direnv, run
+`echo 'use flake' > .envrc && direnv allow` once; git ignores `.envrc` and
+`.direnv/`. The shell leaves the build toolchains to the component images and
+the container runtime to the system: on NixOS, enable
+`virtualisation.docker.enable` or `virtualisation.podman.enable`. Format
+`flake.nix` with `nix fmt`; `make repository-check` evaluates the shell for
+every supported system and checks its format.
 
 GitHub-hosted build jobs use Google's `mirror.gcr.io` cache for Docker Hub
 images through the [runner setup action](.github/actions/docker-mirror/action.yml).

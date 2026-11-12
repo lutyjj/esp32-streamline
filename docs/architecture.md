@@ -37,7 +37,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | `ha-addon` | Home Assistant Supervisor metadata, private recording and transport-key storage mapping, and bridge process wiring | Bridge runtime behavior |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
 | `tools` | Developer-only capture analysis, bounded serial capture, the firmware flash-size attribution report, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
-| `.github`, root and component Makefiles | Change selection, checks, release assembly, publishing | Component behavior |
+| `.github`, `flake.nix`, root and component Makefiles | Change selection, checks, the host development shell, release assembly, publishing | Component behavior |
 
 Each component builds from a public base and owns its dependency and tool
 configuration. The firmware embeds the device console build. The bridge
@@ -52,15 +52,16 @@ same change:
 
 | Group | Cadence | Carries | Proof |
 |---|---|---|---|
-| `host` | Weekly | uv, npm, and every Dockerfile outside the firmware | CI without a device; only the advisory QEMU smoke exercises the tools image's QEMU runner |
+| `host` | Weekly | uv, npm, the Nix flake's nixpkgs, and every Dockerfile outside the firmware | CI without a device; only the advisory QEMU smoke exercises the tools image's QEMU runner |
 | `firmware` | Monthly | Cargo and the firmware image | The QEMU smoke, plus a device for network, TLS, or audio changes |
 | `github-actions` | Weekly | Workflow and composite action pins | CI itself, so these stay apart from the updates CI judges |
 
 The grouping couples updates in two ways. The repository check audits every
-lockfile, so an open advisory in any lockfile fails every pull request that
-touches a path the `repository` filter in `.github/ci-paths.yml` owns, such as
-a lockfile, a Markdown file, or `.github/`. When advisories are open in two
-lockfiles, each fix fails on the other: fix both in one pull request, or
+lockfile osv-scanner reads, which excludes the development shell's
+`flake.lock`. An open advisory in an audited lockfile fails every pull request
+that touches a path the `repository` filter in `.github/ci-paths.yml` owns,
+such as a lockfile, a Markdown file, or `.github/`. When advisories are open in
+two lockfiles, each fix fails on the other: fix both in one pull request, or
 accept one in `osv-scanner.toml` with a reason and an expiry. And an update
 that needs code changes holds the rest of its group until someone fixes it on
 the update branch.

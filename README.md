@@ -228,7 +228,8 @@ make bridge-up                            # run the bridge from source
 ```
 
 Flashing runs on the host because Docker Desktop on macOS cannot reliably
-expose serial devices. Install the tool once: `cargo install espflash`.
+expose serial devices. Install the tool once with `cargo install espflash`, or
+use the [Nix shell](CONTRIBUTING.md#development).
 
 A device already on the network needs none of that to be read: it serves its
 own log, this boot and the one before it, at `GET /api/logs`, and the crash

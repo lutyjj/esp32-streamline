@@ -73,6 +73,13 @@ updates:
       - "*"
     multi-ecosystem-group: host
 
+  # The development shell's nixpkgs revision in flake.lock.
+  - package-ecosystem: nix
+    directory: /
+    patterns:
+      - "*"
+    multi-ecosystem-group: host
+
   # The root Makefile's repository-check tool images.
   - package-ecosystem: docker
     directory: /.github

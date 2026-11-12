@@ -30,6 +30,7 @@ class CiPathOwnershipTests(unittest.TestCase):
             "tools/Dockerfile": {"qemu_smoke", "tools"},
             "tools/uv.lock": {"qemu_smoke", "repository", "tools"},
             "osv-scanner.toml": {"repository"},
+            "flake.lock": {"repository"},
             "firmware/streamline/Cargo.lock": {"firmware", "qemu_smoke", "repository"},
             "tools/smoke/test_api.py": {"qemu_smoke", "tools"},
             "tools/src/streamline_tools/device/api.py": {"qemu_smoke", "tools"},

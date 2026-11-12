@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import threading
+from typing import Literal
 
 from streamline_bridge.fanout import ClientFanout, ClientStream
 from streamline_bridge.levels import AudioLevels
 from streamline_bridge.packet_tap import PacketSink, PacketTapFanout
 from streamline_bridge.playout import Clock, PlayoutBuffer, PlayoutWorker
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
+
+Signal = Literal["present", "absent"]
 
 
 class AudioPipeline:
@@ -38,6 +41,7 @@ class AudioPipeline:
         self.packet_taps = PacketTapFanout()
         self.levels = AudioLevels()
         self._silence = bytes(pcm_format.payload_bytes)
+        self._signal: Signal | None = None
         self._worker: threading.Thread | None = None
         if start_worker:
             self._worker = threading.Thread(
@@ -58,12 +62,14 @@ class AudioPipeline:
     def reset_source_session(self) -> None:
         self.playout.reset_source_session()
         self.levels.reset()
+        self._signal = None
 
     def ingest(self, seq: int, payload: bytes) -> bool:
         """Admit one packet; ``False`` demands the producer's disconnect."""
         if not self.playout.ingest(seq, payload):
             return False
         self.levels.update(payload or self._silence)
+        self._signal = "present" if payload else "absent"
         self.packet_taps.publish(seq, payload)
         return True
 
@@ -80,6 +86,7 @@ class AudioPipeline:
         data = self.playout.snapshot()
         data.update(self.clients.snapshot())
         data["levels"] = self.levels.snapshot()
+        data["signal"] = self._signal
         return data
 
     def register_client(self, remote_addr: str, path: str) -> ClientStream:

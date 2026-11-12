@@ -18,6 +18,9 @@
             "title": "Public Url",
             "type": "string"
           },
+          "sendspin": {
+            "$ref": "#/components/schemas/SendspinSnapshot"
+          },
           "sources": {
             "additionalProperties": {
               "$ref": "#/components/schemas/SourceSnapshot"
@@ -33,7 +36,8 @@
           "bridge_version",
           "api_token_configured",
           "sources",
-          "transport"
+          "transport",
+          "sendspin"
         ],
         "title": "BridgeStatus",
         "type": "object"
@@ -580,6 +584,146 @@
         "title": "RecordingStorage",
         "type": "object"
       },
+      "SendspinPairingToken": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "format": "ipv4",
+                "type": "string"
+              },
+              {
+                "pattern": "^eli1-[0-9a-f]{32}$",
+                "type": "string"
+              }
+            ],
+            "title": "Source"
+          },
+          "token": {
+            "description": "One-time Sendspin pairing token to paste into Music Assistant's device setup.",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "client_id",
+          "token"
+        ],
+        "title": "SendspinPairingToken",
+        "type": "object"
+      },
+      "SendspinSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "server_url": {
+            "description": "Music Assistant Sendspin server URL. Empty when publishing is disabled.",
+            "title": "Server Url",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SendspinSourceSnapshot"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "server_url",
+          "sources"
+        ],
+        "title": "SendspinSnapshot",
+        "type": "object"
+      },
+      "SendspinSourceSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "description": "Sendspin client id that Music Assistant shows for this source.",
+            "title": "Client Id",
+            "type": "string"
+          },
+          "connection": {
+            "enum": [
+              "connecting",
+              "connected"
+            ],
+            "title": "Connection",
+            "type": "string"
+          },
+          "input_enabled": {
+            "description": "Whether Music Assistant accepted this source's audio input.",
+            "title": "Input Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "paired": {
+            "description": "Whether the connection authenticated with a long-term pairing.",
+            "title": "Paired",
+            "type": "boolean"
+          },
+          "signal": {
+            "anyOf": [
+              {
+                "enum": [
+                  "present",
+                  "absent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Line-in signal state last reported to Music Assistant on this connection.",
+            "title": "Signal"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "format": "ipv4",
+                "type": "string"
+              },
+              {
+                "pattern": "^eli1-[0-9a-f]{32}$",
+                "type": "string"
+              }
+            ],
+            "title": "Source"
+          },
+          "streaming": {
+            "description": "Whether Music Assistant is receiving this source's audio.",
+            "title": "Streaming",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "client_id",
+          "name",
+          "connection",
+          "paired",
+          "input_enabled",
+          "streaming",
+          "signal"
+        ],
+        "title": "SendspinSourceSnapshot",
+        "type": "object"
+      },
       "SourceLifecycle": {
         "additionalProperties": false,
         "properties": {
@@ -626,6 +770,11 @@
             "title": "Recording Sessions",
             "type": "integer"
           },
+          "sendspin_streams": {
+            "minimum": 0.0,
+            "title": "Sendspin Streams",
+            "type": "integer"
+          },
           "state": {
             "enum": [
               "pending",
@@ -652,6 +801,7 @@
           "admission",
           "http_clients",
           "recording_sessions",
+          "sendspin_streams",
           "idle_seconds",
           "peer_ip",
           "transport"
@@ -869,6 +1019,22 @@
             "title": "Reordered",
             "type": "integer"
           },
+          "signal": {
+            "anyOf": [
+              {
+                "enum": [
+                  "present",
+                  "absent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the latest packet in this source session carried audio or was a silence record.",
+            "title": "Signal"
+          },
           "silence_packets": {
             "minimum": 0.0,
             "title": "Silence Packets",
@@ -946,6 +1112,7 @@
           "slow_clients",
           "client_streams",
           "levels",
+          "signal",
           "lifecycle"
         ],
         "title": "SourceSnapshot",
@@ -1631,6 +1798,107 @@
           }
         ],
         "summary": "Stop and finalize a recording"
+      }
+    },
+    "/api/sendspin": {
+      "get": {
+        "operationId": "getSendspin",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendspinSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read the Music Assistant Sendspin connection of every published source"
+      }
+    },
+    "/api/sendspin/sources/{source}/pairing-token": {
+      "post": {
+        "operationId": "createSendspinPairingToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "format": "ipv4",
+                  "type": "string"
+                },
+                {
+                  "pattern": "^eli1-[0-9a-f]{32}$",
+                  "type": "string"
+                }
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendspinPairingToken"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Replace a source's Sendspin pairing secret and return its one-time pairing token"
       }
     },
     "/api/transport": {

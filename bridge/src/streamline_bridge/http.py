@@ -8,7 +8,7 @@ import re
 import secrets
 import struct
 from importlib.resources import files
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security
 from fastapi.exceptions import RequestValidationError
@@ -25,6 +25,8 @@ from streamline_bridge.api_models import (
     RecordingCapabilities,
     RecordingList,
     RecordingResult,
+    SendspinPairingToken,
+    SendspinSnapshot,
     SourceIdentity,
     StartRecordingRequest,
     TransportKeyDeleteResult,
@@ -60,6 +62,13 @@ RecordingId = Annotated[str, Path(pattern=RECORDING_ID_PATTERN)]
 TransportKeyId = Annotated[str, Path(pattern=TRANSPORT_KEY_ID_PATTERN)]
 bearer = HTTPBearer(auto_error=False, scheme_name="bearer_auth")
 recording_ticket = APIKeyQuery(name="ticket", auto_error=False, scheme_name="recording_ticket")
+
+
+class SendspinControl(Protocol):
+    """The Sendspin publishing surface the HTTP adapter exposes."""
+
+    def snapshot(self) -> dict[str, object]: ...
+    def create_pairing_token(self, source: str) -> dict[str, str]: ...
 
 
 def error_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
@@ -174,6 +183,7 @@ def make_app(
     healthy: Callable[[], bool] | None = None,
     progress_deadline_seconds: float = DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS,
     public_url: str = "",
+    sendspin: SendspinControl | None = None,
 ) -> FastAPI:
     """Build the runtime app whose routes and models own the OpenAPI contract."""
     app = BridgeApi(
@@ -192,6 +202,11 @@ def make_app(
     is_healthy = healthy or (lambda: True)
     if transport is None:
         transport = TransportControl(None, None, port=DEFAULT_PORT)
+
+    def sendspin_snapshot() -> SendspinSnapshot:
+        if sendspin is None:
+            return SendspinSnapshot(enabled=False, server_url="", sources=[])
+        return SendspinSnapshot.model_validate(sendspin.snapshot())
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -242,6 +257,7 @@ def make_app(
                 "public_url": public_url,
                 "sources": sources.snapshot(),
                 "transport": transport.snapshot(),
+                "sendspin": sendspin_snapshot(),
             }
         )
 
@@ -329,6 +345,37 @@ def make_app(
         except ValueError as exc:
             return error_response(404, "transport-key-not-found", str(exc))
         return TransportKeyDeleteResult(deleted=key_id)
+
+    @app.get(
+        "/api/sendspin",
+        response_model=SendspinSnapshot,
+        operation_id="getSendspin",
+        summary="Read the Music Assistant Sendspin connection of every published source",
+    )
+    def get_sendspin() -> SendspinSnapshot:
+        return sendspin_snapshot()
+
+    @app.post(
+        "/api/sendspin/sources/{source}/pairing-token",
+        response_model=SendspinPairingToken,
+        responses=error_responses(400, 401, 404, 503),
+        status_code=201,
+        dependencies=authenticated,
+        operation_id="createSendspinPairingToken",
+        summary="Replace a source's Sendspin pairing secret and return its one-time pairing token",
+    )
+    def create_sendspin_pairing_token(source: SourceIdentity) -> Response | SendspinPairingToken:
+        if sendspin is None:
+            return error_response(
+                503,
+                "sendspin-disabled",
+                "Sendspin publishing is disabled. Set sendspin_server_url (or --sendspin-server-url), "
+                "then restart the bridge.",
+            )
+        try:
+            return SendspinPairingToken.model_validate(sendspin.create_pairing_token(source))
+        except LookupError as exc:
+            return error_response(404, "sendspin-source-not-found", str(exc))
 
     @app.get(
         "/streamline.wav",

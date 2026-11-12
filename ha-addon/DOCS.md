@@ -17,7 +17,24 @@ audio connection.
 
 ## Play it in Music Assistant
 
-Add this URL to Music Assistant as a radio/URL stream:
+The bridge offers every source to Music Assistant as a Live Input over
+Sendspin:
+
+1. Set `sendspin_server_url` to Music Assistant's Sendspin server, normally
+   `ws://<music-assistant-host>:8927/sendspin`, and set `api_token`. A Music
+   Assistant add-on on the same Home Assistant uses the host's LAN IP address.
+   Restart the add-on.
+2. Start streaming on the device, then open **Open Web UI** → **Settings** →
+   **Music Assistant**, unlock with `api_token`, and create a pairing token for
+   the source.
+3. In Music Assistant, run the setup of the device named `StreamLine <source>`
+   and paste the token.
+
+The source then appears under Live Inputs and plays on any Music Assistant
+player or group. Its **Automatically play line-in on** setting in Music
+Assistant starts it when a record starts.
+
+Without Sendspin, add this URL to Music Assistant as a radio/URL stream:
 
 ```text
 http://<home-assistant-host>:8088/streamline.wav

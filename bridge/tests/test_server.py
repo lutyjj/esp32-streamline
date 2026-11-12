@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import socket
 import unittest
 from typing import TYPE_CHECKING
@@ -135,3 +136,42 @@ class PublicUrlTests(unittest.TestCase):
         ):
             with self.subTest(value=value), self.assertRaises(SystemExit):
                 validate_args(parse_args(["--public-url", value]))
+
+
+class SendspinOptionTests(unittest.TestCase):
+    def test_server_url_accepts_websocket_addresses_and_requires_state(self) -> None:
+        from streamline_bridge.options import validate_args
+
+        for value in ("ws://192.0.2.30:8927/sendspin", "wss://music.example/sendspin"):
+            with self.subTest(value=value):
+                args = validate_args(
+                    parse_args(["--sendspin-server-url", value, "--sendspin-state-dir", "/data/sendspin"])
+                )
+                self.assertEqual(args.sendspin_server_url, value)
+        with self.assertRaisesRegex(SystemExit, "requires --sendspin-state-dir"):
+            validate_args(parse_args(["--sendspin-server-url", "ws://192.0.2.30:8927/sendspin"]))
+
+    def test_server_url_rejects_other_schemes_credentials_and_queries(self) -> None:
+        from streamline_bridge.options import validate_args
+
+        for value in (
+            "http://192.0.2.30:8927/sendspin",
+            "ws://user:secret@192.0.2.30:8927/sendspin",
+            "ws://192.0.2.30:8927/sendspin?token=secret",
+            "ws:///sendspin",
+            "ws://192.0.2.30:99999/sendspin",
+        ):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                validate_args(parse_args(["--sendspin-server-url", value, "--sendspin-state-dir", "/data/sendspin"]))
+
+    def test_publishing_requires_the_bridge_api_token(self) -> None:
+        args = parse_args(
+            ["--sendspin-server-url", "ws://192.0.2.30:8927/sendspin", "--sendspin-state-dir", "/data/sendspin"]
+        )
+
+        with (
+            patch.dict(os.environ, {"STREAMLINE_API_TOKEN": ""}),
+            patch.object(bridge_server, "parse_args", return_value=args),
+            self.assertRaisesRegex(SystemExit, "STREAMLINE_API_TOKEN is required"),
+        ):
+            bridge_server.main()

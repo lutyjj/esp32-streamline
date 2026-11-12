@@ -32,6 +32,8 @@ staying cloud-free.
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
 | Bridge recording API (`:8088`) | Disabled without writable storage; gated by the bridge API token when enabled | Token holder can record, list, download, and delete captures |
 | Bridge recording directory | Dedicated writable volume; link-safe file operations and validated metadata | A storage peer can delete or corrupt recordings, but cannot redirect bridge file access outside the directory |
+| Bridge Sendspin client (outbound to Music Assistant) | Disabled without a server URL; Noise-encrypted WebSocket; the input stays off until Music Assistant pairs it | A token holder can create a pairing token, and anyone holding that token can pair the source to a Sendspin server and receive its audio when that server requests it |
+| Bridge Sendspin state directory | Private directory; identity files `0600` and checked like the transport state; pairing stores `0600` | Bridge host access exposes each source's client identity and pairing secrets |
 
 ## Authentication
 
@@ -163,7 +165,7 @@ check: it validates the image against the `sha256` the caller supplies from
   This is not a firewall replacement; restrict inbound at the boundary.
 - One bridge API token (`STREAMLINE_API_TOKEN`, or the add-on `api_token`
   option, at least 16 random characters) gates every bridge mutation: listener
-  mode, device-key enrollment, and recordings. The bridge console keeps it in
+  mode, device-key enrollment, Sendspin pairing tokens, and recordings. The bridge console keeps it in
   browser session storage and sends it as a bearer token; the API never
   returns it. The token rides plain HTTP, so a LAN token holder can switch the
   listener to cleartext or enroll a key. The device never downgrades itself,
@@ -171,6 +173,11 @@ check: it validates the image against the `sha256` the caller supplies from
   token as private as the LAN and rotate it by changing the deployment value.
 - Encrypted source identity comes from the authenticated device key id. The
   key status API returns ids, listener state, and counters but never PSKs.
+- Sendspin publishing dials only the configured server. The pairing-token
+  request requires the bridge API token, replaces the source's pairing
+  secret, and is the only response that returns the token; the publishing
+  status API never does. The bridge console holds a revealed token in memory
+  and drops it when the console locks.
 - An authenticated recording request can mint a one-use download ticket that
   expires after 60 seconds. Keep recordings on trusted storage and terminate
   TLS at a reverse proxy before crossing a trust boundary.

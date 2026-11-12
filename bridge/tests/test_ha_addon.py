@@ -38,6 +38,8 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
                 "streamline-bridge",
                 "--transport-state-file",
                 "/data/transport.json",
+                "--sendspin-state-dir",
+                "/data/sendspin",
                 "--source-allow",
                 "192.0.2.10,198.51.100.20",
                 "--client-buffer-chunks",
@@ -62,7 +64,15 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
     def test_blank_source_allow_is_omitted(self) -> None:
         self.assertEqual(
             bridge_argv({"source_allow": "", "max_sources": 8}),
-            ["streamline-bridge", "--transport-state-file", "/data/transport.json", "--max-sources", "8"],
+            [
+                "streamline-bridge",
+                "--transport-state-file",
+                "/data/transport.json",
+                "--sendspin-state-dir",
+                "/data/sendspin",
+                "--max-sources",
+                "8",
+            ],
         )
 
     def test_adaptive_buffer_bounds_are_validated_by_the_bridge_entry_point(self) -> None:
@@ -84,6 +94,8 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
                 "streamline-bridge",
                 "--transport-state-file",
                 "/data/transport.json",
+                "--sendspin-state-dir",
+                "/data/sendspin",
                 "--recordings-dir",
                 "/data/recordings",
             ],

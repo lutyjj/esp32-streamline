@@ -61,6 +61,7 @@ class SourceLifecycle(ContractModel):
     admission: Literal["open", "allowlisted"]
     http_clients: int = Field(ge=0)
     recording_sessions: int = Field(ge=0)
+    sendspin_streams: int = Field(ge=0)
     idle_seconds: float = Field(ge=0)
     eviction_idle_seconds: float | None = Field(default=None, ge=0)
     peer_ip: str
@@ -132,6 +133,9 @@ class SourceSnapshot(ContractModel):
     slow_clients: int = Field(ge=0)
     client_streams: list[ClientSnapshot]
     levels: LevelSnapshot
+    signal: Literal["present", "absent"] | None = Field(
+        description="Whether the latest packet in this source session carried audio or was a silence record."
+    )
     lifecycle: SourceLifecycle
 
 
@@ -145,6 +149,31 @@ class TransportSnapshot(ContractModel):
     auth_failures: int = Field(ge=0)
 
 
+class SendspinSourceSnapshot(ContractModel):
+    source: SourceIdentity
+    client_id: str = Field(description="Sendspin client id that Music Assistant shows for this source.")
+    name: str
+    connection: Literal["connecting", "connected"]
+    paired: bool = Field(description="Whether the connection authenticated with a long-term pairing.")
+    input_enabled: bool = Field(description="Whether Music Assistant accepted this source's audio input.")
+    streaming: bool = Field(description="Whether Music Assistant is receiving this source's audio.")
+    signal: Literal["present", "absent"] | None = Field(
+        description="Line-in signal state last reported to Music Assistant on this connection."
+    )
+
+
+class SendspinSnapshot(ContractModel):
+    enabled: bool
+    server_url: str = Field(description="Music Assistant Sendspin server URL. Empty when publishing is disabled.")
+    sources: list[SendspinSourceSnapshot]
+
+
+class SendspinPairingToken(ContractModel):
+    source: SourceIdentity
+    client_id: str
+    token: str = Field(description="One-time Sendspin pairing token to paste into Music Assistant's device setup.")
+
+
 class BridgeStatus(ContractModel):
     bridge_version: str
     public_url: str = Field(
@@ -153,6 +182,7 @@ class BridgeStatus(ContractModel):
     api_token_configured: bool
     sources: dict[str, SourceSnapshot]
     transport: TransportSnapshot
+    sendspin: SendspinSnapshot
 
 
 class UnlockResult(ContractModel):

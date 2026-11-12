@@ -2,6 +2,7 @@ import { signal } from '@preact/signals';
 import {
   type BridgeStatus,
   createRecordingDownloadTicket,
+  createSendspinPairingToken,
   type DownloadTicket,
   deleteRecording,
   deleteTransportKey,
@@ -11,6 +12,7 @@ import {
   putTransportKey,
   type RecordingCapabilities,
   type RecordingList,
+  type SendspinPairingToken,
   type StartRecordingRequest,
   setTransportMode,
   startRecording,
@@ -37,6 +39,7 @@ export interface BridgeApi {
   setTransportMode(mode: TransportModeRequestMode): Promise<void>;
   putTransportKey(keyId: string, psk: string): Promise<void>;
   deleteTransportKey(keyId: string): Promise<void>;
+  createPairingToken(source: string): Promise<SendspinPairingToken>;
 }
 
 export type Scheduler = (callback: () => void, delay: number) => number;
@@ -73,6 +76,7 @@ const runtimeApi: BridgeApi = {
   deleteTransportKey: async (keyId) => {
     await deleteTransportKey(keyId);
   },
+  createPairingToken: createSendspinPairingToken,
 };
 
 export class BridgeController {
@@ -91,6 +95,8 @@ export class BridgeController {
   readonly recordingAction = signal<{ operation: 'start' | 'stop' | 'delete'; id: string } | null>(
     null,
   );
+  /** The one Sendspin pairing token on screen; a secret, so locking drops it. */
+  readonly pairingToken = signal<SendspinPairingToken | null>(null);
 
   private recordingTimer?: number;
   private statusTimer?: number;
@@ -168,7 +174,24 @@ export class BridgeController {
     if (this.recordingTimer !== undefined) this.cancel(this.recordingTimer);
     this.recordingTimer = undefined;
     this.recordings.value = undefined;
+    this.pairingToken.value = null;
     if (this.access.value === 'unlocked') this.access.value = 'locked';
+  }
+
+  /** Replace a source's pairing secret and hold its token until dismissed. */
+  async createPairingToken(source: string): Promise<boolean> {
+    try {
+      this.pairingToken.value = await this.api.createPairingToken(source);
+      this.error.value = '';
+      return true;
+    } catch (error) {
+      this.error.value = message(error);
+      return false;
+    }
+  }
+
+  dismissPairingToken(): void {
+    this.pairingToken.value = null;
   }
 
   /** Switch the PCM listener; a change drops live producers on the bridge. */

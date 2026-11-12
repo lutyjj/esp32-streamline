@@ -30,7 +30,7 @@ owns installation commands.
 | Device | Settings | Connect a player or Wi-Fi, then manage security, hardware, and maintenance |
 | Bridge | Listen | Observe sources and copy playback addresses |
 | Bridge | Recordings | Capture a source and retrieve saved WAV files |
-| Bridge | Settings | Configure audio security and understand deployment access |
+| Bridge | Settings | Configure audio security, pair sources with Music Assistant, and understand deployment access |
 
 Settings is a task index. Each destination opens one focused task with an
 All settings link. URLs identify the task, browser Back retraces navigation,
@@ -71,6 +71,15 @@ player. The guide accepts the owner’s bridge console address and links directl
 to Listen; it never infers an HTTP port from the audio target. An ingress-hosted
 bridge needs its player-accessible public URL configured separately. The console does not play audio. A connected player does not prove its
 speakers are audible.
+
+A bridge configured with a Sendspin server offers every source to Music
+Assistant. Bridge Settings → Music Assistant shows each source's next step:
+connecting, needs pairing, input off, ready, or playing. Pairing creates a
+one-time token in the bridge console and pastes it into the source's setup in
+Music Assistant; the token is a secret, so locking the bridge console clears
+it. A ready source appears under Live Inputs. Music Assistant, not the bridge,
+decides when it plays, including automatic playback when the input gets a
+signal.
 
 ## 3. Set input levels
 

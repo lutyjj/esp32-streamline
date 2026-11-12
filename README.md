@@ -4,9 +4,9 @@
 
 ESP32 StreamLine turns a supported ESP32 line-in board into a network audio
 source. It captures analog audio from a turntable or CD deck and streams the raw
-PCM over TCP/Wi-Fi to a self-hosted bridge. The bridge publishes a live HTTP
-WAV stream. Music Assistant plays it as a radio URL; Snapcast, Icecast, or any
-HTTP consumer can read it too.
+PCM over TCP/Wi-Fi to a self-hosted bridge. The bridge offers each source to
+Music Assistant as a Live Input over Sendspin and publishes a live HTTP WAV
+stream that Snapcast, Icecast, or any HTTP consumer can read.
 
 ## Features
 
@@ -26,6 +26,10 @@ HTTP consumer can read it too.
 - **Source profiles**: save complete input settings for sources such as CD
   and vinyl, switch them live from the console or API, and share the versioned
   board-bound catalog. See [audio profiles](docs/audio-profiles.md).
+- **Music Assistant Live Input:** the bridge publishes every source to Music
+  Assistant over Sendspin. Pair it once with a token; it then plays on any
+  Music Assistant player or group and can start when a record starts. See
+  [Music Assistant live inputs](docs/bridge.md#music-assistant-live-inputs).
 - **Self-hosted bridge:** one Docker container turns the TCP PCM stream into
   a live HTTP WAV stream. An adaptive playout buffer smooths Wi-Fi jitter and
   conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
@@ -130,6 +134,10 @@ services:
     command:
       - --transport-state-file
       - /data/transport.json
+      - --sendspin-state-dir
+      - /data/sendspin
+      - --sendspin-server-url
+      - ${STREAMLINE_SENDSPIN_SERVER_URL:-}
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -146,9 +154,25 @@ volumes:
   streamline-transport:
 ```
 
-The stream goes live at `http://<bridge-host>:8088/streamline.wav`. Add it to
-Music Assistant as a radio/URL stream. A connected device with streaming enabled
-provides a playable stream even when its input is quiet; see the
+To offer every source to Music Assistant, point the bridge at its Sendspin
+server and set the bridge API token (at least 16 characters) before
+`docker compose up -d`:
+
+```sh
+export STREAMLINE_SENDSPIN_SERVER_URL=ws://<music-assistant-host>:8927/sendspin
+export STREAMLINE_API_TOKEN=replace-with-a-private-token
+```
+
+The Home Assistant add-on calls the same setting `sendspin_server_url`. Once a
+device streams, open the bridge console's **Settings → Music Assistant**,
+create a pairing token for the source, and paste it into the setup of
+`StreamLine <source>` in Music Assistant. The source then appears under Live
+Inputs. [Music Assistant live inputs](docs/bridge.md#music-assistant-live-inputs)
+covers pairing and automatic playback.
+
+The HTTP stream goes live at `http://<bridge-host>:8088/streamline.wav` for
+any other player. A connected device with streaming enabled provides a
+playable stream even when its input is quiet; see the
 [silence contract](docs/pcm-protocol.md#receiver-playout).
 With several ESP32 sources, select one with
 `http://<bridge-host>:8088/streamline.wav?source=<source-id>`. `/status` serves

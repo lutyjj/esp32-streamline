@@ -40,6 +40,7 @@ const status: BridgeStatus = {
     auth_successes: 0,
     auth_failures: 0,
   },
+  sendspin: { enabled: false, server_url: '', sources: [] },
 };
 
 function fakeApi(overrides: Partial<BridgeApi> = {}): BridgeApi {
@@ -55,6 +56,11 @@ function fakeApi(overrides: Partial<BridgeApi> = {}): BridgeApi {
     setTransportMode: vi.fn(async () => undefined),
     putTransportKey: vi.fn(async () => undefined),
     deleteTransportKey: vi.fn(async () => undefined),
+    createPairingToken: vi.fn(async (source: string) => ({
+      source,
+      client_id: 'client-a',
+      token: 'SP:0TOKEN',
+    })),
     ...overrides,
   };
 }
@@ -142,6 +148,31 @@ describe('bridge controller', () => {
     controller.lock();
     expect(sessionStorage.getItem('streamline.bridgeToken')).toBeNull();
     expect(controller.access.value).toBe('locked');
+  });
+
+  it('holds a pairing token until dismissed and drops it on lock', async () => {
+    const api = fakeApi();
+    const controller = new BridgeController(api);
+
+    expect(await controller.createPairingToken('192.0.2.10')).toBe(true);
+    expect(controller.pairingToken.value?.token).toBe('SP:0TOKEN');
+    controller.dismissPairingToken();
+    expect(controller.pairingToken.value).toBeNull();
+
+    await controller.createPairingToken('192.0.2.10');
+    controller.lock();
+    expect(controller.pairingToken.value).toBeNull();
+  });
+
+  it('reports a refused pairing token without showing a stale one', async () => {
+    const api = fakeApi({
+      createPairingToken: vi.fn(async () => Promise.reject(new Error('source is not published'))),
+    });
+    const controller = new BridgeController(api);
+
+    expect(await controller.createPairingToken('192.0.2.10')).toBe(false);
+    expect(controller.error.value).toBe('source is not published');
+    expect(controller.pairingToken.value).toBeNull();
   });
 
   it('forgets a rejected token and remains locked', async () => {

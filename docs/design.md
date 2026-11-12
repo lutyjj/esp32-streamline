@@ -20,7 +20,8 @@ The bridge host should:
 
 - absorb Wi-Fi jitter
 - optionally resample
-- publish the stream for Music Assistant, Snapcast, or Icecast
+- publish each source to Music Assistant as a Sendspin live input
+- publish the stream for Snapcast, Icecast, or any HTTP player
 - handle player compatibility and multiroom behavior
 
 ## Protocol Choice
@@ -85,10 +86,16 @@ handshake and streaming figures have not been measured.
 
 ### Music Assistant
 
-The primary path. Add the bridge's `/streamline.wav` URL to Music Assistant as a
-radio stream; it plays directly, or routes through Snapcast when Music Assistant
-controls Snapcast clients. The Home Assistant add-on is the simplest way to run
-the bridge.
+The primary path. The bridge publishes every source to Music Assistant's
+Sendspin server, where it becomes a Live Input that plays on any Music
+Assistant player, stereo pair, or group. Music Assistant can start the input
+when a record starts, because the device signal gate drives the Sendspin
+`line_sense` signal. The [bridge reference](bridge.md#music-assistant-live-inputs)
+owns pairing and the runtime contract.
+
+A Music Assistant without Sendspin can still play the bridge's
+`/streamline.wav` URL as a radio stream. The Home Assistant add-on is the
+simplest way to run the bridge.
 
 ### Snapcast
 
@@ -102,9 +109,27 @@ after the bridge to encode FLAC/Opus/MP3 and publish an HTTP stream.
 
 ### Sendspin
 
-Out of scope. Sendspin is Music Assistant's playback protocol for output devices;
-this device produces audio entering the media system, so it publishes a stream
-URL instead.
+The bridge, not the device, speaks Sendspin. Sendspin's `source@v1` role
+carries captured audio into Music Assistant, and the bridge implements it with
+[aiosendspin](https://github.com/Sendspin/aiosendspin), one client per source.
+
+| Placement | Fit |
+|---|---|
+| Bridge publishes over Sendspin | Selected; the device and the ELI1 transport stay unchanged, and HTTP WAV, recordings, and concealment keep working |
+| Firmware publishes over Sendspin | Rejected; it needs WebSocket, Noise, CPace pairing, clock sync, and pairing storage in a nearly full OTA image, and a 500 ms capture backlog that a board without PSRAM cannot buffer |
+| HTTP WAV radio URL only | Kept for players outside Music Assistant; it cannot start playback on a signal or appear as a Live Input |
+
+The client dials the configured server instead of waiting for discovery, so a
+container needs no multicast. Pairing uses Sendspin's pairing-token method,
+because a headless bridge can return a token from an authenticated API call
+but cannot show or speak a code. The bridge timestamps each packet at its
+capture time, derived from its sequence number, so Wi-Fi stalls reach Music
+Assistant as late packets with correct times instead of compressed bursts.
+
+aiosendspin's `SendspinClient` reports the source signal only through its
+admitted connection object, which it does not expose publicly. The publisher
+reads that connection in one place; a public client method replaces it when
+aiosendspin provides one.
 
 ## HTTP WAV Bridge
 
@@ -135,8 +160,8 @@ cleartext or authenticated TLS 1.3 PCM and HTTP `8088` for `/streamline.wav`,
 `/status`, and `/health`.
 
 Set each ESP32 target to the bridge host and port `39000`; the bridge and device
-select cleartext or TLS for that same destination. Add
-`http://<bridge-host>:8088/streamline.wav` to Music Assistant as a radio URL, or
+select cleartext or TLS for that same destination. Point an HTTP player at
+`http://<bridge-host>:8088/streamline.wav`, or
 `http://<bridge-host>:8088/streamline.wav?source=<source-id>` to pick one of
 several sources. A connected device with streaming enabled provides a playable
 stream during quiet input; see the [silence contract](pcm-protocol.md#receiver-playout).

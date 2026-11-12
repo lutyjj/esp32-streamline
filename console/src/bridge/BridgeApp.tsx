@@ -10,6 +10,7 @@ import { Toasts } from '../components/Toasts';
 import { UnlockPanel } from '../components/UnlockPanel';
 import { sectionFromHash, useRouteHash } from '../state/route';
 import { toast } from '../state/toasts';
+import { MusicAssistant } from './MusicAssistant';
 import { Recordings } from './Recordings';
 import { IncomingSource } from './Sources';
 import { bridge } from './state';
@@ -130,6 +131,11 @@ export function BridgeApp() {
                 content: <Transport />,
               },
               {
+                id: 'music-assistant',
+                label: 'Music Assistant',
+                content: <MusicAssistant />,
+              },
+              {
                 id: 'service',
                 label: 'Service & access',
                 content: (
@@ -179,7 +185,8 @@ const BRIDGE_NAVIGATION = [
   {
     view: 'settings',
     label: 'Settings',
-    description: 'Manage access and encryption for every device using this bridge.',
+    description:
+      'Manage access, encryption, and Music Assistant for every device using this bridge.',
   },
 ] as const;
 

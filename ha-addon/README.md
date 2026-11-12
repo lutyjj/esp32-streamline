@@ -45,10 +45,11 @@ the test profile afterward. The add-on check runs both gates.
 
 ## Use
 
-Point each ESP32 device at the Home Assistant host on port `39000`. Music
-Assistant plays the stream as a radio URL: add
-`http://<home-assistant-host>:8088/streamline.wav`, with audio already playing on
-the source. Snapcast, Icecast, or any HTTP consumer reads the same URL.
+Point each ESP32 device at the Home Assistant host on port `39000`. Set
+`sendspin_server_url` to offer every source to Music Assistant as a Live Input;
+[DOCS.md](DOCS.md#play-it-in-music-assistant) covers pairing. Snapcast,
+Icecast, or any HTTP consumer reads
+`http://<home-assistant-host>:8088/streamline.wav`.
 
 With several ESP32 sources, select one with
 `http://<home-assistant-host>:8088/streamline.wav?source=<source-id>`.

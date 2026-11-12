@@ -79,9 +79,15 @@ class Source[H: AudioPipeline]:
     http_clients: int = 0
     pinned_http_clients: int = 0
     recording_sessions: int = 0
+    sendspin_streams: int = 0
     peer_ip: str = ""
     transport: str = "cleartext"
     admission: Literal["open", "allowlisted"] = "open"
+
+    @property
+    def held_by_session(self) -> bool:
+        """Whether a recording or Sendspin stream session holds this source."""
+        return bool(self.recording_sessions or self.sendspin_streams)
 
 
 class SourceSelectionError(Exception):
@@ -96,6 +102,7 @@ class SourceAdmissionError(Exception):
 
 
 PENDING_KEY = "pending"
+ConsumerKind = Literal["http", "recording", "sendspin"]
 
 
 class SourceLease[H: AudioPipeline]:
@@ -105,7 +112,7 @@ class SourceLease[H: AudioPipeline]:
         self,
         registry: SourceRegistry[H],
         source: Source[H],
-        kind: Literal["producer", "http", "recording"],
+        kind: ConsumerKind | Literal["producer"],
         conn: socket.socket | None = None,
         generation: int | None = None,
         *,
@@ -220,6 +227,9 @@ class SourceRegistry[H: AudioPipeline]:
     def lease_recording(self, requested: str | None) -> SourceLease[H]:
         return self._lease_consumer(requested, "recording")
 
+    def lease_sendspin(self, requested: str) -> SourceLease[H]:
+        return self._lease_consumer(requested, "sendspin")
+
     def close(self) -> None:
         """Retire every source and stop its pipeline for process shutdown."""
         with self._lock:
@@ -227,7 +237,7 @@ class SourceRegistry[H: AudioPipeline]:
             self._sources.clear()
         self._close_hubs(retired)
 
-    def _lease_consumer(self, requested: str | None, kind: Literal["http", "recording"]) -> SourceLease[H]:
+    def _lease_consumer(self, requested: str | None, kind: ConsumerKind) -> SourceLease[H]:
         with self._lock:
             evicted = self._evict_expired_locked()
             source = self._select_locked(requested)
@@ -235,8 +245,10 @@ class SourceRegistry[H: AudioPipeline]:
                 source.http_clients += 1
                 if requested is not None:
                     source.pinned_http_clients += 1
-            else:
+            elif kind == "recording":
                 source.recording_sessions += 1
+            else:
+                source.sendspin_streams += 1
             lease = SourceLease(self, source, kind, identity_pinned=requested is not None)
         self._close_hubs(evicted)
         return lease
@@ -259,9 +271,11 @@ class SourceRegistry[H: AudioPipeline]:
                 source.http_clients -= 1
                 if lease._identity_pinned:
                     source.pinned_http_clients -= 1
-            else:
+            elif lease.kind == "recording":
                 source.recording_sessions -= 1
-            if not source.connected and not source.http_clients and not source.recording_sessions:
+            else:
+                source.sendspin_streams -= 1
+            if not source.connected and not source.http_clients and not source.held_by_session:
                 source.disconnected_at = self._now()
 
     def snapshot(self) -> dict[str, dict[str, object]]:
@@ -311,7 +325,7 @@ class SourceRegistry[H: AudioPipeline]:
         )
         for candidate in candidates:
             source = self._sources.get(candidate)
-            if source is None or source.connected or source.recording_sessions:
+            if source is None or source.connected or source.held_by_session:
                 continue
             if candidate == PENDING_KEY:
                 return candidate, source
@@ -359,7 +373,7 @@ class SourceRegistry[H: AudioPipeline]:
         now = self._now()
         evicted: list[Source[H]] = []
         for key, source in tuple(self._sources.items()):
-            if source.permanent or source.connected or source.http_clients or source.recording_sessions:
+            if source.permanent or source.connected or source.http_clients or source.held_by_session:
                 continue
             if now - source.disconnected_at >= self._eviction_idle_seconds:
                 del self._sources[key]
@@ -389,8 +403,9 @@ class SourceRegistry[H: AudioPipeline]:
             "admission": source.admission,
             "http_clients": source.http_clients,
             "recording_sessions": source.recording_sessions,
+            "sendspin_streams": source.sendspin_streams,
             "idle_seconds": 0.0
-            if source.connected or source.http_clients or source.recording_sessions
+            if source.connected or source.http_clients or source.held_by_session
             else now - source.disconnected_at,
             "eviction_idle_seconds": self._eviction_idle_seconds if not source.permanent else None,
             "peer_ip": source.peer_ip,

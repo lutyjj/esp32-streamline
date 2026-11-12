@@ -157,6 +157,8 @@ class HttpContractTests(SourceTestCase):
             ("/api/transport/mode", "put"): {"200", "400", "401", "413", "503"},
             ("/api/transport/keys/{key_id}", "put"): {"201", "400", "401", "409", "413", "503"},
             ("/api/transport/keys/{key_id}", "delete"): {"200", "400", "401", "404", "503"},
+            ("/api/sendspin", "get"): {"200"},
+            ("/api/sendspin/sources/{source}/pairing-token", "post"): {"201", "400", "401", "404", "503"},
             ("/streamline.wav", "get"): {"200", "400", "404", "409"},
             ("/api/recordings/capabilities", "get"): {"200"},
             ("/api/recordings", "get"): {"200", "401", "503"},
@@ -282,6 +284,76 @@ class TransportApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["error"]["code"], "transport-unavailable")
+
+
+class FakeSendspin:
+    def __init__(self) -> None:
+        self.tokens: list[str] = []
+
+    def snapshot(self) -> dict[str, object]:
+        return {
+            "enabled": True,
+            "server_url": "ws://192.0.2.30:8927/sendspin",
+            "sources": [
+                {
+                    "source": "192.0.2.10",
+                    "client_id": "client-a",
+                    "name": "StreamLine 192.0.2.10",
+                    "connection": "connected",
+                    "paired": True,
+                    "input_enabled": True,
+                    "streaming": False,
+                    "signal": "present",
+                }
+            ],
+        }
+
+    def create_pairing_token(self, source: str) -> dict[str, str]:
+        if source != "192.0.2.10":
+            raise LookupError(f"source {source} is not published to Music Assistant")
+        self.tokens.append(source)
+        return {"source": source, "client_id": "client-a", "token": "SP:0TOKEN"}
+
+
+class SendspinApiTests(unittest.TestCase):
+    token = "bridge-api-test-token"
+
+    def make_client(self, sendspin: FakeSendspin | None) -> TestClient:
+        sources = SourceRegistry(make_pipeline, max_sources=2)
+        return TestClient(make_app(sources, "test", api_token=self.token, sendspin=sendspin))
+
+    def test_disabled_publishing_reports_itself_and_refuses_pairing(self) -> None:
+        client = self.make_client(None)
+
+        snapshot = client.get("/api/sendspin")
+        status = client.get("/status")
+        pairing = client.post(
+            "/api/sendspin/sources/192.0.2.10/pairing-token", headers={"Authorization": f"Bearer {self.token}"}
+        )
+
+        self.assertEqual(snapshot.json(), {"enabled": False, "server_url": "", "sources": []})
+        self.assertEqual(status.json()["sendspin"], snapshot.json())
+        self.assertEqual(pairing.status_code, 503)
+        self.assertEqual(pairing.json()["error"]["code"], "sendspin-disabled")
+
+    def test_pairing_token_is_an_authenticated_mutation_for_a_published_source(self) -> None:
+        sendspin = FakeSendspin()
+        client = self.make_client(sendspin)
+        headers = {"Authorization": f"Bearer {self.token}"}
+
+        denied = client.post("/api/sendspin/sources/192.0.2.10/pairing-token")
+        created = client.post("/api/sendspin/sources/192.0.2.10/pairing-token", headers=headers)
+        unknown = client.post("/api/sendspin/sources/192.0.2.11/pairing-token", headers=headers)
+        invalid = client.post("/api/sendspin/sources/not-a-source/pairing-token", headers=headers)
+
+        self.assertEqual(denied.status_code, 401)
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json(), {"source": "192.0.2.10", "client_id": "client-a", "token": "SP:0TOKEN"})
+        self.assertEqual(unknown.status_code, 404)
+        self.assertEqual(unknown.json()["error"]["code"], "sendspin-source-not-found")
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(sendspin.tokens, ["192.0.2.10"])
+        self.assertNotIn("token", str(client.get("/api/sendspin").json()))
 
 
 class RecordingApiTests(SourceTestCase):

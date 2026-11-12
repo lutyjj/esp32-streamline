@@ -4,7 +4,7 @@ import os
 import socket
 import unittest
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import uvicorn
 
@@ -112,6 +112,38 @@ class BridgeServerTests(unittest.TestCase):
             configured_server.config.timeout_graceful_shutdown,
             bridge_server.HTTP_GRACEFUL_SHUTDOWN_SECONDS,
         )
+
+
+class ShutdownOrderTests(unittest.TestCase):
+    def test_recordings_finalize_before_sendspin_publishers_disconnect(self) -> None:
+        calls: list[str] = []
+        recordings = MagicMock()
+        recordings.shutdown.side_effect = lambda: calls.append("recordings")
+        sendspin = MagicMock()
+        sendspin.close.side_effect = lambda: calls.append("sendspin")
+        args = parse_args(
+            [
+                "--recordings-dir",
+                "/recordings",
+                "--sendspin-server-url",
+                "ws://192.0.2.30:8927/sendspin",
+                "--sendspin-state-dir",
+                "/data/sendspin",
+            ]
+        )
+
+        with (
+            patch.dict(os.environ, {"STREAMLINE_API_TOKEN": "a" * 16}),
+            patch.object(bridge_server, "parse_args", return_value=args),
+            patch.object(bridge_server, "TcpIngestServer", return_value=FakePcmServer()),
+            patch.object(bridge_server, "RecordingStore"),
+            patch.object(bridge_server, "RecordingService", return_value=recordings),
+            patch.object(bridge_server, "SendspinService", return_value=sendspin),
+            patch.object(uvicorn.Server, "run"),
+        ):
+            self.assertEqual(bridge_server.main(), 0)
+
+        self.assertEqual(calls, ["recordings", "sendspin"])
 
 
 class PublicUrlTests(unittest.TestCase):

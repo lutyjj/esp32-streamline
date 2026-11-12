@@ -605,7 +605,7 @@
             "title": "Source"
           },
           "token": {
-            "description": "One-time Sendspin pairing token to paste into Music Assistant's device setup.",
+            "description": "Sendspin pairing token to paste into Music Assistant's device setup. Only this response returns it; it stays valid until the next token request replaces it.",
             "title": "Token",
             "type": "string"
           }

@@ -171,7 +171,10 @@ class SendspinSnapshot(ContractModel):
 class SendspinPairingToken(ContractModel):
     source: SourceIdentity
     client_id: str
-    token: str = Field(description="One-time Sendspin pairing token to paste into Music Assistant's device setup.")
+    token: str = Field(
+        description="Sendspin pairing token to paste into Music Assistant's device setup. Only this response "
+        "returns it; it stays valid until the next token request replaces it."
+    )
 
 
 class BridgeStatus(ContractModel):

@@ -125,6 +125,8 @@ because a headless bridge can return a token from an authenticated API call
 but cannot show or speak a code. The bridge timestamps each packet at its
 capture time, derived from its sequence number, so Wi-Fi stalls reach Music
 Assistant as late packets with correct times instead of compressed bursts.
+aiosendspin drops capture older than 500 ms, which bounds the stall this path
+can absorb below the HTTP playout buffer's.
 
 aiosendspin's `SendspinClient` reports the source signal only through its
 admitted connection object, which it does not expose publicly. The publisher

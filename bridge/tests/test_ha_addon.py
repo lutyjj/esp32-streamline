@@ -106,6 +106,10 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "api_token is required"):
             bridge_argv({"recordings_enabled": True})
 
+    def test_sendspin_publishing_requires_a_token(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "api_token is required when sendspin_server_url is set"):
+            bridge_argv({"sendspin_server_url": "ws://192.0.2.30:8927/sendspin"})
+
     def test_a_set_token_must_be_long_enough(self) -> None:
         with self.assertRaisesRegex(SystemExit, "at least 16 characters"):
             bridge_argv({"recordings_enabled": True, "api_token": "short"})

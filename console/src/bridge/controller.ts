@@ -178,13 +178,18 @@ export class BridgeController {
     if (this.access.value === 'unlocked') this.access.value = 'locked';
   }
 
-  /** Replace a source's pairing secret and hold its token until dismissed. */
+  /**
+   * Replace a source's pairing secret and hold its token until dismissed. A
+   * failed request may already have replaced the secret, so it clears any
+   * token on screen rather than leave one that might no longer work.
+   */
   async createPairingToken(source: string): Promise<boolean> {
     try {
       this.pairingToken.value = await this.api.createPairingToken(source);
       this.error.value = '';
       return true;
     } catch (error) {
+      this.pairingToken.value = null;
       this.error.value = message(error);
       return false;
     }

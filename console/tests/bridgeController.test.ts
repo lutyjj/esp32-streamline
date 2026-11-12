@@ -169,6 +169,11 @@ describe('bridge controller', () => {
       createPairingToken: vi.fn(async () => Promise.reject(new Error('source is not published'))),
     });
     const controller = new BridgeController(api);
+    controller.pairingToken.value = {
+      source: '192.0.2.11',
+      client_id: 'client-b',
+      token: 'SP:0OLD',
+    };
 
     expect(await controller.createPairingToken('192.0.2.10')).toBe(false);
     expect(controller.error.value).toBe('source is not published');

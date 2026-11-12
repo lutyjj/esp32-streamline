@@ -7,6 +7,8 @@ abi <abi/3.0>,
 profile streamline_bridge flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
   #include <abstractions/nameservice>
+  # CA certificates for a wss:// Sendspin server URL.
+  #include <abstractions/ssl_certs>
 
   # Resolver abstractions may grant capabilities that the bridge never needs.
   deny capability,

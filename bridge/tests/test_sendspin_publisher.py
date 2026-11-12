@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import struct
 import unittest
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import patch
 
 from aiohttp import web
 from aiohttp.test_utils import TestServer
@@ -17,11 +18,14 @@ from aiosendspin.server.roles.source import SourceSignalChangedEvent, SourceStre
 from aiosendspin.server.roles.source.v1 import SourceV1Role
 from aiosendspin.server.server import SendspinServer
 
+from streamline_bridge.sendspin import publisher as publisher_module
 from streamline_bridge.sendspin.packet_feed import Packet
 from streamline_bridge.sendspin.publisher import SendspinPublisher, build_client
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from aiosendspin.client import SendspinClient
 
 SOURCE = "192.0.2.10"
 PAYLOAD_BYTES = 256 * 4
@@ -90,6 +94,9 @@ class SendspinPublisherTests(unittest.IsolatedAsyncioTestCase):
         """Pair the live connection the way Music Assistant's token setup does."""
         self.publisher.start()
         await eventually(lambda: self.publisher.snapshot()["connection"] == "connected")
+        await self._pair_again()
+
+    async def _pair_again(self) -> None:
         token = decode_psk_token(await self.publisher.create_pairing_token())
         self.assertEqual(token.client_id, self.publisher.client_id)
         await self.server.initiate_pairing(
@@ -110,6 +117,26 @@ class SendspinPublisherTests(unittest.IsolatedAsyncioTestCase):
         role = client.role("source@v1")
         assert isinstance(role, SourceV1Role)
         return client, role
+
+    def _stream_starts(self, client: Any) -> asyncio.Queue[Any]:
+        """Collect the server-side handle of every stream the publisher opens."""
+        handles: asyncio.Queue[Any] = asyncio.Queue()
+        client.add_event_listener(
+            lambda _client, event: (
+                handles.put_nowait(event.handle) if isinstance(event, SourceStreamStartedEvent) else None
+            )
+        )
+        return handles
+
+    @staticmethod
+    async def _receive(handle: Any, size: int) -> bytes:
+        received = bytearray()
+        async with asyncio.timeout(5):
+            async for chunk, _timestamp in handle:
+                received += chunk
+                if len(received) >= size:
+                    break
+        return bytes(received[:size])
 
     async def test_unpaired_source_connects_without_an_enabled_input(self) -> None:
         self.publisher.start()
@@ -172,6 +199,89 @@ class SendspinPublisherTests(unittest.IsolatedAsyncioTestCase):
         role.request_stop()
         await eventually(lambda: feed.closed)
         await eventually(lambda: not self.publisher.snapshot()["streaming"])
+
+    async def test_a_start_right_after_a_stop_opens_a_new_stream(self) -> None:
+        await self._pair()
+        await self._report(SignalState.PRESENT)
+        client, role = self._source_role()
+        handles = self._stream_starts(client)
+        role.request_start()
+        await eventually(lambda: self.feeds)
+
+        # Music Assistant moves a playing input by stopping and starting it at once.
+        role.request_stop()
+        role.request_start()
+        await eventually(lambda: len(self.feeds) == 2)
+        now = self.clock.now_us()
+        sent = [tone(100 + index) for index in range(10)]
+        for index, payload in enumerate(sent):
+            self.feeds[1].packets.put_nowait(Packet(index, now + index * 5_333, payload))
+        handle = await asyncio.wait_for(handles.get(), 5)
+        while not handles.empty():
+            handle = handles.get_nowait()
+
+        self.assertTrue(self.feeds[0].closed)
+        self.assertEqual(await self._receive(handle, 1_200 * 4), b"".join(sent)[: 1_200 * 4])
+
+    async def test_pairing_again_reports_the_signal_to_the_reactivated_input(self) -> None:
+        await self._pair()
+        client, _role = self._source_role()
+        signals: list[SignalState] = []
+        client.add_event_listener(
+            lambda _client, event: signals.append(event.signal) if isinstance(event, SourceSignalChangedEvent) else None
+        )
+        await self._report(SignalState.PRESENT)
+        await eventually(lambda: signals == [SignalState.PRESENT])
+
+        await self._pair_again()
+        async with asyncio.timeout(5):
+            while signals != [SignalState.PRESENT, SignalState.PRESENT]:
+                await self.publisher.report_signal(SignalState.PRESENT)
+                await asyncio.sleep(0.05)
+
+        self.assertTrue(self.publisher.snapshot()["input_enabled"])
+
+    async def test_capture_older_than_the_backlog_bound_is_dropped_and_streaming_resumes(self) -> None:
+        await self._pair()
+        await self._report(SignalState.PRESENT)
+        client, role = self._source_role()
+        handles = self._stream_starts(client)
+        role.request_start()
+        await eventually(lambda: self.feeds)
+        feed = self.feeds[0]
+        stalled = self.clock.now_us() - 1_000_000
+        for index in range(10):
+            feed.packets.put_nowait(Packet(index, stalled + index * 5_333, tone(index)))
+        # The device dropped the packets of a one-second stall; the next ones arrive on time.
+        resumed = [tone(500 + index) for index in range(10)]
+        for index, payload in enumerate(resumed):
+            feed.packets.put_nowait(Packet(188 + index, self.clock.now_us() + index * 5_333, payload))
+        handle = await asyncio.wait_for(handles.get(), 5)
+
+        self.assertEqual(await self._receive(handle, 1_200 * 4), b"".join(resumed)[: 1_200 * 4])
+
+
+class UnresponsiveClient:
+    def __init__(self) -> None:
+        self.identity = Identity.generate()
+        self.client_name = f"StreamLine {SOURCE}"
+
+    async def disconnect(self) -> None:
+        await asyncio.Event().wait()
+
+
+class SendspinPublisherCloseTests(unittest.IsolatedAsyncioTestCase):
+    async def test_close_does_not_wait_on_an_unresponsive_server(self) -> None:
+        publisher = SendspinPublisher(
+            SOURCE,
+            "ws://192.0.2.30:8927/sendspin",
+            cast("SendspinClient", UnresponsiveClient()),
+            lambda _source: FakeFeed(),
+        )
+
+        with patch.object(publisher_module, "DISCONNECT_TIMEOUT_SECONDS", 0.05):
+            async with asyncio.timeout(2):
+                await publisher.close()
 
 
 if __name__ == "__main__":

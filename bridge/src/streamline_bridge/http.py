@@ -376,6 +376,13 @@ def make_app(
             return SendspinPairingToken.model_validate(sendspin.create_pairing_token(source))
         except LookupError as exc:
             return error_response(404, "sendspin-source-not-found", str(exc))
+        except TimeoutError:
+            return error_response(
+                503,
+                "sendspin-busy",
+                "The bridge did not create the pairing token in time, and an earlier token may no longer work. "
+                "Create a new pairing token.",
+            )
 
     @app.get(
         "/streamline.wav",

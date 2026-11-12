@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 from aiohttp import web
 from aiohttp.test_utils import TestServer
@@ -22,6 +23,7 @@ from aiosendspin.server.server import SendspinServer
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.sendspin.identity import SendspinIdentityStore
 from streamline_bridge.sendspin.packet_feed import PacketFeed
+from streamline_bridge.sendspin.publisher import SendspinPublisher
 from streamline_bridge.sendspin.service import SendspinService, line_signal
 from streamline_bridge.sources import SourceLease, SourceRegistry
 
@@ -138,6 +140,18 @@ class SendspinServiceTests(unittest.IsolatedAsyncioTestCase):
         await eventually(lambda: self.published(service) == [])
         self.assertNotIn(SOURCE, self.registry.snapshot())
 
+    async def test_a_failing_publisher_does_not_stop_publishing_other_sources(self) -> None:
+        self.connect_device()
+        with patch.object(SendspinPublisher, "report_signal", side_effect=ValueError("broken publisher")):
+            service = self.start_service()
+            await eventually(lambda: len(self.published(service)) == 1)
+            other, _peer = socket.socketpair()
+            self.addCleanup(other.close)
+            self.addCleanup(_peer.close)
+            self.registry.lease_producer("192.0.2.11", other)
+
+            await eventually(lambda: [s["source"] for s in self.published(service)] == [SOURCE, "192.0.2.11"])
+
     async def test_a_source_keeps_its_client_id_across_restarts(self) -> None:
         self.connect_device()
         first = self.start_service()
@@ -194,6 +208,30 @@ class SendspinServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(chunk[: len(AUDIO)], AUDIO)
         role.request_stop()
         await eventually(lambda: self.registry.snapshot()[SOURCE]["lifecycle"]["sendspin_streams"] == 0)  # type: ignore[index]
+
+    async def test_losing_music_assistant_mid_stream_releases_the_source(self) -> None:
+        producer = self.connect_device()
+        service = self.start_service()
+        await eventually(lambda: self.published(service) and self.published(service)[0]["connection"] == "connected")
+        token = decode_psk_token((await asyncio.to_thread(service.create_pairing_token, SOURCE))["token"])
+        await self.server.initiate_pairing(
+            token.client_id,
+            PairingAttempt(PairMethod.PAIRING_PSK, client_id=token.client_id, pairing_psk=token.pairing_psk),
+        )
+        producer.ingest(1, AUDIO)
+        await eventually(lambda: self.published(service)[0]["signal"] == "present")
+        client = self.server.get_client(token.client_id)
+        assert client is not None
+        role = client.role("source@v1")
+        assert isinstance(role, SourceV1Role)
+        role.request_start()
+        await eventually(lambda: self.registry.snapshot()[SOURCE]["lifecycle"]["sendspin_streams"] == 1)  # type: ignore[index]
+
+        await self.http.close()
+        await self.server.close()
+
+        await eventually(lambda: self.registry.snapshot()[SOURCE]["lifecycle"]["sendspin_streams"] == 0)  # type: ignore[index]
+        await eventually(lambda: self.published(service)[0]["connection"] == "connecting")
 
 
 if __name__ == "__main__":

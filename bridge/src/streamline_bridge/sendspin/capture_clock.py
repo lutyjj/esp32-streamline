@@ -29,10 +29,6 @@ class CaptureClock:
         self._last_nominal_us = 0
         self._offset_us = 0
 
-    def reset(self) -> None:
-        """Forget the timeline so the next packet anchors a new one."""
-        self._last_sequence = None
-
     def timestamp(self, sequence: int, arrival_us: int) -> int:
         """Return the capture time of ``sequence``, which arrived at ``arrival_us``."""
         if self._last_sequence is not None:

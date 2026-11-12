@@ -43,6 +43,8 @@ def bridge_argv(options: dict[str, object]) -> list[str]:
         SENDSPIN_STATE_DIR,
     ]
 
+    if options.get("sendspin_server_url") and not api_token(options):
+        raise SystemExit("api_token is required when sendspin_server_url is set")
     if recordings_enabled(options):
         if not api_token(options):
             raise SystemExit("api_token is required when recordings are enabled")

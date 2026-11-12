@@ -1,6 +1,22 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.17.0](https://github.com/lutyjj/esp32-streamline/compare/v0.16.0...v0.17.0) (2026-11-12)
+
+
+### Features
+
+* **bridge:** publish sources to Music Assistant over Sendspin ([b7269db](https://github.com/lutyjj/esp32-streamline/commit/b7269db4ef29ed95295530445356da99af47a0bb)), closes [#505](https://github.com/lutyjj/esp32-streamline/issues/505)
+
+
+### Bug Fixes
+
+* **bridge:** harden Sendspin publishing lifecycle ([6d0432e](https://github.com/lutyjj/esp32-streamline/commit/6d0432ef0c9857bd748e7dd8380b16c728530c7a)), closes [#505](https://github.com/lutyjj/esp32-streamline/issues/505)
+* **bridge:** name the source and server in Sendspin retry logs ([32a0c84](https://github.com/lutyjj/esp32-streamline/commit/32a0c84057f7dd231666a034cec21c4ec70e4fed)), closes [#505](https://github.com/lutyjj/esp32-streamline/issues/505)
+* **bridge:** retry Sendspin connections with tenacity ([18ac699](https://github.com/lutyjj/esp32-streamline/commit/18ac699efb3738ed54c8d6b7f4bd0e9822f96180)), closes [#505](https://github.com/lutyjj/esp32-streamline/issues/505)
+* **console:** rerun npm ci after the lock target refreshes the lockfile ([46ce134](https://github.com/lutyjj/esp32-streamline/commit/46ce13416b095d7a955633c00b151874904e040a))
+* **tools:** fail serial capture when espflash cannot pick the port ([52a0c7a](https://github.com/lutyjj/esp32-streamline/commit/52a0c7ad7c6e742d2e8b4751384976c15cfd97e6))
+
 ## [0.16.0](https://github.com/lutyjj/esp32-streamline/compare/v0.15.0...v0.16.0) (2026-11-04)
 
 

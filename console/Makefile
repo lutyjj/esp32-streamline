@@ -51,11 +51,12 @@ bridge-image:
 	$(MAKE) -C ../bridge image
 
 # npm ci wipes node_modules on every run; the stamp reruns it only when the
-# lockfile actually moved.
-node_modules/.package-lock.json: package.json package-lock.json | dev-image
+# lockfile actually moved. The stamp is a file npm never writes: `lock`
+# rewrites npm's own node_modules/.package-lock.json without installing.
+node_modules/.npm-ci-stamp: package.json package-lock.json | dev-image
 	$(CONTAINER_RUN) sh -c 'npm ci && touch $@'
 
-deps: node_modules/.package-lock.json
+deps: node_modules/.npm-ci-stamp
 
 # Refresh package-lock.json in the same pinned Node container used for checks.
 lock: dev-image

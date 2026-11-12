@@ -321,6 +321,38 @@ class SendspinPublisherInputStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(connection.sent, [SignalState.PRESENT, SignalState.PRESENT])
 
 
+class RefusingClient:
+    def __init__(self) -> None:
+        self.identity = Identity.generate()
+        self.client_name = f"StreamLine {SOURCE}"
+
+    def add_server_command_listener(self, _callback: object) -> None:
+        pass
+
+    def add_disconnect_listener(self, _callback: object) -> None:
+        pass
+
+    async def connect(self, _url: str) -> None:
+        raise ConnectionRefusedError("refused")
+
+    async def disconnect(self) -> None:
+        pass
+
+
+class SendspinPublisherRetryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_a_failed_dial_names_the_source_and_server(self) -> None:
+        url = "ws://192.0.2.30:8927/sendspin"
+        publisher = SendspinPublisher(SOURCE, url, cast("SendspinClient", RefusingClient()), lambda _source: FakeFeed())
+
+        with self.assertLogs("streamline_bridge.sendspin.publisher", "WARNING") as logs:
+            publisher.start()
+            await eventually(lambda: logs.output)
+            await publisher.close()
+
+        self.assertIn(f"Sendspin source {SOURCE} cannot reach {url}", logs.output[0])
+        self.assertIn("refused", logs.output[0])
+
+
 class UnresponsiveClient:
     def __init__(self) -> None:
         self.identity = Identity.generate()

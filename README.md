@@ -221,15 +221,18 @@ make help                                 # all targets
 make lint && make test                    # local baseline before a PR
 make repository-check                      # docs, metadata, versions, advisories
 make firmware-build                       # cross-compile the firmware
-make firmware-flash PORT=/dev/ttyUSB0     # flash from the host
-make firmware-monitor PORT=/dev/ttyUSB0   # interactive serial monitor
+make firmware-flash                       # flash from the host
+make firmware-monitor                     # interactive serial monitor
 make firmware-capture CAPTURE_SECS=30     # bounded serial capture for scripts
 make bridge-up                            # run the bridge from source
 ```
 
 Flashing runs on the host because Docker Desktop on macOS cannot reliably
 expose serial devices. Install the tool once with `cargo install espflash`, or
-use the [Nix shell](CONTRIBUTING.md#development).
+use the [Nix shell](CONTRIBUTING.md#development). espflash selects the serial
+port: the one recognized USB serial adapter, or `ESPFLASH_PORT` when set. Set
+it when several serial ports are attached, for example
+`ESPFLASH_PORT=/dev/ttyUSB0 make firmware-flash`.
 
 A device already on the network needs none of that to be read: it serves its
 own log, this boot and the one before it, at `GET /api/logs`, and the crash

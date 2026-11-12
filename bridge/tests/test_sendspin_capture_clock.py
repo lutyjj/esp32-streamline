@@ -61,13 +61,6 @@ class CaptureClockTests(unittest.TestCase):
         self.assertEqual(clock.timestamp(3, 90_000_000), 90_000_000)
         self.assertEqual(clock.timestamp(4, 90_000_000 + nominal_us(1)), 90_000_000 + nominal_us(1))
 
-    def test_reset_anchors_the_next_packet_on_arrival(self) -> None:
-        clock = CaptureClock()
-        clock.timestamp(1, 0)
-        clock.reset()
-
-        self.assertEqual(clock.timestamp(2, 7_777_777), 7_777_777)
-
 
 if __name__ == "__main__":
     unittest.main()

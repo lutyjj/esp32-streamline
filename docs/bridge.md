@@ -59,8 +59,8 @@ pin their selected identity and prevent adoption under a different identity.
 
 The bridge retains an inactive dynamic source for
 `--source-eviction-idle-seconds` (300 seconds by default). A reconnect during
-that interval reuses its playout pipeline. An active TCP producer or HTTP
-client or recording session prevents eviction. Eviction and bridge shutdown
+that interval reuses its playout pipeline. An active TCP producer, HTTP
+client, recording session, or Sendspin stream prevents eviction. Eviction and bridge shutdown
 stop and join the source's playout worker, so churned sources never accumulate
 threads. The `/status` lifecycle block reports the state, admission policy,
 consumer counts, current idle duration, and eviction interval.
@@ -163,8 +163,11 @@ Pairing uses Music Assistant's token method:
    <source>` and paste the token.
 
 Each token request replaces the source's pairing secret, so an earlier token
-stops working; an existing pairing is unaffected. The token carries a secret,
-so only the creating response returns it.
+stops working; an existing pairing is unaffected. A token stays valid until
+the next request replaces it. It carries a secret, so only the creating
+response returns it. A request that times out returns `503` with
+`sendspin-busy`; it may already have replaced the secret, so create another
+token.
 
 The device signal gate becomes Sendspin `line_sense`: the client reports
 `present` while a connected source sends audio and `absent` during silence
@@ -179,9 +182,14 @@ the source lifecycle counts it in `sendspin_streams`. The client sends the
 accepted packets as 48 kHz, 16-bit stereo PCM, with silence records as zeros,
 before any playout concealment. Each packet is timestamped at its capture
 time: its sequence position plus the smallest arrival offset observed, so a
-burst that a Wi-Fi stall releases keeps its original spacing. Music Assistant
-owns jitter buffering, drift correction, and target latency for this path.
-HTTP WAV clients and recordings receive the same source unchanged.
+burst that a Wi-Fi stall releases keeps its original spacing. The Sendspin
+client drops capture older than 500 ms, so a stall that holds back more
+audio than that loses the older part on this path; the HTTP playout buffer
+of 1 to 3 seconds absorbs the same stall. The device's drop-oldest send
+queue holds 256 ms of audio and its TCP send buffer about 60 ms more, so a
+device's backlog stays under that bound. Music Assistant owns jitter
+buffering, drift correction, and target latency for this path. HTTP WAV
+clients and recordings receive the same source unchanged.
 
 ## Recordings
 

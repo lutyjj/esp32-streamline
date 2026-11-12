@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import socket
+import ssl
 import subprocess
 import time
 from collections.abc import Callable, Iterator
@@ -17,6 +18,8 @@ from urllib.request import Request, urlopen
 
 TOKEN = "confinement-test-token"
 KEY_ID = "eli1-" + "12" * 16
+# Nothing listens here: publishing retries while the bridge stores the source identity.
+SENDSPIN_SERVER_URL = "ws://127.0.0.1:9/sendspin"
 
 
 def request(method: str, path: str, body: dict[str, object] | None = None) -> bytes:
@@ -28,6 +31,12 @@ def request(method: str, path: str, body: dict[str, object] | None = None) -> by
 
 def api(method: str, path: str, body: dict[str, object] | None = None) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(request(method, path, body)))
+
+
+def sendspin_client_id() -> str | None:
+    """Return the published Sendspin client id of the test source, once it exists."""
+    sources = api("GET", "/api/sendspin")["sources"]
+    return next((str(source["client_id"]) for source in sources if source["source"] == "127.0.0.1"), None)
 
 
 def wait_for(predicate: Callable[[], bool]) -> None:
@@ -72,7 +81,7 @@ def main() -> None:
     if profile != f"{expected} (enforce)":
         raise RuntimeError(f"expected enforcing profile {expected}, got {profile}")
 
-    options = {"recordings_enabled": True, "api_token": TOKEN}
+    options = {"recordings_enabled": True, "api_token": TOKEN, "sendspin_server_url": SENDSPIN_SERVER_URL}
     Path("/data/options.json").write_text(json.dumps(options))
     Path("/tmp/streamline-probe").write_text("scratch")
     for path in ("/etc/streamline-probe", "/usr/local/lib/streamline-probe"):
@@ -88,6 +97,8 @@ def main() -> None:
         pass
     else:
         raise RuntimeError("profile allowed shell execution")
+    if not ssl.create_default_context().get_ca_certs():
+        raise RuntimeError("profile denied the CA certificates a wss:// Sendspin server needs")
 
     vectors = json.loads(Path("/tmp/pcm-frame-vectors.json").read_text())["valid"]
     frames = {vector["name"]: bytes.fromhex(vector["frame_hex"]) for vector in vectors}
@@ -97,6 +108,8 @@ def main() -> None:
         with socket.create_connection(("127.0.0.1", 39000), timeout=3) as producer:
             producer.sendall(frames["sequence_zero"])
             wait_for(lambda: "127.0.0.1" in api("GET", "/status")["sources"])
+            wait_for(lambda: sendspin_client_id() is not None)
+            client_id = sendspin_client_id()
             recording = api("POST", "/api/recordings", {"source": "127.0.0.1", "title": "Confinement test"})
             recording_id = recording["recording"]["id"]
             producer.sendall(frames["full_frame"])
@@ -113,7 +126,15 @@ def main() -> None:
             raise RuntimeError("transport key did not survive restart")
         if request("GET", f"/api/recordings/{recording_id}/file") != recorded:
             raise RuntimeError("recording did not survive restart")
-    print("AppArmor enforced: startup, key and recording persistence, download, shutdown and denials passed")
+        with socket.create_connection(("127.0.0.1", 39000), timeout=3) as producer:
+            producer.sendall(frames["sequence_zero"])
+            wait_for(lambda: sendspin_client_id() is not None)
+            if sendspin_client_id() != client_id:
+                raise RuntimeError("Sendspin client identity did not survive restart")
+    print(
+        "AppArmor enforced: startup, key, recording and Sendspin identity persistence, "
+        "CA certificates, download, shutdown and denials passed"
+    )
 
 
 if __name__ == "__main__":

@@ -71,9 +71,15 @@ class SendspinService:
         asyncio.run_coroutine_threadsafe(self._begin(), self._loop).result(CALL_TIMEOUT_SECONDS)
 
     def close(self) -> None:
+        """Disconnect every publisher and stop the loop; never raises on a slow server."""
         if not self._thread.is_alive():
             return
-        asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop).result(CALL_TIMEOUT_SECONDS)
+        future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
+        try:
+            future.result(CALL_TIMEOUT_SECONDS)
+        except TimeoutError:
+            future.cancel()
+            logger.warning("Sendspin publishers did not close within %s seconds", CALL_TIMEOUT_SECONDS)
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join()
         self._loop.close()
@@ -84,9 +90,18 @@ class SendspinService:
         return {"enabled": True, "server_url": self._server_url, "sources": sources}
 
     def create_pairing_token(self, source: str) -> dict[str, str]:
-        """Return a fresh pairing token for a published source; ``LookupError`` if unpublished."""
+        """Return a fresh pairing token for a published source.
+
+        Raises ``LookupError`` for an unpublished source and ``TimeoutError``
+        when the loop does not answer in time; the pairing secret may then have
+        changed, so the caller must request another token.
+        """
         future = asyncio.run_coroutine_threadsafe(self._create_pairing_token(source), self._loop)
-        return future.result(CALL_TIMEOUT_SECONDS)
+        try:
+            return future.result(CALL_TIMEOUT_SECONDS)
+        except TimeoutError:
+            future.cancel()
+            raise
 
     async def _begin(self) -> None:
         self._reconciler = asyncio.create_task(self._reconcile_forever(), name="sendspin-reconcile")
@@ -108,19 +123,26 @@ class SendspinService:
 
     async def _reconcile_forever(self) -> None:
         while True:
-            await self._reconcile()
+            try:
+                await self._reconcile()
+            except Exception:
+                # One failed pass must not end publishing; the next pass retries.
+                logger.exception("Sendspin reconcile pass failed")
             await asyncio.sleep(RECONCILE_SECONDS)
 
     async def _reconcile(self) -> None:
         wanted = {key: line_signal(source) for key, source in self._sources.snapshot().items() if key != PENDING_KEY}
-        for key in self._publishers.keys() - wanted.keys():
-            await self._publishers.pop(key).close()
+        retired = [self._publishers.pop(key) for key in self._publishers.keys() - wanted.keys()]
+        await asyncio.gather(*(publisher.close() for publisher in retired), return_exceptions=True)
         for key in wanted.keys() - self._publishers.keys():
             publisher = await self._publish(key)
             if publisher is not None:
                 self._publishers[key] = publisher
         for key, publisher in self._publishers.items():
-            await publisher.report_signal(wanted[key])
+            try:
+                await publisher.report_signal(wanted[key])
+            except Exception:
+                logger.exception("Sendspin source %s signal report failed", key)
         snapshot = [publisher.snapshot() for _, publisher in sorted(self._publishers.items())]
         with self._snapshot_lock:
             self._snapshot = snapshot

@@ -309,6 +309,8 @@ class FakeSendspin:
         }
 
     def create_pairing_token(self, source: str) -> dict[str, str]:
+        if source == "192.0.2.12":
+            raise TimeoutError
         if source != "192.0.2.10":
             raise LookupError(f"source {source} is not published to Music Assistant")
         self.tokens.append(source)
@@ -354,6 +356,17 @@ class SendspinApiTests(unittest.TestCase):
         self.assertEqual(invalid.status_code, 400)
         self.assertEqual(sendspin.tokens, ["192.0.2.10"])
         self.assertNotIn("token", str(client.get("/api/sendspin").json()))
+
+    def test_a_pairing_token_timeout_asks_for_a_new_token(self) -> None:
+        client = self.make_client(FakeSendspin())
+
+        response = client.post(
+            "/api/sendspin/sources/192.0.2.12/pairing-token", headers={"Authorization": f"Bearer {self.token}"}
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["error"]["code"], "sendspin-busy")
+        self.assertIn("Create a new pairing token", response.json()["error"]["message"])
 
 
 class RecordingApiTests(SourceTestCase):

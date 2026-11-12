@@ -40,6 +40,8 @@ CAPTURE_FORMAT = SupportedAudioFormat(
 )
 RECONNECT_INITIAL_SECONDS = 1.0
 RECONNECT_MAX_SECONDS = 30.0
+# Bounds the goodbye handshake so an unresponsive server cannot hold shutdown.
+DISCONNECT_TIMEOUT_SECONDS = 2.0
 
 
 class SourceFeed(Protocol):
@@ -99,7 +101,6 @@ class SendspinPublisher:
         self._runner: asyncio.Task[None] | None = None
         self._stream: asyncio.Task[None] | None = None
         self._reported: SignalState | None = None
-        self._input_enabled = False
 
     @property
     def client_id(self) -> str:
@@ -119,20 +120,32 @@ class SendspinPublisher:
             self._runner.cancel()
             await asyncio.gather(self._runner, return_exceptions=True)
         await self._end_stream()
-        await self._client.disconnect()
+        try:
+            async with asyncio.timeout(DISCONNECT_TIMEOUT_SECONDS):
+                await self._client.disconnect()
+        except TimeoutError:
+            logger.warning(
+                "Sendspin server did not answer source %s's goodbye within %s s",
+                self.source,
+                DISCONNECT_TIMEOUT_SECONDS,
+            )
+        except OSError as exc:
+            logger.warning("Sendspin source %s closed without a clean goodbye: %s", self.source, exc)
 
     async def report_signal(self, signal: SignalState) -> None:
-        """Report ``signal`` once per connection, retrying until the server enables the input."""
+        """Report ``signal`` whenever it changes or the server re-enables the input."""
         connection = self._connection()
-        if connection is None or signal == self._reported:
+        if connection is None or not _source_input_enabled(connection):
+            # A server that enables the input again resets its signal state.
+            self._reported = None
+            return
+        if signal == self._reported:
             return
         try:
             await connection.send_source_signal(signal)
-        except RuntimeError:
-            # The input stays inactive until the server pairs or approves it.
-            self._input_enabled = False
+        except (RuntimeError, ConnectionError) as exc:
+            logger.debug("Sendspin source %s signal not reported: %s", self.source, exc)
             return
-        self._input_enabled = True
         self._reported = signal
 
     async def create_pairing_token(self) -> str:
@@ -143,16 +156,17 @@ class SendspinPublisher:
 
     def snapshot(self) -> dict[str, object]:
         psk = self._client.noise_psk
-        connected = self._client.connected
+        connection = self._connection()
+        input_enabled = connection is not None and _source_input_enabled(connection)
         return {
             "source": self.source,
             "client_id": self.client_id,
             "name": self.name,
-            "connection": "connected" if connected else "connecting",
-            "paired": connected and psk is not None and psk.category is PskCategory.LONG_TERM,
-            "input_enabled": connected and self._input_enabled,
+            "connection": "connected" if connection is not None else "connecting",
+            "paired": connection is not None and psk is not None and psk.category is PskCategory.LONG_TERM,
+            "input_enabled": input_enabled,
             "streaming": self._stream is not None and not self._stream.done(),
-            "signal": self._reported.value if connected and self._reported is not None else None,
+            "signal": self._reported.value if input_enabled and self._reported is not None else None,
         }
 
     def _connection(self) -> SendspinConnection | None:
@@ -177,18 +191,24 @@ class SendspinPublisher:
             await self._disconnected.wait()
             logger.info("Sendspin source %s disconnected", self.source)
             self._reported = None
-            self._input_enabled = False
             await self._end_stream()
             await asyncio.sleep(delay)
 
     def _on_command(self, payload: ServerCommandPayload) -> None:
+        # aiosendspin forwards a source command only when it takes effect, so a
+        # start always opens a new stream, after any stream still tearing down.
         if payload.source is None:
             return
+        previous = self._stream
+        if previous is not None:
+            previous.cancel()
         if payload.source.command == "start":
-            if self._stream is None or self._stream.done():
-                self._stream = asyncio.create_task(self._stream_audio(), name=f"sendspin-stream-{self.source}")
-        elif self._stream is not None:
-            self._stream.cancel()
+            self._stream = asyncio.create_task(self._restream(previous), name=f"sendspin-stream-{self.source}")
+
+    async def _restream(self, previous: asyncio.Task[None] | None) -> None:
+        if previous is not None:
+            await asyncio.gather(previous, return_exceptions=True)
+        await self._stream_audio()
 
     async def _end_stream(self) -> None:
         if self._stream is not None:
@@ -213,11 +233,17 @@ class SendspinPublisher:
                     timestamp = clock.timestamp(packet.sequence, packet.arrival_us)
                     await capture.feed(packet.payload or self._silence, timestamp)
             finally:
-                with contextlib.suppress(RuntimeError):
+                with contextlib.suppress(RuntimeError, ConnectionError):
                     await capture.stop()
                 logger.info("Sendspin source %s stopped streaming (%d packets dropped)", self.source, feed.dropped)
-        except RuntimeError as exc:
+        except (RuntimeError, ConnectionError) as exc:
             # The connection ended or the server withdrew the input mid-stream.
             logger.info("Sendspin source %s stream ended: %s", self.source, exc)
         finally:
             feed.close()
+
+
+def _source_input_enabled(connection: SendspinConnection) -> bool:
+    """Whether the server has activated the source role on this connection."""
+    # Role activation has no public accessor in aiosendspin; see _connection.
+    return connection._is_role_active("source")

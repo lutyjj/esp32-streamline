@@ -122,10 +122,10 @@ def main() -> int:
         logger.info("stopped")
     finally:
         pcm_server.close()
-        if sendspin is not None:
-            sendspin.close()
         if recordings is not None:
             recordings.shutdown()
+        if sendspin is not None:
+            sendspin.close()
         sources.close()
     return result
 

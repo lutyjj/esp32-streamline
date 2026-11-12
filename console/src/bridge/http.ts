@@ -42,6 +42,7 @@ export const SECURED_OPERATIONS = [
   'POST /api/recordings/{recording_id}/download-ticket',
   'GET /api/recordings/{recording_id}/file',
   'POST /api/recordings/{recording_id}/stop',
+  'POST /api/sendspin/sources/{source}/pairing-token',
   'PUT /api/transport/keys/{key_id}',
   'DELETE /api/transport/keys/{key_id}',
   'PUT /api/transport/mode',

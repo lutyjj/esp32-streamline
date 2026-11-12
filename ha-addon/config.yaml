@@ -27,6 +27,7 @@ ports_description:
   8088/tcp: HTTP WAV stream and status API
 options:
   public_url: ""
+  sendspin_server_url: ""
   api_token: ""
   source_allow: ""
   max_sources: 8
@@ -42,6 +43,7 @@ options:
   recordings_enabled: false
 schema:
   public_url: str
+  sendspin_server_url: str
   api_token: password
   source_allow: str
   max_sources: "int(1,32)"

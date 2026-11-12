@@ -131,16 +131,19 @@ test: image
 	printf '%s\n' \
 		'#!/bin/sh' \
 		'set -eu' \
-		'test "$$#" -eq 6' \
+		'test "$$#" -eq 8' \
 		'test "$$1" = "--transport-state-file"' \
 		'test "$$2" = "/data/transport.json"' \
-		'test "$$3" = "--recordings-dir"' \
-		'test "$$4" = "/data/recordings"' \
-		'test "$$5" = "--max-sources"' \
-		'test "$$6" = "$${EXPECT_MAX_SOURCES:-3}"' \
+		'test "$$3" = "--sendspin-state-dir"' \
+		'test "$$4" = "/data/sendspin"' \
+		'test "$$5" = "--recordings-dir"' \
+		'test "$$6" = "/data/recordings"' \
+		'test "$$7" = "--max-sources"' \
+		'test "$$8" = "$${EXPECT_MAX_SOURCES:-3}"' \
 		'test "$$STREAMLINE_API_TOKEN" = "test-bridge-api-token"' \
-		'mkdir -p "$$4"' \
+		'mkdir -p "$$4" "$$6"' \
 		'test -w "$$4"' \
+		'test -w "$$6"' \
 		'touch "$$2"' \
 		'test -w "$$2"' \
 		> "$$stub_dir/streamline-bridge"; \

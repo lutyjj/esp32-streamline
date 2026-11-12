@@ -14,6 +14,7 @@ OPTIONS_PATH = Path("/data/options.json")
 RECORDINGS_DIR = "/data/recordings"
 API_TOKEN_ENV = "STREAMLINE_API_TOKEN"
 TRANSPORT_STATE_FILE = "/data/transport.json"
+SENDSPIN_STATE_DIR = "/data/sendspin"
 
 
 def load_options(path: Path = OPTIONS_PATH) -> dict[str, object]:
@@ -34,7 +35,13 @@ def bridge_argv(options: dict[str, object]) -> list[str]:
     unknown_options = sorted(set(options) - known_options)
     if unknown_options:
         raise SystemExit(f"unknown Home Assistant option(s): {', '.join(unknown_options)}")
-    argv = [BRIDGE_EXECUTABLE, "--transport-state-file", TRANSPORT_STATE_FILE]
+    argv = [
+        BRIDGE_EXECUTABLE,
+        "--transport-state-file",
+        TRANSPORT_STATE_FILE,
+        "--sendspin-state-dir",
+        SENDSPIN_STATE_DIR,
+    ]
 
     if recordings_enabled(options):
         if not api_token(options):

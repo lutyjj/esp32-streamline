@@ -150,7 +150,7 @@ class TransportStateStoreTests(unittest.TestCase):
             owner = path.stat().st_uid
 
             with (
-                patch("streamline_bridge.transport.os.geteuid", return_value=owner + 1),
+                patch("streamline_bridge.private_file.os.geteuid", return_value=owner + 1),
                 self.assertRaisesRegex(TransportStateError, "owned by the bridge user"),
             ):
                 TransportStateStore(path)

@@ -23,6 +23,8 @@ locks all of those controls together.
 | `/` and `/recordings` | Bridge console with live sources and optional recordings. The Home Assistant add-on serves it through ingress. |
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 | `/api/transport` | Listener state, enrolled key ids, and authentication counters; never PSKs. |
+| `/api/sendspin` | Music Assistant publishing state of every source; never pairing secrets. |
+| `/api/sendspin/sources/<source>/pairing-token` | Authenticated `POST` that replaces the source's pairing secret and returns its one-time pairing token. |
 | `/api/transport/mode` | Authenticated `PUT` selecting `cleartext` or `tls-psk`; a change drops live producers. |
 | `/api/transport/keys/<key-id>` | Authenticated `PUT` and `DELETE` key mutations, available in either mode. |
 | `/api/unlock` | Authenticated no-op the console uses to check the bridge API token. |
@@ -70,7 +72,9 @@ the buffer also drops its stored packets whenever an outage forces a
 re-buffer, so a stalled stream cannot strand memory.
 
 Each source snapshot also includes `levels`, the peak and RMS absolute sample
-values for the latest accepted 16-bit stereo PCM packet. Each channel ranges
+values for the latest accepted 16-bit stereo PCM packet, and `signal`:
+`present` when that packet carried audio, `absent` when it was a silence
+record, and `null` before the source session's first packet. Each channel ranges
 from `0` (silence) through `32768` (full scale). The bridge console polls this
 open JSON contract once per second and renders the values as a live meter.
 
@@ -95,9 +99,11 @@ that artifact to generate a typed client; do not edit generated client files.
 | `--max-outage-silence-seconds` | 5.0 | finite number 0.001..300 | Concealed outage before playout re-buffers. |
 | `--source-idle-timeout-seconds` | 5.0 | finite number 0.001..3600 | Producer read deadline and TCP keepalive interval; established streams may gate silence. |
 | `--source-eviction-idle-seconds` | 300.0 | finite number 0.001..86400 | Inactive dynamic source retention interval. |
+| `--sendspin-server-url` | empty | `ws://` or `wss://` URL | Music Assistant Sendspin server that receives every source as a Live Input. Publishing is disabled when empty. |
+| `--sendspin-state-dir` | empty | writable directory | Private Sendspin client identities and pairings. Required with `--sendspin-server-url`. |
 
 Home Assistant exposes the owner-facing tuning options. Its add-on adapter
-owns the private transport-state path, normalizes `source_allow`, and omits
+owns the private transport-state path and Sendspin state directory, normalizes `source_allow`, and omits
 settings that the Supervisor did not provide.
 
 The bridge binds the PCM listener before it starts HTTP. An invalid or occupied
@@ -127,6 +133,55 @@ in either listener mode, so a credential can be enrolled before the switch.
 The same operations are available as authenticated API requests. Follow the
 [transport enable, credential replacement, and recovery workflow](tcp-transport.md#enable-encryption)
 instead of editing the state file.
+
+## Music Assistant live inputs
+
+The bridge publishes every source to Music Assistant as a Sendspin source
+client, so the source appears under Live Inputs and plays on any Music
+Assistant player, stereo pair, or group. Set `--sendspin-server-url` to the
+Sendspin server of Music Assistant 2.10.9 or later, normally
+`ws://<music-assistant-host>:8927/sendspin`, and `--sendspin-state-dir` to a
+private writable directory. Publishing requires the bridge API token. The
+Home Assistant add-on exposes the URL as `sendspin_server_url` and keeps its
+state in `/data/sendspin`.
+
+One Sendspin client represents one source id and dials the server itself, so
+the bridge needs no multicast or host networking. Its X25519 identity and its
+pairing store persist in `<state-dir>/<source>/`, so the source keeps its
+Music Assistant identity and pairing across bridge restarts. A cleartext
+source is identified by its IPv4 address, so an address change appears as a
+new source; a TLS source keeps its key id. The client connects when the
+source enters the registry and disconnects when the source is evicted.
+
+Pairing uses Music Assistant's token method:
+
+1. Open the bridge console's **Settings → Music Assistant** and create a
+   pairing token for the source, or call
+   `POST /api/sendspin/sources/<source>/pairing-token` with the bridge API
+   token.
+2. In Music Assistant, run the setup of the device named `StreamLine
+   <source>` and paste the token.
+
+Each token request replaces the source's pairing secret, so an earlier token
+stops working; an existing pairing is unaffected. The token carries a secret,
+so only the creating response returns it.
+
+The device signal gate becomes Sendspin `line_sense`: the client reports
+`present` while a connected source sends audio and `absent` during silence
+records or while the device is disconnected. Music Assistant can then start
+the input on a chosen player when a record starts and stop it after a minute
+without signal.
+
+Audio flows only between Music Assistant's source `start` and `stop`
+commands. While it flows, the client holds a Sendspin lease on the source,
+which keeps the source from eviction like an HTTP client or recording, and
+the source lifecycle counts it in `sendspin_streams`. The client sends the
+accepted packets as 48 kHz, 16-bit stereo PCM, with silence records as zeros,
+before any playout concealment. Each packet is timestamped at its capture
+time: its sequence position plus the smallest arrival offset observed, so a
+burst that a Wi-Fi stall releases keeps its original spacing. Music Assistant
+owns jitter buffering, drift correction, and target latency for this path.
+HTTP WAV clients and recordings receive the same source unchanged.
 
 ## Recordings
 

@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
-import os
 import re
 import ssl
-import stat
-import tempfile
 import threading
 from typing import TYPE_CHECKING, Final
 
+from streamline_bridge.private_file import PrivateFileError, read_private_file, write_private_file
 from streamline_bridge.source_identity import TRANSPORT_KEY_ID_PATTERN, TRANSPORT_KEY_ID_PATTERN_TEXT
 from streamline_bridge.tcp import AuthenticatedConnection, CleartextAuthenticator
 
@@ -99,23 +96,11 @@ class TransportStateStore:
 
     def _load(self) -> tuple[dict[str, str], bool]:
         try:
-            descriptor = os.open(self._path, os.O_RDONLY | os.O_NOFOLLOW)
-        except FileNotFoundError:
+            raw = read_private_file(self._path, MAX_STATE_FILE_BYTES)
+        except PrivateFileError as exc:
+            raise TransportStateError(f"transport state file {exc}") from exc
+        if raw is None:
             return {}, False
-        try:
-            details = os.fstat(descriptor)
-            if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
-                raise TransportStateError("transport state file must be one regular file")
-            if stat.S_IMODE(details.st_mode) != 0o600:
-                raise TransportStateError("transport state file permissions must be 0600")
-            if details.st_uid != os.geteuid():
-                raise TransportStateError("transport state file must be owned by the bridge user")
-            if details.st_size > MAX_STATE_FILE_BYTES:
-                raise TransportStateError("transport state file exceeds its size limit")
-            with os.fdopen(descriptor, "rb", closefd=False) as source:
-                raw = source.read(MAX_STATE_FILE_BYTES + 1)
-        finally:
-            os.close(descriptor)
         try:
             document = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -143,31 +128,12 @@ class TransportStateStore:
         return validated, tls_enabled
 
     def _write(self, keys: dict[str, str], tls_enabled: bool) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         body = json.dumps(
             {"version": 1, "tls_enabled": tls_enabled, "keys": keys}, separators=(",", ":"), sort_keys=True
         ).encode()
         if len(body) > MAX_STATE_FILE_BYTES:
             raise TransportStateError("transport state file exceeds its size limit")
-        descriptor, temporary = tempfile.mkstemp(prefix=f".{self._path.name}.", dir=self._path.parent)
-        try:
-            os.fchmod(descriptor, 0o600)
-            with os.fdopen(descriptor, "wb", closefd=False) as target:
-                target.write(body)
-                target.flush()
-                os.fsync(descriptor)
-            os.replace(temporary, self._path)
-            directory = os.open(self._path.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-        except BaseException:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(temporary)
-            raise
-        finally:
-            os.close(descriptor)
+        write_private_file(self._path, body)
 
 
 class TlsPskAuthenticator:

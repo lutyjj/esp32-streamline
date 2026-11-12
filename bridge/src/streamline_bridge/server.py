@@ -14,6 +14,7 @@ from streamline_bridge.http_ingress import ProgressDeadlineH11Protocol
 from streamline_bridge.options import parse_args, validate_args
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.recording import RecordingService, RecordingStore
+from streamline_bridge.sendspin import SendspinIdentityStore, SendspinService
 from streamline_bridge.sources import SourceRegistry
 from streamline_bridge.tcp import TcpIngestServer
 from streamline_bridge.transport import TlsPskAuthenticator, TransportControl, TransportStateStore
@@ -56,6 +57,13 @@ def main() -> int:
         if api_token is None:
             raise SystemExit("STREAMLINE_API_TOKEN is required when recording is enabled")
         recordings = RecordingService(sources, RecordingStore(Path(args.recordings_dir)))
+    sendspin: SendspinService | None = None
+    if args.sendspin_server_url:
+        if api_token is None:
+            raise SystemExit("STREAMLINE_API_TOKEN is required when Sendspin publishing is enabled")
+        sendspin = SendspinService(
+            sources, args.sendspin_server_url, SendspinIdentityStore(Path(args.sendspin_state_dir)), bridge_version()
+        )
     state_store: TransportStateStore | None = None
     tls_authenticator: TlsPskAuthenticator | None = None
     if args.transport_state_file:
@@ -82,6 +90,7 @@ def main() -> int:
                 healthy=lambda: pcm_server.healthy,
                 progress_deadline_seconds=args.http_request_timeout_seconds,
                 public_url=args.public_url,
+                sendspin=sendspin,
             ),
             host=args.http_bind,
             port=args.http_port,
@@ -99,6 +108,9 @@ def main() -> int:
     result = 0
     try:
         pcm_server.start(on_failure=lambda _exc: setattr(server, "should_exit", True))
+        if sendspin is not None:
+            sendspin.start()
+            logger.info("publishing sources to Sendspin server %s", args.sendspin_server_url)
         logger.info("serving HTTP WAV on http://%s:%s/streamline.wav", args.http_bind, args.http_port)
         server.run()
         if pcm_server.failure is not None:
@@ -110,6 +122,8 @@ def main() -> int:
         logger.info("stopped")
     finally:
         pcm_server.close()
+        if sendspin is not None:
+            sendspin.close()
         if recordings is not None:
             recordings.shutdown()
         sources.close()

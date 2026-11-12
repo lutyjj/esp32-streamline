@@ -1,6 +1,6 @@
 # Architecture
 
-StreamLine captures analog audio on an ESP32 and publishes it as a live HTTP WAV stream through a self-hosted bridge. The device owns capture, local configuration, and transport. The bridge owns network jitter handling, client delivery, and optional lossless recordings. Playback, media-library management, and multiroom synchronization stay outside StreamLine.
+StreamLine captures analog audio on an ESP32 and publishes it through a self-hosted bridge, as a live HTTP WAV stream and as a Music Assistant live input. The device owns capture, local configuration, and transport. The bridge owns network jitter handling, client delivery, Music Assistant publishing, and optional lossless recordings. Playback, media-library management, and multiroom synchronization stay outside StreamLine.
 
 This document maps component ownership and cross-component contracts. The linked references own protocol details, operations, security, and user behavior.
 
@@ -15,6 +15,8 @@ flowchart LR
   auth --> bridge["Source registry and playout buffer"]
   bridge --> wav["HTTP WAV clients"]
   bridge --> recording["Optional lossless recording store"]
+  bridge --> sendspin["Sendspin source client per source"]
+  sendspin --> ma["Music Assistant live input"]
 
   browser["Device console"] --> api["Device HTTP API"]
   api --> config["Validated device model"]
@@ -33,7 +35,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 |---|---|---|
 | `firmware/streamline` | Board selection, codec and I2S capture, signal gating, device configuration, telemetry, HTTP API, TCP sender, OTA | Jitter buffering, audio encoding, playback |
 | `console` | Device and bridge consoles, WebFlasher UI, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
-| `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, optional lossless recordings, bridge status | Device configuration, source detection, playback, media-library management |
+| `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, Sendspin publishing to Music Assistant, optional lossless recordings, bridge status | Device configuration, source detection, playback, multiroom sync, media-library management |
 | `ha-addon` | Home Assistant Supervisor metadata, private recording and transport-key storage mapping, and bridge process wiring | Bridge runtime behavior |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
 | `tools` | Developer-only capture analysis, bounded serial capture, the firmware flash-size attribution report, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
@@ -163,6 +165,16 @@ the bridge console client from the checked artifact. The WAV route uses the
 same application but keeps media delivery behind a transport-neutral bounded
 client stream.
 
+The optional Sendspin service publishes each registry source to Music
+Assistant. It runs its own asyncio event loop on one thread, because the
+aiosendspin client is asynchronous while the PCM and playout paths are
+threaded. A reconcile pass every half second keeps one publisher per source
+and reports each source's signal; a publisher takes a Sendspin source lease
+and a packet tap only while Music Assistant requests audio. HTTP handlers read
+the snapshot the loop publishes and submit pairing requests to the loop. The
+[bridge reference](bridge.md#music-assistant-live-inputs) owns the runtime
+contract.
+
 The standalone container and Home Assistant add-on run the same `streamline-bridge` process. `streamline-ha-addon` only translates Supervisor options into bridge CLI arguments. The [bridge reference](bridge.md) owns the runtime endpoints, lifecycle states, and tuning options.
 
 ## State ownership
@@ -174,6 +186,7 @@ The standalone container and Home Assistant add-on run the same `streamline-brid
 | OTA progress | Firmware OTA worker | One boot; final diagnostic note persists in NVS |
 | Bridge source pipelines and client queues | Bridge process | One bridge process |
 | Active recording sessions | Bridge recording service | Until stop, a resource limit, or bridge shutdown |
+| Sendspin client identities and pairings | Bridge Sendspin state directory | Across bridge restarts; one private directory per source id |
 | WAV recordings and manifests | Bridge recording store | Until an authenticated delete or external storage management |
 | Admin key copy and unlock deadline | Browser session storage, with explicit local-storage opt-in | One tab or browser profile |
 | Built console, firmware images, release notes | Build and release automation | Generated artifact; never source state |
@@ -210,6 +223,7 @@ compatibility reader or migration runs at boot.
 | User-visible stages | [User journey](user-journey.md) | Console and firmware behavior |
 | Security posture | [Security notes](security.md) | Device, bridge, add-on, and deployment guidance |
 | Recording timeline and file lifecycle | [Lossless recordings](recordings.md) | Bridge service, HTTP adapter, page, and deployment adapters |
+| Sendspin source role | [Sendspin specification](https://github.com/Sendspin/spec) through the pinned aiosendspin release | Bridge publisher, checked against aiosendspin's server in bridge tests |
 
 The PCM frame has two hand-written implementations. Keep changes byte-exact: update the protocol doc, firmware, bridge, and their tests together, then regenerate `pcm-frame-vectors.json` with `make firmware-pcm-frame-vectors`.
 
@@ -222,9 +236,10 @@ The device always runs the embedded console and API. A bridge runs separately in
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
 `/health` is the bridge readiness probe for its required PCM listener. A deployment with writable
-recording storage also serves `/recordings` and its authenticated API. Music
-Assistant, Snapcast, Icecast, editors, and media libraries remain downstream
-systems.
+recording storage also serves `/recordings` and its authenticated API. A
+deployment with a Sendspin server URL dials Music Assistant from the bridge.
+Music Assistant, Snapcast, Icecast, editors, and media libraries remain
+downstream systems.
 
 ## Build, CI, and release
 

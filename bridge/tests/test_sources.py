@@ -106,7 +106,7 @@ class SourceRegistryTests(unittest.TestCase):
         self.assertIn("192.0.2.10", registry.snapshot())
         lease.close()
 
-    def test_active_producer_http_client_and_recording_prevent_eviction(self) -> None:
+    def test_active_producer_http_client_recording_and_sendspin_stream_prevent_eviction(self) -> None:
         registry = self.registry()
         server, peer = socket.socketpair()
         producer = registry.lease_producer("192.0.2.10", server)
@@ -124,6 +124,14 @@ class SourceRegistryTests(unittest.TestCase):
             self.time.advance(20.0)
             self.assertIn("192.0.2.10", registry.snapshot())
             recording.close()
+
+            sendspin = registry.lease_sendspin("192.0.2.10")
+            self.time.advance(20.0)
+            self.assertEqual(self.lifecycle(registry.snapshot()["192.0.2.10"])["sendspin_streams"], 1)
+            sendspin.close()
+            self.assertEqual(self.lifecycle(registry.snapshot()["192.0.2.10"])["sendspin_streams"], 0)
+            self.time.advance(20.0)
+            self.assertNotIn("192.0.2.10", registry.snapshot())
         finally:
             producer.close()
             peer.close()
@@ -214,7 +222,7 @@ class SourceRegistryTests(unittest.TestCase):
     def test_active_identity_claims_block_one_slot_key_rotation(self) -> None:
         first_id = "eli1-00112233445566778899aabbccddeeff"
         second_id = "eli1-ffeeddccbbaa99887766554433221100"
-        for kind in ("producer", "http", "recording"):
+        for kind in ("producer", "http", "recording", "sendspin"):
             with self.subTest(kind=kind):
                 registry = self.registry(1, frozenset({"192.0.2.10"}))
                 source = self.disconnect(registry, first_id, peer_ip="192.0.2.10", transport="tls-psk")
@@ -224,8 +232,10 @@ class SourceRegistryTests(unittest.TestCase):
                     claim = registry.lease_producer(first_id, server, peer_ip="192.0.2.10", transport="tls-psk")
                 elif kind == "http":
                     claim = registry.lease_http(first_id)
-                else:
+                elif kind == "recording":
                     claim = registry.lease_recording(first_id)
+                else:
+                    claim = registry.lease_sendspin(first_id)
                 try:
                     with self.assertRaises(SourceAdmissionError):
                         registry.lease_producer(

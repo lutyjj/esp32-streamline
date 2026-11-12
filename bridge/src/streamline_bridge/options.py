@@ -96,6 +96,22 @@ BRIDGE_OPTIONS = (
         maximum=3600.0,
     ),
     BridgeOption(
+        "sendspin_server_url",
+        "--sendspin-server-url",
+        str,
+        "",
+        "Music Assistant Sendspin server URL (ws://host:8927/sendspin) that receives every source as a live input; "
+        "publishing is disabled when empty",
+        addon=True,
+    ),
+    BridgeOption(
+        "sendspin_state_dir",
+        "--sendspin-state-dir",
+        str,
+        "",
+        "private directory for Sendspin client identities and pairings; required with --sendspin-server-url",
+    ),
+    BridgeOption(
         "recordings_dir",
         "--recordings-dir",
         str,
@@ -226,6 +242,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     """Validate values that argparse and Supervisor cannot express alone."""
     args.public_url = validate_public_url(args.public_url)
+    args.sendspin_server_url = validate_sendspin_server_url(args.sendspin_server_url)
+    if args.sendspin_server_url and not args.sendspin_state_dir:
+        raise SystemExit("--sendspin-server-url requires --sendspin-state-dir")
     for option in BRIDGE_OPTIONS:
         if option.name == "source_allow" or option.minimum is None:
             continue
@@ -252,27 +271,38 @@ def validate_public_url(value: str) -> str:
     """Accept a bounded credential-free HTTP base address for external players."""
     if not value:
         return ""
-    try:
-        url = urlsplit(value)
-        if (
-            len(value) > 2048
-            or any(character.isspace() or ord(character) < 32 for character in value)
-            or "\\" in value
-            or url.scheme not in {"http", "https"}
-            or not url.hostname
-            or url.username is not None
-            or url.password is not None
-            or url.query
-            or url.fragment
-            or (url.port is not None and url.port < 1)
-            or "/api/hassio_ingress/" in url.path
-        ):
-            raise ValueError
-    except ValueError as exc:
+    if not _is_plain_url(value, {"http", "https"}) or "\\" in value or "/api/hassio_ingress/" in urlsplit(value).path:
         raise SystemExit(
             "--public-url must be a player-accessible HTTP(S) base URL without credentials, query, or fragment"
-        ) from exc
+        )
     return value.rstrip("/")
+
+
+def validate_sendspin_server_url(value: str) -> str:
+    """Accept a bounded credential-free WebSocket URL for a Sendspin server."""
+    if value and not _is_plain_url(value, {"ws", "wss"}):
+        raise SystemExit("--sendspin-server-url must be a ws:// or wss:// URL without credentials, query, or fragment")
+    return value
+
+
+def _is_plain_url(value: str, schemes: set[str]) -> bool:
+    """Whether ``value`` is a bounded URL with a host and no credentials, query, or fragment."""
+    if len(value) > 2048 or any(character.isspace() or ord(character) < 32 for character in value):
+        return False
+    try:
+        url = urlsplit(value)
+        port = url.port
+    except ValueError:
+        return False
+    return (
+        url.scheme in schemes
+        and bool(url.hostname)
+        and url.username is None
+        and url.password is None
+        and not url.query
+        and not url.fragment
+        and (port is None or port >= 1)
+    )
 
 
 def option_value(options: dict[str, object], option: BridgeOption) -> str:

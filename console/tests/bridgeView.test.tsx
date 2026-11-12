@@ -59,12 +59,14 @@ function source(rms: number): SourceSnapshot {
     slow_clients: 0,
     client_streams: [],
     levels: { peak_left: rms, peak_right: rms, rms_left: rms, rms_right: rms },
+    signal: 'present',
     lifecycle: {
       state: 'connected',
       dynamic: true,
       admission: 'open',
       http_clients: 0,
       recording_sessions: 0,
+      sendspin_streams: 0,
       idle_seconds: 0,
       eviction_idle_seconds: 300,
       peer_ip: '192.0.2.10',
@@ -112,6 +114,7 @@ describe('bridge lock flow', () => {
         auth_successes: 0,
         auth_failures: 0,
       },
+      sendspin: { enabled: false, server_url: '', sources: [] },
     };
     bridge.recordings.value = undefined;
     bridge.error.value = '';
@@ -343,6 +346,7 @@ it('carries source B through unlocking and an already mounted recording workspac
       auth_successes: 0,
       auth_failures: 0,
     },
+    sendspin: { enabled: false, server_url: '', sources: [] },
   };
   bridge.unreachable.value = false;
   bridge.access.value = 'locked';

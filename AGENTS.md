@@ -114,8 +114,8 @@ protocol has generation tooling.
 
 ## Components share one build contract
 
-Each component (`bridge/`, `console/`, `firmware/`, `tools/`, `webflasher/`,
-`ha-addon/`) owns its Makefile, container image or build target, dependency
+Each component (`bridge/`, `console/`, `firmware/`, `tools/`, `ha-addon/`)
+owns its Makefile, container image or build target, dependency
 pins, and tool config. Component Makefiles expose the same verbs where they
 apply — `format`, `lint`, `test`, `image` — and include `mk/common.mk` for
 cross-cutting values. The root `Makefile` is the public interface:
@@ -152,8 +152,8 @@ A change is ready to commit only when the changed components build, pass tests,
 and pass formatting and lint. Run the matching `make <component>-lint`,
 `make <component>-test`, and build target when one applies. Run `make lint &&
 make test` only for cross-component, CI, release, or integration changes, or
-when explicitly requested. A console or webflasher-only change does not build
-or test firmware.
+when explicitly requested. A console-only change does not build or test
+firmware.
 
 A change also updates any documentation it makes stale, in the same change. If
 the diff alters behavior a doc, comment, or example describes, correct that

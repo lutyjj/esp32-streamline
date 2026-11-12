@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,11 +35,11 @@ class SendspinIdentityStoreTests(unittest.IsolatedAsyncioTestCase):
         path = self.root / "192.0.2.10" / IDENTITY_FILE
         store.identity("192.0.2.10")
 
-        os.chmod(path, 0o644)
+        path.chmod(0o640)
         with self.assertRaisesRegex(SendspinStateError, "permissions must be 0600"):
             store.identity("192.0.2.10")
         path.write_bytes(b"short")
-        os.chmod(path, 0o600)
+        path.chmod(0o600)
         with self.assertRaisesRegex(SendspinStateError, "X25519"):
             store.identity("192.0.2.10")
 

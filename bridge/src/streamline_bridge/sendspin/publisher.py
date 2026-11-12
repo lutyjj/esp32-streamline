@@ -15,7 +15,7 @@ from aiosendspin.models.types import AudioCodec, Roles, SignalState
 from aiosendspin.noise.keys import generate_psk, psk_id_for
 from aiosendspin.noise.pairing_token import PSKPairingToken, encode_psk_token
 from aiosendspin.noise.trust_store import PairingPsk, PskCategory
-from tenacity import before_sleep_log, retry, wait_exponential
+from tenacity import AsyncRetrying, wait_exponential
 
 from streamline_bridge.protocol import DEFAULT_FORMAT
 from streamline_bridge.sendspin.capture_clock import CaptureClock
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from aiosendspin.models.core import ServerCommandPayload
     from aiosendspin.noise.keys import Identity
     from aiosendspin.noise.trust_store import ClientPairingStore
+    from tenacity import RetryCallState
 
     from streamline_bridge.sendspin.packet_feed import Packet
 
@@ -189,13 +190,21 @@ class SendspinPublisher:
             await self._end_stream()
             await asyncio.sleep(RECONNECT_INITIAL_SECONDS)
 
-    @retry(
-        wait=wait_exponential(min=RECONNECT_INITIAL_SECONDS, max=RECONNECT_MAX_SECONDS),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
-    )
     async def _connect(self) -> None:
         """Dial the server until it admits this client; every failure retries."""
-        await self._client.connect(self._server_url)
+        async for attempt in AsyncRetrying(
+            wait=wait_exponential(min=RECONNECT_INITIAL_SECONDS, max=RECONNECT_MAX_SECONDS),
+            before_sleep=self._log_retry,
+        ):
+            with attempt:
+                await self._client.connect(self._server_url)
+
+    def _log_retry(self, retry_state: RetryCallState) -> None:
+        error = retry_state.outcome.exception() if retry_state.outcome is not None else None
+        delay = retry_state.next_action.sleep if retry_state.next_action is not None else 0.0
+        logger.warning(
+            "Sendspin source %s cannot reach %s, retrying in %.0f s: %s", self.source, self._server_url, delay, error
+        )
 
     def _on_command(self, payload: ServerCommandPayload) -> None:
         # aiosendspin forwards a source command only when it takes effect, so a

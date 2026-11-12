@@ -12,6 +12,7 @@ dependencies = [
   # Sendspin majors break the client API; each one needs a code review.
   "aiosendspin>=10.3.0,<11",
   "fastapi>=0.141.1,<1",
+  "tenacity>=9.2.1,<10",
   # The ingress guard drives h11 connection state directly; uvicorn already
   # resolves it, so this pin only names the contract we depend on.
   "h11>=0.16,<1",

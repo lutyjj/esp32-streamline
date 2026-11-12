@@ -74,8 +74,8 @@ speakers are audible.
 
 A bridge configured with a Sendspin server offers every source to Music
 Assistant. Bridge Settings → Music Assistant shows each source's next step:
-connecting, needs pairing, input off, ready, or playing. Pairing creates a
-one-time token in the bridge console and pastes it into the source's setup in
+connecting, needs pairing, input off, ready, or playing. Pairing reveals a
+token once in the bridge console and pastes it into the source's setup in
 Music Assistant; the token is a secret, so locking the bridge console clears
 it. A ready source appears under Live Inputs. Music Assistant, not the bridge,
 decides when it plays, including automatic playback when the input gets a

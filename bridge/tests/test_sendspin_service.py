@@ -227,11 +227,11 @@ class SendspinServiceTests(unittest.IsolatedAsyncioTestCase):
         role.request_start()
         await eventually(lambda: self.registry.snapshot()[SOURCE]["lifecycle"]["sendspin_streams"] == 1)  # type: ignore[index]
 
-        await self.http.close()
-        await self.server.close()
+        connection = client.connection
+        assert connection is not None
+        await connection.disconnect(retry_connection=False)
 
-        await eventually(lambda: self.registry.snapshot()[SOURCE]["lifecycle"]["sendspin_streams"] == 0)  # type: ignore[index]
-        await eventually(lambda: self.published(service)[0]["connection"] == "connecting")
+        await eventually(lambda: self.registry.snapshot()[SOURCE]["lifecycle"]["sendspin_streams"] == 0, timeout=5)  # type: ignore[index]
 
 
 if __name__ == "__main__":

@@ -174,6 +174,52 @@ class SourceRegistryTests(unittest.TestCase):
 
         self.assertEqual(set(registry.identified_snapshot()), {key_id})
 
+    def test_an_allowlisted_address_is_selectable_again_after_its_adopting_key_is_evicted(self) -> None:
+        registry = self.registry(1, frozenset({"192.0.2.10"}))
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+        self.disconnect(registry, key_id, peer_ip="192.0.2.10", transport="tls-psk")
+        self.time.advance(10.0)
+
+        with registry.lease_http("192.0.2.10") as lease:
+            self.assertEqual(lease.key, "192.0.2.10")
+        self.assertEqual(set(registry.snapshot()), {"192.0.2.10"})
+
+    def test_an_adopted_address_comes_back_even_after_its_key_moves_to_another_address(self) -> None:
+        registry = self.registry(2, frozenset({"192.0.2.10", "192.0.2.11"}))
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+        self.disconnect(registry, key_id, peer_ip="192.0.2.10", transport="tls-psk")
+        self.disconnect(registry, key_id, peer_ip="192.0.2.11", transport="tls-psk")
+        self.time.advance(10.0)
+
+        self.assertEqual(set(registry.snapshot()), {"192.0.2.10", "192.0.2.11"})
+        with registry.lease_http("192.0.2.10") as lease:
+            self.assertEqual(lease.key, "192.0.2.10")
+
+    def test_a_cleartext_reconnect_does_not_take_a_source_that_owes_another_address(self) -> None:
+        registry = self.registry(2, frozenset({"192.0.2.10", "192.0.2.11"}))
+        first = "eli1-00112233445566778899aabbccddeeff"
+        second = "eli1-ffeeddccbbaa99887766554433221100"
+        self.disconnect(registry, first, peer_ip="192.0.2.10", transport="tls-psk")
+        self.disconnect(registry, second, peer_ip="192.0.2.11", transport="tls-psk")
+        self.disconnect(registry, first, peer_ip="192.0.2.11", transport="tls-psk")
+        self.disconnect(registry, "192.0.2.11")
+        self.time.advance(10.0)
+
+        self.assertEqual(set(registry.snapshot()), {"192.0.2.10", "192.0.2.11"})
+
+    def test_a_new_key_can_take_over_a_source_that_owes_another_address(self) -> None:
+        registry = self.registry(2, frozenset({"192.0.2.10", "192.0.2.11"}))
+        first = "eli1-00112233445566778899aabbccddeeff"
+        third = "eli1-0123456789abcdef0123456789abcdef"
+        self.disconnect(registry, first, peer_ip="192.0.2.10", transport="tls-psk")
+        self.disconnect(registry, first, peer_ip="192.0.2.11", transport="tls-psk")
+        with registry.lease_http("192.0.2.11"):
+            admitted = self.disconnect(registry, third, peer_ip="192.0.2.11", transport="tls-psk")
+            self.assertEqual(admitted.key, third)
+        self.time.advance(10.0)
+
+        self.assertEqual(set(registry.snapshot()), {"192.0.2.10", "192.0.2.11"})
+
     def test_status_exposes_pending_and_disconnected_lifecycle_states(self) -> None:
         registry = self.registry()
         pending = registry.lease_http(None)

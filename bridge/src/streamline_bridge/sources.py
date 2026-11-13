@@ -85,6 +85,8 @@ class Source[H: AudioPipeline]:
     admission: Literal["open", "allowlisted"] = "open"
     # A producer has connected under this key, so the key is a device identity, not a placeholder.
     identified: bool = False
+    # The allowlisted address whose permanent slot this source took over; eviction hands it back.
+    adopted_address: str | None = None
 
     @property
     def held_by_session(self) -> bool:
@@ -319,12 +321,19 @@ class SourceRegistry[H: AudioPipeline]:
             existing.transport = transport
             existing.admission = "allowlisted" if self._allowed else "open"
             return existing
-        reusable = self._reusable_locked(peer, at_capacity=len(self._sources) >= self._max_sources)
+        becomes_permanent = canonical_key == peer and peer in self._allowed
+        reusable = self._reusable_locked(
+            peer, at_capacity=len(self._sources) >= self._max_sources, becomes_permanent=becomes_permanent
+        )
         if reusable is not None:
             old_key, source = reusable
             del self._sources[old_key]
+            if source.permanent and old_key != canonical_key:
+                source.adopted_address = old_key
             source.key = canonical_key
-            source.permanent = canonical_key == peer and peer in self._allowed
+            source.permanent = becomes_permanent
+            if canonical_key == source.adopted_address:
+                source.adopted_address = None
             source.peer_ip = peer
             source.transport = transport
             source.admission = "allowlisted" if self._allowed else "open"
@@ -332,11 +341,13 @@ class SourceRegistry[H: AudioPipeline]:
             return source
         if len(self._sources) >= self._max_sources:
             raise SourceAdmissionError(f"source limit reached (--max-sources={self._max_sources})")
-        source = self._create(canonical_key, canonical_key == peer and peer in self._allowed, peer, transport)
+        source = self._create(canonical_key, becomes_permanent, peer, transport)
         self._sources[canonical_key] = source
         return source
 
-    def _reusable_locked(self, peer: str, *, at_capacity: bool) -> tuple[str, Source[H]] | None:
+    def _reusable_locked(
+        self, peer: str, *, at_capacity: bool, becomes_permanent: bool
+    ) -> tuple[str, Source[H]] | None:
         candidates = (
             peer,
             PENDING_KEY,
@@ -355,6 +366,9 @@ class SourceRegistry[H: AudioPipeline]:
             if not at_capacity:
                 continue
             if source.http_clients:
+                continue
+            # A source that owes another address keeps the claim only while it stays dynamic.
+            if becomes_permanent and source.adopted_address not in (None, peer):
                 continue
             if candidate == peer or (not source.permanent and source.peer_ip == peer):
                 return candidate, source
@@ -388,7 +402,10 @@ class SourceRegistry[H: AudioPipeline]:
         return source
 
     def _evict_expired_locked(self) -> list[Source[H]]:
-        """Drop expired sources; the caller closes their hubs outside the lock."""
+        """Drop expired sources; the caller closes their hubs outside the lock.
+
+        A source that adopted an allowlisted address hands its slot back.
+        """
         now = self._now()
         evicted: list[Source[H]] = []
         for key, source in tuple(self._sources.items()):
@@ -397,6 +414,9 @@ class SourceRegistry[H: AudioPipeline]:
             if now - source.disconnected_at >= self._eviction_idle_seconds:
                 del self._sources[key]
                 evicted.append(source)
+                address = source.adopted_address
+                if address is not None and address not in self._sources:
+                    self._sources[address] = self._create(address, True, address)
         return evicted
 
     @staticmethod

@@ -127,7 +127,8 @@ Neither side logs or reads back PSKs.
 Every published release asset and container image carries signed provenance
 recorded by GitHub attestations, and each release ships an SPDX SBOM
 (`streamline-<version>.spdx.json` beside the firmware binaries; image SBOMs
-are attached as attestations on the image digest). Verify any artifact with
+are attached as attestations on the image digest, and the add-on's multi-arch
+image leaves its SBOMs to each architecture's image). Verify any artifact with
 one command:
 
 ```sh

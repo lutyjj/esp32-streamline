@@ -293,9 +293,11 @@ add-on changelog. Merging that PR creates the `vX.Y.Z` tag and a draft GitHub
 release; publication verifies the tagged tree and its reproducible build, signs
 the firmware images with the `FIRMWARE_SIGNING_KEY` secret so devices accept
 them over the air (see [firmware signing](docs/ota.md#firmware-signing)),
-attaches them with provenance attestations, publishes the release, then pushes
-container images. Every asset and image carries verifiable provenance and an
-SPDX SBOM; see [artifact verification](docs/security.md#release-artifact-verification).
+attaches them and the versioned container images with provenance
+attestations, publishes the release, then moves the `latest` image aliases.
+Every asset and image carries verifiable provenance, and the firmware and each
+single-platform image an SPDX SBOM; see
+[artifact verification](docs/security.md#release-artifact-verification).
 If publication is interrupted, rerun
 **Actions → Release** with the same tag; every step converges. Never edit
 the version files or changelog by hand. Land a Conventional Commit and let

@@ -11,7 +11,7 @@ init: false
 startup: services
 boot: auto
 stage: experimental
-image: "ghcr.io/lutyjj/{arch}-esp32-streamline-bridge-addon"
+image: "ghcr.io/lutyjj/esp32-streamline-bridge-addon"
 ingress: true
 ingress_port: 8088
 panel_icon: mdi:cassette

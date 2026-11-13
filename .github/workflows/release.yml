@@ -2,10 +2,10 @@ name: Release
 
 # Publishes the draft release the Release Please workflow created at the tag.
 # Order is what makes an interrupted run safe to redispatch at the same tag:
-# verify the tagged tree, build byte-reproducible firmware, attest and attach
-# assets to the draft, push write-once versioned images, publish the release
-# as the commit point, and only then move the mutable `latest` aliases and the
-# WebFlasher. Reruns converge — identical bytes re-upload cleanly, existing
+# verify the tagged tree, push and attest write-once versioned images, attach
+# byte-reproducible firmware to the draft, publish the release as the commit
+# point, and only then move the mutable `latest` aliases and the WebFlasher.
+# Reruns converge — identical bytes re-upload cleanly, existing
 # versioned images are kept, and a published release is left untouched.
 on:
   workflow_call:
@@ -28,46 +28,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Verify and publish release
+  # Provenance anchor for every privileged job. The dispatch input is
+  # untrusted, so it must name an exact vX.Y.Z release whose recorded commit
+  # already lives on the protected mainline. A draft release holds only the tag
+  # name, and the release record stores the exact commit, so read it from there
+  # and require a full SHA.
+  verify:
+    name: Verify the release commit
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      packages: write
-      id-token: write
-      attestations: write
+      contents: write # GitHub lists draft releases only to tokens with push access.
     env:
       TAG: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
-      CONTAINER_USER: 0:0
-      CONTAINER_CARGO_HOME: /cargo-cache
-      FIRMWARE_CARGO_CACHE_PATH: firmware/streamline/.cargo-home
-      FIRMWARE_EMBUILD_CACHE_PATH: firmware/streamline/.embuild
-      BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
-      ADDON_IMAGE_AMD64: ghcr.io/${{ github.repository_owner }}/amd64-esp32-streamline-bridge-addon
-      ADDON_IMAGE_AARCH64: ghcr.io/${{ github.repository_owner }}/aarch64-esp32-streamline-bridge-addon
     outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      version: ${{ steps.version.outputs.value }}
       latest: ${{ steps.release-state.outputs.latest }}
+      addon-image: ${{ steps.addon.outputs.image }}
+      addon-prefix: ${{ steps.addon.outputs.prefix }}
+      addon-name: ${{ steps.addon.outputs.name }}
+      addon-architectures: ${{ steps.addon.outputs.architectures }}
+      addon-matrix: ${{ steps.addon-matrix.outputs.matrix }}
     steps:
-      # Provenance anchor for every privileged step below. The dispatch input
-      # is untrusted, so it must name an exact vX.Y.Z release whose recorded
-      # commit already lives on the protected mainline: that rejects branch
-      # refs, arbitrary tag names, and any commit that never passed mainline
-      # review before a registry login or write token is used. A draft release
-      # holds only the intended tag name — GitHub creates the tag ref when the
-      # release is published — and the release record stores the exact commit
-      # in both states, so read it from there and require a full SHA rather
-      # than risking a branch-name checkout. Mainline history comes first so
-      # the ancestry test has the graph; the release commit is reachable
-      # from it.
+      # Mainline history comes first so the ancestry test has the graph.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: mainline
           fetch-depth: 0
-
-      # Runner setup must happen before switching to the release tree so a
-      # recovery run can use current infrastructure with the original sources.
-      - uses: ./.github/actions/docker-mirror
+          persist-credentials: false
 
       - name: Verify the release commit is a promoted mainline commit
         id: commit
@@ -106,8 +95,125 @@ jobs:
           if [ "$(printf '%s\n%s\n' "$current" "$TAG" | sort -V | tail -1)" = "$TAG" ]; then latest=true; fi
           printf 'latest=%s\n' "$latest" >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU for cross-architecture builds
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      # config.yaml owns the image Home Assistant pulls and its architectures.
+      - name: Read the add-on image
+        id: addon
+        run: |
+          image="$(yq '.image' ha-addon/config.yaml)"
+          printf 'image=%s\nprefix=%s\nname=%s\n' "$image" "${image%/*}" "${image##*/}" >> "$GITHUB_OUTPUT"
+          printf 'architectures=%s\n' "$(yq -o=json -I=0 '.arch' ha-addon/config.yaml)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare the add-on build matrix
+        id: addon-matrix
+        uses: home-assistant/builder/actions/prepare-multi-arch-matrix@7412f0023ea9b6e58e8bb5059f1660f51376f49a # 2026.09.0
+        with:
+          architectures: ${{ steps.addon.outputs.architectures }}
+          image-name: ${{ steps.addon.outputs.name }}
+          registry-prefix: ${{ steps.addon.outputs.prefix }}
+
+  # Home Assistant's builder actions build, sign and push each architecture,
+  # then the multi-arch image. Versioned tags are write-once.
+  addon-image:
+    name: Build add-on ${{ matrix.arch }} image
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.verify.outputs.addon-matrix) }}
+    # No docker-mirror: build-image's BuildKit builder reads no dockerd mirror, so
+    # both it and `make ha-addon-context` keep the runner's Docker Hub login.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: mainline
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the verified release commit
+        env:
+          SHA: ${{ needs.verify.outputs.sha }}
+        run: git switch --detach "$SHA"
+
+      - name: Assemble the build context
+        run: make ha-addon-context
+
+      - name: Build and push the image
+        uses: home-assistant/builder/actions/build-image@7412f0023ea9b6e58e8bb5059f1660f51376f49a # 2026.09.0
+        with:
+          arch: ${{ matrix.arch }}
+          build-args: BUILD_REVISION=${{ needs.verify.outputs.sha }}
+          cache-gha: "false"
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          context: ha-addon/.build-context
+          image: ${{ matrix.image }}
+          image-tags: ${{ needs.verify.outputs.version }}
+          push: "true"
+          skip-existing: ${{ needs.verify.outputs.version }}
+          version: ${{ needs.verify.outputs.version }}
+
+      - name: Image evidence
+        uses: ./.github/actions/image-evidence
+        with:
+          image: ${{ matrix.image }}:${{ needs.verify.outputs.version }}
+
+  addon-manifest:
+    name: Publish the add-on multi-arch image
+    needs: [verify, addon-image]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      id-token: write
+    steps:
+      - name: Publish the multi-arch manifest
+        uses: home-assistant/builder/actions/publish-multi-arch-manifest@7412f0023ea9b6e58e8bb5059f1660f51376f49a # 2026.09.0
+        with:
+          architectures: ${{ needs.verify.outputs.addon-architectures }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          image-name: ${{ needs.verify.outputs.addon-name }}
+          image-tags: ${{ needs.verify.outputs.version }}
+          registry-prefix: ${{ needs.verify.outputs.addon-prefix }}
+          skip-existing: ${{ needs.verify.outputs.version }}
+
+  publish:
+    name: Verify and publish release
+    needs: [verify, addon-manifest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.verify.outputs.version }}
+      CONTAINER_USER: 0:0
+      CONTAINER_CARGO_HOME: /cargo-cache
+      FIRMWARE_CARGO_CACHE_PATH: firmware/streamline/.cargo-home
+      FIRMWARE_EMBUILD_CACHE_PATH: firmware/streamline/.embuild
+      BRIDGE_IMAGE: ghcr.io/${{ github.repository_owner }}/esp32-streamline-bridge
+      ADDON_IMAGE: ${{ needs.verify.outputs.addon-image }}
+      ADDON_MATRIX: ${{ needs.verify.outputs.addon-matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: mainline
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Runner setup must happen before switching to the release tree so a
+      # recovery run can use current infrastructure with the original sources.
+      - uses: ./.github/actions/docker-mirror
+
+      - name: Check out the verified release commit
+        env:
+          SHA: ${{ needs.verify.outputs.sha }}
+        run: git switch --detach "$SHA"
 
       # CI owns cache writes. Publishing restores the same cache lifecycle and
       # leaves its contents reusable by the next firmware verification.
@@ -120,8 +226,6 @@ jobs:
           embuild-cache-path: ${{ env.FIRMWARE_EMBUILD_CACHE_PATH }}
 
       - name: Build firmware and prove reproducibility
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
         run: |
           make firmware-build \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
@@ -142,8 +246,6 @@ jobs:
           printf '%s\n' "$FIRMWARE_SIGNING_KEY" > firmware/streamline/.release_signing_key.pem
 
       - name: Package signed firmware
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
         run: |
           make firmware-package VERSION="$VERSION" \
             SIGNING_KEY=.release_signing_key.pem \
@@ -168,7 +270,7 @@ jobs:
         with:
           file: firmware/streamline/Cargo.lock
           format: spdx-json
-          output-file: dist/firmware/streamline-${{ steps.version.outputs.value }}.spdx.json
+          output-file: dist/firmware/streamline-${{ env.VERSION }}.spdx.json
           upload-artifact: false
 
       - name: Attest firmware provenance
@@ -182,7 +284,7 @@ jobs:
           subject-path: |
             dist/firmware/streamline-*.bin
             dist/firmware/streamline-*.elf
-          sbom-path: dist/firmware/streamline-${{ steps.version.outputs.value }}.spdx.json
+          sbom-path: dist/firmware/streamline-${{ env.VERSION }}.spdx.json
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
@@ -192,43 +294,30 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Versioned tags are write-once: a rerun keeps an already-published
-      # image rather than replacing it under consumers. The add-on owns its
-      # own architecture mapping, labels, write-once push, and digest output;
-      # this step holds no add-on Docker details.
-      - name: Push versioned container images
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-          REVISION: ${{ steps.commit.outputs.sha }}
+      # image rather than replacing it under consumers.
+      - name: Push the versioned bridge image
         run: |
-          push_if_absent() {
-            if docker manifest inspect "$1" >/dev/null 2>&1; then
-              echo "$1 already published; keeping it"
-            else
-              docker push "$1"
-            fi
-          }
           make bridge-image VERSION="$VERSION" BRIDGE_IMAGE="$BRIDGE_IMAGE"
-          push_if_absent "$BRIDGE_IMAGE:$VERSION"
-          make ha-addon-publish VERSION="$VERSION" REVISION="$REVISION" \
-            ADDON_IMAGE_AMD64="$ADDON_IMAGE_AMD64" ADDON_IMAGE_AARCH64="$ADDON_IMAGE_AARCH64"
+          if docker manifest inspect "$BRIDGE_IMAGE:$VERSION" >/dev/null 2>&1; then
+            echo "$BRIDGE_IMAGE:$VERSION already published; keeping it"
+          else
+            docker push "$BRIDGE_IMAGE:$VERSION"
+          fi
 
       - name: Bridge image evidence
         id: bridge-evidence
         uses: ./.github/actions/image-evidence
         with:
-          image: ${{ env.BRIDGE_IMAGE }}:${{ steps.version.outputs.value }}
+          image: ${{ env.BRIDGE_IMAGE }}:${{ env.VERSION }}
 
-      - name: Add-on amd64 image evidence
-        id: addon-amd64-evidence
+      # Each architecture's image carries its own SBOM; an SBOM of the index would
+      # describe only the runner's platform.
+      - name: Add-on image evidence
+        id: addon-evidence
         uses: ./.github/actions/image-evidence
         with:
-          image: ${{ env.ADDON_IMAGE_AMD64 }}:${{ steps.version.outputs.value }}
-
-      - name: Add-on aarch64 image evidence
-        id: addon-aarch64-evidence
-        uses: ./.github/actions/image-evidence
-        with:
-          image: ${{ env.ADDON_IMAGE_AARCH64 }}:${{ steps.version.outputs.value }}
+          image: ${{ env.ADDON_IMAGE }}:${{ env.VERSION }}
+          sbom: "false"
 
       # Fail closed: nothing publishes unless every asset and image verifies
       # against its recorded attestations.
@@ -237,19 +326,26 @@ jobs:
           for f in dist/firmware/*; do
             gh attestation verify "$f" --repo "$GITHUB_REPOSITORY"
           done
-          for subject in \
-            "$BRIDGE_IMAGE@${{ steps.bridge-evidence.outputs.digest }}" \
-            "$ADDON_IMAGE_AMD64@${{ steps.addon-amd64-evidence.outputs.digest }}" \
-            "$ADDON_IMAGE_AARCH64@${{ steps.addon-aarch64-evidence.outputs.digest }}"; do
+          subjects="$BRIDGE_IMAGE@${{ steps.bridge-evidence.outputs.digest }} $ADDON_IMAGE@${{ steps.addon-evidence.outputs.digest }}"
+          for image in $(jq -r '.include[].image' <<< "$ADDON_MATRIX"); do
+            subjects="$subjects $image:$VERSION"
+          done
+          for subject in $subjects; do
             gh attestation verify "oci://$subject" --repo "$GITHUB_REPOSITORY"
           done
+
+      # Supervisor pulls anonymously, and GHCR creates a new package private.
+      - name: Check Home Assistant can pull the add-on
+        run: |
+          DOCKER_CONFIG="$(mktemp -d)" docker manifest inspect "$ADDON_IMAGE:$VERSION" >/dev/null \
+            || { echo "$ADDON_IMAGE:$VERSION is not public; make its package public, then rerun" >&2; exit 1; }
 
       # The commit point. Assets attach while the release is a draft;
       # publishing locks them (immutable releases). A rerun that finds the
       # release already published leaves it untouched.
       - name: Attach assets and publish the release
         env:
-          LATEST: ${{ steps.release-state.outputs.latest }}
+          LATEST: ${{ needs.verify.outputs.latest }}
         run: |
           if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "true" ]; then
             gh release upload "$TAG" dist/firmware/* --clobber
@@ -259,13 +355,11 @@ jobs:
           fi
 
       - name: Move latest image aliases
-        if: ${{ steps.release-state.outputs.latest == 'true' }}
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
+        if: ${{ needs.verify.outputs.latest == 'true' }}
         run: |
-          for image in "$BRIDGE_IMAGE" "$ADDON_IMAGE_AMD64" "$ADDON_IMAGE_AARCH64"; do
-            docker tag "$image:$VERSION" "$image:latest"
-            docker push "$image:latest"
+          images="$BRIDGE_IMAGE $ADDON_IMAGE $(jq -r '.include[].image' <<< "$ADDON_MATRIX")"
+          for image in $images; do
+            docker buildx imagetools create --tag "$image:latest" "$image:$VERSION"
           done
 
   # Refresh the GitHub Pages WebFlasher so it serves the firmware just
@@ -273,8 +367,8 @@ jobs:
   # don't emit a `release` event capable of triggering the pages workflow.
   deploy-flasher:
     name: Refresh WebFlasher
-    needs: publish
-    if: ${{ needs.publish.outputs.latest == 'true' }}
+    needs: [verify, publish]
+    if: ${{ needs.verify.outputs.latest == 'true' }}
     permissions:
       contents: read
       pages: write

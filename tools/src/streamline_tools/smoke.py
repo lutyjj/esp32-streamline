@@ -15,7 +15,7 @@ from collections.abc import Sequence
 
 from streamline_tools.device.api import DeviceApi, api_checks, wait_for_api
 from streamline_tools.device.boot_log import DEVICE_BOOT_COMPLETE, boot_checks, strip_ansi
-from streamline_tools.device.capture import serial_boot
+from streamline_tools.device.capture import Capture, serial_boot
 from streamline_tools.device.checks import CheckResult
 
 # Worst case before a real board resolves its mode: three Wi-Fi attempts of up
@@ -25,14 +25,27 @@ _API_TIMEOUT = 60.0
 _TRANSCRIPT_TAIL_LINES = 40
 
 
+def boot_completed(capture: Capture, boot_timeout: float) -> CheckResult:
+    """Judge whether the serial capture reached a boot-complete marker."""
+    if capture.marker is not None:
+        return CheckResult("boot-completed", True, f"reached {capture.marker!r}")
+    if capture.ended and capture.exit_status is not None:
+        return CheckResult(
+            "boot-completed",
+            False,
+            f"espflash stopped before a boot-complete marker (exit status {capture.exit_status})",
+        )
+    if capture.ended:
+        return CheckResult(
+            "boot-completed", False, "espflash closed its output before a boot-complete marker (exit status unknown)"
+        )
+    return CheckResult("boot-completed", False, f"no boot-complete marker within {boot_timeout:.0f}s")
+
+
 def run_device(url: str | None, boot_timeout: float, api_timeout: float) -> tuple[list[CheckResult], str]:
-    transcript, matched = serial_boot(DEVICE_BOOT_COMPLETE, boot_timeout)
-    completed = (
-        CheckResult("boot-completed", True, f"reached {matched!r}")
-        if matched is not None
-        else CheckResult("boot-completed", False, f"no boot-complete marker within {boot_timeout:.0f}s")
-    )
-    results = [completed, *boot_checks(transcript)]
+    capture = serial_boot(DEVICE_BOOT_COMPLETE, boot_timeout)
+    transcript = capture.transcript
+    results = [boot_completed(capture, boot_timeout), *boot_checks(transcript)]
     if url is not None:
         api = DeviceApi(base_url=url)
         ready = wait_for_api(api.fetch, api_timeout)

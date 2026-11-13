@@ -7,12 +7,11 @@ CONTAINER ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo po
 REPO_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))..)
 dotenv = $(shell sed -n 's/^$(1)=//p' $(REPO_ROOT)/.env 2>/dev/null)
 
-# Runs as the caller with a disposable home; the argument is the checkout to mount.
+# Runs as the caller with a disposable home and the checkout mounted read-only.
 CONTAINER_HOST_USER ?= $(shell id -u):$(shell id -g)
 CONTAINER_SAFE_HOME ?= /tmp
-container_readonly = $(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" \
-	--env HOME="$(CONTAINER_SAFE_HOME)" --volume "$(1):/repo:ro" --workdir /repo
-READONLY_REPO_RUN = $(call container_readonly,$(REPO_ROOT))
+READONLY_REPO_RUN = $(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" \
+	--env HOME="$(CONTAINER_SAFE_HOME)" --volume "$(REPO_ROOT):/repo:ro" --workdir /repo
 
 PYTHON_CACHE_VOLUME ?= esp32-streamline-python-cache
 

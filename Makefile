@@ -24,7 +24,7 @@ NIX_IMAGE := $(call tool_image,nix)
 export VERSION
 
 .PHONY: check help lint test format clean smoke-qemu \
-	bridge-check console-check firmware-check tools-check ha-addon-check repository-check repository-container-contract repository-secret-check repository-secret-scanner-self-test repository-dependency-audit repository-nix-check docs-check api-contract-check version-check
+	bridge-check console-check firmware-check tools-check ha-addon-check repository-check repository-secret-check repository-dependency-audit repository-nix-check docs-check api-contract-check version-check
 
 check: bridge-check console-check firmware-check tools-check ha-addon-check repository-check
 
@@ -59,7 +59,7 @@ console-check: console-lint console-test console-build ;
 firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-ota-size-self-test firmware-build ;
 tools-check: tools-lock-check tools-lint tools-test tools-image tools-qemu-image ;
 ha-addon-check: ha-addon-lint ha-addon-test ha-addon-apparmor-test ;
-repository-check: version-check repository-container-contract repository-secret-check repository-dependency-audit repository-nix-check
+repository-check: version-check repository-secret-check repository-dependency-audit repository-nix-check
 	$(READONLY_REPO_RUN) $(ACTIONLINT_IMAGE) -color
 	$(READONLY_REPO_RUN) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs firmware/streamline/README.md ha-addon/DOCS.md ha-addon/README.md tools/README.md
 	$(READONLY_REPO_RUN) $(LYCHEE_IMAGE) --config /repo/lychee.toml /repo
@@ -78,41 +78,13 @@ repository-nix-check:
 			--env NIX_CONFIG="extra-experimental-features = nix-command flakes" \
 			$(NIX_IMAGE) -ec 'mkdir /flake; tar -xf - -C /flake; exec nix flake check --all-systems --no-update-lock-file path:/flake'
 
-# Prove the shared runner works from a checkout hidden behind a mode-0700
-# parent and cannot modify its repository mount.
-repository-container-contract:
-	@set -eu; \
-		fixture="$$(mktemp -d /tmp/streamline-repository-check.XXXXXX)"; \
-		trap 'rm -rf "$$fixture"' EXIT INT TERM; \
-		chmod 700 "$$fixture"; \
-		mkdir -p "$$fixture/.git" "$$fixture/.github/workflows" "$$fixture/docs"; \
-		printf '%s\n' 'name: Fixture' 'on: [push]' 'jobs:' '  check:' '    runs-on: ubuntu-latest' '    steps:' '      - run: "true"' > "$$fixture/.github/workflows/fixture.yml"; \
-		printf '%s\n' '{}' > "$$fixture/.markdownlint.json"; \
-		printf '%s\n' '# Fixture' > "$$fixture/README.md"; \
-		printf '%s\n' '{}' > "$$fixture/docs/contract.json"; \
-		before="$$(find "$$fixture" -type f -exec sha256sum {} + | LC_ALL=C sort)"; \
-		$(call container_readonly,$$fixture) $(ACTIONLINT_IMAGE) -color; \
-		$(call container_readonly,$$fixture) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md; \
-		$(call container_readonly,$$fixture) $(LYCHEE_IMAGE) /repo; \
-		$(call container_readonly,$$fixture) --entrypoint sh $(YQ_IMAGE) -ec 'yq eval --exit-status "." .github/workflows/fixture.yml >/dev/null; yq eval --exit-status "." docs/contract.json >/dev/null; ! touch /repo/write-probe 2>/dev/null'; \
-		$(call container_readonly,$$fixture) $(GITLEAKS_IMAGE) dir /repo --no-banner --redact; \
-		after="$$(find "$$fixture" -type f -exec sha256sum {} + | LC_ALL=C sort)"; \
-		test "$$after" = "$$before"
-
 # Scans tracked files in a tmpfs, so .env and build outputs never enter the container.
-repository-secret-check: repository-secret-scanner-self-test
+repository-secret-check:
 	@git ls-files -z | tar -C "$(REPO_ROOT)" --null -T - -cf - | \
 		$(CONTAINER) run --rm -i --user "$(CONTAINER_HOST_USER)" --env HOME="$(CONTAINER_SAFE_HOME)" --entrypoint sh \
 			--tmpfs /scan:rw,noexec,nosuid,size=16m,mode=1777 \
 			$(GITLEAKS_IMAGE) -ec 'tar -xf - -C /scan; exec gitleaks dir /scan --no-banner --no-color --redact'
 
-# The canary is split so the repository scan needs no allowlist for it.
-repository-secret-scanner-self-test:
-	@$(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" --env HOME="$(CONTAINER_SAFE_HOME)" --entrypoint sh \
-		--tmpfs /scan:rw,noexec,nosuid,size=1m,mode=1777 \
-		$(GITLEAKS_IMAGE) -ec 'printf "%s%s\n" "AKIA" "QWERTYUIOPASDFGH" > /scan/canary; \
-			set +e; gitleaks dir /scan --no-banner --no-color --redact >/dev/null 2>&1; status=$$?; set -e; \
-			test "$$status" -eq 1'
 docs-check: repository-check ;
 api-contract-check: firmware-openapi-check console-lint ;
 

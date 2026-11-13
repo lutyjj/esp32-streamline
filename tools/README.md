@@ -32,7 +32,7 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
 - `make tools-pcap CAP=capture.pcap` runs Wireshark's TCP analysis in the
   tools container. See [network captures](../docs/diagnostics.md#network-captures)
   for capture placement and interpretation.
-- `streamline-capture`: bounded, non-interactive serial capture. Stdlib-only
+- `streamline-capture`: bounded serial capture. Stdlib-only
   so `make firmware-capture` can run it with the system `python3`; the serial
   port is a host resource containers cannot reach.
 - `streamline-smoke`: serial boot sanity for the USB-connected board:

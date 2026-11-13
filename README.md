@@ -259,12 +259,14 @@ rollback bootloader and the two-slot partition table that OTA updates depend
 on, with a flash-size header that matches the chip.
 
 espflash selects the serial port. When exactly one USB serial adapter is
-attached and espflash recognizes it (CP210x and CH340 adapters), every serial
-target finds it without configuration. In any other setup, set
-`ESPFLASH_PORT`, for example `ESPFLASH_PORT=/dev/ttyUSB0 make firmware-capture`.
-Without it, `firmware-flash` and `firmware-monitor` take the one recognized
-adapter or ask which port to use, and the scripted `firmware-capture` and
-`tools-smoke-device` stop with espflash's error.
+attached and espflash recognizes it (CP210x, CH340) or remembers it, every
+serial target uses it without configuration. Otherwise set `ESPFLASH_PORT`,
+for example `ESPFLASH_PORT=/dev/ttyUSB0 make firmware-capture`; for a single
+unrecognized adapter, `make firmware-flash` also offers to remember it.
+Unconfigured, `firmware-capture` and `tools-smoke-device` fail when several
+adapters are attached. With one unrecognized adapter, `tools-smoke-device`
+fails, and `firmware-capture` fails too unless it runs in a terminal, where it
+waits at espflash's port prompt until its window ends.
 
 A device already on the network needs none of that to be read: it serves its
 own log, this boot and the one before it, at `GET /api/logs`, and the crash

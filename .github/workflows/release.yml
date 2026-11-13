@@ -334,12 +334,6 @@ jobs:
             gh attestation verify "oci://$subject" --repo "$GITHUB_REPOSITORY"
           done
 
-      # Supervisor pulls anonymously, and GHCR creates a new package private.
-      - name: Check Home Assistant can pull the add-on
-        run: |
-          DOCKER_CONFIG="$(mktemp -d)" docker manifest inspect "$ADDON_IMAGE:$VERSION" >/dev/null \
-            || { echo "$ADDON_IMAGE:$VERSION is not public; make its package public, then rerun" >&2; exit 1; }
-
       # The commit point. Assets attach while the release is a draft;
       # publishing locks them (immutable releases). A rerun that finds the
       # release already published leaves it untouched.

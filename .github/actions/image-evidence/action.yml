@@ -1,11 +1,15 @@
 name: Image evidence
 description: >-
-  Resolve a pushed image's manifest digest, generate its SPDX SBOM, and bind
-  SBOM and build-provenance attestations to that digest.
+  Resolve a pushed image's manifest digest and bind build-provenance and, unless
+  disabled, SPDX SBOM attestations to that digest.
 inputs:
   image:
     description: Full image reference with tag (name:tag), already pushed
     required: true
+  sbom:
+    description: Whether to generate and attest an SBOM ("false" for a multi-platform index)
+    required: false
+    default: "true"
 outputs:
   digest:
     description: The image manifest digest (sha256:...)
@@ -23,6 +27,7 @@ runs:
         printf 'name=%s\n' "$(name='${{ inputs.image }}'; echo "${name%:*}")" >> "$GITHUB_OUTPUT"
 
     - name: Generate image SBOM
+      if: inputs.sbom == 'true'
       uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
       with:
         image: ${{ inputs.image }}
@@ -31,6 +36,7 @@ runs:
         upload-artifact: false
 
     - name: Attest image SBOM
+      if: inputs.sbom == 'true'
       uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
       with:
         subject-name: ${{ steps.digest.outputs.name }}

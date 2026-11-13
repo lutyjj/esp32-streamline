@@ -28,7 +28,9 @@ the container runtime to the system: on NixOS, enable
 every supported system and checks its format.
 
 GitHub-hosted build jobs use Google's `mirror.gcr.io` cache for Docker Hub
-images through the [runner setup action](.github/actions/docker-mirror/action.yml).
+images through the [runner setup action](.github/actions/docker-mirror/action.yml),
+except the release's add-on build, whose BuildKit builder cannot use a Docker
+daemon mirror.
 The action clears the runner's default Docker Hub login so the public cache
 accepts anonymous pulls. Other registry credentials are unaffected.
 Docker keeps the image references and digest checks and falls back to Docker Hub

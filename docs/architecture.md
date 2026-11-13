@@ -45,8 +45,7 @@ Each component except the static `webflasher` site builds from a public base
 and owns its dependency and tool configuration. The firmware embeds the device
 console build. The bridge
 packages the bridge console build, and the Home Assistant add-on packages the
-bridge and that console into a self-contained context that Home Assistant's
-legacy builder test-builds for each published architecture. These are
+bridge and that console into a self-contained build context. These are
 deliberate build-time dependencies, not shared runtime state.
 
 Dependabot groups updates by the proof they need. Every new component or
@@ -74,8 +73,7 @@ together; `console/tests/playwrightImage.test.ts` fails while they differ.
 
 Dependabot reads image pins only from Dockerfiles, so an image a Makefile runs
 takes its pin from a Dockerfile stage, as `.github/tool-images.Dockerfile`
-does for the repository checks. The retired Home Assistant builder in
-`ha-addon/Makefile` is the one exception: it publishes no further images.
+does for the repository checks.
 
 The firmware Dockerfile pins the official ESP-IDF source and provides it through
 `IDF_PATH`. It also applies upstream ESP-IDF commits that the pinned tag lacks
@@ -268,7 +266,7 @@ manually with `run_qemu` enabled, or use `make smoke-qemu` to build and test
 the images in containers. The QEMU job reports failures without automatic
 retries or expected-failure markers.
 
-release-please owns the release lifecycle: `release-please-config.json` declares every version owner and lockfile, a generated release PR carries the version bump and changelog, and merging it creates the tag and a draft GitHub release. Publication verifies that exact commit, then attaches firmware artifacts with an SPDX SBOM, binds provenance and SBOM attestations to every asset and image digest, verifies them before the release goes public, publishes the release, and pushes bridge and architecture-specific add-on images and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
+release-please owns the release lifecycle: `release-please-config.json` declares every version owner and lockfile, a generated release PR carries the version bump and changelog, and merging it creates the tag and a draft GitHub release. Publication verifies that exact commit, pushes write-once versioned images (the bridge, each add-on architecture and the add-on's multi-arch image), attaches firmware artifacts with an SPDX SBOM, and binds provenance attestations to every asset and image digest and SBOM attestations to the firmware and each single-platform image. It verifies those attestations and checks that Home Assistant can pull the add-on anonymously before it publishes the release, and only then moves the `latest` image aliases and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
 
 The Makefiles remain routing and reproducibility boundaries. Keep component logic in language-native code and split reusable GitHub workflow mechanics into actions when more than one workflow owns the same lifecycle.
 

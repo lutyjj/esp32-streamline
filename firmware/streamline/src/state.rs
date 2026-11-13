@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{config::RuntimeConfig, profiles::AudioProfileCatalog};
 
-/// One NVS string fits one page, leaving pages for replacement and Wi-Fi state.
+/// Two snapshots, the marker and Wi-Fi state fit the 24 KB NVS partition with spare pages.
 pub const MAX_STATE_BYTES: usize = 3_840;
 pub const MAX_MARKER_BYTES: usize = 256;
 const COMMIT_KEY: &str = "state_commit";

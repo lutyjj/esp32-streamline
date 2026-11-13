@@ -194,8 +194,9 @@ Board support has three tiers:
   user-supplied descriptor is posted to `/api/settings/board`, stored in NVS,
   resolved at boot, and accepted only when its compiled codec driver supports
   its I2C address, input lines, gain range, and attenuation range. The
-  descriptor is capped below ESP-IDF's NVS string limit, so this path is for one selected board definition rather than a
-  downloaded board library.
+  descriptor is capped at 3,072 bytes to fit the configuration snapshot's
+  storage budget, so this path is for one selected board definition rather than
+  a downloaded board library.
 - **Custom firmware** covers boards that need a new codec driver, different
   clocking, or hardware behavior outside the descriptor contract. The hardware
   layer changes there; capture, transport, settings, and the console stay on

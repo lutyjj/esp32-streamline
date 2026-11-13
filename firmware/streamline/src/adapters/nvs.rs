@@ -4,7 +4,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
 use esp_idf_svc::{
     handle::RawHandle,
-    sys::{esp, nvs_commit, nvs_set_str},
+    sys::{esp, nvs_commit, nvs_set_blob, ESP_ERR_NVS_TYPE_MISMATCH},
 };
 use std::ffi::CString;
 
@@ -34,12 +34,17 @@ impl GenerationStorage for NvsGenerationStorage<'_> {
 
     fn get(&self, key: &str) -> Result<Option<String>, Self::Error> {
         let maximum = match key {
-            "state_a" | "state_b" => crate::state::MAX_STATE_BYTES + 1,
-            "state_commit" => crate::state::MAX_MARKER_BYTES + 1,
+            "state_a" | "state_b" => crate::state::MAX_STATE_BYTES,
+            "state_commit" => crate::state::MAX_MARKER_BYTES,
             _ => return Err(anyhow!("unknown state key: {key}")),
         };
-        let Some(length) = self.nvs.str_len(key)? else {
-            return Ok(None);
+        // Another NVS type under a state key is not a snapshot: NVS reports it as absent
+        // (or, per its docs, as a type mismatch), and the device is unconfigured.
+        let length = match self.nvs.blob_len(key) {
+            Ok(Some(length)) => length,
+            Ok(None) => return Ok(None),
+            Err(error) if error.code() == ESP_ERR_NVS_TYPE_MISMATCH => return Ok(None),
+            Err(error) => return Err(error.into()),
         };
         if length > maximum {
             return Ok(None);
@@ -47,19 +52,26 @@ impl GenerationStorage for NvsGenerationStorage<'_> {
         let mut buffer = Vec::new();
         buffer.try_reserve_exact(length)?;
         buffer.resize(length, 0);
-        let Some(value) = self.nvs.get_str(key, &mut buffer)? else {
+        let Some(value) = self.nvs.get_blob(key, &mut buffer)? else {
             return Ok(None);
         };
         let length = value.len();
         buffer.truncate(length);
-        Ok(Some(String::from_utf8(buffer)?))
+        Ok(String::from_utf8(buffer).ok())
     }
 
     fn set(&self, key: &str, value: &str) -> Result<(), Self::Error> {
         let key = CString::new(key)?;
-        let value = CString::new(value)?;
-        // EspNvs::set_str erases first; the commit pointer requires native replacement.
-        esp!(unsafe { nvs_set_str(self.nvs.handle(), key.as_ptr(), value.as_ptr()) })?;
+        // Blobs span NVS pages; a string needs one page's contiguous run. EspNvs::set_blob
+        // erases first, and the commit marker requires native replacement.
+        esp!(unsafe {
+            nvs_set_blob(
+                self.nvs.handle(),
+                key.as_ptr(),
+                value.as_ptr().cast(),
+                value.len(),
+            )
+        })?;
         esp!(unsafe { nvs_commit(self.nvs.handle()) })?;
         Ok(())
     }

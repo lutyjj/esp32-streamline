@@ -9,9 +9,7 @@ FIRMWARE_LOCK_VERSION := $(shell awk '\
 ADDON_VERSION := $(shell sed -n 's/^version: "\([^"]*\)".*/\1/p' ha-addon/config.yaml)
 VERSION ?= $(PROJECT_VERSION)
 
-# Repository checks use maintained linters in pinned public containers. Each
-# pin is a named stage in .github/tool-images.Dockerfile, where Dependabot
-# updates it: the version tag names the tool and the digest fixes the image.
+# Each pin is a named stage in .github/tool-images.Dockerfile, where Dependabot updates it.
 TOOL_IMAGES := $(REPO_ROOT)/.github/tool-images.Dockerfile
 tool_image = $(or $(shell sed -n 's/^FROM \([^ ]*\) AS $(1)$$/\1/p' $(TOOL_IMAGES)),$(error no '$(1)' stage in $(TOOL_IMAGES)))
 ACTIONLINT_IMAGE := $(call tool_image,actionlint)
@@ -22,8 +20,7 @@ GITLEAKS_IMAGE := $(call tool_image,gitleaks)
 OSV_SCANNER_IMAGE := $(call tool_image,osv-scanner)
 NIX_IMAGE := $(call tool_image,nix)
 
-# Component builds default to the project version. Command-line variables such
-# as FEATURES reach the component sub-makes through MAKEFLAGS without an export.
+# Command-line variables such as FEATURES already reach sub-makes through MAKEFLAGS.
 export VERSION
 
 .PHONY: check help lint test format clean smoke-qemu \
@@ -47,22 +44,16 @@ lint: bridge-lint console-lint firmware-lint tools-lint ha-addon-lint
 
 test: bridge-test console-test firmware-test firmware-build tools-test ha-addon-test
 
-# One command to smoke the firmware pre-silicon: build the QEMU variant images,
-# then boot the emulated device and run the device suite against it. The same
-# suite runs on a real board with `make tools-smoke-device DEVICE=...`; CI runs
-# this suite in the dedicated qemu-smoke job. Kept out of `make test` because it
-# builds firmware images and boots an emulator — too heavy for the fast fan-out.
+# Kept out of `make test`: it builds firmware images and boots an emulator.
 smoke-qemu:
 	$(MAKE) firmware-qemu-artifacts
 	$(MAKE) tools-smoke-qemu
 
-# Only the firmware writes build artifacts onto the host; every other component
-# builds inside containers and leaves nothing to clean.
+# Only the firmware leaves build artifacts on the host.
 clean: firmware-clean
 
-# Per-component check aggregates. The trailing `;` gives each an empty recipe so
-# the `<component>-%` forwarding rules do not also fire a `check` sub-target. CI
-# fans out over these by name.
+# The trailing `;` gives each an empty recipe, so the `<component>-%` rules do not
+# also run a `check` sub-target.
 bridge-check: bridge-lock-check bridge-lint bridge-test bridge-openapi-check bridge-image ;
 console-check: console-lint console-test console-build ;
 firmware-check: firmware-lock-check firmware-lint firmware-test firmware-openapi-check firmware-ota-size-self-test firmware-build ;
@@ -75,17 +66,12 @@ repository-check: version-check repository-container-contract repository-secret-
 	$(READONLY_REPO_RUN) --entrypoint sh $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval --exit-status "." {} \; >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; find docs -type f -name "*.json" -exec yq eval --exit-status "." {} \; >/dev/null'
 	@test -z "$$(git grep -n 'actions/cache' -- .github/workflows)" || (echo "firmware cache actions belong in .github/actions/firmware-cache" >&2; exit 1)
 
-# Fail on known advisories in any committed lockfile osv-scanner reads, which
-# excludes flake.lock. The recursive scan respects .gitignore, so a new
-# component's lockfile joins the audit without registration; accepted
-# advisories live in osv-scanner.toml, each with a reason and an expiry date.
+# New lockfiles join the scan unregistered; osv-scanner.toml holds accepted
+# advisories, each with a reason and an expiry.
 repository-dependency-audit:
 	$(READONLY_REPO_RUN) $(OSV_SCANNER_IMAGE) scan source --config /repo/osv-scanner.toml --recursive /repo
 
-# Evaluate the Nix development shell for every system it supports, refuse a
-# stale flake.lock, and run the flake's checks. Only the flake's own files enter
-# the container, so neither ignored local files nor the host's Nix setup can
-# change the result.
+# Only flake.nix and flake.lock enter the container, so local state cannot change the result.
 repository-nix-check:
 	@tar -C "$(REPO_ROOT)" -cf - flake.nix flake.lock | \
 		$(CONTAINER) run --rm -i --entrypoint sh \
@@ -113,18 +99,14 @@ repository-container-contract:
 		after="$$(find "$$fixture" -type f -exec sha256sum {} + | LC_ALL=C sort)"; \
 		test "$$after" = "$$before"
 
-# Scan the current contents of every tracked path without mounting ignored local
-# files such as .env or generated build outputs. The tmpfs is destroyed with the
-# container, so the check leaves neither credentials nor artifacts on the host.
+# Scans tracked files in a tmpfs, so .env and build outputs never enter the container.
 repository-secret-check: repository-secret-scanner-self-test
 	@git ls-files -z | tar -C "$(REPO_ROOT)" --null -T - -cf - | \
 		$(CONTAINER) run --rm -i --user "$(CONTAINER_HOST_USER)" --env HOME="$(CONTAINER_SAFE_HOME)" --entrypoint sh \
 			--tmpfs /scan:rw,noexec,nosuid,size=16m,mode=1777 \
 			$(GITLEAKS_IMAGE) -ec 'tar -xf - -C /scan; exec gitleaks dir /scan --no-banner --no-color --redact'
 
-# Prove the pinned scanner still rejects a representative provider credential.
-# Split the synthetic value in this recipe so the repository scan does not need
-# an allowlist for its own canary.
+# The canary is split so the repository scan needs no allowlist for it.
 repository-secret-scanner-self-test:
 	@$(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" --env HOME="$(CONTAINER_SAFE_HOME)" --entrypoint sh \
 		--tmpfs /scan:rw,noexec,nosuid,size=1m,mode=1777 \

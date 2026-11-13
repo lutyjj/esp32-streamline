@@ -1,9 +1,7 @@
 name: audit
 
-# New advisories appear over time, not only in pull requests: scan every
-# committed lockfile on a weekly cadence so a finding surfaces without
-# waiting for the next change. Pull requests run the same target through
-# the repository check.
+# Weekly, so new advisories surface without a change. Pull requests run the same
+# target through the repository check.
 on:
   schedule:
     - cron: "17 6 * * 1"

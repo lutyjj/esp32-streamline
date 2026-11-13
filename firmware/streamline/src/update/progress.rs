@@ -122,6 +122,17 @@ impl OtaProgress {
         }
     }
 
+    /// Refuse a restart or boot-slot change while an update owns the slots.
+    /// Callers hold the control lock that OTA admission also takes.
+    pub fn require_idle(&self) -> Result<(), MutationError> {
+        if Phase::from_u8(self.phase.load(Ordering::Relaxed)).is_busy() {
+            return Err(MutationError::Conflict(
+                "a firmware update or check is in progress; retry after it finishes".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Reserve the worker: returns `false` if an update is already running.
     /// Compare-and-swap on the phase makes the reservation atomic, so two
     /// concurrent trigger requests can never both start a worker.
@@ -226,6 +237,30 @@ mod tests {
         assert_eq!((snapshot.bytes_written, snapshot.bytes_total), (1024, 1024));
         assert_eq!(snapshot.latest_version, "9.0.0");
         assert_eq!(snapshot.message, "Rebooting into the installed image");
+    }
+
+    #[test]
+    fn restarts_wait_for_every_phase_that_owns_the_boot_slots() {
+        let progress = OtaProgress::default();
+        for phase in [
+            Phase::Checking,
+            Phase::Downloading,
+            Phase::Verifying,
+            Phase::Installed,
+        ] {
+            progress.set_phase(phase);
+            let refusal = progress.require_idle().expect_err("busy update");
+            assert_eq!(refusal.status(), 409, "{phase:?}");
+        }
+        for phase in [
+            Phase::Idle,
+            Phase::UpToDate,
+            Phase::Failed,
+            Phase::UpdateAvailable,
+        ] {
+            progress.set_phase(phase);
+            assert_eq!(progress.require_idle(), Ok(()), "{phase:?}");
+        }
     }
 
     #[test]

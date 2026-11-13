@@ -141,8 +141,8 @@ fn method(endpoint: Endpoint) -> Method {
 
 /// Thin ESP-IDF binding that refuses to finish unless every declared API
 /// operation has exactly one registered handler, and enforces each
-/// declaration's authentication policy before the handler runs — a handler
-/// cannot forget the admin-key check, because the route table owns it.
+/// declaration's authentication and restart policy before the handler runs —
+/// a handler cannot forget either check, because the route table owns them.
 struct ContractServer<'a> {
     inner: EspHttpServer<'a>,
     state: Arc<OnceLock<Arc<ApiState>>>,
@@ -189,6 +189,11 @@ impl<'a> ContractServer<'a> {
                 }
                 if endpoint.method == HttpMethod::Post && state.restart.is_pending() {
                     return responses::unavailable(request, "device is restarting");
+                }
+                if api::RESTARTING.contains(&endpoint) {
+                    if let Err(error) = state.ota.require_idle() {
+                        return responses::mutation_error(request, error);
+                    }
                 }
                 handler(request, state)
             })?;

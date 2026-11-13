@@ -157,6 +157,12 @@ fn effective_action(state: &ApiState, id: &str) -> ButtonAction {
 }
 
 fn execute(state: &Arc<ApiState>, action: ButtonAction) {
+    if matches!(action, ButtonAction::Restart | ButtonAction::FactoryReset) {
+        if let Err(error) = state.ota.require_idle() {
+            log::warn!("{} ignored: {error}", action.as_str());
+            return;
+        }
+    }
     match action {
         ButtonAction::None => {}
         ButtonAction::ToggleStream => match &state.stream {

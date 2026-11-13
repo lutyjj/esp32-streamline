@@ -471,8 +471,15 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
                     self.wfile.write(payload[:4096])
                     self.wfile.flush()
                     stall_started.set()
-                    release_stall.wait(timeout=60)
-                    self.wfile.write(payload[4096:])
+                    # A byte a second stays inside the device's read timeout,
+                    # so the download stalls without failing.
+                    sent = 4096
+                    deadline = time.monotonic() + 60
+                    while not release_stall.wait(timeout=1.0) and time.monotonic() < deadline:
+                        self.wfile.write(payload[sent : sent + 1])
+                        self.wfile.flush()
+                        sent += 1
+                    self.wfile.write(payload[sent:])
                 except BrokenPipeError, ConnectionResetError:
                     pass
                 return
@@ -703,6 +710,36 @@ def test_ota_interruption_persists_only_a_redacted_recovery_note(
     _expect_api_up(rebooted)
     status = _assert_ota_url_private(rebooted)
     assert "installing custom image (did not finish)" in status["diagnostics"]["last_ota"]
+
+
+def test_an_active_update_refuses_restarts_before_they_change_anything(
+    provisioned_device: EmulatedDevice,
+    served_ota_image: ServedOtaImage,
+) -> None:
+    code, body = provisioned_device.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.stalled_url, "sha256": served_ota_image.sha256},
+    )
+    assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
+    assert served_ota_image.stall_started.wait(timeout=30), "device did not start the stalled download"
+    _wait_for_ota_phase(provisioned_device, "downloading", timeout=30)
+
+    # Empty forms would fail validation, so a 409 proves the route table
+    # refused before any handler ran.
+    for path in (
+        "/api/restart",
+        "/api/factory-reset",
+        "/api/ota/rollback",
+        "/api/settings/target",
+        "/api/settings/wifi",
+    ):
+        code, body = provisioned_device.api.post_form(path, {})
+        assert code == 409, f"{path} during an update answered HTTP {code}: {body[:200]!r}"
+        assert b"firmware update or check is in progress" in body, body[:200]
+    code, body = provisioned_device.api.post_form("/api/settings/name", {"name": "during-update"})
+    assert code == 200, f"a write that cannot restart answered HTTP {code}: {body[:200]!r}"
+    _wait_for_ota_phase(provisioned_device, "downloading", timeout=10)
+    assert _mode(provisioned_device) == "provisioned"
 
 
 def test_provisioned_device_reports_the_unemulated_codec_as_a_blocking_fault(

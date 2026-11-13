@@ -19,7 +19,7 @@ impl Restart {
         prepare: impl FnOnce() -> Result<(), E>,
     ) -> Result<bool, E> {
         let _control = control.lock().expect("control lock poisoned");
-        if self.is_pending() || ota.snapshot().busy {
+        if self.is_pending() || ota.require_idle().is_err() {
             return Ok(false);
         }
         prepare()?;

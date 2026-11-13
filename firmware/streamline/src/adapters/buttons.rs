@@ -204,17 +204,9 @@ fn execute(state: &Arc<ApiState>, action: ButtonAction) {
             restart();
         }
         ButtonAction::FactoryReset => {
-            match state.store.lock() {
-                Ok(store) => {
-                    if let Err(error) = store.clear() {
-                        log::error!("factory reset failed: {error:#}");
-                        return;
-                    }
-                }
-                Err(_) => {
-                    log::error!("factory reset failed: store lock poisoned");
-                    return;
-                }
+            if let Err(error) = http::factory_reset(state) {
+                log::error!("factory reset failed: {}", error.message());
+                return;
             }
             log::info!("settings erased on button press; rebooting into setup");
             restart();

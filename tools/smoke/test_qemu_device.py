@@ -21,7 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import pytest
-from conftest import ADMIN_KEY, API_TIMEOUT, CONSOLE_READY, EmulatedDevice
+from conftest import ADMIN_KEY, API_TIMEOUT, CONSOLE_READY, WIFI_PASSWORD, EmulatedDevice
 
 from streamline_tools.device.api import wait_for_api
 
@@ -32,6 +32,9 @@ _SLIRP_HOST_ALIAS = "10.0.2.2"
 # The two-slot layout from firmware/streamline/partitions.csv: a fresh image
 # boots ota_0, and a successful OTA must land in and boot from ota_1.
 _OTA_1_OFFSET = "0x210000"
+# The `nvs` and `coredump` partitions from the same table.
+_NVS = (0x9000, 0x6000)
+_COREDUMP = (0x12000, 0xE000)
 _OTA_URL_CANARY = "ota-url-private-canary"
 
 
@@ -114,6 +117,13 @@ def _forge_signature(image: bytes) -> bytes:
 def _expect_api_up(device: EmulatedDevice) -> None:
     ready = wait_for_api(device.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
+
+
+def _partition_bytes(flash: Path, partition: tuple[int, int]) -> bytes:
+    offset, size = partition
+    with flash.open("rb") as image:
+        image.seek(offset)
+        return image.read(size)
 
 
 def _mode(device: EmulatedDevice) -> str:
@@ -211,7 +221,7 @@ def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
     # Commissioning carries the staged name into the first persisted generation.
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
-        {"ssid": "qemu-smoke-lab", "password": "qemu-test-password", "admin_key": ADMIN_KEY},
+        {"ssid": "qemu-smoke-lab", "password": WIFI_PASSWORD, "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
     setup_boot.dut.qemu.wait(timeout=60)
@@ -407,10 +417,24 @@ def test_stream_pause_is_unavailable_without_audio_capture(
 def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
     provisioned_device: EmulatedDevice, boot_device: Callable[..., EmulatedDevice]
 ) -> None:
-    code, body = provisioned_device.api.post_form("/api/factory-reset", {})
+    credentials = (WIFI_PASSWORD.encode(), ADMIN_KEY.encode())
+    stored = _partition_bytes(provisioned_device.flash, _NVS)
+    assert all(credential in stored for credential in credentials), "commissioning left no credential to erase"
+    # A crash dump copies task memory, so reset must erase whatever the
+    # partition holds. Seed it while the emulator is down.
+    provisioned_device.dut.qemu.terminate()
+    with provisioned_device.flash.open("r+b") as image:
+        image.seek(_COREDUMP[0])
+        image.write(b"\xa5" * _COREDUMP[1])
+    device = boot_device(
+        flash=provisioned_device.flash, admin_key=ADMIN_KEY, until=("StreamLine provisioned", CONSOLE_READY)
+    )
+    _expect_api_up(device)
+
+    code, body = device.api.post_form("/api/factory-reset", {})
     assert code == 200, f"factory reset was answered with HTTP {code}: {body[:200]!r}"
     acknowledgement = json.loads(body)
-    code, _ = provisioned_device.api.post_form("/api/settings/name", {"name": "must-not-survive"})
+    code, _ = device.api.post_form("/api/settings/name", {"name": "must-not-survive"})
     assert code == 503, "writes must stop as soon as reset commits"
     assert acknowledgement["rebooting"] is True
     # The response repeats the commissioning credentials — their only
@@ -420,8 +444,12 @@ def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
     # alphabet, inside WPA2-Personal's 8..=63 passphrase bounds.
     assert re.fullmatch(r"([a-km-np-z2-9]{4}-){3}[a-km-np-z2-9]{4}", password)
 
-    provisioned_device.dut.qemu.wait(timeout=60)
-    wiped = boot_device(flash=provisioned_device.flash, until=("setup console started", CONSOLE_READY))
+    device.dut.qemu.wait(timeout=60)
+    stored = _partition_bytes(device.flash, _NVS)
+    assert not any(credential in stored for credential in credentials), "a credential survived reset in flash"
+    seeded = b"\xa5" * 32 in _partition_bytes(device.flash, _COREDUMP)
+    assert not seeded, "reset left the crash dump partition"
+    wiped = boot_device(flash=device.flash, until=("setup console started", CONSOLE_READY))
     _expect_api_up(wiped)
     assert _mode(wiped) == "setup"
     # The password is device identity: a second reset answers with the same
@@ -574,7 +602,7 @@ def test_commissioning_an_updated_setup_device_keeps_the_new_slot(
     _expect_api_up(updated)
     code, body = updated.api.post_form(
         "/api/settings/wifi",
-        {"ssid": "qemu-smoke-lab", "password": "qemu-test-password", "admin_key": ADMIN_KEY},
+        {"ssid": "qemu-smoke-lab", "password": WIFI_PASSWORD, "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
     updated.dut.qemu.wait(timeout=60)

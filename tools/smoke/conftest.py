@@ -41,6 +41,7 @@ API_TIMEOUT = 120.0
 # The canonical admin-key shape: exactly 48 lowercase hex characters. Built
 # from a repeated character so secret scanners see no entropy in a test key.
 ADMIN_KEY = "a" * 48
+WIFI_PASSWORD = "qemu-test-password"
 
 
 def _hardware_url() -> str | None:
@@ -167,7 +168,7 @@ def provisioned_device(boot_device: Callable[..., EmulatedDevice]) -> EmulatedDe
     assert ready.passed, ready.detail
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
-        {"ssid": "qemu-smoke-lab", "password": "qemu-test-password", "admin_key": ADMIN_KEY},
+        {"ssid": "qemu-smoke-lab", "password": WIFI_PASSWORD, "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
     setup_boot.dut.qemu.wait(timeout=60)

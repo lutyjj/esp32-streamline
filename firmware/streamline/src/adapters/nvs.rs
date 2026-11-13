@@ -4,7 +4,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition, EspNvs};
 use esp_idf_svc::{
     handle::RawHandle,
-    sys::{esp, nvs_commit, nvs_set_blob, ESP_ERR_NVS_TYPE_MISMATCH},
+    sys::{esp, nvs_commit, nvs_purge_all, nvs_set_blob, ESP_ERR_NVS_TYPE_MISMATCH},
 };
 use std::ffi::CString;
 
@@ -75,6 +75,11 @@ impl GenerationStorage for NvsGenerationStorage<'_> {
         esp!(unsafe { nvs_commit(self.nvs.handle()) })?;
         Ok(())
     }
+
+    fn remove(&self, key: &str) -> Result<(), Self::Error> {
+        self.nvs.remove(key)?;
+        Ok(())
+    }
 }
 
 /// Owns the NVS namespace and keeps the partition alive for the lifetime of
@@ -86,9 +91,22 @@ pub struct ConfigStore {
 
 impl ConfigStore {
     pub fn open(partition: EspDefaultNvsPartition) -> Result<Self> {
-        Ok(Self {
+        let store = Self {
             nvs: EspNvs::new(partition, NAMESPACE, true)?,
-        })
+        };
+        store.purge_erased();
+        Ok(store)
+    }
+
+    /// NVS only marks replaced and removed values erased; purging zeroes them,
+    /// so none stays readable in flash. Every boot purges, which also finishes
+    /// a reset that lost power first.
+    fn purge_erased(&self) {
+        let purged = esp!(unsafe { nvs_purge_all(self.nvs.handle()) })
+            .and_then(|()| esp!(unsafe { nvs_commit(self.nvs.handle()) }));
+        if let Err(error) = purged {
+            log::warn!("could not purge erased configuration: {error}");
+        }
     }
 
     fn state_store(&self) -> StateStore<NvsGenerationStorage<'_>> {
@@ -231,12 +249,13 @@ impl ConfigStore {
     /// the device's life, and a pre-flashed unit's label must stay true
     /// across resets.
     pub fn clear(&self) -> Result<()> {
-        self.write_state(PersistentState::empty())?;
+        self.state_store().clear().map_err(anyhow::Error::new)?;
         for key in [KEY_LAST_FALLBACK, KEY_LAST_OTA] {
             if let Err(error) = self.nvs.remove(key) {
                 log::warn!("could not clear reset diagnostic {key}: {error:#}");
             }
         }
+        self.purge_erased();
         Ok(())
     }
 

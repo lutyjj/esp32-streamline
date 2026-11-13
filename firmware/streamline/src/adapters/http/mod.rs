@@ -8,6 +8,8 @@ mod writes;
 
 /// The audio mutation flow, shared with the button adapter's `cycle_input`.
 pub(in crate::adapters) use handlers::audio::set_audio;
+/// The factory-reset flow, shared with the button adapter's `factory_reset`.
+pub(in crate::adapters) use handlers::system::factory_reset;
 
 use std::{
     ffi::{CStr, CString},

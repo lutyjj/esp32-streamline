@@ -26,8 +26,8 @@ staying cloud-free.
 | OTA update (`/api/ota/update`) | Admin-key gated; vendor RSA-3072 signature verified before commit, plus SHA-256 and auto-rollback | Owner-only; only firmware signed by the trusted key installs |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; pinned by the admin SHA-256 and verified against the trusted signing key | Owner-only; a forged image is rejected even when its digest matches, so the URL may be plain HTTP |
 | PCM stream (`:39000`) | Explicit cleartext TCP or TLS 1.3 PSK mode | Cleartext permits LAN capture and impersonation; TLS authenticates the source and protects audio |
-| Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access |
-| PCM device PSK | Plaintext in NVS, write-only and independently random | Recoverable with physical flash access; never returned by a read API |
+| Wi-Fi credentials | Plaintext in NVS, write-only via API | Recoverable with physical flash access until factory reset purges them |
+| PCM device PSK | Plaintext in NVS, write-only and independently random | Recoverable with physical flash access until factory reset purges it; never returned by a read API |
 | Bridge transport state (mode + key map) | Private `0600` atomic file; mutations gated by the bridge API token | Bridge host access exposes enrolled device keys; a token holder can switch the listener mode or replace keys |
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
 | Bridge recording API (`:8088`) | Disabled without writable storage; gated by the bridge API token when enabled | Token holder can record, list, download, and delete captures |

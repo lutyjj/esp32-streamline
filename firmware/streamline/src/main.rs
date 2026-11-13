@@ -72,8 +72,9 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     let event_loop = EspSystemEventLoop::take()?;
     #[cfg(not(feature = "qemu"))]
     let _wifi_events = wifi::log_station_events(&event_loop)?;
-    let nvs_partition = EspDefaultNvsPartition::take()?;
-    let store = Arc::new(Mutex::new(ConfigStore::open(nvs_partition.clone())?));
+    let store = Arc::new(Mutex::new(ConfigStore::open(
+        EspDefaultNvsPartition::take()?,
+    )?));
     let board_catalog = Arc::new(
         board::builtin_catalog()
             .map_err(|error| anyhow::anyhow!("invalid built-in board catalog: {error}"))?,
@@ -126,7 +127,6 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     let (network, (mode, config, stream, codec, analog_passthrough, health)) = network_boot(
         peripherals,
         event_loop,
-        nvs_partition,
         &store,
         &board,
         persisted,
@@ -339,13 +339,12 @@ type NetworkLink = openeth::EthConnection;
 fn network_boot(
     peripherals: Peripherals,
     event_loop: EspSystemEventLoop,
-    nvs_partition: EspDefaultNvsPartition,
     store: &Arc<Mutex<ConfigStore>>,
     board: &Arc<Board>,
     persisted: Option<RuntimeConfig>,
     setup_network: &SetupNetwork,
 ) -> Result<NetworkBoot> {
-    let mut wifi = wifi::create(peripherals.modem, event_loop, nvs_partition)?;
+    let mut wifi = wifi::create(peripherals.modem, event_loop)?;
     let state = match persisted {
         Some(config) => match wifi::connect_station(&mut wifi, &config) {
             // A reachable management plane keeps this boot provisioned.
@@ -416,7 +415,6 @@ fn network_boot(
 fn network_boot(
     peripherals: Peripherals,
     event_loop: EspSystemEventLoop,
-    _nvs_partition: EspDefaultNvsPartition,
     _store: &Arc<Mutex<ConfigStore>>,
     board: &Arc<Board>,
     persisted: Option<RuntimeConfig>,

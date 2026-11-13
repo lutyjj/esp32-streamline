@@ -1,6 +1,18 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.17.1](https://github.com/lutyjj/esp32-streamline/compare/v0.17.0...v0.17.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **bridge:** publish only sources a device has connected under ([c19d2da](https://github.com/lutyjj/esp32-streamline/commit/c19d2da2124c7c205a3446777441607be38fbc23)), closes [#505](https://github.com/lutyjj/esp32-streamline/issues/505)
+
+
+### Reverts
+
+* **tools:** capture without the stderr pipe ([9cac779](https://github.com/lutyjj/esp32-streamline/commit/9cac77916e2f30fc8c0198f0ba0cde39f25d9ab9))
+
 ## [0.17.0](https://github.com/lutyjj/esp32-streamline/compare/v0.16.0...v0.17.0) (2026-11-12)
 
 

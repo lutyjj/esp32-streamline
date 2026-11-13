@@ -8,9 +8,8 @@ on:
       - "console/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
-  # Called by release.yml after a release is published, so the flasher always
-  # serves the newest stable firmware. GitHub-token-created releases don't fire
-  # the `release` event for other workflows, so we chain explicitly instead.
+  # release.yml calls this after publishing: releases created with GITHUB_TOKEN fire
+  # no `release` event for other workflows.
   workflow_call:
 
 permissions:
@@ -40,12 +39,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # esp-web-tools fetches the firmware relative to the manifest, and
-          # GitHub release assets send no CORS headers to a Pages origin. So we
-          # copy the latest stable release's merged image into the site and serve
-          # it same-origin. Only this one binary ships in the Pages artifact (it
-          # never enters git history), avoiding the repo-bloat that catches
-          # projects committing binaries to a gh-pages branch.
+          # Release assets send no CORS headers to a Pages origin, so the site serves the
+          # latest stable full image same-origin, from the Pages artifact only.
           tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)"
           gh release download "$tag" \
             --repo "$GITHUB_REPOSITORY" \
@@ -71,8 +66,7 @@ jobs:
           test "$(jq '.builds[0].parts | length' "$manifest")" -ge 1
           jq -r '.builds[0].parts[] | "\(.path) \(.offset)"' "$manifest" | while read -r path offset; do
             test "$offset" = 0
-            # The merged image bundles bootloader + table + app; a tiny file
-            # means the wrong asset was bundled.
+            # A tiny file means the wrong asset was bundled.
             test "$(stat -c %s "webflasher/$path")" -gt 1000000
           done
           test -s webflasher/index.html

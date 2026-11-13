@@ -23,19 +23,13 @@ on:
 permissions:
   contents: read
 
-# Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Single source of truth for "what is a component". `.github/ci-paths.yml`
-  # maps paths to component names; this job turns the ones a change touched
-  # into a matrix. Adding a lightweight component is two declarative edits and
-  # no new job: a filter entry there, plus a `<name>-check` target in the
-  # Makefile. `firmware` is deliberately excluded from the matrix: its
-  # toolchain caching makes it fundamentally different, so it keeps a bespoke
-  # job below.
+  # `.github/ci-paths.yml` maps paths to components, and each matched component's
+  # `make <name>-check` joins the matrix. Firmware keeps its own job for toolchain caching.
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
@@ -57,15 +51,12 @@ jobs:
         with:
           filters: .github/ci-paths.yml
       - id: matrix
-        # Fan out over every matched component except the bespoke firmware job
-        # and the internal pseudo-filters.
+        # Every matched component except firmware and the internal pseudo-filters.
         run: |
           components=$(echo '${{ steps.filter.outputs.changes }}' \
             | jq -c '[.[] | select(. != "firmware" and . != "shared" and . != "api_contract" and . != "qemu_smoke" and . != "console_e2e")]')
           echo "components=$components" >> "$GITHUB_OUTPUT"
 
-  # One job, every lightweight component. The command is uniform because each
-  # component owns a `make <name>-check` recipe.
   checks:
     name: ${{ matrix.component }}
     needs: changes
@@ -143,17 +134,13 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-      # The QEMU image variant must keep compiling, and the smoke job below
-      # needs its images. Built here because this job owns the warm toolchain
-      # caches; the qemu-smoke job only needs Docker and the artifacts.
+      # Built here because this job owns the warm toolchain caches.
       - name: Build QEMU variant images
         run: |
           make firmware-qemu-artifacts \
             CONTAINER_EXTRA_FLAGS="-v $PWD/$FIRMWARE_CARGO_CACHE_PATH:$CONTAINER_CARGO_HOME"
 
-      # The commit in the artifact name pins image provenance. `overwrite`
-      # keeps both full and failed-jobs-only reruns working: a rerun firmware
-      # job replaces the set, and a rerun smoke job alone still finds it.
+      # `overwrite` lets both full and failed-jobs-only reruns find the images.
       - name: Upload QEMU variant images
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -186,11 +173,7 @@ jobs:
           embuild-cache-hit: ${{ steps.firmware-cache.outputs.embuild-cache-hit }}
           cargo-cache-hit: ${{ steps.firmware-cache.outputs.cargo-cache-hit }}
 
-  # Boots the QEMU firmware variant and runs the emulated-device test suite:
-  # boot, HTTP API, provisioning persistence, key gating, factory reset, and
-  # the OTA slot switch. The firmware job supplies images built from the exact
-  # commit selected by the QEMU ownership filter or manual dispatch. Failures
-  # remain visible but do not contribute to the required CI complete check.
+  # Advisory: failures stay visible but outside the required CI complete check.
   qemu-smoke:
     name: QEMU device smoke (advisory)
     needs: [changes, firmware]
@@ -203,11 +186,8 @@ jobs:
         with:
           name: qemu-firmware-images-${{ github.sha }}
           path: dist/firmware
-      # Two xdist workers on the four-vCPU standard runner: each test boots
-      # its own emulator, and a 1:1 CPU:worker ratio starves the boots (four
-      # workers reproduced the "no healthy response" setup failure on three
-      # workers at once), so leave half the CPUs for QEMU itself. Drop back
-      # to serial (remove SMOKE_JOBS) if the setup flake climbs.
+      # Two workers on four vCPUs leave half the CPUs for QEMU; more workers
+      # reproduce the "no healthy response" setup flake.
       - run: make tools-smoke-qemu SMOKE_JOBS=2
       - name: Preserve failed QEMU state
         if: failure()
@@ -229,9 +209,7 @@ jobs:
       - uses: ./.github/actions/docker-mirror
       - run: make api-contract-check
 
-  # Console journey specs for both consoles against the mock backends, in the
-  # pinned Playwright container. A separate lane outside ci-complete's needs
-  # while it builds a quiet history; promote it there once proven.
+  # Advisory until it builds a quiet history; then it joins ci-complete's needs.
   console-e2e:
     name: Console e2e journeys
     needs: changes
@@ -242,11 +220,8 @@ jobs:
       - uses: ./.github/actions/docker-mirror
       - run: make console-e2e
 
-  # Single stable status for required checks. Mark THIS as the
-  # required check in branch protection: it passes when the relevant jobs pass
-  # and treats skipped (unchanged) components as a pass, so path-filtering never
-  # leaves a PR stuck waiting on a check that will not report. It needs no edit
-  # when a component is added: the matrix job covers all of them.
+  # The one required check. Skipped components count as passed, so path filters
+  # never leave a pull request waiting on a check that will not report.
   ci-complete:
     name: CI complete
     if: ${{ always() }}

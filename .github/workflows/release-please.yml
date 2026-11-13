@@ -1,16 +1,11 @@
 name: Release Please
 
-# Maintains the release PR from conventional commits: version owners and
-# lockfiles per release-please-config.json, plus the add-on changelog. Merging
-# the release PR creates the vX.Y.Z tag and a draft GitHub release, then the
-# chained publication run attaches verified assets and publishes it. Chained
-# here because a tag or release created with GITHUB_TOKEN cannot trigger the
-# publication workflow through its own events.
+# Maintains the release PR. Merging it creates the tag and a draft release, then calls
+# release.yml directly: events from GITHUB_TOKEN cannot trigger another workflow.
 on:
   push:
     branches: [mainline]
-  # Manual refresh for the release PR, e.g. after branch-protection reports it
-  # behind a mainline that carried no releasable commits.
+  # Refreshes the release PR, e.g. after branch protection reports it behind mainline.
   workflow_dispatch:
 
 permissions:
@@ -26,9 +21,8 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      # With the default token, CI on the release PR waits for a manual
-      # "Approve and run"; set a RELEASE_PLEASE_TOKEN fine-grained PAT to make
-      # it start on its own.
+      # With the default token, CI on the release PR waits for "Approve and run";
+      # a RELEASE_PLEASE_TOKEN fine-grained PAT starts it automatically.
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:

@@ -7,17 +7,11 @@ QEMU_IMAGE := esp32-streamline-tools-qemu
 REF ?=
 CAP ?=
 
-# Smoke-harness inputs: the QEMU variant image for the emulated run and the
-# device address for the hardware run. DEVICE resolves from the root .env when
-# present, else stays empty and the hardware run skips API checks. The hardware
-# admin key streams from the root .env over container stdin, so it never appears
-# in Make output, process arguments, or container metadata; without it those
-# dual-target tests skip.
+# Without DEVICE the hardware run skips the API suite. The admin key streams over
+# container stdin, so it never appears in output, arguments or container metadata.
 FLASH_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-full.bin
 DEVICE ?= $(call dotenv,STREAMLINE_DEVICE)
 
-# Run a check in the tools image with the source mounted and the shared
-# ruff/mypy cache volume attached.
 CONTAINER_RUN := $(CONTAINER) run --rm \
 	-v "$(CURDIR):/workspace" -v "$(REPO_ROOT):/repo:ro" -v "$(PYTHON_CACHE_VOLUME):/cache" \
 	-e RUFF_CACHE_DIR=/cache/ruff-tools -e MYPY_CACHE_DIR=/cache/mypy-tools \
@@ -26,9 +20,7 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 	-v "$(CURDIR):/workspace" -e UV_CACHE_DIR=/tmp/uv-cache \
 	-w /workspace $(LOCK_IMAGE) uv
 
-# Mount only the directories holding the two input files, read-only, at their
-# host paths so the arguments pass through unchanged. `sort` deduplicates when
-# both files share a directory.
+# Mounts each input's directory read-only at its host path, so arguments pass through.
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
@@ -67,36 +59,24 @@ analyze: image
 	$(CONTAINER) run --rm $(INPUT_MOUNTS) $(IMAGE) \
 		streamline-analyze --reference "$(abspath $(REF))" --capture "$(abspath $(CAP))"
 
-# Wireshark's native TCP analysis separates sender gaps from retransmissions
-# and receiver backpressure without decrypting PCM or installing host tools.
+# tshark separates sender gaps from retransmissions and receiver backpressure.
 pcap: image
 	@test -f "$(CAP)" || (echo "CAP=/path/to/capture.pcap is required" >&2; exit 2)
 	$(CONTAINER) run --rm $(INPUT_MOUNTS) $(IMAGE) \
 		tshark -n -r "$(abspath $(CAP))" -q -z conv,tcp \
 		-z 'io,stat,1,tcp.len>0,tcp.analysis.retransmission,tcp.analysis.duplicate_ack,tcp.analysis.zero_window'
 
-# Attribute the built firmware ELF's flash bytes to ESP-IDF components, radio
-# blobs, and Rust crates (issue #355), reading the firmware build tree through
-# a read-only /repo mount. `make firmware-size-report` builds the ELF first
-# and forwards here.
 size-report: image
 	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" $(IMAGE) streamline-size-report
 
 qemu-image:
 	$(CONTAINER) build -f Dockerfile --target qemu-runner -t $(QEMU_IMAGE) .
 
-# Run the emulated-device pytest suite against the QEMU image variant: boot,
-# API over the emulated network, provisioning persistence, key gating,
-# factory reset, and the OTA slot switch. Build the images first:
-# `make -C firmware qemu-artifacts`. All images are required for the OTA proofs.
 OTA_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-ota.bin
 FAILURE_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-fail-management-ota.bin
-# Parallel pytest-xdist workers for the emulated suite. Each test boots its
-# own QEMU, so the suite parallelizes cleanly; bound the count to what the
-# host can spare, because oversubscription reproduces the "no healthy
-# response" setup flake. Empty runs serially; CI uses two workers.
+# Each test boots its own QEMU. Oversubscribing the host reproduces the "no healthy
+# response" setup flake.
 SMOKE_JOBS ?=
-# The generated device API contract; smoke tests derive their routes from it.
 API_CONTRACT := $(REPO_ROOT)/docs/openapi.json
 CONTRACT_MOUNT := -v "$(API_CONTRACT):/contract/openapi.json:ro" -e STREAMLINE_API_CONTRACT=/contract/openapi.json
 smoke-qemu: qemu-image
@@ -114,14 +94,9 @@ smoke-qemu: qemu-image
 		$(QEMU_IMAGE) pytest smoke -v $(if $(SMOKE_JOBS),-n $(SMOKE_JOBS)) \
 			--basetemp=/evidence/pytest --root-logdir=/evidence/serial
 
-# Reset the USB-connected board, sanity-check its boot over serial, then run
-# the same device-agnostic API suite the QEMU run uses against the live
-# board. Serial and espflash are host resources, so the boot capture runs
-# with the system python3, like `make firmware-capture`; the API suite runs
-# in the pytest runner image and skips emulated-only tests. `--capture=sys`
-# keeps pytest away from file descriptor 0: default fd-capture nulls it, and
-# the admin key rides in on that descriptor — without this the authenticated
-# tests silently skip as "key unavailable".
+# The boot capture runs on the host python3, which reaches the serial port.
+# `--capture=sys` keeps pytest off fd 0, where the admin key arrives; fd-capture
+# would null it and the authenticated tests would skip.
 smoke-device: qemu-image
 	PYTHONPATH=src python3 -m streamline_tools.smoke device $(if $(DEVICE),--url "http://$(DEVICE)")
 	$(if $(DEVICE),@{ sed -n 's/^STREAMLINE_ADMIN_KEY=//p' "$(REPO_ROOT)/.env" 2>/dev/null || true; } | $(CONTAINER) run --rm -i \

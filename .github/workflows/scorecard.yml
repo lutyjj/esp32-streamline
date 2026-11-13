@@ -1,9 +1,7 @@
 name: Scorecard
 
-# OpenSSF Scorecard analyzes the repository's supply-chain posture — pinned
-# dependencies, token permissions, branch protection, dangerous workflow
-# patterns — and uploads findings to the Security tab. Published results feed
-# the public Scorecard REST API and badge.
+# OpenSSF Scorecard uploads supply-chain findings to the Security tab and feeds the
+# public Scorecard API and badge.
 on:
   schedule:
     - cron: "23 6 * * 1"
@@ -13,8 +11,6 @@ on:
   branch_protection_rule:
   workflow_dispatch:
 
-# Scorecard reads many repository facets; grant read-only across the board
-# and write scopes only where the job needs them.
 permissions: read-all
 
 jobs:

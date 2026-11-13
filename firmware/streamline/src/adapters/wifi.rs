@@ -10,7 +10,6 @@ use embedded_svc::wifi::{
 use esp_idf_svc::{
     eventloop::{EspSubscription, EspSystemEventLoop, System},
     hal::{delay::FreeRtos, modem::Modem},
-    nvs::EspDefaultNvsPartition,
     sys::{
         esp_netif_dhcp_option_id_t_ESP_NETIF_DOMAIN_NAME_SERVER,
         esp_netif_dhcp_option_mode_t_ESP_NETIF_OP_SET, esp_netif_dhcps_option,
@@ -45,13 +44,15 @@ pub fn log_station_events(
     })?)
 }
 
+/// The driver keeps its configuration in RAM: every boot applies the saved
+/// state, so the driver's own flash copy would only duplicate credentials
+/// that factory reset must erase.
 pub fn create<'d>(
     modem: Modem<'d>,
     system_event_loop: EspSystemEventLoop,
-    nvs_partition: EspDefaultNvsPartition,
 ) -> Result<WifiController<'d>> {
     Ok(BlockingWifi::wrap(
-        EspWifi::new(modem, system_event_loop.clone(), Some(nvs_partition))?,
+        EspWifi::new(modem, system_event_loop.clone(), None)?,
         system_event_loop,
     )?)
 }

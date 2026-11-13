@@ -199,10 +199,12 @@ Persistent and cross-boundary values enter business logic only after parsing and
 The complete serialized configuration snapshot is limited to 3,840 UTF-8 bytes,
 including JSON escaping, custom board descriptors, and profiles. A save checks
 that limit before writing. The 24 KB NVS partition holds two snapshots and the
-commit marker as blobs, plus setup credentials, diagnostics, and ESP-IDF Wi-Fi
-state. NVS keeps a string within one page but splits a blob across pages, so a
-snapshot needs only enough free entries, not one page's contiguous run, which
-Wi-Fi state fragments. Replacement and garbage collection need spare pages.
+commit marker as blobs, plus setup credentials, diagnostics, and radio
+calibration data. The Wi-Fi driver keeps its configuration in RAM because every
+boot applies the saved snapshot. NVS keeps a string within one page but splits
+a blob across pages, so a snapshot needs only enough free entries, not one
+page's contiguous run, which the other records fragment. Replacement and
+garbage collection need spare pages.
 
 The state core writes the inactive snapshot, then atomically replaces a marker
 containing its SHA-256 and the previous committed snapshot's SHA-256. A corrupt

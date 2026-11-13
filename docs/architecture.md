@@ -198,16 +198,19 @@ Persistent and cross-boundary values enter business logic only after parsing and
 
 The complete serialized configuration snapshot is limited to 3,840 UTF-8 bytes,
 including JSON escaping, custom board descriptors, and profiles. A save checks
-that limit before writing. The 24 KB NVS partition holds two snapshot strings,
-the commit marker, setup credentials, diagnostics, and ESP-IDF Wi-Fi state;
-replacement and garbage collection need spare pages.
+that limit before writing. The 24 KB NVS partition holds two snapshots and the
+commit marker as blobs, plus setup credentials, diagnostics, and ESP-IDF Wi-Fi
+state. NVS keeps a string within one page but splits a blob across pages, so a
+snapshot needs only enough free entries, not one page's contiguous run, which
+Wi-Fi state fragments. Replacement and garbage collection need spare pages.
 
 The state core writes the inactive snapshot, then atomically replaces a marker
 containing its SHA-256 and the previous committed snapshot's SHA-256. A corrupt
 active snapshot falls back only to that named, checksum-valid predecessor.
 An interrupted write cannot become a fallback. The marker defines ordering,
 so no revision counter can wrap. An unreadable marker or two unreadable
-snapshots leave the device unconfigured; storage I/O errors fail boot.
+snapshots leave the device unconfigured, as does a state key holding another
+NVS type; storage I/O errors fail boot.
 Factory reset removes the fallback reference so corruption cannot restore
 erased credentials. Stored shapes must match the current firmware; no
 compatibility reader or migration runs at boot.

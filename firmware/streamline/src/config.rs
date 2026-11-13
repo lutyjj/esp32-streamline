@@ -14,8 +14,7 @@ use crate::{
 };
 
 pub const MIN_PORT: u16 = 1;
-/// Longest friendly device name, in characters. Fits an NVS string entry and
-/// a browser tab title.
+/// Longest friendly device name, in characters. Fits a browser tab title.
 pub const MAX_DEVICE_NAME_CHARS: usize = 32;
 /// Admin keys are generated, never composed by hand: exactly 24 random bytes
 /// rendered as lowercase hexadecimal. One exact shape keeps runtime

@@ -14,6 +14,10 @@ An active worker returns
 `409`; a worker that cannot start returns `503` and leaves OTA available to retry.
 An installed image keeps the worker reserved and reports `ota.busy: true` until
 the device reboots.
+While `ota.busy` is true, the device refuses any request that can restart it or
+select another boot slot before that request changes anything. Restart, factory
+reset, rollback, and every other write that may reboot return `409`; the restart
+and factory-reset button actions do nothing.
 An automatic attempt that cannot start retries after one minute, still waiting
 for idle audio and respecting the disabled schedule.
 

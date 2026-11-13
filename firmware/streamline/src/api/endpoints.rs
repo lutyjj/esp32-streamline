@@ -531,6 +531,7 @@ endpoint!(
     summary = "Restart the device",
     responses(
         (status = 200, body = Ack),
+        (status = 409, body = ErrorResponse),
         (status = 503, body = ErrorResponse),
         (status = 401, body = ErrorResponse)
     )
@@ -545,6 +546,7 @@ endpoint!(
     summary = "Factory-reset the device",
     responses(
         (status = 200, body = FactoryResetResponse),
+        (status = 409, body = ErrorResponse),
         (status = 503, body = ErrorResponse),
         (status = 401, body = ErrorResponse),
         (status = 500, body = ErrorResponse)
@@ -588,6 +590,22 @@ pub const ENDPOINTS: &[Endpoint] = &[
     OTA_UPDATE,
     OTA_ROLLBACK,
     UNLOCK,
+    RESTART,
+    FACTORY_RESET,
+];
+
+/// Operations that can restart the device or select another boot slot. The
+/// route table refuses them with `409` while an update owns the boot slots.
+pub const RESTARTING: &[Endpoint] = &[
+    SET_WIFI,
+    SET_TARGET,
+    SET_TRANSPORT,
+    TRANSPORT_KEY_ACTIVATE,
+    TRANSPORT_KEY_ROLLBACK,
+    SET_BOARD,
+    SET_AUDIO,
+    SET_AUDIO_PROFILE,
+    OTA_ROLLBACK,
     RESTART,
     FACTORY_RESET,
 ];
@@ -752,6 +770,22 @@ mod tests {
             assert_eq!(declared, expected, "response set for {}", endpoint.path);
         }
         assert!(mutations > 0, "no mutation endpoints found");
+    }
+
+    #[test]
+    fn every_restarting_endpoint_declares_the_update_conflict() {
+        let spec: serde_json::Value =
+            serde_json::from_str(include_str!("../../../../docs/openapi.json"))
+                .expect("docs/openapi.json parses");
+        for endpoint in RESTARTING {
+            assert!(ENDPOINTS.contains(endpoint), "{}", endpoint.path);
+            assert_eq!(endpoint.method, HttpMethod::Post, "{}", endpoint.path);
+            assert!(
+                spec["paths"][endpoint.path]["post"]["responses"]["409"].is_object(),
+                "{} must declare 409",
+                endpoint.path
+            );
+        }
     }
 
     #[test]

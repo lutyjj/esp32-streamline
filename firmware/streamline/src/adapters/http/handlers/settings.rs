@@ -2,13 +2,7 @@
 
 use anyhow::Result;
 
-use crate::{
-    api,
-    boot_health::{self, CommissionError},
-    config::AutoUpdateSchedule,
-    mutation::MutationError,
-    recovery,
-};
+use crate::{api, boot_health, config::AutoUpdateSchedule, mutation::MutationError, recovery};
 
 use super::super::{
     requests::form,
@@ -51,16 +45,10 @@ pub(super) fn register_network_writes(server: &mut ContractServer<'_>) -> Result
             validate_configuration(state, &next)?;
             boot_health::confirm_before_commissioning(
                 state.mode,
-                state.ota.snapshot().busy,
                 crate::adapters::ota::mark_current_valid,
             )
-            .map_err(|error| match error {
-                CommissionError::UpdateInProgress => MutationError::Conflict(
-                    "a firmware update is in progress; retry after it finishes".to_owned(),
-                ),
-                CommissionError::Confirm(error) => {
-                    MutationError::Persistence(format!("firmware confirmation failed: {error:#}"))
-                }
+            .map_err(|error| {
+                MutationError::Persistence(format!("firmware confirmation failed: {error:#}"))
             })?;
             persist_configuration(state, next)
         })();

@@ -63,32 +63,15 @@ driver is compiled into the firmware. The release firmware is a generic ESP32
 app image with an embedded official descriptor catalog. See
 [design notes](docs/design.md#board-support).
 
-### LEDs
+### LEDs and buttons
 
-A board advertises the LEDs it wires, and you assign each one a role. **Status**
-renders the device state: one flash in setup, two when ready but idle, steady
-while streaming, three on a startup fault. **On** and **Off** hold the LED lit
-or dark. Assignments apply without a reboot.
-
-`GET /api/status` reports the status state under `indicator` and the board's
-LEDs under `capabilities.leds`; `POST /api/settings/led` assigns a role by LED
-id. The official preset wires one status light; a
-[custom descriptor](docs/design.md#leds) can declare more.
-
-### Buttons
-
-A board advertises the buttons it wires, and you assign each one a press
-action: **start/stop streaming**, **switch input line**, **input gain** or
-**attenuation** stepping, **restart**, or **factory reset**, giving a physical way
-back to setup when the device is unreachable. Every action is the press-driven
-twin of an API capability, and assignments apply without a reboot.
-
-`GET /api/status` reports the board's buttons under `capabilities.buttons`;
-`POST /api/settings/button` assigns an action by button id, and
-`POST /api/stream` is the same pause/resume a streaming button fires. The
-official preset maps its six keys (streaming on KEY1, input switch on KEY2,
-restart on KEY6), and a [custom descriptor](docs/design.md#buttons) can remap
-or extend them.
+A board advertises the LEDs and buttons it wires. You assign each LED a role
+(**Status**, **On** or **Off**) and each button a press action: start or stop
+streaming, switch input line, step gain or attenuation, restart, or factory
+reset, which gives an unreachable device a physical way back to setup.
+Assignments apply without a reboot. [LEDs](docs/design.md#leds) and
+[buttons](docs/design.md#buttons) cover the roles, actions, API and the
+official preset's wiring.
 
 ## Quick start
 
@@ -187,11 +170,9 @@ export STREAMLINE_RECORDINGS_DIR=/recordings
 export STREAMLINE_API_TOKEN=replace-with-a-private-token
 ```
 
-Open `http://<bridge-host>:8088/recordings`. The named Docker volume owns the
-files; recording stays disabled when `STREAMLINE_RECORDINGS_DIR` is empty. The
-Home Assistant add-on exposes the same opt-in flow in its configuration. This
-focused bridge page manages stored files; the device console continues to own
-audio, network, and firmware settings.
+Then open `http://<bridge-host>:8088/recordings`.
+[Lossless recordings](docs/recordings.md) covers storage, the add-on option and
+the API.
 
 Set `STREAMLINE_SOURCE_ALLOW` to the device IPv4 address, or a comma-separated
 list, whenever those addresses are stable. Keep ports `39000` and `8088` on a
@@ -287,23 +268,17 @@ Docs: [architecture](docs/architecture.md) ·
 
 ### Releases
 
-[release-please](https://github.com/googleapis/release-please) maintains a
-release PR from the Conventional Commits on `mainline`: it computes the next
-version, updates every checked-in version owner and lockfile declared in
-[`release-please-config.json`](release-please-config.json), and prepends the
-add-on changelog. Merging that PR creates the `vX.Y.Z` tag and a draft GitHub
-release; publication verifies the tagged tree and its reproducible build, signs
-the firmware images with the `FIRMWARE_SIGNING_KEY` secret so devices accept
-them over the air (see [firmware signing](docs/ota.md#firmware-signing)),
-attaches them and the versioned container images with provenance
-attestations, publishes the release, then moves the `latest` image aliases.
-Every asset and image carries verifiable provenance, and the firmware and each
-single-platform image an SPDX SBOM; see
-[artifact verification](docs/security.md#release-artifact-verification).
-If publication is interrupted, rerun
-**Actions → Release** with the same tag; every step converges. Never edit
-the version files or changelog by hand. Land a Conventional Commit and let
-the release PR carry it.
+To release, merge the release PR that
+[release-please](https://github.com/googleapis/release-please) keeps open on
+`mainline`. Publication then runs on its own, as
+[build, CI, and release](docs/architecture.md#build-ci-and-release) describes,
+and signs the firmware with the `FIRMWARE_SIGNING_KEY` secret
+([firmware signing](docs/ota.md#firmware-signing)). If publication is
+interrupted, rerun **Actions → Release** with the same tag; every step
+converges. Never edit the version files or changelog by hand. Land a
+Conventional Commit and let the release PR carry it.
+[Artifact verification](docs/security.md#release-artifact-verification) shows
+how to check what a release published.
 
 ## Scope
 

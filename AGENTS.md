@@ -214,12 +214,9 @@ and secrets (`.env`) stay out of git. See `.gitignore`; extend it if needed.
 
 ## Releases are release-please's job
 
-release-please maintains the release PR from Conventional Commits:
-`release-please-config.json` declares every checked-in version owner and
-lockfile, and merging the release PR creates the `vX.Y.Z` tag and a draft
-GitHub release that publication completes. Never bump version files or edit
-`ha-addon/CHANGELOG.md` by hand — land a Conventional Commit and let the
-release PR carry it. See the [README release steps](README.md#releases).
+Never bump version files or edit `ha-addon/CHANGELOG.md` by hand: land a
+Conventional Commit and let the release PR carry it. The
+[README release steps](README.md#releases) own the flow.
 
 ## Docs win on conflict
 

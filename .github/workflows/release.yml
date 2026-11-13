@@ -30,9 +30,8 @@ concurrency:
 jobs:
   # Provenance anchor for every privileged job. The dispatch input is
   # untrusted, so it must name an exact vX.Y.Z release whose recorded commit
-  # already lives on the protected mainline. A draft release holds only the tag
-  # name, and the release record stores the exact commit, so read it from there
-  # and require a full SHA.
+  # already lives on the protected mainline. The release record stores the exact
+  # commit, so read it from there and require a full SHA.
   verify:
     name: Verify the release commit
     runs-on: ubuntu-latest

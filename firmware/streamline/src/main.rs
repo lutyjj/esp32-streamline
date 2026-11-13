@@ -233,6 +233,8 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     let booted_at = Instant::now();
     let mut auto_update_timer = update::AutoUpdateTimer::default();
     #[cfg(not(feature = "qemu"))]
+    let mut link = reconnect::LinkSupervisor::default();
+    #[cfg(not(feature = "qemu"))]
     let mut reconnect_timer = reconnect::ReconnectTimer::default();
     loop {
         FreeRtos::delay_ms(1_000);
@@ -242,10 +244,28 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
         match mode {
             Mode::Provisioned => {
                 #[cfg(not(feature = "qemu"))]
-                if !wifi::station_connected(&network)
-                    && reconnect_timer.take_due(booted_at.elapsed())
-                {
-                    wifi::reconnect_station(&mut network);
+                match link.tick(booted_at.elapsed(), wifi::station_connected(&network)) {
+                    reconnect::LinkAction::Wait => {}
+                    reconnect::LinkAction::Retry => {
+                        wifi::reconnect_station(&mut network);
+                    }
+                    // Boot retries the saved network and falls back to recovery
+                    // while it stays absent. Startup already confirmed the image.
+                    reconnect::LinkAction::Restart => {
+                        let admitted =
+                            state
+                                .restart
+                                .request_when_idle(&state.control, &state.ota, || {
+                                    Ok::<_, std::convert::Infallible>(())
+                                });
+                        if matches!(admitted, Ok(true)) {
+                            log::warn!(
+                                "Wi-Fi lost for {} s; restarting to fall back to the setup network",
+                                reconnect::RECOVERY_AFTER.as_secs()
+                            );
+                        }
+                        continue;
+                    }
                 }
                 let schedule = state
                     .config

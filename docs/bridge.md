@@ -54,7 +54,10 @@ its peer is allowlisted. A dynamic source is `connected` while its TCP producer 
 `http-selected` while an HTTP client holds it open, and `disconnected` after
 both end. A bare WAV request waits for the first producer when no source exists.
 With one allowlisted address, it uses that address's pipeline, which the peer's
-authenticated producer can adopt. Explicit `?source=` listeners, recordings,
+authenticated producer can adopt; once that identity is evicted, the address is
+addressable again. A cleartext producer never takes over a source that owes
+another allowlisted address, so at capacity it waits for that source's
+eviction. Explicit `?source=` listeners, recordings,
 and Sendspin streams pin their selected identity and prevent adoption under a
 different identity.
 

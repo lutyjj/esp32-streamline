@@ -779,7 +779,7 @@ wheels = [
 
 [[package]]
 name = "streamline-bridge"
-version = "0.17.1"
+version = "0.16.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosendspin" },

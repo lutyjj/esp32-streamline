@@ -69,7 +69,7 @@ that needs code changes holds the rest of its group until someone fixes it on
 the update branch.
 
 The e2e image and `@playwright/test` skip Dependabot's 3-day hold so they move
-together; `console/tests/playwrightImage.test.ts` fails while they differ.
+together; the required console e2e job fails while they differ.
 
 Dependabot reads image pins only from Dockerfiles, so an image a Makefile runs
 takes its pin from a Dockerfile stage, as `.github/tool-images.Dockerfile`
@@ -248,7 +248,7 @@ downstream systems.
 
 Make is the public command interface. Each component Makefile exposes the verbs that apply to it, and the root Makefile forwards `make <component>-<verb>`. Keep build mechanics behind these targets so local runs and CI execute the same commands.
 
-CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. Branch protection requires `CI complete`, which aggregates change detection, component checks, firmware builds, and the device API contract check. It does not wait for advisory jobs.
+CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. Branch protection requires `CI complete`, which aggregates change detection, component checks, the add-on's aarch64 build, firmware builds, the device API contract check, and the console e2e journeys. It does not wait for advisory jobs.
 
 `QEMU device smoke (advisory)` runs automatically for device-contract,
 smoke-harness, QEMU helper, tools-image, and firmware changes, using images

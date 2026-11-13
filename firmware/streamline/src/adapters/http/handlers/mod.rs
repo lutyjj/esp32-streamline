@@ -11,7 +11,7 @@ mod ota;
 mod settings;
 mod status;
 mod stream;
-mod system;
+pub(in crate::adapters) mod system;
 mod transport;
 
 use anyhow::Result;

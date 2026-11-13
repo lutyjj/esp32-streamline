@@ -167,7 +167,8 @@ esptool.py -p /dev/ttyUSB0 read_flash 0x12000 0xE000 crash.bin
 ```
 
 `POST /api/coredump/erase` clears the stored dump; an empty partition also
-succeeds. The device keeps one dump: a later panic overwrites an earlier one.
+succeeds. Factory reset clears it too. The device keeps one dump: a later panic
+overwrites an earlier one.
 
 A missing `coredump` partition makes these endpoints return `503`.
 

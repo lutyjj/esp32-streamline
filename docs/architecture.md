@@ -211,8 +211,13 @@ An interrupted write cannot become a fallback. The marker defines ordering,
 so no revision counter can wrap. An unreadable marker or two unreadable
 snapshots leave the device unconfigured, as does a state key holding another
 NVS type; storage I/O errors fail boot.
-Factory reset removes the fallback reference so corruption cannot restore
-erased credentials. Stored shapes must match the current firmware; no
+Factory reset writes an empty snapshot, erases the other one, and only then
+moves the marker, with no fallback. An interrupted reset leaves the previous
+configuration or none, and corruption cannot restore erased credentials. NVS
+marks replaced and erased values without clearing their bytes, so the firmware
+purges them after a reset and at every boot; no replaced or erased value stays
+readable in flash. Reset also erases the stored crash dump, which can hold the
+same credentials. Stored shapes must match the current firmware; no
 compatibility reader or migration runs at boot.
 
 ## Contract ownership

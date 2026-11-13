@@ -30,12 +30,14 @@ impl PersistentState {
     }
 }
 
-/// Each successful set is durable and atomic, including replacement of a key.
+/// Each successful set or remove is durable and atomic, including replacement
+/// of a key. Removing an absent key succeeds.
 pub trait GenerationStorage {
     type Error;
 
     fn get(&self, key: &str) -> Result<Option<String>, Self::Error>;
     fn set(&self, key: &str, value: &str) -> Result<(), Self::Error>;
+    fn remove(&self, key: &str) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -143,6 +145,35 @@ impl<S: GenerationStorage> StateStore<S> {
             .map_err(StateError::Storage)
     }
 
+    /// Commit the empty generation and erase the other snapshot, so a reset
+    /// keeps no credential. The erase precedes the marker: an interrupted reset
+    /// leaves the previous generation or no configuration, and no uncommitted
+    /// snapshot keeps credentials.
+    pub fn clear(&self) -> Result<(), StateError<S::Error>> {
+        let encoded = serde_json::to_string(&PersistentState::empty())
+            .map_err(|_| StateError::InvalidRecord)?;
+        let slot = self
+            .committed()?
+            .map_or(Slot::A, |(snapshot, _)| snapshot.slot.other());
+        let marker = serde_json::to_string(&Commit {
+            active: Snapshot {
+                slot,
+                sha256: checksum(&encoded),
+            },
+            previous: None,
+        })
+        .map_err(|_| StateError::InvalidRecord)?;
+        self.storage
+            .set(slot.key(), &encoded)
+            .map_err(StateError::Storage)?;
+        self.storage
+            .remove(slot.other().key())
+            .map_err(StateError::Storage)?;
+        self.storage
+            .set(COMMIT_KEY, &marker)
+            .map_err(StateError::Storage)
+    }
+
     fn committed(&self) -> Result<Option<(Snapshot, PersistentState)>, StateError<S::Error>> {
         let Some(marker) = self.storage.get(COMMIT_KEY).map_err(StateError::Storage)? else {
             return Ok(None);
@@ -227,14 +258,8 @@ mod tests {
         }
     }
 
-    impl GenerationStorage for FakeStorage {
-        type Error = &'static str;
-
-        fn get(&self, key: &str) -> Result<Option<String>, Self::Error> {
-            Ok(self.values.borrow().get(key).cloned())
-        }
-
-        fn set(&self, key: &str, value: &str) -> Result<(), Self::Error> {
+    impl FakeStorage {
+        fn write(&self) -> Result<(), &'static str> {
             let mut writes = self.writes.borrow_mut();
             *writes += 1;
             if self
@@ -244,9 +269,28 @@ mod tests {
             {
                 return Err("interrupted");
             }
+            Ok(())
+        }
+    }
+
+    impl GenerationStorage for FakeStorage {
+        type Error = &'static str;
+
+        fn get(&self, key: &str) -> Result<Option<String>, Self::Error> {
+            Ok(self.values.borrow().get(key).cloned())
+        }
+
+        fn set(&self, key: &str, value: &str) -> Result<(), Self::Error> {
+            self.write()?;
             self.values
                 .borrow_mut()
                 .insert(key.to_owned(), value.to_owned());
+            Ok(())
+        }
+
+        fn remove(&self, key: &str) -> Result<(), Self::Error> {
+            self.write()?;
+            self.values.borrow_mut().remove(key);
             Ok(())
         }
     }
@@ -467,24 +511,52 @@ mod tests {
         }
     }
 
+    fn holds_credentials(storage: &FakeStorage) -> bool {
+        storage
+            .values()
+            .values()
+            .any(|value| value.contains("-password"))
+    }
+
     #[test]
-    fn reset_is_a_complete_empty_generation() {
-        let storage = FakeStorage::default();
-        let store = StateStore::new(storage);
-        let configured = state("configured");
-        store.save(&configured).expect("configured state");
+    fn reset_leaves_no_snapshot_holding_credentials() {
+        let store = StateStore::new(FakeStorage::default());
+        store.save(&state("older")).unwrap();
+        store.save(&state("newer")).unwrap();
+        store.clear().unwrap();
+
+        assert_eq!(
+            store
+                .storage
+                .values()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["state_a", COMMIT_KEY]
+        );
+        assert!(!holds_credentials(&store.storage));
+        assert_eq!(store.load(), Ok(Some(PersistentState::empty())));
+    }
+
+    #[test]
+    fn an_interrupted_reset_keeps_the_configuration_or_no_credentials() {
+        let store = StateStore::new(FakeStorage::default());
+        store.save(&state("older")).unwrap();
+        store.save(&state("newer")).unwrap();
         let values = store.into_inner().values();
 
-        for boundary in 1..=2 {
+        for boundary in 1..=3 {
             let store = StateStore::new(FakeStorage::from_values(values.clone(), boundary));
-            assert_eq!(
-                store.save(&PersistentState::empty()),
-                Err(StateError::Storage("interrupted"))
-            );
-            assert_eq!(
-                store.load(),
-                Ok(Some(configured.clone())),
-                "boundary {boundary}"
+            assert_eq!(store.clear(), Err(StateError::Storage("interrupted")));
+            match store.load() {
+                Ok(Some(kept)) => assert_eq!(kept, state("newer"), "boundary {boundary}"),
+                Ok(None) => assert!(!holds_credentials(&store.storage), "boundary {boundary}"),
+                Err(error) => panic!("boundary {boundary}: {error:?}"),
+            }
+            store.clear().unwrap();
+            assert!(
+                !holds_credentials(&store.storage),
+                "retry after boundary {boundary}"
             );
         }
     }
@@ -541,7 +613,7 @@ mod tests {
     fn corrupt_reset_does_not_resurrect_credentials() {
         let store = StateStore::new(FakeStorage::default());
         store.save(&state("configured")).unwrap();
-        store.save(&PersistentState::empty()).unwrap();
+        store.clear().unwrap();
         store
             .storage
             .values

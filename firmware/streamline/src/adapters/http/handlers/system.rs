@@ -2,13 +2,17 @@
 
 use anyhow::Result;
 
-use crate::{api, mutation::MutationError};
+use crate::{
+    adapters::coredump::{self, CoredumpState},
+    api,
+    mutation::MutationError,
+};
 
 use super::super::{
     responses::{
         json_response, mutation_error, reboot_response, reboot_response_with, respond_gzip,
     },
-    ContractServer, OPENAPI_GZ,
+    ApiState, ContractServer, OPENAPI_GZ,
 };
 
 pub(super) fn register_contract(server: &mut ContractServer<'_>) -> Result<()> {
@@ -37,12 +41,9 @@ pub(super) fn register_actions(server: &mut ContractServer<'_>) -> Result<()> {
     // it is device identity, and a pre-flashed unit's label must stay true.
     // The response shows the credentials before the device leaves the
     // network — their only appearance in the API.
-    server.handler(api::FACTORY_RESET, move |request, state| {
-        let result = state
-            .lock_store()
-            .clear()
-            .map_err(|error| MutationError::Persistence(format!("{error:#}")));
-        match result {
+    server.handler(
+        api::FACTORY_RESET,
+        move |request, state| match factory_reset(state) {
             Ok(()) => reboot_response_with(
                 request,
                 &state.restart,
@@ -55,6 +56,19 @@ pub(super) fn register_actions(server: &mut ContractServer<'_>) -> Result<()> {
                 },
             ),
             Err(error) => mutation_error(request, error),
-        }
-    })
+        },
+    )
+}
+
+/// Erase the stored crash dump, then the configuration and diagnostics. A dump
+/// copies task memory, which can hold the credentials reset erases, and setup
+/// mode serves it without a key.
+pub(in crate::adapters) fn factory_reset(state: &ApiState) -> Result<(), MutationError> {
+    if coredump::state() != CoredumpState::Unavailable {
+        coredump::erase().map_err(|error| MutationError::Persistence(format!("{error:#}")))?;
+    }
+    state
+        .lock_store()
+        .clear()
+        .map_err(|error| MutationError::Persistence(format!("{error:#}")))
 }

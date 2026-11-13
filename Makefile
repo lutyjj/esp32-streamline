@@ -63,7 +63,7 @@ repository-check: version-check repository-container-contract repository-secret-
 	$(READONLY_REPO_RUN) $(ACTIONLINT_IMAGE) -color
 	$(READONLY_REPO_RUN) $(MARKDOWNLINT_IMAGE) --config /repo/.markdownlint.json README.md CONTRIBUTING.md AGENTS.md SECURITY.md docs firmware/streamline/README.md ha-addon/DOCS.md ha-addon/README.md tools/README.md
 	$(READONLY_REPO_RUN) $(LYCHEE_IMAGE) --config /repo/lychee.toml /repo
-	$(READONLY_REPO_RUN) --entrypoint sh $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval --exit-status "." {} \; >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; find docs -type f -name "*.json" -exec yq eval --exit-status "." {} \; >/dev/null'
+	$(READONLY_REPO_RUN) --entrypoint sh $(YQ_IMAGE) -ec 'find .github -type f \( -name "*.yml" -o -name "*.yaml" \) -exec yq eval "." {} + >/dev/null; yq eval --exit-status "." repository.yaml >/dev/null; find docs -type f -name "*.json" -exec yq eval "." {} + >/dev/null'
 	@test -z "$$(git grep -n 'actions/cache' -- .github/workflows)" || (echo "firmware cache actions belong in .github/actions/firmware-cache" >&2; exit 1)
 
 # New lockfiles join the scan unregistered; osv-scanner.toml holds accepted

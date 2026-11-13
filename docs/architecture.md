@@ -169,13 +169,14 @@ the bridge console client from the checked artifact. The WAV route uses the
 same application but keeps media delivery behind a transport-neutral bounded
 client stream.
 
-The optional Sendspin service publishes each registry source to Music
-Assistant. It runs its own asyncio event loop on one thread, because the
-aiosendspin client is asynchronous while the PCM and playout paths are
-threaded. A reconcile pass every half second keeps one publisher per source
-and reports each source's signal; a publisher takes a Sendspin source lease
-and a packet tap only while Music Assistant requests audio. HTTP handlers read
-the snapshot the loop publishes and submit pairing requests to the loop. The
+The optional Sendspin service publishes a source to Music Assistant once a
+device has connected under it. It runs its own asyncio event loop on one
+thread, because the aiosendspin client is asynchronous while the PCM and
+playout paths are threaded. A reconcile pass every half second keeps one
+publisher per such source and reports each source's signal; a publisher takes
+a Sendspin source lease and a packet tap only while Music Assistant requests
+audio. HTTP handlers read the snapshot the loop publishes and submit pairing
+requests to the loop. The
 [bridge reference](bridge.md#music-assistant-live-inputs) owns the runtime
 contract.
 

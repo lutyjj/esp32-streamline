@@ -150,6 +150,30 @@ class SourceRegistryTests(unittest.TestCase):
         self.assertEqual(lease.key, "192.0.2.10")
         lease.close()
 
+    def test_identified_snapshot_omits_placeholder_slots(self) -> None:
+        unlisted = self.registry()
+        with unlisted.lease_http(None):
+            self.assertEqual(unlisted.identified_snapshot(), {})
+        registry = self.registry(1, frozenset({"192.0.2.10"}))
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+        with registry.lease_http(None):
+            self.assertEqual(registry.identified_snapshot(), {})
+
+        self.disconnect(registry, key_id, peer_ip="192.0.2.10", transport="tls-psk")
+
+        self.assertEqual(set(registry.identified_snapshot()), {key_id})
+
+    def test_an_identified_address_stays_published_until_another_key_adopts_it(self) -> None:
+        registry = self.registry(1, frozenset({"192.0.2.10"}))
+        self.disconnect(registry, "192.0.2.10")
+        self.time.advance(100.0)
+        self.assertEqual(self.lifecycle(registry.identified_snapshot()["192.0.2.10"])["state"], "allowlisted")
+
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+        self.disconnect(registry, key_id, peer_ip="192.0.2.10", transport="tls-psk")
+
+        self.assertEqual(set(registry.identified_snapshot()), {key_id})
+
     def test_status_exposes_pending_and_disconnected_lifecycle_states(self) -> None:
         registry = self.registry()
         pending = registry.lease_http(None)

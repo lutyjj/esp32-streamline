@@ -223,7 +223,6 @@ jobs:
       - uses: ./.github/actions/docker-mirror
       - run: make api-contract-check
 
-  # Advisory until it builds a quiet history; then it joins ci-complete's needs.
   console-e2e:
     name: Console e2e journeys
     needs: changes
@@ -239,17 +238,17 @@ jobs:
   ci-complete:
     name: CI complete
     if: ${{ always() }}
-    needs: [changes, checks, ha-addon-aarch64, firmware, api-contract]
+    needs: [changes, checks, ha-addon-aarch64, firmware, api-contract, console-e2e]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
       - name: Verify no required job failed
         run: |
-          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} ha_addon_aarch64=${{ needs.ha-addon-aarch64.result }} firmware=${{ needs.firmware.result }} api_contract=${{ needs.api-contract.result }}"
+          echo "changes=${{ needs.changes.result }} checks=${{ needs.checks.result }} ha_addon_aarch64=${{ needs.ha-addon-aarch64.result }} firmware=${{ needs.firmware.result }} api_contract=${{ needs.api-contract.result }} console_e2e=${{ needs.console-e2e.result }}"
           if [ "${{ needs.changes.result }}" != "success" ]; then
             echo "::error::change detection failed"; exit 1
           fi
-          for r in "${{ needs.checks.result }}" "${{ needs.ha-addon-aarch64.result }}" "${{ needs.firmware.result }}" "${{ needs.api-contract.result }}"; do
+          for r in "${{ needs.checks.result }}" "${{ needs.ha-addon-aarch64.result }}" "${{ needs.firmware.result }}" "${{ needs.api-contract.result }}" "${{ needs.console-e2e.result }}"; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a required job did not pass ($r)"; exit 1 ;;

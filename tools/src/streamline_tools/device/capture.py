@@ -6,22 +6,40 @@ reset handshake, and panic decoding, exactly like `make firmware-capture`;
 opening the USB serial adapter resets the board.
 """
 
+import contextlib
 import queue
 import subprocess
 import threading
 import time
 from collections.abc import Callable, Sequence
+from typing import NamedTuple
 
 from streamline_tools.device.boot_log import strip_ansi
 
+# How long a process whose output closed gets to exit before its status is
+# reported as unknown.
+_EXIT_GRACE_SECONDS = 5.0
 
-def read_until(readline: Callable[[], str], markers: Sequence[str], timeout: float) -> tuple[str, str | None]:
+
+class Capture(NamedTuple):
+    """One bounded read: the transcript and the marker it reached, if any.
+
+    `ended` is true when the stream closed before a marker or the deadline;
+    `exit_status` then holds the process's status once it has exited.
+    """
+
+    transcript: str
+    marker: str | None
+    ended: bool = False
+    exit_status: int | None = None
+
+
+def read_until(readline: Callable[[], str], markers: Sequence[str], timeout: float) -> Capture:
     """Collect lines until one contains a marker, EOF, or the timeout expires.
 
     `readline` may block indefinitely on a silent device, so a daemon thread
-    feeds a queue and the deadline is enforced on the queue reads. Returns the
-    transcript up to and including the marker line, and the matched marker
-    (`None` on EOF or timeout).
+    feeds a queue and the deadline is enforced on the queue reads. The
+    transcript runs up to and including the marker line.
     """
     lines: queue.Queue[str | None] = queue.Queue()
 
@@ -41,21 +59,21 @@ def read_until(readline: Callable[[], str], markers: Sequence[str], timeout: flo
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            return "".join(collected), None
+            return Capture("".join(collected), None)
         try:
             line = lines.get(timeout=remaining)
         except queue.Empty:
-            return "".join(collected), None
+            return Capture("".join(collected), None)
         if line is None:
-            return "".join(collected), None
+            return Capture("".join(collected), None, ended=True)
         collected.append(line)
         plain = strip_ansi(line)
         for marker in markers:
             if marker in plain:
-                return "".join(collected), marker
+                return Capture("".join(collected), marker)
 
 
-def pump_process(command: Sequence[str], markers: Sequence[str], timeout: float) -> tuple[str, str | None]:
+def pump_process(command: Sequence[str], markers: Sequence[str], timeout: float) -> Capture:
     """Run a serial-emitting process and read its output until a boot marker."""
     process = subprocess.Popen(
         command,
@@ -67,13 +85,17 @@ def pump_process(command: Sequence[str], markers: Sequence[str], timeout: float)
     )
     assert process.stdout is not None
     try:
-        return read_until(process.stdout.readline, markers, timeout)
+        capture = read_until(process.stdout.readline, markers, timeout)
+        if capture.ended:
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                return capture._replace(exit_status=process.wait(timeout=_EXIT_GRACE_SECONDS))
+        return capture
     finally:
         process.kill()
         process.wait()
 
 
-def serial_boot(markers: Sequence[str], timeout: float) -> tuple[str, str | None]:
+def serial_boot(markers: Sequence[str], timeout: float) -> Capture:
     """Reset the USB-connected board and capture one boot over serial."""
     command = ("espflash", "monitor", "--non-interactive", "--chip", "esp32")
     return pump_process(command, markers, timeout)

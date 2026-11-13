@@ -120,13 +120,8 @@ The rollback-enabled bootloader starts a newly installed slot in
 *pending-verify*. Firmware confirms it only after the device reaches its home
 network, publishes its state to the management routes, and successfully reads
 complete responses from `/api/status` and `/api/settings` through the HTTP
-server.
-
-The HTTP listener, its callback registry, and every route are initialized
-before Wi-Fi or Ethernet starts, because ESP-IDF's route table is not safe to
-extend while the server matches requests. Startup then publishes the device
-mode and shared state to those routes; a request that arrives earlier waits
-for them.
+server. [Boot and control flow](architecture.md#boot-and-control-flow) owns the
+startup order.
 
 HTTP startup, route registration, or probe failure leaves the image unconfirmed.
 The firmware records a management startup failure in the persistent OTA note

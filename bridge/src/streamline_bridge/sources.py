@@ -83,6 +83,8 @@ class Source[H: AudioPipeline]:
     peer_ip: str = ""
     transport: str = "cleartext"
     admission: Literal["open", "allowlisted"] = "open"
+    # A producer has connected under this key, so the key is a device identity, not a placeholder.
+    identified: bool = False
 
     @property
     def held_by_session(self) -> bool:
@@ -217,6 +219,7 @@ class SourceRegistry[H: AudioPipeline]:
             source = self._acquire_locked(key, peer, transport)
             generation = source.gate.replace(conn)
             source.connected = True
+            source.identified = True
             lease = SourceLease(self, source, "producer", conn, generation)
         self._close_hubs(evicted)
         return lease
@@ -279,9 +282,25 @@ class SourceRegistry[H: AudioPipeline]:
                 source.disconnected_at = self._now()
 
     def snapshot(self) -> dict[str, dict[str, object]]:
+        return self._snapshot(identified_only=False)
+
+    def identified_snapshot(self) -> dict[str, dict[str, object]]:
+        """Snapshot only the sources a producer has connected under.
+
+        A pending slot or an allowlisted address no producer has used yet is a
+        placeholder: its identity is unknown until a producer connects and may
+        rename it, so it is left out.
+        """
+        return self._snapshot(identified_only=True)
+
+    def _snapshot(self, *, identified_only: bool) -> dict[str, dict[str, object]]:
         with self._lock:
             evicted = self._evict_expired_locked()
-            sources = tuple(sorted(self._sources.items()))
+            sources = tuple(
+                sorted(
+                    (key, source) for key, source in self._sources.items() if source.identified or not identified_only
+                )
+            )
             now = self._now()
             data = {key: self._snapshot_source(source, now) for key, source in sources}
         self._close_hubs(evicted)

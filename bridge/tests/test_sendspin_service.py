@@ -34,10 +34,13 @@ SOURCE = "192.0.2.10"
 AUDIO = b"\x01\x00\x02\x00" * 256
 
 
-def make_registry(now: Callable[[], float] = lambda: 0.0) -> SourceRegistry[AudioPipeline]:
+def make_registry(
+    now: Callable[[], float] = lambda: 0.0, allowed: frozenset[str] = frozenset()
+) -> SourceRegistry[AudioPipeline]:
     return SourceRegistry(
         lambda: AudioPipeline(64, 0.001, 1, 1.0, start_worker=False),
         max_sources=4,
+        allowed=allowed,
         eviction_idle_seconds=10.0,
         now=now,
     )
@@ -139,6 +142,21 @@ class SendspinServiceTests(unittest.IsolatedAsyncioTestCase):
         self.now[0] = 60.0
         await eventually(lambda: self.published(service) == [])
         self.assertNotIn(SOURCE, self.registry.snapshot())
+
+    async def test_an_allowlisted_address_is_not_published_before_a_device_connects(self) -> None:
+        self.registry = make_registry(lambda: self.now[0], frozenset({SOURCE, "192.0.2.11"}))
+        other, other_peer = socket.socketpair()
+        self.addCleanup(other.close)
+        self.addCleanup(other_peer.close)
+        self.registry.lease_producer("192.0.2.11", other)
+        service = self.start_service()
+
+        await eventually(lambda: [s["source"] for s in self.published(service)] == ["192.0.2.11"])
+        key_id = "eli1-00112233445566778899aabbccddeeff"
+        self.registry.lease_producer(key_id, self.sockets[0], peer_ip=SOURCE, transport="tls-psk")
+
+        await eventually(lambda: [s["source"] for s in self.published(service)] == ["192.0.2.11", key_id])
+        self.assertFalse((Path(self._directory.name) / SOURCE).exists())
 
     async def test_a_failing_publisher_does_not_stop_publishing_other_sources(self) -> None:
         self.connect_device()

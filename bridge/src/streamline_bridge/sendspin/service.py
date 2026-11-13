@@ -1,4 +1,4 @@
-"""Publish every bridge source to Music Assistant from a dedicated event loop."""
+"""Publish each device's bridge source to Music Assistant from a dedicated event loop."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from aiosendspin.models.types import SignalState
 from streamline_bridge.sendspin.identity import SendspinStateError
 from streamline_bridge.sendspin.packet_feed import PacketFeed
 from streamline_bridge.sendspin.publisher import SendspinPublisher, build_client
-from streamline_bridge.sources import PENDING_KEY, SourceSelectionError
+from streamline_bridge.sources import SourceSelectionError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -39,7 +39,7 @@ def line_signal(source: Mapping[str, object]) -> SignalState:
 
 
 class SendspinService:
-    """Keep one Sendspin publisher per registry source on the service's own loop.
+    """Keep one Sendspin publisher per identified registry source on the service's own loop.
 
     HTTP handlers run on other threads: they read a snapshot the loop publishes
     after each reconcile, and submit pairing-token requests to the loop.
@@ -131,7 +131,7 @@ class SendspinService:
             await asyncio.sleep(RECONCILE_SECONDS)
 
     async def _reconcile(self) -> None:
-        wanted = {key: line_signal(source) for key, source in self._sources.snapshot().items() if key != PENDING_KEY}
+        wanted = {key: line_signal(source) for key, source in self._sources.identified_snapshot().items()}
         retired = [self._publishers.pop(key) for key in self._publishers.keys() - wanted.keys()]
         await asyncio.gather(*(publisher.close() for publisher in retired), return_exceptions=True)
         for key in wanted.keys() - self._publishers.keys():

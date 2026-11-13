@@ -137,8 +137,8 @@ instead of editing the state file.
 
 ## Music Assistant live inputs
 
-The bridge publishes every source to Music Assistant as a Sendspin source
-client, so the source appears under Live Inputs and plays on any Music
+The bridge publishes each device's source to Music Assistant as a Sendspin
+source client, so the source appears under Live Inputs and plays on any Music
 Assistant player, stereo pair, or group. Set `--sendspin-server-url` to the
 Sendspin server of Music Assistant 2.10.9 or later, normally
 `ws://<music-assistant-host>:8927/sendspin`, and `--sendspin-state-dir` to a
@@ -151,8 +151,11 @@ the bridge needs no multicast or host networking. Its X25519 identity and its
 pairing store persist in `<state-dir>/<source>/`, so the source keeps its
 Music Assistant identity and pairing across bridge restarts. A cleartext
 source is identified by its IPv4 address, so an address change appears as a
-new source; a TLS source keeps its key id. The client connects when the
-source enters the registry and disconnects when the source is evicted.
+new source; a TLS source keeps its key id. The client connects once a device
+has connected under the source's identity and disconnects when the source is
+evicted. A pending slot or an allowlisted address that no device has used yet
+stays unpublished: it is a placeholder whose identity is unknown until a device
+connects.
 
 Pairing uses Music Assistant's token method:
 

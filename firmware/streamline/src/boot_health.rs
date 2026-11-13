@@ -20,10 +20,70 @@ pub fn start<T, E>(
     Ok(server)
 }
 
+/// Why a commissioning write could not confirm the running image.
+#[derive(Debug, Eq, PartialEq)]
+pub enum CommissionError<E> {
+    /// An update owns the boot slots; confirming now would mark its unbooted image.
+    UpdateInProgress,
+    Confirm(E),
+}
+
+/// Setup never confirms at startup, so the reboot after commissioning would roll
+/// back an update that left the device unconfigured. A setup-mode commissioning
+/// write confirms the running image first; other modes confirm elsewhere.
+pub fn confirm_before_commissioning<E>(
+    mode: Mode,
+    update_busy: bool,
+    confirm: impl FnOnce() -> Result<(), E>,
+) -> Result<(), CommissionError<E>> {
+    if mode != Mode::Setup {
+        return Ok(());
+    }
+    if update_busy {
+        return Err(CommissionError::UpdateInProgress);
+    }
+    confirm().map_err(CommissionError::Confirm)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[test]
+    fn setup_commissioning_confirms_the_running_image() {
+        let confirmed = Cell::new(0);
+        let result = confirm_before_commissioning(Mode::Setup, false, || {
+            confirmed.set(confirmed.get() + 1);
+            Ok::<_, ()>(())
+        });
+        assert_eq!(result, Ok(()));
+        assert_eq!(confirmed.get(), 1);
+    }
+
+    #[test]
+    fn commissioning_during_an_update_refuses_without_confirming() {
+        let result = confirm_before_commissioning(Mode::Setup, true, || -> Result<(), ()> {
+            panic!("confirm")
+        });
+        assert_eq!(result, Err(CommissionError::UpdateInProgress));
+    }
+
+    #[test]
+    fn recovery_and_provisioned_writes_never_confirm() {
+        for mode in [Mode::Recovery, Mode::Provisioned] {
+            let result = confirm_before_commissioning(mode, false, || -> Result<(), ()> {
+                panic!("confirm")
+            });
+            assert_eq!(result, Ok(()));
+        }
+    }
+
+    #[test]
+    fn a_failed_confirmation_is_reported() {
+        let result = confirm_before_commissioning(Mode::Setup, false, || Err("flash"));
+        assert_eq!(result, Err(CommissionError::Confirm("flash")));
+    }
 
     #[test]
     fn startup_and_each_probe_failure_leave_firmware_unconfirmed() {

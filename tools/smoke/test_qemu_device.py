@@ -545,6 +545,41 @@ def test_ota_install_boots_from_the_other_slot(
     _expect_api_up(confirmed)
 
 
+def test_commissioning_an_updated_setup_device_keeps_the_new_slot(
+    boot_device: Callable[..., EmulatedDevice],
+    served_ota_image: ServedOtaImage,
+) -> None:
+    # An update that leaves a device unconfigured boots into setup, where the
+    # image stays unconfirmed; the commissioning reboot must not roll it back.
+    setup = boot_device(until=("setup console started", CONSOLE_READY))
+    _expect_api_up(setup)
+    code, body = setup.api.post_form(
+        "/api/ota/update",
+        {"url": served_ota_image.download_url, "sha256": served_ota_image.sha256},
+    )
+    assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
+    setup.dut.qemu.wait(timeout=180)
+
+    updated = boot_device(
+        flash=setup.flash,
+        until=(f"Loaded app from partition at offset {_OTA_1_OFFSET}", "setup console started", CONSOLE_READY),
+    )
+    _expect_api_up(updated)
+    code, body = updated.api.post_form(
+        "/api/settings/wifi",
+        {"ssid": "qemu-smoke-lab", "password": "qemu-test-password", "admin_key": ADMIN_KEY},
+    )
+    assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
+    updated.dut.qemu.wait(timeout=60)
+
+    commissioned = boot_device(
+        flash=updated.flash,
+        admin_key=ADMIN_KEY,
+        until=(f"Loaded app from partition at offset {_OTA_1_OFFSET}", "StreamLine provisioned", CONSOLE_READY),
+    )
+    _expect_api_up(commissioned)
+
+
 def test_failed_management_startup_reboots_and_rolls_back_with_diagnostics(
     provisioned_device: EmulatedDevice,
     boot_device: Callable[..., EmulatedDevice],

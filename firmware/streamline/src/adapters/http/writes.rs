@@ -43,9 +43,7 @@ pub(super) fn persist_configuration(
     state: &ApiState,
     config: RuntimeConfig,
 ) -> Result<(), MutationError> {
-    config
-        .validate(state.board.as_ref())
-        .map_err(invalid_configuration)?;
+    validate_configuration(state, &config)?;
     let mut committed = state.lock_config().clone();
     recovery::commit_after_persist(&mut committed, config, |next| {
         state
@@ -55,6 +53,16 @@ pub(super) fn persist_configuration(
     })?;
     *state.lock_config() = committed;
     Ok(())
+}
+
+/// Check a configuration against the board before any side effect.
+pub(super) fn validate_configuration(
+    state: &ApiState,
+    config: &RuntimeConfig,
+) -> Result<(), MutationError> {
+    config
+        .validate(state.board.as_ref())
+        .map_err(invalid_configuration)
 }
 
 /// The profile catalog is its own durable record, bound to the board rather

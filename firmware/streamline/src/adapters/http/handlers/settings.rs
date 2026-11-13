@@ -2,12 +2,18 @@
 
 use anyhow::Result;
 
-use crate::{api, config::AutoUpdateSchedule, mutation::MutationError, recovery};
+use crate::{
+    api,
+    boot_health::{self, CommissionError},
+    config::AutoUpdateSchedule,
+    mutation::MutationError,
+    recovery,
+};
 
 use super::super::{
     requests::form,
     responses::{json_response, mutation_error, reboot_response},
-    writes::{persist_configuration, update_configuration},
+    writes::{persist_configuration, update_configuration, validate_configuration},
     ApiState, ContractServer,
 };
 
@@ -41,6 +47,21 @@ pub(super) fn register_network_writes(server: &mut ContractServer<'_>) -> Result
                 form.target_host,
                 form.target_port,
             );
+            // Validate and confirm before saving, so a rejected write changes nothing.
+            validate_configuration(state, &next)?;
+            boot_health::confirm_before_commissioning(
+                state.mode,
+                state.ota.snapshot().busy,
+                crate::adapters::ota::mark_current_valid,
+            )
+            .map_err(|error| match error {
+                CommissionError::UpdateInProgress => MutationError::Conflict(
+                    "a firmware update is in progress; retry after it finishes".to_owned(),
+                ),
+                CommissionError::Confirm(error) => {
+                    MutationError::Persistence(format!("firmware confirmation failed: {error:#}"))
+                }
+            })?;
             persist_configuration(state, next)
         })();
         match result {

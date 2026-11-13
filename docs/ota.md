@@ -117,10 +117,14 @@ nothing about signing-key compatibility.
 ## Safety: rollback
 
 The rollback-enabled bootloader starts a newly installed slot in
-*pending-verify*. Firmware confirms it only after the device reaches its home
-network, publishes its state to the management routes, and successfully reads
+*pending-verify*. A provisioned device confirms it only after it reaches its
+home network, publishes its state to the management routes, and successfully reads
 complete responses from `/api/status` and `/api/settings` through the HTTP
-server. [Boot and control flow](architecture.md#boot-and-control-flow) owns the
+server. A device in setup mode confirms when it accepts a Wi-Fi write, unless
+an update is in progress: the write proves the management plane, and the
+reboot that follows would otherwise roll back an update that left the device
+unconfigured.
+[Boot and control flow](architecture.md#boot-and-control-flow) owns the
 startup order.
 
 HTTP startup, route registration, or probe failure leaves the image unconfirmed.

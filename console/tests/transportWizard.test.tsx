@@ -1,9 +1,16 @@
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TransportWizard } from '../src/components/TransportWizard';
+import { setTransport } from '../src/lib/api';
 import { deviceConfig, deviceStatus, transportStatus } from '../src/mocks/fixtures';
 import { config, status } from '../src/state/device';
+import {
+  REBOOT_OVERDUE_TEXT,
+  REBOOT_WARN_POLLS,
+  rebootWait,
+  rebootWaitTick,
+} from '../src/state/rebootWait';
 import { setupWizardStep, transport } from '../src/state/transport';
 
 function labels(host: HTMLElement): string[] {
@@ -25,6 +32,11 @@ describe('TransportWizard', () => {
     status.value = deviceStatus({ auth_required: false });
     config.value = deviceConfig({ transport: transportStatus() });
     transport.revealed.value = undefined;
+  });
+
+  afterEach(() => {
+    rebootWait.value = null;
+    setTransport((request) => fetch(request));
   });
 
   it('starts a fresh setup with the create action and no way to skip ahead', () => {
@@ -112,6 +124,31 @@ describe('TransportWizard', () => {
     expect(host.textContent).toContain('Turn encryption on');
     expect(host.textContent).toContain('restarts the device');
     expect(labels(host)).toContain('Activate encryption');
+  });
+
+  it('stops saying the device is restarting once activation is overdue', async () => {
+    config.value = deviceConfig({
+      transport: transportStatus({
+        pending_key_id: 'eli1-0123456789abcdef0123456789abcdef',
+        pending_verified: true,
+      }),
+    });
+    setTransport(async () => new Response('{"ok":true,"rebooting":true}'));
+    const host = document.createElement('div');
+    render(<TransportWizard onClose={() => {}} />, host);
+    const activate = [...host.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Activate encryption',
+    );
+    await act(async () => activate?.click());
+    await vi.waitFor(() => expect(host.textContent).toContain('Restarting…'));
+
+    act(() => {
+      for (let poll = 0; poll < REBOOT_WARN_POLLS; poll += 1) rebootWaitTick(true);
+    });
+
+    expect(host.textContent).toContain('Still offline');
+    expect(host.textContent).toContain(REBOOT_OVERDUE_TEXT);
+    expect(host.textContent).not.toContain('The device is restarting');
   });
 
   it('always offers a way out without acting', () => {

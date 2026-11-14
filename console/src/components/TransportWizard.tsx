@@ -3,7 +3,7 @@ import { getActivateTransportKeyUrl } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config } from '../state/device';
 import { updateLock } from '../state/ota';
-import { rebootWait } from '../state/rebootWait';
+import { REBOOT_OVERDUE_TEXT, rebootOverdue, rebootWait } from '../state/rebootWait';
 import {
   type SetupWizardStep,
   setupWizardStep,
@@ -38,6 +38,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
   // The device saves tls-psk before it reboots, so config alone reads
   // encrypted early; setup is settled only once the reboot wait resolved too.
   const settled = c.transport.mode === 'tls-psk' && !waiting;
+  const done = settled ? 'settled' : rebootOverdue.value ? 'overdue' : 'restarting';
 
   function advance(next: SetupWizardStep) {
     lifecycle.setState({ text: '', cls: '' });
@@ -203,15 +204,23 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
       id: 'done',
       body: (
         <div>
-          <h3>{settled ? 'Encryption configured' : 'Restarting…'}</h3>
+          <h3>
+            {done === 'settled'
+              ? 'Encryption configured'
+              : done === 'overdue'
+                ? 'Still offline'
+                : 'Restarting…'}
+          </h3>
           <div class="body">
-            {!settled ? (
+            {done === 'restarting' && (
               <p class="wizard-waiting">
                 <span class="spin" aria-hidden="true" />
                 The device is restarting into encrypted mode — about ten seconds. This screen
                 updates when it reconnects, and a notification confirms it.
               </p>
-            ) : (
+            )}
+            {done === 'overdue' && <p class="wznote">{REBOOT_OVERDUE_TEXT}</p>}
+            {done === 'settled' && (
               <>
                 <p>
                   Every packet to the bridge is now authenticated TLS 1.3. No routine action is

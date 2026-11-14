@@ -6,7 +6,7 @@ import { normalizeTargetHost } from '../lib/target';
 import { bridgeConnection, config, onSetupNetwork } from '../state/device';
 import { consoleAddressAfterUse } from '../state/discovery';
 import { updateLock } from '../state/ota';
-import { rebootWait } from '../state/rebootWait';
+import { REBOOT_OVERDUE_TEXT, rebootOverdue, rebootWait } from '../state/rebootWait';
 import { setupWizardRequested } from '../state/transport';
 import { BridgeFinder } from './BridgeFinder';
 import { FlowDialog, type FlowStep } from './FlowDialog';
@@ -48,7 +48,8 @@ const BRIDGE_CHOICES: BridgeChoice[] = [
 type WizardStep = 'bridge' | 'connect' | 'encrypt';
 
 /** Live narration of the link, reusing the same signal as the Bridge tile. */
-function connectLine(): { text: string; cls: '' | 'ok' } {
+function connectLine(): { text: string; cls: '' | 'ok' | 'warn' } {
+  if (rebootOverdue.value) return { text: REBOOT_OVERDUE_TEXT, cls: 'warn' };
   if (rebootWait.value) return { text: 'Saving and restarting — about 10 seconds.', cls: '' };
   switch (bridgeConnection.value) {
     case 'sending':

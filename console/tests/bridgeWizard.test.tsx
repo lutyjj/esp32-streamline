@@ -8,6 +8,12 @@ import { FakeDevice } from '../src/mocks/device';
 import { deviceConfig, deviceStatus, transportStatus } from '../src/mocks/fixtures';
 import { audioMoving, config, status } from '../src/state/device';
 import { discovery } from '../src/state/discovery';
+import {
+  REBOOT_OVERDUE_TEXT,
+  REBOOT_WARN_POLLS,
+  rebootWait,
+  rebootWaitTick,
+} from '../src/state/rebootWait';
 import { setupWizardRequested } from '../src/state/transport';
 
 function labels(host: HTMLElement): string[] {
@@ -40,6 +46,7 @@ describe('BridgeWizard', () => {
   });
 
   afterEach(() => {
+    rebootWait.value = null;
     setTransport((request) => fetch(request));
   });
 
@@ -122,6 +129,35 @@ describe('BridgeWizard', () => {
     });
     click(host, 'Continue');
     expect(consoleAddress()).toBe('https://ha.example/bridge');
+  });
+
+  it('stops saying the device is restarting once the restart is overdue', async () => {
+    setTransport(async (request) => {
+      if (request.method === 'POST') return new Response('{"ok":true,"rebooting":true}');
+      const response = await getResponse(device.handlers, request, {
+        baseUrl: window.location.origin,
+      });
+      if (!response) throw new Error(`No mock handler for ${request.url}`);
+      return response;
+    });
+    const host = document.createElement('div');
+    render(<BridgeWizard onClose={() => {}} />, host);
+    click(host, 'Continue');
+    const field = host.querySelector<HTMLInputElement>('#wiz_host');
+    act(() => {
+      if (!field) throw new Error('host field missing');
+      field.value = '192.0.2.21';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => click(host, 'Save & connect'));
+    await vi.waitFor(() => expect(host.textContent).toContain('Saving and restarting'));
+
+    act(() => {
+      for (let poll = 0; poll < REBOOT_WARN_POLLS; poll += 1) rebootWaitTick(true);
+    });
+
+    expect(host.textContent).toContain(REBOOT_OVERDUE_TEXT);
+    expect(host.textContent).not.toContain('Saving and restarting');
   });
 
   it('skips the save when the target already matches and narrates Sending', () => {

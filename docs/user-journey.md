@@ -12,7 +12,8 @@ owns installation commands.
   live indicators with an unavailable state.
   Last-known configuration cannot establish current audio delivery.
 - Every wait names its operation and completion evidence. A timer never proves
-  a network join, successful reboot, or audible playback.
+  a network join, successful reboot, or audible playback. A restart still
+  offline after a minute reads as overdue on every surface that narrated it.
 - An action that can restart the device waits while a firmware update or
   check runs, and says so beside it.
 - Failures explain the next action. Guided tasks offer cancellation or recovery.

@@ -26,7 +26,7 @@ describe('recoveryStory', () => {
 
   it('asks for the new password when the network refuses the saved one', () => {
     const story = recoveryStory(recovering('credentials-rejected'), false);
-    expect(story?.text).toContain('Study Wi-Fi rejected the saved password');
+    expect(story?.text).toContain('Study Wi-Fi didn’t accept the saved password');
     expect(story?.text).toContain('enter the new one');
     expect(story?.text).not.toContain('rejoins on its own');
   });
@@ -42,7 +42,9 @@ describe('recoveryStory', () => {
     // so this browser loses contact; that is the expected end of recovery.
     const story = recoveryStory(recovering('network-not-found'), true);
     expect(story?.kind).toBe('left');
-    expect(story?.text).toContain('Reconnect to Study Wi-Fi');
+    // A failed poll alone does not prove the rejoin, so the claim stays conditional.
+    expect(story?.text).toContain('If its setup network is gone');
+    expect(story?.text).toContain('reconnect to Study Wi-Fi');
     expect(story?.text).toContain('http://streamline-0000.local/');
   });
 });

@@ -11,7 +11,7 @@ import { status, unreachable } from './device';
 export type RecoveryStory =
   /** The device answers on its setup network while it retries. */
   | { kind: 'retrying'; text: string }
-  /** The setup network went away, which a rejoin restart causes. */
+  /** Contact ended; a rejoin restart closes the setup network, and so do other things. */
   | { kind: 'left'; text: string };
 
 /** What the latest join attempt says about the saved network. */
@@ -21,7 +21,7 @@ function recoveryCause(s: StatusResponse): string {
     case 'network-not-found':
       return `StreamLine can’t find ${ssid}.`;
     case 'credentials-rejected':
-      return `${ssid} rejected the saved password.`;
+      return `${ssid} didn’t accept the saved password, or its signal is too weak to finish joining.`;
     default:
       return `StreamLine can’t join ${ssid}.`;
   }
@@ -33,7 +33,7 @@ export function recoveryStory(s: StatusResponse | null, lost: boolean): Recovery
   if (lost) {
     return {
       kind: 'left',
-      text: `The setup network closed, which usually means StreamLine rejoined ${ssid}. Reconnect to ${ssid}, then open http://${s.wifi.hostname}/ to confirm.`,
+      text: `Lost contact with StreamLine. If its setup network is gone, it has probably rejoined ${ssid}: reconnect to ${ssid}, then open http://${s.wifi.hostname}/ to confirm.`,
     };
   }
   const retry =

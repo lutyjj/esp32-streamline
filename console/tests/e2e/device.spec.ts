@@ -36,7 +36,7 @@ test('recovery: the cause is named and a Wi-Fi change hands off', async ({ page 
   await expect(page.getByText('Waiting for Wi-Fi')).toBeVisible();
 
   await page.getByRole('link', { name: 'Change Wi-Fi' }).click();
-  await expect(page.getByText(/^Device report: .*network-not-found/)).toBeVisible();
+  await expect(page.getByText(/^Startup report: .*network-not-found/)).toBeVisible();
   await page.getByRole('button', { name: 'Unlock to edit' }).click();
   await page.getByPlaceholder('admin key').fill(mockAdminKey);
   await page.getByRole('button', { name: 'Unlock', exact: true }).click();

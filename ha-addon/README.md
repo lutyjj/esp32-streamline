@@ -3,7 +3,8 @@
 This add-on runs the StreamLine bridge inside Home Assistant OS or Home
 Assistant Supervised. It accepts ESP32 PCM on TCP `39000` in one configured
 mode (cleartext or authenticated TLS 1.3) and publishes live WAV, status, and
-health on HTTP `8088`.
+health on HTTP `8088`. It runs on the host network so devices can
+[discover it](../docs/bridge.md#discovery) over mDNS.
 
 ## Install
 

@@ -231,6 +231,7 @@ compatibility reader or migration runs at boot.
 | Audio profile catalog | Rust `profiles` model | NVS records, HTTP JSON, generated console shape |
 | PCM frame | [PCM protocol](pcm-protocol.md) | Rust encoder and Python parser, checked byte-for-byte against [conformance vectors](pcm-frame-vectors.json) in both component tests |
 | PCM transport constants | [Machine contract](pcm-transport.json) | Rust and Python constants, mechanically checked by both component tests |
+| Bridge discovery records | [Machine contract](bridge-discovery.json) | Bridge advertiser constants, mechanically checked by bridge tests; the [bridge reference](bridge.md#discovery) describes the records |
 | Bridge device-key map | Bridge transport store | Private versioned file with bounded atomic replacement |
 | Release version | [`release-please-config.json`](../release-please-config.json) declares every owner; release-please writes them | `make version-check` requires equality across the version files |
 | User-visible stages | [User journey](user-journey.md) | Console and firmware behavior |
@@ -244,8 +245,8 @@ The PCM frame has two hand-written implementations. Keep changes byte-exact: upd
 
 The device always runs the embedded console and API. A bridge runs separately in one of two supported shapes:
 
-- The standalone container exposes PCM TCP `39000` in one configured mode and HTTP `8088`.
-- The Home Assistant add-on runs the same bridge package with Supervisor-owned options, private transport-key storage, and the same ports.
+- The standalone container shares the host's network. It serves PCM TCP `39000` in one configured mode and HTTP `8088`, and advertises the PCM listener over mDNS.
+- The Home Assistant add-on runs the same bridge package on the host network with Supervisor-owned options, private transport-key storage, and the same ports and advertisement.
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
 `/health` is the bridge readiness probe for its required PCM listener. A deployment with writable

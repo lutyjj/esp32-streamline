@@ -95,7 +95,7 @@ Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 
 **Home Assistant OS / Supervised**: add this repository as a Home Assistant
 add-on repository, install **ESP32 StreamLine Bridge**, and start it. The add-on
-publishes the same ports as the container: PCM on `39000/tcp` and HTTP WAV on
+listens on the same ports as the container: PCM on `39000/tcp` and HTTP WAV on
 `8088/tcp`. The PCM port accepts either cleartext or TLS, as selected in the
 bridge configuration, never both.
 
@@ -107,9 +107,7 @@ services:
   streamline-http:
     image: ghcr.io/lutyjj/esp32-streamline-bridge:latest
     restart: unless-stopped
-    ports:
-      - "39000:39000/tcp"
-      - "8088:8088/tcp"
+    network_mode: host
     environment:
       STREAMLINE_SOURCE_ALLOW: ${STREAMLINE_SOURCE_ALLOW:-}
       STREAMLINE_RECORDINGS_DIR: ${STREAMLINE_RECORDINGS_DIR:-}
@@ -136,6 +134,11 @@ volumes:
   streamline-recordings:
   streamline-transport:
 ```
+
+Host networking lets devices [discover the bridge](docs/bridge.md#discovery)
+during setup; it needs Docker Engine on Linux. On Docker Desktop, replace
+`network_mode: host` with `ports:` entries for `39000:39000/tcp` and
+`8088:8088/tcp`, and type the bridge's address on the device.
 
 To offer every source to Music Assistant, point the bridge at its Sendspin
 server and set the bridge API token (at least 16 characters) before

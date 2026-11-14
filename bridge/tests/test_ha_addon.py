@@ -196,7 +196,8 @@ class HomeAssistantAddonOptionTests(unittest.TestCase):
         self.assertEqual(set(options), set(contract))
         self.assertEqual(set(schema), set(contract))
         for name, option in contract.items():
-            self.assertEqual(options[name], str(option.default).lower())
+            default = option.default
+            self.assertEqual(options[name], str(default).lower() if isinstance(default, bool) else str(default))
             self.assertEqual(schema[name], option.supervisor_schema)
 
     def test_supervisor_config_keeps_recordings_private_and_out_of_backups(self) -> None:

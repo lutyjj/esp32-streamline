@@ -16,6 +16,8 @@ profile streamline_bridge flags=(attach_disconnected,mediate_deleted) {
   # PCM and HTTP, plus DNS and resolver sockets from nameservice above.
   network inet stream,
   network inet6 stream,
+  # mDNS advertisement of the PCM listener.
+  network inet dgram,
   # asyncio wakes its event loop through a local socket pair.
   unix type=stream,
 

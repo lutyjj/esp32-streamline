@@ -172,6 +172,20 @@ stream during quiet input; see the [silence contract](pcm-protocol.md#receiver-p
 To serve a client that needs an encoded stream, put Liquidsoap/Icecast after the bridge to
 publish FLAC/MP3/Opus.
 
+### Bridge discovery
+
+The bridge advertises its PCM listener with DNS-SD over mDNS so a device can
+offer it during setup. [`bridge-discovery.json`](bridge-discovery.json) owns
+the record values, and the [bridge reference](bridge.md#discovery) describes
+them.
+
+| Choice | Reason |
+|---|---|
+| python-zeroconf advertises | Home Assistant's mDNS engine; aiosendspin already depends on it, so the bridge gains no new package |
+| One advertised address: `--tcp-bind`, or the default route's | Matches aiosendspin's Sendspin server and sends only an address valid on the interface it leaves from (RFC 6762 section 6.2) |
+| TXT carries `txtvers` and `http_port` only | RFC 6763 section 6.7 asks for the version tag; the listener mode stays out because it changes at runtime |
+| The Home Assistant add-on uses host networking | Multicast does not leave Supervisor's private add-on network. Host networking costs one point of the add-on security rating and Home Assistant's add-on guidance advises against it; the ESPHome and Matter Server add-ons accept the same trade for mDNS. The bridge binds the same two ports either way |
+
 ## Board support
 
 StreamLine targets ESP32 boards that can feed 48 kHz stereo PCM into I2S.

@@ -65,6 +65,14 @@ BRIDGE_OPTIONS = (
         "allow only these IPv4 source addresses; repeat or use a comma-separated list",
         addon=True,
     ),
+    BridgeOption(
+        "bridge_name",
+        "--bridge-name",
+        str,
+        "StreamLine Bridge",
+        "name devices list for this bridge when they discover it on the network",
+        addon=True,
+    ),
     BridgeOption("http_bind", "--http-bind", str, "0.0.0.0", "HTTP bind address"),
     BridgeOption("http_port", "--http-port", int, 8088, "HTTP listen port", minimum=1, maximum=65535),
     BridgeOption(
@@ -241,6 +249,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     """Validate values that argparse and Supervisor cannot express alone."""
+    args.bridge_name = validate_bridge_name(args.bridge_name)
     args.public_url = validate_public_url(args.public_url)
     args.sendspin_server_url = validate_sendspin_server_url(args.sendspin_server_url)
     if args.sendspin_server_url and not args.sendspin_state_dir:
@@ -265,6 +274,25 @@ def validate_args(args: argparse.Namespace) -> argparse.Namespace:
     if len(args.source_allow) > args.max_sources:
         raise SystemExit("--max-sources must be at least the number of allowed sources")
     return args
+
+
+# A DNS label holds 63 bytes; a name conflict appends `-NN`.
+MAX_BRIDGE_NAME_BYTES = 60
+
+
+def validate_bridge_name(value: str) -> str:
+    """Accept a DNS-SD instance name that stays one DNS label after a conflict rename."""
+    name = value.strip()
+    if (
+        not name
+        or len(name.encode()) > MAX_BRIDGE_NAME_BYTES
+        or "." in name
+        or any(ord(character) < 32 or ord(character) == 127 for character in name)
+    ):
+        raise SystemExit(
+            f"--bridge-name must be 1 to {MAX_BRIDGE_NAME_BYTES} bytes of UTF-8 text without dots or control characters"
+        )
+    return name
 
 
 def validate_public_url(value: str) -> str:

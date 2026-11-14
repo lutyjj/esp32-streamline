@@ -1,6 +1,67 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.18.0](https://github.com/lutyjj/esp32-streamline/compare/v0.17.1...v0.18.0) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **bridge:** the Home Assistant add-on runs on the host network. It binds 39000 and 8088 on the Home Assistant host, and Supervisor port remapping does not apply to it; retarget devices that used a remapped port.
+
+### Features
+
+* **api:** mark the operations an update refuses ([5dddb4d](https://github.com/lutyjj/esp32-streamline/commit/5dddb4d4fad71d102bd6e572f69d0ffaf4c09997)), closes [#535](https://github.com/lutyjj/esp32-streamline/issues/535)
+* **api:** report recovery mode and why the saved Wi-Fi failed ([dd25cc0](https://github.com/lutyjj/esp32-streamline/commit/dd25cc00a46c9ac08bbfa9a27c50605cb95a94ab)), closes [#220](https://github.com/lutyjj/esp32-streamline/issues/220)
+* **bridge:** advertise the PCM listener over DNS-SD ([94f3b16](https://github.com/lutyjj/esp32-streamline/commit/94f3b16c9e7468691d02463dbbce100c3cf3b46e)), closes [#108](https://github.com/lutyjj/esp32-streamline/issues/108)
+* **console:** explain recovery on the setup network ([6fa989a](https://github.com/lutyjj/esp32-streamline/commit/6fa989aa37a02fe65060da1d4c9264f89bef224c)), closes [#220](https://github.com/lutyjj/esp32-streamline/issues/220)
+* **console:** offer the bridges the device finds ([9486ac3](https://github.com/lutyjj/esp32-streamline/commit/9486ac39b597cf9014467b7e84120cfabb7ccd58)), closes [#108](https://github.com/lutyjj/esp32-streamline/issues/108)
+* **firmware:** browse for bridges through GET /api/bridges ([06bfecb](https://github.com/lutyjj/esp32-streamline/commit/06bfecb4feb2ca3930b4fce1d7fccce82fe48092)), closes [#108](https://github.com/lutyjj/esp32-streamline/issues/108)
+* join open Wi-Fi networks by explicit choice ([7c5c0a4](https://github.com/lutyjj/esp32-streamline/commit/7c5c0a42ccc0b8f5c7bd858a06194536bb4ce10e))
+* name a Wi-Fi security mismatch as the join failure ([1259823](https://github.com/lutyjj/esp32-streamline/commit/1259823ed1f8a2511349162562ceab4eda45a8b3))
+
+
+### Bug Fixes
+
+* **bridge:** give an allowlisted address its slot back after eviction ([44ad7fd](https://github.com/lutyjj/esp32-streamline/commit/44ad7fd906a14265b2e1c1e71c66738397b011d3)), closes [#517](https://github.com/lutyjj/esp32-streamline/issues/517)
+* **bridge:** send devices no middlebox-compatibility change_cipher_spec ([a921b83](https://github.com/lutyjj/esp32-streamline/commit/a921b838c1553cf7ec707ae610b6953f42613850))
+* **build:** fail the repository check on malformed YAML and JSON ([2f909b9](https://github.com/lutyjj/esp32-streamline/commit/2f909b99a4f2ba4206155cd2281e7702aa163ff8)), closes [#519](https://github.com/lutyjj/esp32-streamline/issues/519)
+* **console:** count an unanswered status read as failed ([5125f52](https://github.com/lutyjj/esp32-streamline/commit/5125f52ee13304fbef8818a94edc1c101d78dfed))
+* **console:** defer a passthrough fault retry in recovery ([f881781](https://github.com/lutyjj/esp32-streamline/commit/f8817815d2131b09621d8faff1503d74fbe4e198))
+* **console:** fold the recovery startup report into a disclosure ([3085c79](https://github.com/lutyjj/esp32-streamline/commit/3085c799cb3e3d59a9098911c7f81e0c2d63dd80))
+* **console:** hand an overdue reboot from recovery to the recovery banner ([2f671b2](https://github.com/lutyjj/esp32-streamline/commit/2f671b2b3eecef027adf8b26066827d51edfa6f2)), closes [#542](https://github.com/lutyjj/esp32-streamline/issues/542)
+* **console:** hold calibration writes during an update and show each reason in place ([8264375](https://github.com/lutyjj/esp32-streamline/commit/8264375e8031fa16146f1d3a16062a6fc94af9ce))
+* **console:** hold restart and factory reset while an update is busy ([f0f71fa](https://github.com/lutyjj/esp32-streamline/commit/f0f71fafd4a982165a560958f3bfae06a11a98c3)), closes [#535](https://github.com/lutyjj/esp32-streamline/issues/535)
+* **console:** hold restarting actions while an update is busy ([855862c](https://github.com/lutyjj/esp32-streamline/commit/855862c70229a37a4044392cec30153a559af1d7))
+* **console:** keep recovery claims to what the device reported ([bf69497](https://github.com/lutyjj/esp32-streamline/commit/bf69497d5e3975a2f7f6493457b06c69a660c913))
+* **console:** let analog passthrough change in recovery ([97c350f](https://github.com/lutyjj/esp32-streamline/commit/97c350fb08ed40da1ccd74305c17da746119f3df))
+* **console:** narrate a profile restart without first re-reading settings ([478ce28](https://github.com/lutyjj/esp32-streamline/commit/478ce2873f682b037199990ec96c9b59b2dfcccb))
+* **console:** offer only what recovery can do with local analog output ([6fbb72b](https://github.com/lutyjj/esp32-streamline/commit/6fbb72bed0ae39e9f8734fb02ef87b03895a6522))
+* **console:** read an overdue restart as overdue in the setup guides ([b69237f](https://github.com/lutyjj/esp32-streamline/commit/b69237fe19c318a4884abf1202227e81ffccea2f))
+* **console:** refuse restarting writes in the fake device during an update ([c5bdb74](https://github.com/lutyjj/esp32-streamline/commit/c5bdb7413a49a3e0f1ff5519a3214d074a8cf8ad)), closes [#535](https://github.com/lutyjj/esp32-streamline/issues/535)
+* **console:** say setup-mode levels and profiles wait for setup ([66de34a](https://github.com/lutyjj/esp32-streamline/commit/66de34aea640c52ce0df250d1949384b67b65982))
+* **firmware:** back off PCM reconnects and log an outage once ([f866ebe](https://github.com/lutyjj/esp32-streamline/commit/f866ebe898fca192a1d9795a25aa4d65fb24c679))
+* **firmware:** classify join failures by documented reason codes only ([3dbf496](https://github.com/lutyjj/esp32-streamline/commit/3dbf496bd063a760eed9dfc385b5b00360132985))
+* **firmware:** confirm an updated image when setup accepts Wi-Fi ([4144d4a](https://github.com/lutyjj/esp32-streamline/commit/4144d4a54c7820f4e21acbe2916d796600abb7b0)), closes [#227](https://github.com/lutyjj/esp32-streamline/issues/227)
+* **firmware:** document the restart that raises the setup network ([1ce488f](https://github.com/lutyjj/esp32-streamline/commit/1ce488fba81db52fdf89e3eab5e6bafc1fc73404))
+* **firmware:** end a PCM failure run only after a connection holds ([7e6a968](https://github.com/lutyjj/esp32-streamline/commit/7e6a9683e76dc9d120dbbdc4a464162b16ed49d9))
+* **firmware:** erase the previous boot's log in setup mode ([ae20437](https://github.com/lutyjj/esp32-streamline/commit/ae20437ea068e159da773c72ed2d2a38f3203307)), closes [#534](https://github.com/lutyjj/esp32-streamline/issues/534)
+* **firmware:** keep setup-mode writes staged instead of restarting ([658bc54](https://github.com/lutyjj/esp32-streamline/commit/658bc541916c6375309706d50097b44f98f322fa))
+* **firmware:** keep the setup-network password out of the device log ([f5bad78](https://github.com/lutyjj/esp32-streamline/commit/f5bad78084df918a693d3c385711b35df6ce1e43))
+* **firmware:** keep Wi-Fi configuration out of the driver's flash ([162904c](https://github.com/lutyjj/esp32-streamline/commit/162904ce845777bf2486692bf38ac16bd424b0e4)), closes [#532](https://github.com/lutyjj/esp32-streamline/issues/532)
+* **firmware:** leave no configuration snapshot in flash after reset ([e73577d](https://github.com/lutyjj/esp32-streamline/commit/e73577db6704324c78f410851ea99e1d629ab9fe)), closes [#532](https://github.com/lutyjj/esp32-streamline/issues/532)
+* **firmware:** open the setup network after a sustained Wi-Fi loss ([4dd56b5](https://github.com/lutyjj/esp32-streamline/commit/4dd56b5da7348424d166e689f5dead8657e660f8)), closes [#437](https://github.com/lutyjj/esp32-streamline/issues/437)
+* **firmware:** print captured ESP-IDF log lines under the stdout lock ([9c48038](https://github.com/lutyjj/esp32-streamline/commit/9c480388b3cf9c9dbbf8313d9083649799853a82)), closes [#533](https://github.com/lutyjj/esp32-streamline/issues/533)
+* **firmware:** refuse restarts while an update owns the boot slots ([600af76](https://github.com/lutyjj/esp32-streamline/commit/600af761f275d4603f49b02c8b66a30d8231db42)), closes [#531](https://github.com/lutyjj/esp32-streamline/issues/531)
+* **firmware:** report the setup network address only while it runs ([24064bb](https://github.com/lutyjj/esp32-streamline/commit/24064bb28be42f839d1d9a917070f8ae4ddcbc0c)), closes [#539](https://github.com/lutyjj/esp32-streamline/issues/539)
+* **firmware:** restart when the heap keeps refusing the audio queue ([040bb27](https://github.com/lutyjj/esp32-streamline/commit/040bb27f84a9a74f44c6ca6ca33238485abe994c))
+* **firmware:** resume audio without aborting on a fragmented heap ([bf8cf9b](https://github.com/lutyjj/esp32-streamline/commit/bf8cf9b970f631155529a7b19e3088b41dd9c06f))
+* **firmware:** reuse the connection across same-host update redirects ([866e7fe](https://github.com/lutyjj/esp32-streamline/commit/866e7fed82ec55cc03740f9512952b18991008ab))
+* **firmware:** size the QEMU NIC's receive ring to the TCP window ([1aa6fa0](https://github.com/lutyjj/esp32-streamline/commit/1aa6fa07e49bf78c6271d4c53f7a336904417208)), closes [#537](https://github.com/lutyjj/esp32-streamline/issues/537)
+* **firmware:** store configuration snapshots as NVS blobs ([b4bff16](https://github.com/lutyjj/esp32-streamline/commit/b4bff165efc72d4efd74eb3c85a2c6bc4ab559df)), closes [#227](https://github.com/lutyjj/esp32-streamline/issues/227)
+* **ha-addon:** link add-on docs to the repository with absolute URLs ([54371e8](https://github.com/lutyjj/esp32-streamline/commit/54371e8ba403ddb9ff80f158c89582cee062b0ff))
+* **release:** tag the release when release-please drafts it ([110136b](https://github.com/lutyjj/esp32-streamline/commit/110136b9e5a64ef9669972f9cb810778b77f9edc)), closes [#516](https://github.com/lutyjj/esp32-streamline/issues/516)
+* **tools:** report espflash exiting apart from the boot deadline ([2d0991c](https://github.com/lutyjj/esp32-streamline/commit/2d0991ce6e080813ce51ece4ca7f2b86bab0757d)), closes [#520](https://github.com/lutyjj/esp32-streamline/issues/520)
+
 ## [0.17.1](https://github.com/lutyjj/esp32-streamline/compare/v0.17.0...v0.17.1) (2026-11-13)
 
 

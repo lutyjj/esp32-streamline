@@ -105,16 +105,19 @@ fn send_batch(
     retry: &mut Retry,
     clock: &impl Clock,
 ) {
-    let ready = || sending_allowed(status);
-    if !ready() {
+    if !sending_allowed(status) {
         return;
     }
-    let started = clock.monotonic_millis();
-    let result = sink.send(bytes, ready);
+    // Connection setup runs before admission, so a stall times only the write.
+    let mut admitted = clock.monotonic_millis();
+    let result = sink.send(bytes, || {
+        admitted = clock.monotonic_millis();
+        sending_allowed(status)
+    });
     let now = clock.monotonic_millis();
     match result {
         Ok(Some(reconnected)) => {
-            let elapsed = now.saturating_sub(started);
+            let elapsed = now.saturating_sub(admitted);
             if elapsed >= SEND_STALL_MS {
                 status.record_send_stall(elapsed);
                 log::warn!("PCM send stalled for {elapsed} ms");
@@ -157,7 +160,7 @@ fn report_failure(retry: &mut Retry, now: u64, cause: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{protocol::PAYLOAD_BYTES, stream::SendFailed};
+    use crate::{protocol::PAYLOAD_BYTES, stream::SendFailed, test_log::logged_lines};
     use std::{cell::Cell, rc::Rc};
 
     #[derive(Clone, Default)]
@@ -404,6 +407,36 @@ mod tests {
         assert_eq!(sink.calls, 1);
         assert_eq!(sink.writes, 1);
         assert_eq!(status.snapshot().packets, 1);
+    }
+
+    #[test]
+    fn a_send_stall_times_the_write_and_not_the_connection_setup() {
+        let time = Time::default();
+        let status = StreamStatus::default();
+        let mut retry = Retry::new();
+        let mut sink = sink(&time);
+        sink.connect_ms = 800;
+        let send = |sink: &mut Sink<'_>, retry: &mut Retry| {
+            send_batch(
+                sink,
+                packet().as_bytes(),
+                1,
+                PAYLOAD_BYTES,
+                &status,
+                retry,
+                &time,
+            )
+        };
+        let ((), setup) = logged_lines(|| send(&mut sink, &mut retry));
+        assert_eq!(status.snapshot().send_stalls, 0);
+        assert_eq!(setup, Vec::<String>::new());
+
+        sink.write_ms = 150;
+        let ((), stalled) = logged_lines(|| send(&mut sink, &mut retry));
+        let snapshot = status.snapshot();
+        assert_eq!(snapshot.send_stalls, 1);
+        assert_eq!(snapshot.longest_send_stall_ms, 150);
+        assert_eq!(stalled, ["WARN PCM send stalled for 150 ms"]);
     }
 
     #[test]

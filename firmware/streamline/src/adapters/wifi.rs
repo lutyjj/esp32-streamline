@@ -1,6 +1,10 @@
 //! ESP-IDF Wi-Fi ownership and mode transitions.
 
-use core::{convert::TryInto, ffi::CStr};
+use core::{
+    convert::TryInto,
+    ffi::CStr,
+    sync::atomic::{AtomicU16, Ordering},
+};
 use std::net::Ipv4Addr;
 
 use anyhow::{anyhow, Context, Result};
@@ -24,24 +28,46 @@ use esp_idf_svc::{
     wifi::{BlockingWifi, EspWifi, WifiEvent},
 };
 
-use crate::{config::RuntimeConfig, identity, setup_network::SetupNetwork};
+use crate::{
+    config::RuntimeConfig, identity, join_failure::JoinFailure, setup_network::SetupNetwork,
+};
 
 pub type WifiController<'d> = BlockingWifi<EspWifi<'d>>;
 
-/// Keep radio disconnect reasons in the retained boot log without recording
-/// network names or access-point identifiers.
-pub fn log_station_events(
+/// The latest station disconnect reason; zero while associated or before any
+/// attempt.
+static LAST_DISCONNECT_REASON: AtomicU16 = AtomicU16::new(0);
+
+/// Record why the station last failed to join, and keep radio disconnect
+/// reasons in the retained boot log without network names or access-point
+/// identifiers.
+pub fn observe_station_events(
     event_loop: &EspSystemEventLoop,
 ) -> Result<EspSubscription<'static, System>> {
     Ok(event_loop.subscribe::<WifiEvent, _>(|event| match event {
-        WifiEvent::StaConnected(_) => log::info!("Wi-Fi station associated"),
-        WifiEvent::StaDisconnected(event) => log::warn!(
-            "Wi-Fi station disconnected: reason={} rssi={}",
-            event.reason(),
-            event.rssi()
-        ),
+        WifiEvent::StaConnected(_) => {
+            LAST_DISCONNECT_REASON.store(0, Ordering::Relaxed);
+            log::info!("Wi-Fi station associated");
+        }
+        WifiEvent::StaDisconnected(event) => {
+            LAST_DISCONNECT_REASON.store(event.reason(), Ordering::Relaxed);
+            log::warn!(
+                "Wi-Fi station disconnected: reason={} rssi={}",
+                event.reason(),
+                event.rssi()
+            );
+        }
         _ => {}
     })?)
+}
+
+/// Why the station's latest join attempt failed; `None` while it is associated
+/// or before it has tried.
+pub fn join_failure() -> Option<JoinFailure> {
+    match LAST_DISCONNECT_REASON.load(Ordering::Relaxed) {
+        0 => None,
+        reason => Some(JoinFailure::from_reason(reason)),
+    }
 }
 
 /// The driver keeps its configuration in RAM: every boot applies the saved

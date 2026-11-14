@@ -35,7 +35,7 @@ pub fn status() -> Value {
         firmware_version: FIRMWARE_VERSION,
         firmware_variant: crate::telemetry::FirmwareVariant::Standard,
         device_name: "",
-        mode: "provisioned",
+        mode: crate::mode::Mode::Provisioned,
         config_source: "nvs",
         web_server: true,
         configuration_writable: true,
@@ -48,6 +48,7 @@ pub fn status() -> Value {
             sta_ip: DEVICE_IP,
             ap_ip: "",
             rssi_dbm: -55,
+            join_failure: None,
         },
         target: TargetStatus {
             target_host: BRIDGE_HOST,

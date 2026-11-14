@@ -1,5 +1,7 @@
 //! The boot mode and the write policy it grants.
 
+use serde::Serialize;
+
 use crate::mutation::MutationError;
 
 /// The boot contract: the one decision made at startup that fixes which
@@ -10,7 +12,10 @@ use crate::mutation::MutationError;
 /// (`metrics.playing`, `ota.phase`); anything that is a configuration
 /// difference reads from config (an empty `target_host` is "no bridge yet",
 /// not a mode).
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "api-spec", schema(as = DeviceMode))]
+#[serde(rename_all = "lowercase")]
 pub enum Mode {
     /// Unconfigured: own open AP, writes accepted so a first admin key can be
     /// set. Capture and streaming are down.
@@ -38,6 +43,15 @@ pub enum ConfigWrite {
 }
 
 impl Mode {
+    /// Stable API and metrics name for this mode.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Setup => "setup",
+            Self::Recovery => "recovery",
+            Self::Provisioned => "provisioned",
+        }
+    }
+
     pub const fn setup_network_active(self) -> bool {
         matches!(self, Self::Setup | Self::Recovery)
     }
@@ -73,6 +87,17 @@ mod tests {
         assert!(Mode::Setup.setup_network_active());
         assert!(Mode::Recovery.setup_network_active());
         assert!(!Mode::Provisioned.setup_network_active());
+    }
+
+    #[test]
+    fn the_wire_name_tells_recovery_apart_from_first_setup() {
+        for mode in [Mode::Setup, Mode::Recovery, Mode::Provisioned] {
+            assert_eq!(
+                serde_json::to_value(mode).unwrap(),
+                serde_json::Value::from(mode.as_str())
+            );
+        }
+        assert_ne!(Mode::Recovery.as_str(), Mode::Setup.as_str());
     }
 
     #[test]

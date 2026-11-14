@@ -71,7 +71,7 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     let peripherals = Peripherals::take()?;
     let event_loop = EspSystemEventLoop::take()?;
     #[cfg(not(feature = "qemu"))]
-    let _wifi_events = wifi::log_station_events(&event_loop)?;
+    let _wifi_events = wifi::observe_station_events(&event_loop)?;
     let store = Arc::new(Mutex::new(ConfigStore::open(
         EspDefaultNvsPartition::take()?,
     )?));
@@ -410,7 +410,8 @@ fn network_boot(
                 )
             }
             Err(error) => {
-                let reason = format!("Wi-Fi station connection failed: {error:#}");
+                let failure = wifi::join_failure().map_or("unclassified", |f| f.as_str());
+                let reason = format!("Wi-Fi station connection failed ({failure}): {error:#}");
                 log::warn!("{reason}; opening setup AP");
                 note_fallback(store, &reason);
                 let (codec, analog_passthrough) =

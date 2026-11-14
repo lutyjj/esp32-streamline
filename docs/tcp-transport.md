@@ -87,9 +87,10 @@ source admission.
 - cleartext connect and individual socket-write timeouts: 250 ms;
   completing a batch can require several writes
 - TLS handshake and socket-operation timeouts: 2 seconds through ESP-TLS
-- a successful send slower than 100 ms counts as a send stall
+- a successful write that takes 100 ms or longer counts as a send stall
   (`send_stalls_total` and `longest_send_stall_ms` in `/api/status` metrics)
-  and logs a warning to help diagnose a stalling radio link
+  and logs a warning to help diagnose a stalling radio link. The stall clock
+  starts after connection setup, so a TLS handshake never counts
 
 Capture measures elapsed time between complete packets. Beyond the DMA
 allowance, it advances the sequence by estimated missing packet intervals

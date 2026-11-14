@@ -207,7 +207,7 @@ impl<W: Write> PrometheusWriter<W> {
         )?;
         self.counter(
             "streamline_send_stalls_total",
-            "Successful sends that held the pipeline 100 ms or longer.",
+            "Successful PCM writes that took 100 ms or longer, excluding connection setup.",
             snapshot.stream.send_stalls_total,
         )?;
         self.gauge(
@@ -474,7 +474,7 @@ streamline_tls_handshake_failures_total 8\n\
 # HELP streamline_network_reconnects_total TCP reconnects after successful streaming began.\n\
 # TYPE streamline_network_reconnects_total counter\n\
 streamline_network_reconnects_total 7\n\
-# HELP streamline_send_stalls_total Successful sends that held the pipeline 100 ms or longer.\n\
+# HELP streamline_send_stalls_total Successful PCM writes that took 100 ms or longer, excluding connection setup.\n\
 # TYPE streamline_send_stalls_total counter\n\
 streamline_send_stalls_total 9\n\
 # HELP streamline_longest_send_stall_ms Longest single send stall observed since boot.\n\

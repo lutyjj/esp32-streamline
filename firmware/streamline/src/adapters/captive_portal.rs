@@ -73,7 +73,8 @@ fn serve(socket: UdpSocket, address: Ipv4Addr, stop: &AtomicBool) {
                     continue;
                 };
                 match socket.send_to(&response[..response_len], peer) {
-                    Ok(_) => log::info!("answered setup DNS query from {peer} with {address}"),
+                    // A line per query would push the setup lines out of the device log.
+                    Ok(_) => log::trace!("answered setup DNS query from {peer} with {address}"),
                     Err(error) => {
                         log::warn!("could not answer setup DNS query from {peer}: {error}")
                     }

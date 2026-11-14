@@ -52,14 +52,23 @@ other reads it is not open.
 
 Every line the firmware and ESP-IDF write once capture starts: Wi-Fi
 association and loss, the codec bring-up, TLS handshake failures, OTA progress
-and its verdict, and each warning any component raises. Serial output is
-unchanged, so `make firmware-monitor` still shows the same lines.
+and its verdict, and each warning any component raises, apart from the HTTP
+warnings below. Serial output is unchanged, so `make firmware-monitor` still
+shows the same lines.
 
 Wi-Fi disconnects include the SDK reason code and signal level. Connection
 failures distinguish association from address acquisition and include the
 numeric SDK error. HTTP route-registration messages are suppressed so they
-cannot fill the retained log before the console becomes reachable; HTTP
-warnings and errors remain enabled.
+cannot fill the retained log before the console becomes reachable. On a
+provisioned device, HTTP warnings and errors remain enabled.
+
+While the setup network runs, a client that joins it sends a steady stream of
+DNS lookups and captive-portal probes. The log keeps no line per lookup or
+redirect. ESP-IDF's HTTP request tags (`httpd_uri`, `httpd_parse` and
+`httpd_txrx`) report errors only, as in ESP-IDF's captive-portal example, so
+their warnings are not logged: a path not found, an oversized header, or a
+connection the client dropped. A client's DNS and HTTP traffic cannot push the
+setup lines out; each client that joins still adds its join lines.
 
 Allocation failures are recorded with the size requested, the caller, the free
 heap, and the largest free block, before any abort that follows them. On a

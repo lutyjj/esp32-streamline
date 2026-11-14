@@ -290,6 +290,13 @@ pub fn start(
     let console_url = captive_portal_address.map(|address| {
         CString::new(crate::captive_portal::console_url(address)).expect("a URL has no NUL byte")
     });
+    if console_url.is_some() {
+        // Redirected probes ask for paths no route serves, and the server warns
+        // on each. ESP-IDF's captive-portal example quiets the same tags.
+        for tag in [c"httpd_uri", c"httpd_txrx", c"httpd_parse"] {
+            unsafe { sys::esp_log_level_set(tag.as_ptr(), sys::esp_log_level_t_ESP_LOG_ERROR) };
+        }
+    }
     if CAPTIVE_PORTAL.set(console_url).is_err() || listener.state.set(state).is_err() {
         bail!("API state is already published");
     }
@@ -311,7 +318,8 @@ unsafe extern "C" fn not_found(
     let is_get = unsafe { (*request).method } == sys::http_method_HTTP_GET as i32;
     match CAPTIVE_PORTAL.wait() {
         Some(console_url) if is_get => {
-            log::info!(
+            // A line per probe would push the setup lines out of the device log.
+            log::trace!(
                 "redirecting setup HTTP probe to {}",
                 console_url.to_string_lossy()
             );

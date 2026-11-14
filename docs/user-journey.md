@@ -47,7 +47,9 @@ button at power-on opens the setup network for that boot when the password is lo
 
 Join the setup network and open its captive console, or `http://192.168.71.1/`.
 An unconfigured device opens onboarding. Choose Wi-Fi, preserve the generated
-admin key, then submit the network change. Back retains entered values.
+admin key, then submit the network change. A network without a password needs
+the explicit open-network choice, which names what an open network exposes; a
+blank password alone does not save. Back retains entered values.
 
 The setup address and home-network hostname are different browser origins.
 Remembering a key at one address does not transfer it to another. Before joining,
@@ -168,7 +170,8 @@ on its setup network, not first-run commissioning. A banner names the network an
 what the latest join attempt found: no such network in range, or a rejected
 password. The device retries every minute and rejoins on its own; Change Wi-Fi
 opens Settings → Wi-Fi for a renamed network or a new password. Unlock requires
-the admin key. Blank write-only password fields retain stored values. Changing
+the admin key. A blank password field keeps the stored password; a saved open
+network has none to keep, so switching it to a protected one needs the password. Changing
 Wi-Fi leaves audio, target, profiles, identity, board, and update schedule intact
 and ends in the same network handoff as first contact. When contact ends, the
 console says the device has probably rejoined if its setup network is gone and

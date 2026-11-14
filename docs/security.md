@@ -6,7 +6,8 @@ authentication (SHA-256), so the key itself never crosses the network and a
 captured exchange authorizes nothing later. Reads are open except the device
 log and crash dumps. Traffic is plain HTTP: request and response bodies are
 readable in transit. Keep the device on a trusted segment; do not expose its
-HTTP port or setup AP to untrusted networks.
+HTTP port or setup AP to untrusted networks. An open Wi-Fi network is not a
+trusted segment (see [Tracked items](#tracked-items)).
 
 This file is the current security posture: the attack surface, the controls in
 place, and the standing items we track or have accepted. The posture matches
@@ -153,6 +154,7 @@ check: it validates the image against the `sha256` the caller supplies from
 | Cleartext PCM mode | owner-controlled | It provides no confidentiality or source authentication. Use it only when encryption is not enabled or during explicit recovery. |
 | HTTP bodies readable in transit on the LAN | by design | Digest keeps the credential off the wire, but request bodies stay cleartext, and an active man-in-the-middle can tamper with a body (`auth-int` is not implemented). The home Wi-Fi password normally crosses only the WPA2-encrypted setup link at commissioning. See [Control-plane transport](#control-plane-transport). |
 | Wi-Fi credentials stored plaintext in NVS | by design | Reachable only with physical flash access; out of scope for a LAN line-in streamer. |
+| Device on an open Wi-Fi network | owner-controlled | Anyone in radio range joins the device's network as a LAN attacker. They can read HTTP bodies, including the one-time PCM key reveal, and cleartext PCM. They can rewrite the console the device serves over plain HTTP, so opening it on that network in a browser that remembers the admin key, or unlocking it there, hands them the key and every write. An access point copying the network name can capture the device's connection. Digest authentication protects writes only while the owner keeps the key out of any console opened there. The device joins an open network only when a Wi-Fi write sets `open_network`; with a password it joins only WPA2 or stronger, never an open network of the same name. |
 | Button-held boot opens the setup AP for one boot | by design | Physical presence substitutes for the password: an attacker in radio range cannot press the button. The window is one boot and closes on restart. |
 | Sustained Wi-Fi loss raises the setup AP | by design | Jamming or deauthenticating the home network long enough restarts a provisioned device into recovery, which raises its setup AP and stays there while the denial lasts; alternating denial and release makes it restart repeatedly. The AP keeps its WPA2 password and writes stay behind the admin key, so an attacker gains restarts, not access. [Boot and control flow](architecture.md#boot-and-control-flow) owns the timing. |
 | Setup password appears once in the factory-reset response | by design | The response returns the label credential when the owner resets the device for commissioning. No read endpoint returns it, and rotation means a full flash erase. |

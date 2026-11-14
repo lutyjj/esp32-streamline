@@ -145,6 +145,10 @@ pub enum ConfigError {
     MissingSsid,
     MalformedSsid,
     MalformedWifiPassword,
+    /// A protected network needs a password and none is stored to keep.
+    MissingWifiPassword,
+    /// An open network takes no password.
+    PasswordForOpenNetwork,
     MalformedTargetHost,
     InvalidTargetPort,
     InvalidInputLine,
@@ -167,6 +171,7 @@ pub enum ConfigError {
 #[serde(deny_unknown_fields)]
 pub struct RuntimeConfig {
     pub ssid: String,
+    /// Empty for an open network; see [`RuntimeConfig::open_network`].
     pub password: String,
     /// Bridge host the PCM stream is sent to. Empty means no bridge is
     /// configured yet: the device joins Wi-Fi and serves the console but does
@@ -217,9 +222,10 @@ impl RuntimeConfig {
     pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
         self.network().validate()?;
         let password = self.password.as_bytes();
-        if self.password.contains('\0')
-            || !((8..=63).contains(&password.len())
-                || (password.len() == 64 && password.iter().all(u8::is_ascii_hexdigit)))
+        if !self.open_network()
+            && (self.password.contains('\0')
+                || !((8..=63).contains(&password.len())
+                    || (password.len() == 64 && password.iter().all(u8::is_ascii_hexdigit))))
         {
             return Err(ConfigError::MalformedWifiPassword);
         }
@@ -227,6 +233,12 @@ impl RuntimeConfig {
             return Err(ConfigError::MalformedAdminKey);
         }
         self.validate_device_settings(board)
+    }
+
+    /// Whether the saved network is open: it has a name and no password, which
+    /// is how ESP-IDF's station reads an open network.
+    pub fn open_network(&self) -> bool {
+        !self.ssid.is_empty() && self.password.is_empty()
     }
 
     /// The rules that hold before commissioning. The SSID and the admin key
@@ -709,6 +721,16 @@ mod tests {
             .expect("default board")
             .clone()
     }
+    #[test]
+    fn an_empty_password_saves_an_open_network() {
+        let board = default_board();
+        let mut config = sample_runtime_config();
+        assert!(!config.open_network());
+        config.password.clear();
+        assert!(config.open_network());
+        assert_eq!(config.validate(&board), Ok(()));
+    }
+
     #[test]
     fn wifi_credentials_match_the_driver_byte_bounds() {
         let board = default_board();

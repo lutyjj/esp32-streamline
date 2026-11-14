@@ -142,12 +142,18 @@ const STATION_READY_POLLS: u32 = 50;
 const STATION_READY_POLL_INTERVAL_MS: u32 = 100;
 
 /// The saved home network as a station configuration, shared by the initial
-/// connect and the recovery retry.
+/// connect and the recovery retry. The auth method is ESP-IDF's threshold: a
+/// protected network accepts WPA2 or stronger, never an open network by the
+/// same name.
 fn station_config(config: &RuntimeConfig) -> Result<ClientConfiguration> {
     Ok(ClientConfiguration {
         ssid: config.ssid.as_str().try_into()?,
         bssid: None,
-        auth_method: AuthMethod::WPA2Personal,
+        auth_method: if config.open_network() {
+            AuthMethod::None
+        } else {
+            AuthMethod::WPA2Personal
+        },
         password: config.password.as_str().try_into()?,
         channel: None,
         ..Default::default()

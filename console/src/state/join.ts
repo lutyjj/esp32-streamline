@@ -12,13 +12,14 @@
 import { signal } from '@preact/signals';
 import { unlockSettings } from '../lib/adminKey';
 import { ApiError, setWifi } from '../lib/api';
+import type { WifiCredentials } from '../lib/wifi';
 import { status } from './device';
 import { setupKey } from './setupKey';
 
 export interface JoinRequest {
   ssid: string;
-  /** Empty keeps the stored password. */
-  password: string;
+  /** From `wifiCredentials`, which decides open, new, or kept password. */
+  credentials: WifiCredentials;
   /** Bridge target set during first setup; omitted, the device keeps its own. */
   target?: { host: string; port: string };
   rememberKey: boolean;
@@ -62,7 +63,7 @@ export async function joinNetwork(req: JoinRequest): Promise<JoinOutcome> {
   try {
     await setWifi({
       ssid: req.ssid.trim(),
-      password: req.password,
+      ...req.credentials,
       ...(req.target && {
         target_host: req.target.host.trim(),
         target_port: Number(req.target.port || status.value?.target?.target_port || 39000),

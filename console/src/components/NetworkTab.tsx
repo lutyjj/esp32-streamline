@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { setTarget, setWifi } from '../lib/api';
 import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
+import { storesWifiPassword, wifiCredentials } from '../lib/wifi';
 import {
   bridgeConnection,
   config,
@@ -20,6 +21,7 @@ import { Chip } from './Chip';
 import { Disclosure } from './Disclosure';
 import { GuidePrompt } from './GuidePrompt';
 import { KeyReveal } from './KeyReveal';
+import { OpenNetworkChoice } from './OpenNetworkChoice';
 import { ResourceNotice } from './ResourceNotice';
 import { Section, SectionActions, SectionStack } from './Section';
 import { ActionState, TransactButton } from './Transact';
@@ -48,6 +50,8 @@ export function NetworkTab({
   const { value: ssid, set: setSsid } = useDeviceField(c?.ssid ?? null);
   const [password, setPassword] = useState('');
   const [editingPassword, setEditingPassword] = useState(false);
+  const openField = useDeviceField(c ? String(c.open_network) : null);
+  const open = openField.value === 'true';
   const { value: targetHost, set: setTargetHost } = useDeviceField(c?.target_host ?? null);
   const { value: targetPort, set: setTargetPort } = useDeviceField(
     c ? String(c.target_port) : null,
@@ -55,7 +59,12 @@ export function NetworkTab({
   const [rememberKey, setRememberKey] = useState(true);
   const [keySaved, setKeySaved] = useState(false);
 
-  const passwordEditable = firstSetup || editingPassword;
+  const storedPassword = storesWifiPassword(c);
+  const passwordEditable = !open && (!storedPassword || editingPassword);
+
+  function credentials() {
+    return wifiCredentials(open, passwordEditable ? password : '', storedPassword);
+  }
 
   /**
    * A Wi-Fi save on the setup network sends the device away from this browser,
@@ -66,7 +75,7 @@ export function NetworkTab({
   async function handOff() {
     await joinNetwork({
       ssid,
-      password: passwordEditable ? password : '',
+      credentials: credentials(),
       target: firstSetup ? { host: normalizeTargetHost(targetHost), port: targetPort } : undefined,
       rememberKey,
     });
@@ -82,10 +91,7 @@ export function NetworkTab({
    * target host cannot fail a Wi-Fi save and vice versa. */
   function saveWifi() {
     wifiTransact.run(
-      () =>
-        setup
-          ? handOff()
-          : setWifi({ ssid: ssid.trim(), password: passwordEditable ? password : '' }),
+      () => (setup ? handOff() : setWifi({ ssid: ssid.trim(), ...credentials() })),
       setup ? handOffOpts : { busyText: 'Saving…', reboots: 'the Wi-Fi settings' },
     );
   }
@@ -157,15 +163,21 @@ export function NetworkTab({
               <input
                 id="password"
                 type="password"
-                autocomplete={firstSetup ? 'new-password' : 'off'}
+                autocomplete={storedPassword ? 'off' : 'new-password'}
                 placeholder={
-                  firstSetup ? 'network password' : passwordEditable ? 'new password' : 'unchanged'
+                  open
+                    ? 'none'
+                    : !storedPassword
+                      ? 'network password'
+                      : passwordEditable
+                        ? 'new password'
+                        : 'unchanged'
                 }
                 disabled={!writable || !passwordEditable}
-                value={password}
+                value={passwordEditable ? password : ''}
                 onInput={(e) => setPassword(e.currentTarget.value)}
               />
-              {!firstSetup && (
+              {storedPassword && !open && (
                 <Button
                   disabled={!writable}
                   onClick={() => {
@@ -177,11 +189,18 @@ export function NetworkTab({
                 </Button>
               )}
             </div>
-            <span class="help">
-              {firstSetup
-                ? 'The password of the Wi-Fi network the device should join.'
-                : 'The saved password stays unless you change it here.'}
-            </span>
+            {!open && (
+              <span class="help">
+                {storedPassword
+                  ? 'The saved password stays unless you change it here.'
+                  : 'The password of the Wi-Fi network the device should join.'}
+              </span>
+            )}
+            <OpenNetworkChoice
+              checked={open}
+              disabled={!writable}
+              onChange={(checked) => openField.set(String(checked))}
+            />
           </div>
         </div>
         {firstSetup && setupKey.value && (

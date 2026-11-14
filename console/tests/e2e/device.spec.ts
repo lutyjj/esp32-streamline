@@ -26,6 +26,28 @@ test('first boot: Wi-Fi, admin key, join, provisioned', async ({ page }) => {
   await expect(page.getByRole('button', { name: /^Unlocked/ })).toBeVisible();
 });
 
+// Stage 1: an open network is a deliberate choice. A blank password alone is
+// refused, and ticking the choice joins without one.
+test('first boot: an open network joins only by explicit choice', async ({ page }) => {
+  await page.goto('/?scenario=first-boot');
+  const setup = page.getByRole('dialog', { name: 'First-run setup' });
+  await setup.getByLabel('Your Wi-Fi network').fill('Cafe');
+  await setup.getByRole('button', { name: 'Continue' }).click();
+  await expect(
+    setup.getByText(/Enter the Wi-Fi password, or mark the network as open/),
+  ).toBeVisible();
+
+  await setup.getByLabel('This network has no password').check();
+  await expect(setup.getByLabel('Wi-Fi password')).toBeDisabled();
+  await setup.getByRole('button', { name: 'Continue' }).click();
+  await setup.getByRole('button', { name: 'I saved my key, join network' }).click();
+  await expect(setup.getByRole('heading', { name: 'Joining Cafe…' })).toBeVisible();
+
+  const settings = await page.evaluate(async () => (await fetch('/api/settings')).json());
+  expect(settings.ssid).toBe('Cafe');
+  expect(settings.open_network).toBe(true);
+});
+
 // Stage 6, per docs/user-journey.md: a provisioned device that cannot reach its
 // Wi-Fi explains why on its setup network instead of opening first-run setup,
 // and a Wi-Fi change keeps its key and target and ends in the network handoff.

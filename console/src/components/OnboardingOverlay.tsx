@@ -1,10 +1,12 @@
 import { useState } from 'preact/hooks';
 import { errorMessage } from '../lib/errors';
+import { wifiCredentials } from '../lib/wifi';
 import { expectedHostname, handoff, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { Button } from './Button';
 import { DialogSheet } from './DialogSheet';
 import { KeyReveal } from './KeyReveal';
+import { OpenNetworkChoice } from './OpenNetworkChoice';
 
 const ONBOARDING_STEPS = ['wifi', 'key', 'joining'] as const;
 type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
@@ -14,6 +16,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<OnboardingStep>('wifi');
   const [ssid, setSsid] = useState('');
   const [password, setPassword] = useState('');
+  const [open, setOpen] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,8 +28,11 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
         setError('Enter your Wi-Fi network name');
         return;
       }
-      if (!password) {
-        setError('Enter the Wi-Fi password');
+      try {
+        // A first join has no stored password to keep.
+        wifiCredentials(open, password, false);
+      } catch (err) {
+        setError(errorMessage(err));
         return;
       }
       setStep('key');
@@ -41,7 +47,11 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
     setError('');
     try {
       // No target: the bridge is configured later, from the home network.
-      await joinNetwork({ ssid, password, rememberKey: remember });
+      await joinNetwork({
+        ssid,
+        credentials: wifiCredentials(open, password, false),
+        rememberKey: remember,
+      });
     } catch (err) {
       setBusy(false);
       setError(`Not saved — ${errorMessage(err)}`);
@@ -102,8 +112,17 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
                 id="ob_password"
                 type="password"
                 autocomplete="new-password"
-                value={password}
+                placeholder={open ? 'none' : undefined}
+                disabled={open}
+                value={open ? '' : password}
                 onInput={(e) => setPassword(e.currentTarget.value)}
+              />
+              <OpenNetworkChoice
+                checked={open}
+                onChange={(checked) => {
+                  setOpen(checked);
+                  setError('');
+                }}
               />
             </div>
           </div>

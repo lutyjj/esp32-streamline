@@ -108,7 +108,10 @@ Management startup reserves one restart worker before it publishes the device st
 A successful rebooting mutation signals that worker before sending its response;
 a disconnected client cannot cancel the reboot. Further HTTP and button writes
 are refused until restart. Configuration validates the station driver's SSID
-and WPA2 password limits before committing Wi-Fi settings.
+and WPA2 password limits before committing Wi-Fi settings. An empty password
+saves an open network, which a Wi-Fi write chooses only through `open_network`.
+The station then joins only an open network by that name; with a password it
+joins only WPA2 or stronger networks.
 
 The [user journey](user-journey.md) owns the visible behavior of these states. The [security model](security.md) owns who may call each surface.
 

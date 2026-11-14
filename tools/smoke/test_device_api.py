@@ -302,6 +302,10 @@ def test_invalid_wifi_credentials_leave_configuration_intact(authed_device_api: 
     ]:
         code, _ = authed_device_api.post_form("/api/settings/wifi", fields)
         assert code == 400
+    code, body = authed_device_api.post_form(
+        "/api/settings/wifi", {"ssid": "test-network", "password": "test-password", "open_network": "true"}
+    )
+    assert code == 400 and b"PasswordForOpenNetwork" in body, body[:200]
     code, body = authed_device_api.fetch("/api/settings")
     assert code == 200
     assert json.loads(body) == before

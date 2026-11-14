@@ -881,6 +881,24 @@ a {
   color: var(--faint);
   font-size: 13px;
 }
+/* A checkbox under an input that changes how the field is read. */
+.field .field-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+}
+.field .field-check:has(input:disabled) {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.field-check input {
+  margin: 0;
+}
 /* A live control's status marker, sitting inline in its label: a warn-toned
    "Unsaved" while an edit is pending, or a brief "Updated" that fades after the
    device moved the value under the user. */

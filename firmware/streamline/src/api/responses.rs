@@ -95,6 +95,8 @@ pub struct FactoryResetResponse<'a> {
 pub struct SettingsResponse<'a> {
     pub device_name: &'a str,
     pub ssid: &'a str,
+    /// The saved network is open: the device joins it without a password.
+    pub open_network: bool,
     pub target_host: &'a str,
     pub target_port: u16,
     pub transport: TransportStatus<'a>,

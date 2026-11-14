@@ -97,8 +97,7 @@ fn capture_record(record: &Record<'_>) {
     let length = crate::logs::render_record(record, timestamp, &mut line);
     if let Some(buffers) = BUFFERS.get() {
         let mut guard = buffers.lock().unwrap_or_else(|error| error.into_inner());
-        guard.current.append(&line[..length]);
-        guard.current.append(b"\n");
+        guard.current.append_line(&line[..length]);
     }
 }
 
@@ -217,7 +216,7 @@ unsafe extern "C" fn note_allocation_failure(size: usize, caps: u32, caller: *co
     );
     if let Some(buffers) = BUFFERS.get() {
         if let Ok(mut guard) = buffers.try_lock() {
-            guard.current.append(line.as_bytes());
+            guard.current.append_line(line.as_bytes());
         }
     }
     unsafe { esp_rom_printf(c"%s\n".as_ptr(), line.as_c_str().as_ptr()) };

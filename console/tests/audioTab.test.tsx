@@ -180,7 +180,10 @@ describe('AudioTab on the setup network', () => {
         ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
 
-    await vi.waitFor(() => expect(view.textContent).toContain('apply once setup completes'));
+    expect(view.textContent).toContain('Saved changes apply once setup completes.');
+    await vi.waitFor(() =>
+      expect(view.textContent).toContain('Saved. These levels apply once setup completes.'),
+    );
     expect(rebootWait.value).toBeNull();
     render(null, view);
   });

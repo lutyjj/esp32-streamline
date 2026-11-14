@@ -171,7 +171,9 @@ export class FakeDevice {
         this.config.target_port = num(body.target_port) ?? this.config.target_port;
         this.status.target.target_host = this.config.target_host;
         this.status.target.target_port = this.config.target_port;
-        return { ok: true };
+        // Like the firmware: a boot applies the target, and setup mode keeps it
+        // staged for commissioning instead of restarting.
+        return this.status.mode === 'setup' ? { ok: true } : { ok: true, rebooting: true };
       }),
       this.write('/api/settings/name', (body) => {
         this.config.device_name = body.name ?? '';
@@ -192,7 +194,8 @@ export class FakeDevice {
         const enabled = body.enabled === 'true';
         this.config.analog_passthrough_enabled = enabled;
         this.status.analog_passthrough.enabled = enabled;
-        this.status.analog_passthrough.active = enabled;
+        // Setup mode runs no codec, so the route waits for commissioning.
+        this.status.analog_passthrough.active = enabled && this.status.mode !== 'setup';
         return { ok: true };
       }),
       this.write('/api/settings/led', (body) => {

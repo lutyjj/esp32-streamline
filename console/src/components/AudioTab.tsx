@@ -159,7 +159,15 @@ export function AudioTab({
         <p>{locked ?? 'Set levels once. Save a profile for each source you use.'}</p>
       </div>
       <div class="audio-controls" hidden={!tuning}>
-        <Section gated title="Adjust input" lead="Changes apply when you save.">
+        <Section
+          gated
+          title="Adjust input"
+          lead={
+            firstRun.value
+              ? 'Saved changes apply once setup completes.'
+              : 'Changes apply when you save.'
+          }
+        >
           <form onSubmit={save}>
             <fieldset disabled={!writable || transact.busy}>
               <div class="tuning-feedback">

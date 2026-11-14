@@ -140,6 +140,16 @@ pub fn install() {
     });
 }
 
+/// Erase the previous boot's lines. Setup mode serves the log without a key,
+/// and the boot before it may have run configured, as one does before a
+/// factory reset.
+pub fn discard_previous() {
+    if let Some(buffers) = BUFFERS.get() {
+        let mut guard = buffers.lock().unwrap_or_else(|error| error.into_inner());
+        guard.previous.discard();
+    }
+}
+
 /// Read both buffers under one lock. `None` before [`install`] has run.
 ///
 /// The closure runs with logging blocked, so it must not log, and it must not

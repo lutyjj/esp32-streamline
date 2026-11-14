@@ -102,6 +102,12 @@ impl<const N: usize> LogBuffer<N> {
         self.dropped = 0;
     }
 
+    /// Erase every line and return to the never-written state, which reads as
+    /// absent until [`LogBuffer::reset`] claims the buffer again.
+    pub fn discard(&mut self) {
+        *self = Self::new();
+    }
+
     /// Which run of the firmware produced these lines.
     pub const fn boot(&self) -> u32 {
         self.boot
@@ -554,6 +560,15 @@ mod tests {
         buffer.append(b"line\n");
         buffer.layout = LAYOUT_TAG ^ 0xFFFF;
         assert!(!buffer.is_intact());
+    }
+
+    #[test]
+    fn a_discarded_buffer_reads_as_absent_and_keeps_no_byte() {
+        let mut buffer = started();
+        buffer.append(b"wifi: joined home network\n");
+        buffer.discard();
+        assert!(!buffer.is_intact());
+        assert!(buffer.bytes.iter().all(|byte| *byte == 0));
     }
 
     #[test]

@@ -131,6 +131,23 @@ from overwriting concurrent changes.
 
 For each captured packet, portable code computes levels and updates the signal gate. The firmware sends PCM while the gate reports playback and header-only silence records while idle. Both advance the capture sequence. Pausing streaming (`POST /api/stream` or a button assigned to it) stops both kinds of record. A bounded drop-oldest queue prevents a stalled network from blocking capture. The [PCM protocol](pcm-protocol.md) owns the bytes; the [PCM transport record](tcp-transport.md) owns mode selection, key lifecycle, task placement, timeouts, and reconnect behavior.
 
+### Bridge discovery
+
+`GET /api/bridges` runs one ESP-IDF mDNS browse for the bridge's
+[DNS-SD record](bridge.md#discovery). The browse keeps the first eight answers
+and ends when the eighth arrives or after three seconds. It holds the HTTP task
+for that time but not the control lock, so buttons and the main loop keep
+running. A request within two seconds of the last browse's end gets that
+browse's bridges, so requests queued behind a browse do not each browse again,
+and nothing browses in the background, so discovery never delays boot or
+capture.
+
+The adapter copies each answer's raw bytes. The host-tested `bridge_discovery`
+module drops goodbyes, unknown TXT versions, malformed names, and answers that
+carry anything but one dialable address, keeps one bridge per instance name,
+and orders them by name. The endpoint answers `503` on the setup network, where
+no bridge can answer, and when mDNS did not start.
+
 ### Device API
 
 `firmware/streamline/src/api.rs` owns device routes, methods, authentication metadata, request and response DTOs, and OpenAPI annotations. The ESP-IDF HTTP adapter registers those declarations and binds them to runtime operations.
@@ -231,7 +248,7 @@ compatibility reader or migration runs at boot.
 | Audio profile catalog | Rust `profiles` model | NVS records, HTTP JSON, generated console shape |
 | PCM frame | [PCM protocol](pcm-protocol.md) | Rust encoder and Python parser, checked byte-for-byte against [conformance vectors](pcm-frame-vectors.json) in both component tests |
 | PCM transport constants | [Machine contract](pcm-transport.json) | Rust and Python constants, mechanically checked by both component tests |
-| Bridge discovery records | [Machine contract](bridge-discovery.json) | Bridge advertiser constants, mechanically checked by bridge tests; the [bridge reference](bridge.md#discovery) describes the records |
+| Bridge discovery records | [Machine contract](bridge-discovery.json) | Bridge advertiser and device browser constants, mechanically checked by both component tests; the [bridge reference](bridge.md#discovery) describes the records |
 | Bridge device-key map | Bridge transport store | Private versioned file with bounded atomic replacement |
 | Release version | [`release-please-config.json`](../release-please-config.json) declares every owner; release-please writes them | `make version-check` requires equality across the version files |
 | User-visible stages | [User journey](user-journey.md) | Console and firmware behavior |

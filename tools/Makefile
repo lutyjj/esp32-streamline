@@ -11,6 +11,8 @@ CAP ?=
 # container stdin, so it never appears in output, arguments or container metadata.
 FLASH_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-full.bin
 DEVICE ?= $(call dotenv,STREAMLINE_DEVICE)
+# A bridge advertising on the device's network, as host:port, for the discovery test.
+SMOKE_BRIDGE ?= $(call dotenv,STREAMLINE_SMOKE_BRIDGE)
 
 CONTAINER_RUN := $(CONTAINER) run --rm \
 	-v "$(CURDIR):/workspace" -v "$(REPO_ROOT):/repo:ro" -v "$(PYTHON_CACHE_VOLUME):/cache" \
@@ -102,5 +104,5 @@ smoke-device: qemu-image
 	$(if $(DEVICE),@{ sed -n 's/^STREAMLINE_ADMIN_KEY=//p' "$(REPO_ROOT)/.env" 2>/dev/null || true; } | $(CONTAINER) run --rm -i \
 		-v "$(CURDIR):/workspace" -w /workspace $(CONTRACT_MOUNT) \
 		-e PYTHONPATH=/workspace/src -e STREAMLINE_SMOKE_TARGET="http://$(DEVICE)" \
-		-e STREAMLINE_ADMIN_KEY_FD=0 \
+		-e STREAMLINE_SMOKE_BRIDGE="$(SMOKE_BRIDGE)" -e STREAMLINE_ADMIN_KEY_FD=0 \
 		$(QEMU_IMAGE) pytest smoke -v --capture=sys,@echo "DEVICE is unset: skipping the API contract suite")

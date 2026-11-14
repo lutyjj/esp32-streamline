@@ -222,6 +222,20 @@ endpoint!(
     responses((status = 200, body = BoardCatalogResponse))
 );
 endpoint!(
+    BRIDGES,
+    get_bridges,
+    Get,
+    get,
+    "/api/bridges",
+    public,
+    summary = "Browse the network for bridges",
+    description = "Browses DNS-SD for `_streamline._tcp` for up to three seconds, keeping the first eight answers; a request within two seconds of the last browse's end gets that browse's bridges. A result suggests a stream target; the device saves nothing. Unavailable on the setup network or when mDNS did not start.",
+    responses(
+        (status = 200, body = BridgesResponse),
+        (status = 503, body = ErrorResponse)
+    )
+);
+endpoint!(
     OPENAPI,
     get_openapi,
     Get,
@@ -564,6 +578,7 @@ pub const ENDPOINTS: &[Endpoint] = &[
     SETTINGS,
     AUDIO_PROFILES,
     BOARDS,
+    BRIDGES,
     OPENAPI,
     SET_WIFI,
     SET_TARGET,
@@ -594,6 +609,11 @@ pub const ENDPOINTS: &[Endpoint] = &[
     FACTORY_RESET,
 ];
 
+/// Reads that run without the control lock: they touch no device
+/// configuration and can block for seconds, which would hold up buttons and
+/// the main loop.
+pub const OUTSIDE_CONTROL: &[Endpoint] = &[BRIDGES];
+
 /// Operations that can restart the device or select another boot slot. The
 /// route table refuses them with `409` while an update owns the boot slots.
 pub const RESTARTING: &[Endpoint] = &[
@@ -618,7 +638,7 @@ mod spec {
     #[derive(OpenApi)]
     #[openapi(
         info(title = "StreamLine device API", version = "2.0.0"),
-        paths(get_status, get_health, get_metrics, get_logs, get_coredump, get_coredump_image, post_coredump_erase, get_settings, get_audio_profiles, get_boards, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
+        paths(get_status, get_health, get_metrics, get_logs, get_coredump, get_coredump_image, post_coredump_erase, get_settings, get_audio_profiles, get_boards, get_bridges, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
         modifiers(&Security)
     )]
@@ -785,6 +805,15 @@ mod tests {
                 "{} must declare 409",
                 endpoint.path
             );
+        }
+    }
+
+    #[test]
+    fn only_public_reads_skip_the_control_lock() {
+        for endpoint in OUTSIDE_CONTROL {
+            assert!(ENDPOINTS.contains(endpoint), "{}", endpoint.path);
+            assert_eq!(endpoint.method, HttpMethod::Get, "{}", endpoint.path);
+            assert!(!endpoint.auth, "{}", endpoint.path);
         }
     }
 

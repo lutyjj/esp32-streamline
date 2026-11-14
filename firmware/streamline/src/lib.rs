@@ -11,6 +11,7 @@ pub mod api;
 pub mod auth;
 pub mod board;
 pub mod boot_health;
+pub mod bridge_discovery;
 #[cfg(any(test, target_os = "espidf"))]
 mod buffered_writer;
 pub mod button;

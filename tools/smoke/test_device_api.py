@@ -10,6 +10,7 @@ emulator can produce lives in `test_qemu_device.py` behind the `emulated` marker
 
 import dataclasses
 import json
+import os
 import re
 
 import pytest
@@ -68,6 +69,29 @@ def test_status_reports_a_valid_mode(device_api: DeviceApi) -> None:
     status = json.loads(body)
     assert status["mode"] in _MODES, f"unknown mode {status['mode']!r}"
     assert isinstance(status["firmware_version"], str) and status["firmware_version"]
+
+
+def test_bridge_discovery_runs_only_on_the_home_network(device_api: DeviceApi) -> None:
+    code, body = device_api.fetch("/api/status")
+    assert code == 200
+    mode = json.loads(body)["mode"]
+
+    code, body = device_api.fetch("/api/bridges")
+
+    expected = os.environ.get("STREAMLINE_SMOKE_BRIDGE", "")
+    if mode != "provisioned":
+        assert code == 503, f"{mode} discovery answered HTTP {code}: {body[:200]!r}"
+        assert not expected, f"a device in {mode} mode cannot discover {expected}"
+        return
+    assert code == 200, f"discovery answered HTTP {code}: {body[:200]!r}"
+    bridges = json.loads(body)["bridges"]
+    if expected:
+        found = {f"{bridge['host']}:{bridge['port']}" for bridge in bridges}
+        assert expected in found, f"{expected} is not among the discovered bridges {sorted(found)}"
+    for bridge in bridges:
+        assert set(bridge) == {"name", "host", "port", "http_port"}, bridge
+        assert bridge["name"] and 0 < bridge["port"] <= 65535, bridge
+        assert re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", bridge["host"]), bridge
 
 
 def test_health_status_code_tracks_the_verdict(device_api: DeviceApi) -> None:

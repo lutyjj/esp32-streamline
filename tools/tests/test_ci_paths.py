@@ -26,7 +26,7 @@ class CiPathOwnershipTests(unittest.TestCase):
             "ha-addon/DOCS.md": {"ha-addon", "repository"},
             "tools/README.md": {"repository", "tools"},
             "docs/pcm-protocol.md": {"bridge", "firmware", "repository"},
-            "docs/bridge-discovery.json": {"bridge", "repository"},
+            "docs/bridge-discovery.json": {"bridge", "firmware", "repository"},
             "docs/openapi.json": {"api_contract", "console", "console_e2e", "qemu_smoke", "repository"},
             "tools/Dockerfile": {"qemu_smoke", "tools"},
             "tools/uv.lock": {"qemu_smoke", "repository", "tools"},

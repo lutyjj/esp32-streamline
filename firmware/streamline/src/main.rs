@@ -25,7 +25,7 @@ use streamline_firmware::{
         buttons, codec,
         http::{self, ApiState},
         logs,
-        mdns::MdnsAdvertisement,
+        mdns::Mdns,
         nvs::ConfigStore,
         ota,
         random::EspRandom,
@@ -147,10 +147,10 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     }
 
     let mdns = if mode == Mode::Provisioned {
-        match MdnsAdvertisement::start(&mdns_hostname, &config.device_name) {
-            Ok(advertisement) => Some(Arc::new(Mutex::new(advertisement))),
+        match Mdns::start(&mdns_hostname, &config.device_name) {
+            Ok(mdns) => Some(Arc::new(Mutex::new(mdns))),
             Err(error) => {
-                log::warn!("mDNS advertisement failed: {error:#}");
+                log::warn!("mDNS start failed: {error:#}");
                 None
             }
         }

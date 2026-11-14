@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-use crate::{board::Board, health::HealthReport};
+use crate::{board::Board, bridge_discovery::DiscoveredBridge, health::HealthReport};
 
 use super::requests::AutoUpdateScheduleRequest;
 
@@ -48,6 +48,20 @@ impl Ack {
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct ErrorResponse<'a> {
     pub error: &'a str,
+}
+
+/// Bridges one network browse found, in the order the console lists them.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "api-spec",
+    schema(example = json!({"bridges": [
+        {"name": "StreamLine Bridge", "host": "192.0.2.20", "port": 39000, "http_port": 8088},
+        {"name": "StreamLine Bridge-2", "host": "192.0.2.21", "port": 39000, "http_port": 8088}
+    ]}))
+)]
+pub struct BridgesResponse {
+    pub bridges: Vec<DiscoveredBridge>,
 }
 
 /// The setup network's join credentials. The password is a secret with no

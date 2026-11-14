@@ -48,7 +48,9 @@ The bridge advertises its PCM listener over multicast DNS service discovery
 (mDNS, RFC 6762, and DNS-SD, RFC 6763), so a device can offer it during
 setup. The advertisement is a hint: a device streams only to the target its
 owner saves. [`bridge-discovery.json`](bridge-discovery.json) owns the
-machine-readable values, and bridge tests compare its constants to them.
+machine-readable values, and bridge and firmware tests compare their constants
+to them. A device browses for the record only when asked, through
+`GET /api/bridges` ([architecture](architecture.md#bridge-discovery)).
 
 | Record | Value |
 | --- | --- |

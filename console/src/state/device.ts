@@ -105,6 +105,19 @@ export const passthroughLocked = computed<string | null>(() => {
   }
   return null;
 });
+/**
+ * What a local analog output fault asks of the owner. Recovery cannot start a
+ * codec, so there the retry waits for the home network.
+ */
+export function passthroughFaultAdvice(
+  mode: StatusResponse['mode'] | undefined,
+  enabled: boolean,
+): string {
+  if (mode === 'recovery') return 'StreamLine retries it once it is back on your Wi-Fi.';
+  return enabled
+    ? 'Turn analog passthrough off, then on again to retry.'
+    : 'Turn analog passthrough on to retry.';
+}
 /** Provisioned but no bridge configured yet: capture runs, nothing streams. */
 export const noBridge = computed(
   () =>

@@ -1,6 +1,8 @@
 import { render } from 'preact';
 import { describe, expect, it } from 'vitest';
 import { AnalogPassthrough } from '../src/components/AnalogPassthrough';
+import { deviceStatus } from '../src/mocks/fixtures';
+import { status as device } from '../src/state/device';
 
 const off = { enabled: false, active: false, fault: null };
 
@@ -53,6 +55,25 @@ describe('AnalogPassthrough', () => {
     expect(host.textContent).toContain('codec write failed');
     expect(host.textContent).toContain('Turn analog passthrough off, then on again to retry.');
     expect(host.querySelector<HTMLInputElement>('input[role="switch"]')?.checked).toBe(true);
+  });
+
+  it('defers a fault retry in recovery instead of offering one it refuses', () => {
+    // Recovery can turn a faulted route off but cannot start a codec to turn it on.
+    device.value = deviceStatus({ mode: 'recovery' });
+    const host = document.createElement('div');
+    render(
+      <AnalogPassthrough
+        capability={{ output_line: 2, label: 'output jack' }}
+        status={{ enabled: true, active: false, fault: 'codec setup failed' }}
+        writable
+        locked={null}
+      />,
+      host,
+    );
+    device.value = null;
+
+    expect(host.textContent).toContain('retries it once it is back on your Wi-Fi');
+    expect(host.textContent).not.toContain('on again');
   });
 
   it('offers a retry after a failed off command', () => {

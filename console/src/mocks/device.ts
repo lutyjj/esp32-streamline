@@ -437,7 +437,8 @@ export class FakeDevice {
     if (!ssid) return reject(400, 'ssid must not be empty');
     if (body.admin_key) this.adminKey = body.admin_key;
     this.config.ssid = ssid;
-    if (body.target_host) {
+    // An absent target keeps the stored one; an empty host clears it.
+    if (body.target_host !== undefined) {
       this.config.target_host = body.target_host;
       this.config.target_port = num(body.target_port) ?? this.config.target_port;
     }

@@ -16,6 +16,15 @@
 /// long line is usually a formatted error whose beginning carries the fact.
 pub const MAX_LINE_BYTES: usize = 240;
 
+/// Log target for a line that reaches the serial port and never the capture,
+/// such as the setup-network password a DIY build reads from its monitor.
+pub const SERIAL_ONLY: &str = "serial-only";
+
+/// Whether the capture keeps a Rust record. A captured line is served by the API.
+pub fn captures(record: &log::Record<'_>) -> bool {
+    record.target() != SERIAL_ONLY
+}
+
 /// Format a Rust record into caller-owned storage, truncating without allocation.
 pub fn render_record(record: &log::Record<'_>, timestamp: u32, output: &mut [u8]) -> usize {
     use std::io::Write;
@@ -329,6 +338,21 @@ mod tests {
             &mut line,
         );
         assert_eq!(&line[..length], b"W (42) capture: read failed after 200 ms");
+    }
+
+    #[test]
+    fn only_a_serial_only_record_stays_out_of_the_capture() {
+        let captured = |target: &str| {
+            captures(
+                &log::Record::builder()
+                    .target(target)
+                    .args(format_args!("setup network password: \"…\""))
+                    .build(),
+            )
+        };
+        assert!(!captured(SERIAL_ONLY));
+        assert!(captured("streamline_firmware"));
+        assert!(captured("serial"));
     }
 
     #[test]

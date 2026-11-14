@@ -703,11 +703,15 @@ fn start_setup(
         Some(config) => wifi::start_recovery_ap(wifi, setup_network, protection, config)?,
         None => wifi::start_setup_ap(wifi, setup_network, protection)?,
     };
-    // The one place a DIY build reads its setup password: `espflash monitor`
-    // and the WebFlasher's log view both show this line.
     log::info!(
-        "setup network ready: SSID \"{}\" password \"{}\" — join it and open http://192.168.71.1/",
-        setup_network.ssid,
+        "setup network ready: SSID \"{}\"; join it and open http://192.168.71.1/",
+        setup_network.ssid
+    );
+    // The one place a DIY build reads its setup password: `espflash monitor`
+    // and the WebFlasher's log view show it, and the API-served log does not.
+    log::info!(
+        target: streamline_firmware::logs::SERIAL_ONLY,
+        "setup network password: \"{}\"",
         setup_network.password
     );
     if protection == wifi::ApProtection::OpenThisBoot {

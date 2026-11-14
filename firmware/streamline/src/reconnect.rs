@@ -5,14 +5,15 @@
 
 use std::time::Duration;
 
-/// Wait this long after recovery starts before the first station retry, giving
-/// a home router that is only moments behind the device time to finish booting.
+/// Wait this long after the boot loop starts before the first station retry,
+/// giving a home router that powered up with the device time to finish booting.
 pub const RECONNECT_INITIAL_DELAY: Duration = Duration::from_secs(30);
 /// Spacing between station retries.
 pub const RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
 /// How long a provisioned device retries a lost station link in place. After
-/// that it restarts, and boot opens the setup network beside the retries while
-/// the network stays absent. ESPHome's fallback hotspot defaults to 90 seconds.
+/// that it restarts, because the mode is fixed at boot, and boot opens the
+/// setup network beside the retries while the network stays absent. ESPHome
+/// raises its fallback hotspot after the same 90 seconds, without a restart.
 pub const RECOVERY_AFTER: Duration = Duration::from_secs(90);
 
 /// Monotonic schedule for background station retries.
@@ -27,7 +28,7 @@ pub struct ReconnectTimer {
 
 impl ReconnectTimer {
     /// Reserve a due station retry. The first attempt waits
-    /// [`RECONNECT_INITIAL_DELAY`] after recovery starts; later attempts are
+    /// [`RECONNECT_INITIAL_DELAY`] after the boot loop starts; later attempts are
     /// spaced by [`RECONNECT_INTERVAL`]. Returns `true` at most once per window,
     /// so the boot loop makes exactly one attempt per due tick.
     pub fn take_due(&mut self, now: Duration) -> bool {

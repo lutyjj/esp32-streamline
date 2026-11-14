@@ -1910,6 +1910,51 @@ select:disabled {
   border-color: var(--accent);
   background: var(--inset);
 }
+.bridgefinder {
+  margin-bottom: 14px;
+}
+.bridgefinder .wizentry {
+  margin-bottom: 8px;
+}
+.bridgelist {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bridgerow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 9px 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  font-size: 13.5px;
+}
+.bridgerow.chosen {
+  border-color: var(--accent);
+  background: var(--inset);
+}
+.bridgerow-copy {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.bridgerow-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.bridgerow-address {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.bridgerow .btn,
+.bridgerow .chip {
+  flex: none;
+}
 .wizentry {
   display: flex;
   align-items: center;

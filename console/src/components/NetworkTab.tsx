@@ -14,6 +14,7 @@ import {
 import { handoffMessage, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
+import { BridgeFinder } from './BridgeFinder';
 import { Button } from './Button';
 import { Chip } from './Chip';
 import { Disclosure } from './Disclosure';
@@ -242,6 +243,18 @@ export function NetworkTab({
           primary={noBridge.value}
           disabled={!writable}
           onAction={onSetupBridge}
+        />
+      )}
+
+      {!setup && (
+        <BridgeFinder
+          host={targetHost}
+          port={targetPort}
+          disabled={!writable}
+          onUse={(bridge) => {
+            setTargetHost(bridge.host);
+            setTargetPort(String(bridge.port));
+          }}
         />
       )}
 

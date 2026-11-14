@@ -1,11 +1,13 @@
 import { useState } from 'preact/hooks';
-import { setTarget } from '../lib/api';
+import { type DiscoveredBridge, setTarget } from '../lib/api';
 import { consoleAddress } from '../lib/consoleAddress';
 import { useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
-import { bridgeConnection, config } from '../state/device';
+import { bridgeConnection, config, onSetupNetwork } from '../state/device';
+import { consoleAddressAfterUse } from '../state/discovery';
 import { rebootWait } from '../state/rebootWait';
 import { setupWizardRequested } from '../state/transport';
+import { BridgeFinder } from './BridgeFinder';
 import { FlowDialog, type FlowStep } from './FlowDialog';
 import { ActionState } from './Transact';
 
@@ -77,6 +79,8 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
   const [port, setPort] = useState(String(c?.target_port || BRIDGE_PORT));
   const [saved, setSaved] = useState(false);
   const [consoleUrl, setConsoleUrl] = useState('');
+  /** The console address the last Use filled in, which a later Use may replace. */
+  const [filledConsoleUrl, setFilledConsoleUrl] = useState('');
   const handoffUrl = consoleAddress(consoleUrl);
   const connect = useTransact();
 
@@ -97,6 +101,18 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
       },
       { busyText: 'Saving…', reboots: 'the stream target' },
     );
+  }
+
+  /** Fill the target from a discovered bridge, and its console address unless typed. */
+  function use(bridge: DiscoveredBridge) {
+    setHost(bridge.host);
+    setPort(String(bridge.port));
+    setSaved(false);
+    const filled = consoleAddressAfterUse(consoleUrl, filledConsoleUrl, bridge);
+    if (filled !== null) {
+      setConsoleUrl(filled);
+      setFilledConsoleUrl(filled);
+    }
   }
 
   /** Continue straight into the guided encryption setup sheet. */
@@ -150,6 +166,9 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
       body: (
         <div>
           <h3>Point StreamLine at your bridge</h3>
+          {!onSetupNetwork.value && (
+            <BridgeFinder host={host} port={port} disabled={!writable} searchOnOpen onUse={use} />
+          )}
           <div class="body">
             <p>{choice.hint}</p>
           </div>

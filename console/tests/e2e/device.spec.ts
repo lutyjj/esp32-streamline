@@ -197,3 +197,41 @@ test('a button action assignment reaches the device and warns when destructive',
     })
     .toBe('factory_reset');
 });
+
+// Stage 2, per docs/user-journey.md: the device offers the bridges it finds on
+// its network. Use fills the target fields and only Save writes them, so
+// typing an address stays possible beside the list.
+test('a discovered bridge fills the stream target and only Save writes it', async ({ page }) => {
+  const target = async () =>
+    (await page.evaluate(async () => (await fetch('/api/settings')).json())).target_host;
+  await page.goto('/#/settings/bridge');
+  await unlock(page);
+
+  await page.getByRole('button', { name: 'Find bridges' }).click();
+  await expect(page.getByText('Found 2 bridges on your network.')).toBeVisible();
+  await page.getByRole('button', { name: 'Use StreamLine Bridge-2' }).click();
+
+  await expect(page.getByLabel('Host or IP')).toHaveValue('192.0.2.21');
+  await expect(page.getByText('Entered below')).toBeVisible();
+  expect(await target()).not.toBe('192.0.2.21');
+  await page.getByRole('button', { name: 'Save & restart' }).click();
+  await expect.poll(target).toBe('192.0.2.21');
+});
+
+// The bridge guide searches as it asks for the bridge, and a bridge that
+// advertises its console port also fills the player handoff's console address.
+test('the bridge guide offers found bridges and their console address', async ({ page }) => {
+  await page.goto('/#/settings/bridge');
+  await unlock(page);
+  await page.getByRole('button', { name: 'Guide me' }).click();
+  const guide = page.getByRole('dialog', { name: 'Bridge setup' });
+  await guide.getByRole('button', { name: 'Continue' }).click();
+
+  await guide.getByRole('button', { name: 'Use StreamLine Bridge-2' }).click();
+  await expect(guide.getByLabel('Host or IP')).toHaveValue('192.0.2.21');
+  await guide.getByRole('button', { name: 'Save & connect' }).click();
+  await guide.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(guide.getByLabel('Bridge console address')).toHaveValue('http://192.0.2.21:8088/');
+  await expect(guide.getByRole('link', { name: 'Open bridge to listen' })).toBeVisible();
+});

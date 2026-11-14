@@ -65,6 +65,16 @@ when no destination is configured. The guide explains Home Assistant, Docker,
 or an existing installation, then saves the target. Settings → Connect a player also provides
 the host and port form; both use the same API.
 
+When the guide asks for the bridge, the device searches its network for about
+three seconds and the guide lists the bridges that answer, up to eight, by
+name and address. Settings → Connect a player runs the same search on request. Use fills the host and
+port and never saves them. A listed bridge is a hint, since any host on the
+network can advertise one, so the owner compares the address before saving.
+No answer, or a failed search, names the manual fallback: a bridge behind port
+mapping or a network that blocks multicast stays reachable by its typed
+address. The device searches only from the home network, so the setup network
+offers the form alone.
+
 After saving, the device distinguishes restarting, quiet input, connecting, and
 sending. Only observed transmission supports Sending audio. Open the bridge
 to verify reception, then copy the playback URL from Listen into an HTTP WAV

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   beginRebootWait,
+  REBOOT_OVERDUE_TEXT,
   REBOOT_SETTLE_MS,
   REBOOT_WARN_POLLS,
+  rebootOverdue,
   rebootWait,
   rebootWaitTick,
 } from '../src/state/rebootWait';
@@ -73,11 +75,18 @@ describe('reboot-wait narration', () => {
     expect(toasts.value.map((t) => t.text)).toEqual(['Back online — encrypted streaming applied']);
   });
 
-  it('warns when the reboot is overdue', () => {
+  it('warns once the reboot is overdue and stops hiding lost contact', () => {
     beginRebootWait('the factory reset');
     toasts.value = [];
-    for (let i = 0; i < REBOOT_WARN_POLLS; i += 1) rebootWaitTick(true);
-    expect(toasts.value.some((t) => t.text.includes('Still offline'))).toBe(true);
+    for (let i = 1; i < REBOOT_WARN_POLLS; i += 1) expect(rebootWaitTick(true)).toBe(true);
+    expect(rebootOverdue.value).toBe(false);
+
+    expect(rebootWaitTick(true)).toBe(false);
+    expect(rebootOverdue.value).toBe(true);
+    expect(toasts.value.map((t) => t.text)).toEqual([REBOOT_OVERDUE_TEXT]);
+    // A late return still ends the wait.
+    expect(rebootWaitTick(false)).toBe(true);
+    expect(rebootWait.value).toBeNull();
   });
 
   it('does nothing outside a wait', () => {

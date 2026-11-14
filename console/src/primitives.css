@@ -1909,6 +1909,9 @@ select:disabled {
 .wizhint.ok {
   color: var(--good);
 }
+.wizhint.warn {
+  color: var(--warn);
+}
 .choicelist {
   display: grid;
   gap: 8px;

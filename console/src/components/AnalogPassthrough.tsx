@@ -1,7 +1,7 @@
 import type { AnalogPassthroughCapabilityStatus, AnalogPassthroughStatus } from '../lib/api';
 import { setAnalogPassthrough } from '../lib/api';
 import { useTransact } from '../lib/hooks';
-import { loadDeviceSettings } from '../state/device';
+import { status as device, loadDeviceSettings, passthroughFaultAdvice } from '../state/device';
 import { Toggle } from './Toggle';
 import { ActionState } from './Transact';
 
@@ -46,10 +46,7 @@ export function AnalogPassthroughToggle({
       />
       {status.fault && (
         <p class="callout bad section-subsection-callout">
-          {status.fault}{' '}
-          {status.enabled
-            ? 'Turn analog passthrough off, then on again to retry.'
-            : 'Turn analog passthrough on to retry.'}
+          {status.fault} {passthroughFaultAdvice(device.value?.mode, status.enabled)}
         </p>
       )}
       {transact.state.text && <ActionState state={transact.state} />}

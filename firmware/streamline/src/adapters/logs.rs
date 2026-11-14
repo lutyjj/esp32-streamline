@@ -1,8 +1,9 @@
 //! Capture of the device's own log output into memory the API can serve.
 //!
 //! Native ESP-IDF logs enter through its `vprintf` hook. Rust records enter
-//! through a `log::Log` adapter that also forwards them to the SDK's logger.
-//! Both paths retain bounded lines for devices without a serial connection.
+//! through a `log::Log` adapter that also forwards them to the SDK's logger;
+//! [`crate::logs::SERIAL_ONLY`] records reach only that logger. Both paths
+//! retain bounded lines for devices without a serial connection.
 //!
 //! The buffers use RTC slow memory, separate from the audio and network heap.
 //! The current buffer sits in `.rtc_noinit`, excluded from startup zeroing.
@@ -78,7 +79,9 @@ impl Log for CapturedLogger {
 
     fn log(&self, record: &Record<'_>) {
         if self.enabled(record.metadata()) {
-            capture_record(record);
+            if crate::logs::captures(record) {
+                capture_record(record);
+            }
             self.0.log(record);
         }
     }

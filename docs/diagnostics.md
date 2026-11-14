@@ -77,6 +77,9 @@ into the next boot.
 - **Anything after a power cycle.** Retention across a restart relies on RAM
   the reset does not clear. Pulling power clears it, so `previous` is `null`
   after one.
+- **The setup-network password.** Setup mode prints it for serial readers
+  such as `espflash monitor` and the WebFlasher, on a line the log never
+  keeps, so a log read cannot reveal it.
 - **The boot before setup mode.** An unconfigured device serves its log
   without a key, and the boot before it may have run configured, as one does
   before a factory reset. Setup mode erases those lines, so `previous` is

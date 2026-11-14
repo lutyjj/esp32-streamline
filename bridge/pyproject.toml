@@ -17,6 +17,7 @@ dependencies = [
   # resolves it, so this pin only names the contract we depend on.
   "h11>=0.16,<1",
   "uvicorn>=0.52.1,<1",
+  "zeroconf>=0.154.0,<1",
 ]
 
 [project.scripts]

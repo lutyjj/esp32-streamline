@@ -10,10 +10,16 @@ One add-on option unlocks every bridge control: set a private `api_token` of
 at least 16 characters, restart the add-on once, and use that token to unlock
 the Web UI. Encryption and recordings both need it.
 
-Point each device at the host's LAN IP address, not a reverse-proxy hostname.
-The device opens a raw TCP socket that an HTTP reverse proxy does not forward,
-so a proxy in front of Home Assistant carries the web UI but never the device's
-audio connection.
+The add-on runs on the host network and advertises itself over mDNS under its
+`bridge_name` option, `StreamLine Bridge` by default, so devices on the same
+network can offer it during setup ([discovery](../docs/bridge.md#discovery)).
+Its ports are fixed at `39000` and `8088`: Home Assistant does not remap ports
+of an add-on on the host network.
+
+When you type a target instead, point each device at the host's LAN IP
+address, not a reverse-proxy hostname. The device opens a raw TCP socket that
+an HTTP reverse proxy does not forward, so a proxy in front of Home Assistant
+carries the web UI but never the device's audio connection.
 
 ## Play it in Music Assistant
 
@@ -79,7 +85,7 @@ recording, start it, then play the source.
 
 The add-on serves this page through Home Assistant ingress, so it opens on the
 same host and port as Home Assistant and works behind a reverse proxy. Port
-`8088` stays published for Music Assistant and direct LAN access.
+`8088` stays open for Music Assistant and direct LAN access.
 
 The add-on stores WAV files in its private working directory. They survive
 add-on restarts and updates, but Home Assistant backups exclude them to avoid

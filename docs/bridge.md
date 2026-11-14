@@ -42,6 +42,35 @@ fills the learned playout target before replacing silence. The
 source silence or rebuffering. Slow HTTP clients
 still face the write deadline and bounded output queue.
 
+## Discovery
+
+The bridge advertises its PCM listener over multicast DNS service discovery
+(mDNS, RFC 6762, and DNS-SD, RFC 6763), so a device can offer it during
+setup. The advertisement is a hint: a device streams only to the target its
+owner saves. [`bridge-discovery.json`](bridge-discovery.json) owns the
+machine-readable values, and bridge tests compare its constants to them.
+
+| Record | Value |
+| --- | --- |
+| Service type | `_streamline._tcp` |
+| Instance name | `--bridge-name`, `StreamLine Bridge` by default; a name already on the network gains a `-2` suffix |
+| SRV port | `--tcp-port`, the PCM listener |
+| A | The listener's IPv4 address: `--tcp-bind` when it names one, otherwise the host's address on its default route |
+| TXT `txtvers` | `1`, the TXT format version (RFC 6763 section 6.7) |
+| TXT `http_port` | `--http-port`, the bridge console and API, when `--http-bind` is unspecified or the advertised address |
+
+The bridge announces itself once the PCM listener is bound and sends DNS-SD
+goodbyes when it stops, so browsers drop it at once. It advertises the
+address it has at startup; restart it after that address changes. It does not
+advertise a loopback or hostname `--tcp-bind`, or a host without a default
+route. A network that refuses multicast leaves the bridge serving
+unannounced, with a warning in its log.
+
+Multicast reaches the LAN only from the host's own network. The
+[Compose example](../README.md#2-run-the-bridge) uses host networking and the
+Home Assistant add-on requests it. A bridge behind port mapping still serves;
+its devices need its address typed in.
+
 ## Source lifecycle
 
 A cleartext source is keyed by its TCP peer IPv4 address. An encrypted source
@@ -91,6 +120,7 @@ that artifact to generate a typed client; do not edit generated client files.
 | --- | ---: | --- | --- |
 | `--tcp-port` | 39000 | integer 1..65535 | PCM listener for the selected mode. |
 | `--http-port` | 8088 | integer 1..65535 | HTTP WAV, status, and control listener. |
+| `--bridge-name` | `StreamLine Bridge` | 1 to 60 bytes of UTF-8, no dots or control characters | Name devices list for this bridge when they [discover it](#discovery). |
 | `--transport-state-file` | empty | writable path | Private listener mode and device-key state. Encryption control is disabled when empty. |
 | `--source-allow` | empty | IPv4 addresses | Repeat or comma-separate allowed producer addresses. |
 | `--max-sources` | 8 | integer 1..32 | Maximum retained source pipelines. |
@@ -150,7 +180,7 @@ Home Assistant add-on exposes the URL as `sendspin_server_url` and keeps its
 state in `/data/sendspin`.
 
 One Sendspin client represents one source id and dials the server itself, so
-the bridge needs no multicast or host networking. Its X25519 identity and its
+publishing needs no multicast. Its X25519 identity and its
 pairing store persist in `<state-dir>/<source>/`, so the source keeps its
 Music Assistant identity and pairing across bridge restarts. A cleartext
 source is identified by its IPv4 address, so an address change appears as a

@@ -65,11 +65,13 @@ class BridgeServerTests(unittest.TestCase):
                     )
                     with (
                         patch.object(bridge_server, "parse_args", return_value=args),
+                        patch.object(bridge_server, "advertise") as advertise,
                         patch.object(uvicorn.Server, "run") as run,
                     ):
                         result = bridge_server.main()
 
                     self.assertEqual(result, 1)
+                    advertise.assert_not_called()
                     run.assert_not_called()
         finally:
             blocker.close()
@@ -85,6 +87,7 @@ class BridgeServerTests(unittest.TestCase):
         with (
             patch.object(bridge_server, "parse_args", return_value=args),
             patch.object(bridge_server, "TcpIngestServer", return_value=pcm),
+            patch.object(bridge_server, "advertise", return_value=None),
             patch.object(uvicorn.Server, "run", autospec=True, side_effect=run),
         ):
             result = bridge_server.main()
@@ -99,6 +102,7 @@ class BridgeServerTests(unittest.TestCase):
         with (
             patch.object(bridge_server, "parse_args", return_value=args),
             patch.object(bridge_server, "TcpIngestServer", return_value=pcm),
+            patch.object(bridge_server, "advertise", return_value=None),
             patch.object(uvicorn.Server, "run", autospec=True) as run,
         ):
             result = bridge_server.main()
@@ -139,11 +143,54 @@ class ShutdownOrderTests(unittest.TestCase):
             patch.object(bridge_server, "RecordingStore"),
             patch.object(bridge_server, "RecordingService", return_value=recordings),
             patch.object(bridge_server, "SendspinService", return_value=sendspin),
+            patch.object(bridge_server, "advertise", return_value=None),
             patch.object(uvicorn.Server, "run"),
         ):
             self.assertEqual(bridge_server.main(), 0)
 
         self.assertEqual(calls, ["recordings", "sendspin"])
+
+    def test_the_listener_is_advertised_only_while_it_accepts_producers(self) -> None:
+        calls: list[str] = []
+        pcm = MagicMock()
+        pcm.start.side_effect = lambda **_kwargs: calls.append("listen")
+        pcm.close.side_effect = lambda: calls.append("close listener")
+        pcm.failure = None
+        advertisement = MagicMock()
+        advertisement.close.side_effect = lambda: calls.append("withdraw")
+        args = parse_args(["--bridge-name", "Den", "--tcp-port", "39001", "--http-port", "8089"])
+
+        def advertise(name: str, tcp_bind: str, tcp_port: int, http_bind: str, http_port: int) -> MagicMock:
+            calls.append(f"advertise {name} {tcp_bind}:{tcp_port} {http_bind}:{http_port}")
+            return advertisement
+
+        with (
+            patch.object(bridge_server, "parse_args", return_value=args),
+            patch.object(bridge_server, "TcpIngestServer", return_value=pcm),
+            patch.object(bridge_server, "advertise", side_effect=advertise),
+            patch.object(uvicorn.Server, "run", side_effect=lambda: calls.append("serve")),
+        ):
+            self.assertEqual(bridge_server.main(), 0)
+
+        self.assertEqual(
+            calls, ["listen", "advertise Den 0.0.0.0:39001 0.0.0.0:8089", "serve", "withdraw", "close listener"]
+        )
+
+
+class BridgeNameTests(unittest.TestCase):
+    def test_a_name_is_trimmed_and_fits_one_dns_label(self) -> None:
+        from streamline_bridge.options import validate_args
+
+        self.assertEqual(validate_args(parse_args([])).bridge_name, "StreamLine Bridge")
+        self.assertEqual(validate_args(parse_args(["--bridge-name", "  Wohnzimmer  "])).bridge_name, "Wohnzimmer")
+        self.assertEqual(validate_args(parse_args(["--bridge-name", "é" * 30])).bridge_name, "é" * 30)
+
+    def test_empty_overlong_and_control_character_names_are_rejected(self) -> None:
+        from streamline_bridge.options import validate_args
+
+        for value in ("", "   ", "é" * 30 + "x", "Living.Room", "Line\nbreak", "Bell\x07"):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                validate_args(parse_args(["--bridge-name", value]))
 
 
 class PublicUrlTests(unittest.TestCase):

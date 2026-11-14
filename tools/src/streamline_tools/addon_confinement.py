@@ -7,6 +7,7 @@ import os
 import signal
 import socket
 import ssl
+import struct
 import subprocess
 import time
 from collections.abc import Callable, Iterator
@@ -37,6 +38,20 @@ def sendspin_client_id() -> str | None:
     """Return the published Sendspin client id of the test source, once it exists."""
     sources = api("GET", "/api/sendspin")["sources"]
     return next((str(source["client_id"]) for source in sources if source["source"] == "127.0.0.1"), None)
+
+
+def answers_mdns_browse() -> bool:
+    """Ask for the bridge service the way a one-shot DNS-SD browser does, from an ephemeral port."""
+    name = b"".join(bytes([len(label)]) + label for label in (b"_streamline", b"_tcp", b"local")) + b"\0"
+    query = struct.pack("!6H", 0, 0, 1, 0, 0, 0) + name + struct.pack("!2H", 12, 1)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as browser:
+        browser.settimeout(1)
+        browser.sendto(query, ("224.0.0.251", 5353))
+        try:
+            answer = browser.recv(9000)
+        except TimeoutError:
+            return False
+    return b"StreamLine Bridge" in answer
 
 
 def wait_for(predicate: Callable[[], bool]) -> None:
@@ -104,6 +119,7 @@ def main() -> None:
     frames = {vector["name"]: bytes.fromhex(vector["frame_hex"]) for vector in vectors}
     payload_size = next(vector["payload_bytes"] for vector in vectors if vector["name"] == "full_frame")
     with running_addon():
+        wait_for(answers_mdns_browse)
         api("PUT", f"/api/transport/keys/{KEY_ID}", {"psk": "34" * 32})
         with socket.create_connection(("127.0.0.1", 39000), timeout=3) as producer:
             producer.sendall(frames["sequence_zero"])
@@ -132,8 +148,8 @@ def main() -> None:
             if sendspin_client_id() != client_id:
                 raise RuntimeError("Sendspin client identity did not survive restart")
     print(
-        "AppArmor enforced: startup, key, recording and Sendspin identity persistence, "
-        "CA certificates, download, shutdown and denials passed"
+        "AppArmor enforced: startup, mDNS advertisement, key, recording and Sendspin identity "
+        "persistence, CA certificates, download, shutdown and denials passed"
     )
 
 

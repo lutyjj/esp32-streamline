@@ -24,9 +24,7 @@ services:
     volumes:
       - recordings:/recordings
       - transport-data:/data
-    ports:
-      - "39000:39000/tcp"
-      - "8088:8088/tcp"
+    network_mode: host
 
 volumes:
   recordings:

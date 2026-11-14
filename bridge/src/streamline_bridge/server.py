@@ -9,6 +9,7 @@ from pathlib import Path
 
 import uvicorn
 
+from streamline_bridge.discovery import BridgeAdvertisement, advertise
 from streamline_bridge.http import make_app
 from streamline_bridge.http_ingress import ProgressDeadlineH11Protocol
 from streamline_bridge.options import parse_args, validate_args
@@ -106,8 +107,10 @@ def main() -> int:
         )
     )
     result = 0
+    advertisement: BridgeAdvertisement | None = None
     try:
         pcm_server.start(on_failure=lambda _exc: setattr(server, "should_exit", True))
+        advertisement = advertise(args.bridge_name, args.tcp_bind, args.tcp_port, args.http_bind, args.http_port)
         if sendspin is not None:
             sendspin.start()
             logger.info("publishing sources to Sendspin server %s", args.sendspin_server_url)
@@ -121,6 +124,8 @@ def main() -> int:
     except KeyboardInterrupt:
         logger.info("stopped")
     finally:
+        if advertisement is not None:
+            advertisement.close()
         pcm_server.close()
         if recordings is not None:
             recordings.shutdown()

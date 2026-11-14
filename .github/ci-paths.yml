@@ -32,6 +32,7 @@ bridge:
   - 'bridge/**'
   - 'console/**'
   - 'docs/bridge-openapi.json'
+  - 'docs/bridge-discovery.json'
   - 'docs/pcm-protocol.md'
   - 'docs/pcm-transport.json'
   - 'docs/pcm-frame-vectors.json'

@@ -787,6 +787,7 @@ dependencies = [
     { name = "h11" },
     { name = "tenacity" },
     { name = "uvicorn" },
+    { name = "zeroconf" },
 ]
 
 [package.dev-dependencies]
@@ -805,6 +806,7 @@ requires-dist = [
     { name = "h11", specifier = ">=0.16,<1" },
     { name = "tenacity", specifier = ">=9.2.1,<10" },
     { name = "uvicorn", specifier = ">=0.52.1,<1" },
+    { name = "zeroconf", specifier = ">=0.154.0,<1" },
 ]
 
 [package.metadata.requires-dev]

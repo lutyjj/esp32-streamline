@@ -30,6 +30,7 @@ staying cloud-free.
 | PCM device PSK | Plaintext in NVS, write-only and independently random | Recoverable with physical flash access until factory reset purges it; never returned by a read API |
 | Bridge transport state (mode + key map) | Private `0600` atomic file; mutations gated by the bridge API token | Bridge host access exposes enrolled device keys; a token holder can switch the listener mode or replace keys |
 | Bridge WAV (`:8088`) | Unauthenticated | Anyone on the LAN can listen |
+| Bridge mDNS advertisement (`5353/udp`) | Announces the PCM port, one IPv4 address, and the HTTP port when HTTP listens on that address | Any LAN host learns where the bridge listens, as a port scan would. Any LAN host can also advertise a bridge under any name, including one that pushes the real bridge's name to a `-2` suffix, so compare the address before saving a target. See [discovery](bridge.md#discovery). |
 | Bridge recording API (`:8088`) | Disabled without writable storage; gated by the bridge API token when enabled | Token holder can record, list, download, and delete captures |
 | Bridge recording directory | Dedicated writable volume; link-safe file operations and validated metadata | A storage peer can delete or corrupt recordings, but cannot redirect bridge file access outside the directory |
 | Bridge Sendspin client (outbound to Music Assistant) | Disabled without a server URL; Noise-encrypted WebSocket; the input stays off until Music Assistant pairs it | A token holder can create a pairing token, and anyone holding that token can pair the source to a Sendspin server and receive its audio when that server requests it |
@@ -160,8 +161,8 @@ check: it validates the image against the `sha256` the caller supplies from
 ## Bridge
 
 - Keep ports `39000` and `8088` on a trusted network; never expose them
-  directly. The Home Assistant add-on exposes the same ports on the Home
-  Assistant host.
+  directly. The Home Assistant add-on binds the same ports on the Home
+  Assistant host's network.
 - Set `--source-allow <ESP32 IPv4>` (or `STREAMLINE_SOURCE_ALLOW`) to reject
   unexpected PCM sources. In the Home Assistant add-on, set `source_allow`.
   This is not a firewall replacement; restrict inbound at the boundary.
@@ -203,19 +204,25 @@ check: it validates the image against the `sha256` the caller supplies from
 - The standalone container runs as an unprivileged fixed user. Its supported
   Compose configuration makes the image filesystem read-only, drops every
   Linux capability, sets `no-new-privileges`, and mounts only `/tmp` and the
-  recording volume writable.
+  recording volume writable. It shares the host's network so its mDNS
+  advertisement reaches the LAN. Sharing the network namespace also lets the
+  bridge reach services bound to the host's loopback; `--tcp-bind` and
+  `--http-bind` narrow its own listeners.
 - The transport state file must be owned by the bridge process user with mode
   `0600`. The bridge validates both properties before parsing enrolled PSKs.
 - The Home Assistant add-on uses Supervisor-owned `/data` for options and
-  recordings. It maps no additional writable host folder and does not request
-  host networking, devices, privileged mode, the Docker socket, Home Assistant
-  configuration, or the host-wide shared and media folders. Supervisor backups
+  recordings. It requests host networking so its mDNS advertisement reaches
+  the LAN; its listeners then bind on the host's interfaces, and it can reach
+  services bound to the host's loopback, such as Home Assistant itself. It maps no
+  additional writable host folder and does not request devices, privileged
+  mode, the Docker socket, Home Assistant configuration, or the host-wide
+  shared and media folders. Supervisor backups
   exclude `recordings`; restore and uninstall may therefore remove those files.
 - Runtime images pin their Python base image by digest. Dependabot owns digest
   updates so reviewed dependency changes remain mechanical.
 - On AppArmor-enabled hosts, Supervisor applies the add-on's `apparmor.txt`.
   It permits the bundled Python entrypoints, runtime libraries, TCP networking,
-  name resolution, and writes to application state and scratch storage. It does
+  UDP for mDNS, name resolution, and writes to application state and scratch storage. It does
   not grant shell execution or Linux capabilities. Shared runtime abstractions
   also permit access to devices such as `/dev/null` and `/dev/urandom`.
   This is filesystem and process confinement, not an outbound network firewall:

@@ -138,10 +138,10 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
                     <a href={bridgeConsoleUrl} target="_blank" rel="noreferrer">
                       {bridgeConsoleUrl}
                     </a>
-                    {' (Home Assistant users: the add-on’s Web UI).'}
+                    {' (Home Assistant users: the bridge app’s Web UI).'}
                   </>
                 ) : (
-                  ' (Home Assistant users: the add-on’s Web UI).'
+                  ' (Home Assistant users: the bridge app’s Web UI).'
                 )}
               </li>
               <li>

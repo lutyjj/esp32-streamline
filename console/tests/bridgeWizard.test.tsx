@@ -54,7 +54,7 @@ describe('BridgeWizard', () => {
     const host = document.createElement('div');
     render(<BridgeWizard onClose={() => {}} />, host);
 
-    expect(host.textContent).toContain('install ESP32 StreamLine Bridge');
+    expect(host.textContent).toContain('Settings → Apps → Install app');
 
     const docker = host.querySelectorAll<HTMLInputElement>('input[type="radio"]')[1];
     act(() => {

@@ -6,7 +6,7 @@ It owns producer authentication, packet playout, source lifecycle, HTTP client
 fan-out, and an optional lossless recording store. It does not retain source
 pipelines across a restart or identify a device by hostname.
 
-One owner-set **bridge API token** (`STREAMLINE_API_TOKEN`, or the add-on's
+One owner-set **bridge API token** (`STREAMLINE_API_TOKEN`, or the Home Assistant app's
 `api_token` option) authorizes every bridge mutation: the listener mode, the
 device-key map, and recordings. The bridge console unlocks with it once and
 locks all of those controls together.
@@ -20,7 +20,7 @@ locks all of those controls together.
 | `/status` | Bridge version, per-source playout/client statistics, latest PCM levels, and lifecycle state. |
 | `/health` | `200 OK` with `ok` while the required PCM listener is ready; `503` after a listener failure. |
 | `/api/openapi.json` | OpenAPI 3.1 contract generated from the running bridge routes and Pydantic models. |
-| `/` and `/recordings` | Bridge console with live sources and optional recordings. The Home Assistant add-on serves it through ingress. |
+| `/` and `/recordings` | Bridge console with live sources and optional recordings. The Home Assistant app serves it through ingress. |
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 | `/api/transport` | Listener state, enrolled key ids, and authentication counters; never PSKs. |
 | `/api/sendspin` | Music Assistant publishing state of every source; never pairing secrets. |
@@ -70,7 +70,7 @@ unannounced, with a warning in its log.
 
 Multicast reaches the LAN only from the host's own network. The
 [Compose example](../README.md#2-run-the-bridge) uses host networking and the
-Home Assistant add-on requests it. A bridge behind port mapping still serves;
+Home Assistant app requests it. A bridge behind port mapping still serves;
 its devices need its address typed in.
 
 ## Source lifecycle
@@ -138,7 +138,7 @@ that artifact to generate a typed client; do not edit generated client files.
 | `--sendspin-server-url` | empty | `ws://` or `wss://` URL | Music Assistant Sendspin server that receives every source as a Live Input. Publishing is disabled when empty. |
 | `--sendspin-state-dir` | empty | writable directory | Private Sendspin client identities and pairings. Required with `--sendspin-server-url`. |
 
-Home Assistant exposes the owner-facing tuning options. Its add-on adapter
+Home Assistant exposes the owner-facing tuning options. Its app adapter
 owns the private transport-state path and Sendspin state directory, normalizes `source_allow`, and omits
 settings that the Supervisor did not provide.
 
@@ -158,7 +158,7 @@ Encryption is switched from the bridge console (or `PUT /api/transport/mode`),
 not by a deployment option, so the coordinated cutover with the device happens
 in one place. The mode and the enrolled device keys persist together in the
 transport state file: Compose uses the private `transport-data` volume at
-`/data/transport.json`; the Home Assistant add-on uses its
+`/data/transport.json`; the Home Assistant app uses its
 Supervisor-owned `/data` directory. The file is mode `0600`, bounded,
 owned by the bridge process user, validated before its contents are parsed, and
 replaced atomically after each mutation. The bridge fails closed when a mounted
@@ -178,7 +178,7 @@ Assistant player, stereo pair, or group. Set `--sendspin-server-url` to the
 Sendspin server of Music Assistant 2.10.9 or later, normally
 `ws://<music-assistant-host>:8927/sendspin`, and `--sendspin-state-dir` to a
 private writable directory. Publishing requires the bridge API token. The
-Home Assistant add-on exposes the URL as `sendspin_server_url` and keeps its
+Home Assistant app exposes the URL as `sendspin_server_url` and keeps its
 state in `/data/sendspin`.
 
 One Sendspin client represents one source id and dials the server itself, so
@@ -236,9 +236,9 @@ Recording is disabled unless the deployment supplies writable storage. Set
 `--recordings-dir` (or `STREAMLINE_RECORDINGS_DIR`) and the bridge API token
 for a standalone bridge. For Compose, set the directory to `/recordings`; its
 named volume owns the files. Home Assistant users enable recordings in the
-add-on options. Open `http://<bridge-host>:8088/` (or `/recordings`) to
+app configuration. Open `http://<bridge-host>:8088/` (or `/recordings`) to
 record, download, or delete files. Home Assistant opens the same console
-through the add-on's ingress Web UI.
+through the app's ingress Web UI.
 
 [Lossless recordings](recordings.md) defines the user flow, API, resource
 limits, timeline reconstruction, and storage lifecycle.

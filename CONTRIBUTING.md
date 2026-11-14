@@ -29,7 +29,7 @@ every supported system and checks its format.
 
 GitHub-hosted build jobs use Google's `mirror.gcr.io` cache for Docker Hub
 images through the [runner setup action](.github/actions/docker-mirror/action.yml),
-except the release's add-on build, whose BuildKit builder cannot use a Docker
+except the release's Home Assistant app build, whose BuildKit builder cannot use a Docker
 daemon mirror.
 The action clears the runner's default Docker Hub login so the public cache
 accepts anonymous pulls. Other registry credentials are unaffected.
@@ -52,11 +52,11 @@ unlocks with 48 `a`s as the admin key; the bridge with the token
 `make console-e2e` runs the Playwright journey specs against the same
 backends.
 
-The Home Assistant add-on's AppArmor profile has two gates.
+The Home Assistant app's AppArmor profile has two gates.
 `make ha-addon-lint` compiles the profile, which cannot show that a kernel
-enforces it. `make ha-addon-apparmor-test` runs the add-on image under a
-disposable enforcing copy of the profile, so it needs a Docker host with
-AppArmor enabled. `make test` leaves it out; `make ha-addon-check` runs it.
+enforces it. `make ha-addon-apparmor-test` runs the Home Assistant app's
+container image under a disposable enforcing copy of the profile, so it needs
+a Docker host with AppArmor enabled. `make test` leaves it out; `make ha-addon-check` runs it.
 
 ## Pull requests
 

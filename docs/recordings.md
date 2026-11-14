@@ -19,7 +19,7 @@ Serving bridge controls from a device would require the device page to discover
 the bridge's separate HTTP address, cross browser origins, hold the bridge's
 token, and present files from sources other than that device. Keeping the API and page
 on the bridge preserves one origin and one owner. Home Assistant opens the page
-through the add-on's ingress Web UI; standalone users open the bridge URL
+through the app's ingress Web UI; standalone users open the bridge URL
 directly.
 
 ## User flow
@@ -116,11 +116,11 @@ the directory is configured. Compose owns the writable `/recordings` volume
 while the rest of the container stays read-only. Recording stays disabled when
 `STREAMLINE_RECORDINGS_DIR` is empty.
 
-The Home Assistant add-on exposes an opt-in `recordings_enabled` option, which
-requires the add-on's `api_token`. It stores files in its private
+The Home Assistant app exposes an opt-in `recordings_enabled` option, which
+requires the app's `api_token`. It stores files in its private
 `/data/recordings` directory without mapping another writable host folder.
-Recordings survive add-on restarts and updates, but the add-on excludes them
-from Home Assistant backups. Restoring the add-on or uninstalling it removes
+Recordings survive app restarts and updates, but the app excludes them
+from Home Assistant backups. Restoring the app or uninstalling it removes
 these working files. Download every completed WAV that must be retained.
 
 The console stores the token in `sessionStorage`, never in a URL,

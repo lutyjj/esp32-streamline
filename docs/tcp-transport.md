@@ -158,7 +158,7 @@ those devices together or run separate bridge instances during the migration.
 
 Prerequisite: a bridge API token. For standalone Compose set
 `STREAMLINE_API_TOKEN` to at least 16 private characters; for Home Assistant
-set `api_token` in the add-on configuration.
+set `api_token` in the app configuration.
 
 Open the device console and the bridge console:
 

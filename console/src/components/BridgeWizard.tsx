@@ -12,7 +12,7 @@ import { BridgeFinder } from './BridgeFinder';
 import { FlowDialog, type FlowStep } from './FlowDialog';
 import { ActionState, LockReason } from './Transact';
 
-/** Default PCM port the bridge and its Home Assistant add-on both publish. */
+/** Default PCM port the bridge and its Home Assistant app both publish. */
 const BRIDGE_PORT = 39000;
 
 interface BridgeChoice {
@@ -26,15 +26,16 @@ interface BridgeChoice {
 const BRIDGE_CHOICES: BridgeChoice[] = [
   {
     id: 'ha-addon',
-    label: 'Home Assistant add-on',
+    label: 'Home Assistant app',
     setup:
-      'In Home Assistant, open Settings → Add-ons, install ESP32 StreamLine Bridge, and start it.',
+      'In Home Assistant, go to Settings → Apps → Install app and add the StreamLine repository from the installation guide. Then install the ESP32 StreamLine Bridge app and start it.',
     hint: 'Use your Home Assistant address, for example homeassistant.local.',
   },
   {
     id: 'docker',
     label: 'Docker on my own server',
-    setup: 'Run the bridge container on your server. The compose file is in the setup guide.',
+    setup:
+      'Run the bridge container on your server. The compose file is in the installation guide.',
     hint: 'Use the address of the server running the container.',
   },
   {

@@ -161,7 +161,7 @@ check: it validates the image against the `sha256` the caller supplies from
 | Sustained Wi-Fi loss raises the setup AP | by design | Jamming or deauthenticating the home network long enough restarts a provisioned device into recovery, which raises its setup AP and stays there while the denial lasts; alternating denial and release makes it restart repeatedly. The AP keeps its WPA2 password and writes stay behind the admin key, so an attacker gains restarts, not access. [Boot and control flow](architecture.md#boot-and-control-flow) owns the timing. |
 | Setup password appears once in the factory-reset response | by design | The response returns the label credential when the owner resets the device for commissioning. No read endpoint returns it, and rotation means a full flash erase. |
 | Bridge WAV stream is unauthenticated | by design | Front it with an authenticating reverse proxy before sharing beyond a trusted LAN. |
-| Home Assistant recordings are working data, not backup data | by design | Recordings survive restarts and updates, but restore or uninstall removes them. Download every WAV that must be retained. |
+| Home Assistant recordings are working data, not backup data | by design | [Recording storage](../ha-addon/DOCS.md#recording-storage) covers what happens to them on backup, restore, and uninstall. |
 
 ## Bridge
 
@@ -221,8 +221,7 @@ check: it validates the image against the `sha256` the caller supplies from
   services bound to the host's loopback, such as Home Assistant itself. It maps no
   additional writable host folder and does not request devices, privileged
   mode, the Docker socket, Home Assistant configuration, or the host-wide
-  shared and media folders. Supervisor backups
-  exclude `recordings`; restore and uninstall may therefore remove those files.
+  shared and media folders.
 - Runtime images pin their Python base image by digest. Dependabot owns digest
   updates so reviewed dependency changes remain mechanical.
 - On AppArmor-enabled hosts, Supervisor applies the app's `apparmor.txt`.

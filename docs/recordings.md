@@ -119,9 +119,8 @@ while the rest of the container stays read-only. Recording stays disabled when
 The Home Assistant app exposes an opt-in `recordings_enabled` option, which
 requires the app's `api_token`. It stores files in its private
 `/data/recordings` directory without mapping another writable host folder.
-Recordings survive app restarts and updates, but the app excludes them
-from Home Assistant backups. Restoring the app or uninstalling it removes
-these working files. Download every completed WAV that must be retained.
+The app documentation's [recording storage](../ha-addon/DOCS.md#recording-storage)
+section covers what happens to those files on backup, restore, and uninstall.
 
 The console stores the token in `sessionStorage`, never in a URL,
 cookie, file name, status response, or log. A bearer-authenticated request

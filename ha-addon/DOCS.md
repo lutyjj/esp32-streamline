@@ -88,14 +88,16 @@ The app serves this page through Home Assistant ingress, so it opens on the
 same host and port as Home Assistant and works behind a reverse proxy. Port
 `8088` stays open for Music Assistant and direct LAN access.
 
+Recording preserves the analog input as 48 kHz, 16-bit stereo PCM. It is not a
+bit-perfect CD extraction and does not split tracks or fetch metadata.
+
+### Recording storage
+
 The app stores WAV files in its private working directory. They survive
 app restarts and updates, but Home Assistant backups exclude them to avoid
 putting multi-gigabyte captures in routine backups. Restoring or uninstalling
 the app removes these files. Download every completed WAV you want to keep,
 then delete the bridge copy from the recording page.
-
-Recording preserves the analog input as 48 kHz, 16-bit stereo PCM. It is not a
-bit-perfect CD extraction and does not split tracks or fetch metadata.
 
 ## Restrict sources
 

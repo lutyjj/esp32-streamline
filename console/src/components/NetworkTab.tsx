@@ -254,7 +254,7 @@ export function NetworkTab({
     <Section
       gated
       title="Stream target"
-      lead="Where the audio goes: your bridge or Home Assistant add-on."
+      lead="Where the audio goes: your bridge, standalone or as a Home Assistant app."
     >
       {!setup && (
         <GuidePrompt

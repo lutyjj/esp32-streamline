@@ -226,7 +226,7 @@ def make_app(
                 status_code=503,
                 detail={
                     "code": "control-disabled",
-                    "message": "No bridge API token is set. Add api_token to the add-on configuration "
+                    "message": "No bridge API token is set. Add api_token to the Home Assistant app configuration "
                     "(or set STREAMLINE_API_TOKEN), then restart the bridge.",
                 },
             )

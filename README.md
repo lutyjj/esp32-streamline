@@ -93,9 +93,10 @@ Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 
 ### 2. Run the bridge
 
-**Home Assistant OS / Supervised**: add `https://github.com/lutyjj/esp32-streamline`
-as a Home Assistant add-on repository, install **ESP32 StreamLine Bridge**, and
-start it. The add-on
+**Home Assistant OS / Supervised**: go to **Settings → Apps → Install app**,
+open the three-dot menu, select **Repositories**, and add
+`https://github.com/lutyjj/esp32-streamline`. Then install the
+**ESP32 StreamLine Bridge** app and start it. The app
 listens on the same ports as the container: PCM on `39000/tcp` and HTTP WAV on
 `8088/tcp`. The PCM port accepts either cleartext or TLS, as selected in the
 bridge configuration, never both.
@@ -150,7 +151,7 @@ export STREAMLINE_SENDSPIN_SERVER_URL=ws://<music-assistant-host>:8927/sendspin
 export STREAMLINE_API_TOKEN=replace-with-a-private-token
 ```
 
-The Home Assistant add-on calls the same setting `sendspin_server_url`. Once a
+The Home Assistant app calls the same setting `sendspin_server_url`. Once a
 device streams, open the bridge console's **Settings → Music Assistant**,
 create a pairing token for the source, and paste it into the setup of
 `StreamLine <source>` in Music Assistant. The source then appears under Live
@@ -175,7 +176,7 @@ export STREAMLINE_API_TOKEN=replace-with-a-private-token
 ```
 
 Then open `http://<bridge-host>:8088/recordings`.
-[Lossless recordings](docs/recordings.md) covers storage, the add-on option and
+[Lossless recordings](docs/recordings.md) covers storage, the app option and
 the API.
 
 Set `STREAMLINE_SOURCE_ALLOW` to the device IPv4 address, or a comma-separated

@@ -134,7 +134,7 @@ Dependabot refreshes it according to the dependency boundary in
 local base images or hidden include chains; a contributor must understand any
 one component without tracing build plumbing. Deliberate exceptions own their
 wiring locally: the firmware embeds `console/dist/index.html`; the bridge
-packages `console/dist/bridge/bridge.html`; and the Home Assistant add-on
+packages `console/dist/bridge/bridge.html`; and the Home Assistant app
 packages `bridge/`. Their owning Makefiles build these inputs before the
 consuming image or binary.
 

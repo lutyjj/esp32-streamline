@@ -1,21 +1,21 @@
 # ESP32 StreamLine Bridge
 
-This add-on runs the StreamLine PCM-to-WAV bridge as a Home Assistant service.
+This app runs the StreamLine PCM-to-WAV bridge as a Home Assistant service.
 Each ESP32 device sends PCM over a direct TCP connection to the Home Assistant
 host. Port `39000` accepts cleartext or authenticated TLS 1.3; the mode is
 switched in the bridge's own Web UI and the two modes are mutually exclusive.
 The bridge serves live audio over HTTP `8088`.
 
-One add-on option unlocks every bridge control: set a private `api_token` of
-at least 16 characters, restart the add-on once, and use that token to unlock
+One app option unlocks every bridge control: set a private `api_token` of
+at least 16 characters, restart the app once, and use that token to unlock
 the Web UI. Encryption and recordings both need it.
 
-The add-on runs on the host network and advertises itself over mDNS under its
+The app runs on the host network and advertises itself over mDNS under its
 `bridge_name` option, `StreamLine Bridge` by default, so devices on the same
 network can offer it during setup
 ([discovery](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/bridge.md#discovery)).
 Its ports are fixed at `39000` and `8088`: Home Assistant does not remap ports
-of an add-on on the host network.
+of an app on the host network.
 
 When you type a target instead, point each device at the host's LAN IP
 address, not a reverse-proxy hostname. The device opens a raw TCP socket that
@@ -29,8 +29,8 @@ Sendspin:
 
 1. Set `sendspin_server_url` to Music Assistant's Sendspin server, normally
    `ws://<music-assistant-host>:8927/sendspin`, and set `api_token`. A Music
-   Assistant add-on on the same Home Assistant uses the host's LAN IP address.
-   Restart the add-on.
+   Assistant app on the same Home Assistant uses the host's LAN IP address.
+   Restart this app.
 2. Start streaming on the device, then open **Open Web UI** → **Settings** →
    **Music Assistant**, unlock with `api_token`, and create a pairing token for
    the source.
@@ -74,24 +74,24 @@ validates immediately.
 
 [PCM transport workflow](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/tcp-transport.md#enable-encryption)
 covers credential replacement, rollback, recovery, API equivalents, and the
-expected coordinated interruption. If several devices use one add-on, switch
+expected coordinated interruption. If several devices use one app, switch
 them together.
 
 ## Record a source
 
-In the add-on configuration, turn on `recordings_enabled` (it requires
-`api_token`). Restart the add-on, open **Open Web UI** (or the StreamLine
+In the app configuration, turn on `recordings_enabled` (it requires
+`api_token`). Restart the app, open **Open Web UI** (or the StreamLine
 sidebar entry), and unlock with the token. Choose the device source, name the
 recording, start it, then play the source.
 
-The add-on serves this page through Home Assistant ingress, so it opens on the
+The app serves this page through Home Assistant ingress, so it opens on the
 same host and port as Home Assistant and works behind a reverse proxy. Port
 `8088` stays open for Music Assistant and direct LAN access.
 
-The add-on stores WAV files in its private working directory. They survive
-add-on restarts and updates, but Home Assistant backups exclude them to avoid
+The app stores WAV files in its private working directory. They survive
+app restarts and updates, but Home Assistant backups exclude them to avoid
 putting multi-gigabyte captures in routine backups. Restoring or uninstalling
-the add-on removes these files. Download every completed WAV you want to keep,
+the app removes these files. Download every completed WAV you want to keep,
 then delete the bridge copy from the recording page.
 
 Recording preserves the analog input as 48 kHz, 16-bit stereo PCM. It is not a
@@ -105,17 +105,17 @@ identity still comes from its authenticated key id.
 
 The
 [bridge reference](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/bridge.md)
-defines every add-on tuning option, its default, and its validation rule.
+defines every app tuning option, its default, and its validation rule.
 
 ### Player address
 
 Set `public_url` to the bridge's HTTP address reachable by your players, for
-example `http://192.0.2.20:8088`, then restart the add-on. Use the published HTTP
+example `http://192.0.2.20:8088`, then restart the app. Use the published HTTP
 port, not the PCM input port or Home Assistant ingress address. Listen uses
 this address for playback links while management stays within ingress.
 
 ## Security
 
 The [security notes](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/security.md#bridge)
-cover the add-on's network exposure, its API token, and its AppArmor
+cover the app's network exposure, its API token, and its AppArmor
 confinement.

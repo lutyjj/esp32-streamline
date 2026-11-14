@@ -132,7 +132,7 @@ Neither side logs or reads back PSKs.
 Every published release asset and container image carries signed provenance
 recorded by GitHub attestations, and each release ships an SPDX SBOM
 (`streamline-<version>.spdx.json` beside the firmware binaries; image SBOMs
-are attached as attestations on the image digest, and the add-on's multi-arch
+are attached as attestations on the image digest, and the Home Assistant app's multi-arch
 image leaves its SBOMs to each architecture's image). Verify any artifact with
 one command:
 
@@ -166,12 +166,12 @@ check: it validates the image against the `sha256` the caller supplies from
 ## Bridge
 
 - Keep ports `39000` and `8088` on a trusted network; never expose them
-  directly. The Home Assistant add-on binds the same ports on the Home
+  directly. The Home Assistant app binds the same ports on the Home
   Assistant host's network.
 - Set `--source-allow <ESP32 IPv4>` (or `STREAMLINE_SOURCE_ALLOW`) to reject
-  unexpected PCM sources. In the Home Assistant add-on, set `source_allow`.
+  unexpected PCM sources. In the Home Assistant app, set `source_allow`.
   This is not a firewall replacement; restrict inbound at the boundary.
-- One bridge API token (`STREAMLINE_API_TOKEN`, or the add-on `api_token`
+- One bridge API token (`STREAMLINE_API_TOKEN`, or the Home Assistant app's `api_token`
   option, at least 16 random characters) gates every bridge mutation: listener
   mode, device-key enrollment, Sendspin pairing tokens, and recordings. The bridge console keeps it in
   browser session storage and sends it as a bearer token; the API never
@@ -215,7 +215,7 @@ check: it validates the image against the `sha256` the caller supplies from
   `--http-bind` narrow its own listeners.
 - The transport state file must be owned by the bridge process user with mode
   `0600`. The bridge validates both properties before parsing enrolled PSKs.
-- The Home Assistant add-on uses Supervisor-owned `/data` for options and
+- The Home Assistant app uses Supervisor-owned `/data` for options and
   recordings. It requests host networking so its mDNS advertisement reaches
   the LAN; its listeners then bind on the host's interfaces, and it can reach
   services bound to the host's loopback, such as Home Assistant itself. It maps no
@@ -225,7 +225,7 @@ check: it validates the image against the `sha256` the caller supplies from
   exclude `recordings`; restore and uninstall may therefore remove those files.
 - Runtime images pin their Python base image by digest. Dependabot owns digest
   updates so reviewed dependency changes remain mechanical.
-- On AppArmor-enabled hosts, Supervisor applies the add-on's `apparmor.txt`.
+- On AppArmor-enabled hosts, Supervisor applies the app's `apparmor.txt`.
   It permits the bundled Python entrypoints, runtime libraries, TCP networking,
   UDP for mDNS, name resolution, and writes to application state and scratch storage. It does
   not grant shell execution or Linux capabilities. Shared runtime abstractions

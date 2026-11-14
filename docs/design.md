@@ -94,7 +94,7 @@ when a record starts, because the device signal gate drives the Sendspin
 owns pairing and the runtime contract.
 
 A Music Assistant without Sendspin can still play the bridge's
-`/streamline.wav` URL as a radio stream. The Home Assistant add-on is the
+`/streamline.wav` URL as a radio stream. The Home Assistant app is the
 simplest way to run the bridge.
 
 ### Snapcast
@@ -158,8 +158,8 @@ Run it:
 make bridge-up
 ```
 
-Home Assistant OS and Supervised installs can run the same bridge through the
-`ha-addon/` add-on repository entry. The add-on exposes TCP `39000` for
+Home Assistant OS and Supervised installs can run the same bridge as the
+Home Assistant app in `ha-addon/`. The app exposes TCP `39000` for
 cleartext or authenticated TLS 1.3 PCM and HTTP `8088` for `/streamline.wav`,
 `/status`, and `/health`.
 
@@ -187,7 +187,7 @@ them.
 | The device browses on request, not in the background | One ESP-IDF query of up to three seconds per request, reused for two seconds after it ends, keeps boot, capture, and the setup network free of multicast work |
 | The console fills the target with the advertised IPv4 address | The device then dials an address, not a `.local` name it must resolve at every reconnect; a moved bridge needs a new search or a typed address |
 | The firmware reads ESP-IDF's raw results | esp-idf-svc 0.53's `EspMdns::query_ptr` panics on a name or TXT value that is not UTF-8, and any network host chooses those bytes |
-| The Home Assistant add-on uses host networking | Multicast does not leave Supervisor's private add-on network. Host networking costs one point of the add-on security rating and Home Assistant's add-on guidance advises against it; the ESPHome and Matter Server add-ons accept the same trade for mDNS. The bridge binds the same two ports either way |
+| The Home Assistant app uses host networking | Multicast does not leave Supervisor's private app network. Host networking costs one point of the app security rating and Home Assistant's app guidance advises against it; the ESPHome and Matter Server apps accept the same trade for mDNS. The bridge binds the same two ports either way |
 
 ## Board support
 

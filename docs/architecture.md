@@ -44,7 +44,7 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 Each component except the static `webflasher` site builds from a public base
 and owns its dependency and tool configuration. The firmware embeds the device
 console build. The bridge
-packages the bridge console build, and the Home Assistant add-on packages the
+packages the bridge console build, and the Home Assistant app packages the
 bridge and that console into a self-contained build context. These are
 deliberate build-time dependencies, not shared runtime state.
 
@@ -202,7 +202,7 @@ requests to the loop. The
 [bridge reference](bridge.md#music-assistant-live-inputs) owns the runtime
 contract.
 
-The standalone container and Home Assistant add-on run the same `streamline-bridge` process. `streamline-ha-addon` only translates Supervisor options into bridge CLI arguments. The [bridge reference](bridge.md) owns the runtime endpoints, lifecycle states, and tuning options.
+The standalone container and Home Assistant app run the same `streamline-bridge` process. `streamline-ha-addon` only translates Supervisor options into bridge CLI arguments. The [bridge reference](bridge.md) owns the runtime endpoints, lifecycle states, and tuning options.
 
 ## State ownership
 
@@ -259,7 +259,7 @@ compatibility reader or migration runs at boot.
 | Bridge device-key map | Bridge transport store | Private versioned file with bounded atomic replacement |
 | Release version | [`release-please-config.json`](../release-please-config.json) declares every owner; release-please writes them | `make version-check` requires equality across the version files |
 | User-visible stages | [User journey](user-journey.md) | Console and firmware behavior |
-| Security posture | [Security notes](security.md) | Device, bridge, add-on, and deployment guidance |
+| Security posture | [Security notes](security.md) | Device, bridge, Home Assistant app, and deployment guidance |
 | Recording timeline and file lifecycle | [Lossless recordings](recordings.md) | Bridge service, HTTP adapter, page, and deployment adapters |
 | Sendspin source role | [Sendspin specification](https://github.com/Sendspin/spec) through the pinned aiosendspin release | Bridge publisher, checked against aiosendspin's server in bridge tests |
 
@@ -270,7 +270,7 @@ The PCM frame has two hand-written implementations. Keep changes byte-exact: upd
 The device always runs the embedded console and API. A bridge runs separately in one of two supported shapes:
 
 - The standalone container shares the host's network. It serves PCM TCP `39000` in one configured mode and HTTP `8088`, and advertises the PCM listener over mDNS.
-- The Home Assistant add-on runs the same bridge package on the host network with Supervisor-owned options, private transport-key storage, and the same ports and advertisement.
+- The Home Assistant app runs the same bridge package on the host network with Supervisor-owned options, private transport-key storage, and the same ports and advertisement.
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
 `/health` is the bridge readiness probe for its required PCM listener. A deployment with writable
@@ -283,7 +283,7 @@ downstream systems.
 
 Make is the public command interface. Each component Makefile exposes the verbs that apply to it, and the root Makefile forwards `make <component>-<verb>`. Keep build mechanics behind these targets so local runs and CI execute the same commands.
 
-CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. Branch protection requires `CI complete`, which aggregates change detection, component checks, the add-on's aarch64 build, firmware builds, the device API contract check, and the console e2e journeys. It does not wait for advisory jobs.
+CI reads component ownership from `.github/ci-paths.yml` and runs each selected `<component>-check` target. The repository check owns Markdown links and style, documentation examples, repository metadata syntax, and release-version consistency. A `docs/openapi.json` change also runs Rust OpenAPI drift detection and console generation plus type checking. Firmware has a separate job because its ESP-IDF and Cargo caches have different ownership and cost. The shared `firmware-cache` action owns cache restore, ownership handoff, and reclaim for verification and publishing. CI alone saves cache entries. Branch protection requires `CI complete`, which aggregates change detection, component checks, the Home Assistant app's aarch64 build, firmware builds, the device API contract check, and the console e2e journeys. It does not wait for advisory jobs.
 
 `QEMU device smoke (advisory)` runs automatically for device-contract,
 smoke-harness, QEMU helper, tools-image, and firmware changes, using images
@@ -301,7 +301,7 @@ manually with `run_qemu` enabled, or use `make smoke-qemu` to build and test
 the images in containers. The QEMU job reports failures without automatic
 retries or expected-failure markers.
 
-release-please owns the release lifecycle: `release-please-config.json` declares every version owner and lockfile, a generated release PR carries the version bump and changelog, and merging it creates the tag and a draft GitHub release. Publication verifies that exact commit and that its firmware rebuilds byte-for-byte, pushes write-once versioned images (the bridge, each add-on architecture and the add-on's multi-arch image), attaches firmware artifacts with an SPDX SBOM, and binds provenance attestations to every asset and image digest and SBOM attestations to the firmware and each single-platform image. It verifies those attestations before it publishes the release, and only then moves the `latest` image aliases and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
+release-please owns the release lifecycle: `release-please-config.json` declares every version owner and lockfile, a generated release PR carries the version bump and changelog, and merging it creates the tag and a draft GitHub release. Publication verifies that exact commit and that its firmware rebuilds byte-for-byte, pushes write-once versioned images (the bridge, each Home Assistant app architecture and the app's multi-arch image), attaches firmware artifacts with an SPDX SBOM, and binds provenance attestations to every asset and image digest and SBOM attestations to the firmware and each single-platform image. It verifies those attestations before it publishes the release, and only then moves the `latest` image aliases and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
 
 The Makefiles remain routing and reproducibility boundaries. Keep component logic in language-native code and split reusable GitHub workflow mechanics into actions when more than one workflow owns the same lifecycle.
 

@@ -1,6 +1,6 @@
-# ESP32 StreamLine Bridge add-on
+# ESP32 StreamLine Bridge app
 
-This add-on runs the StreamLine bridge in Home Assistant. ESP32 StreamLine
+This app runs the StreamLine bridge in Home Assistant. ESP32 StreamLine
 devices capture analog audio from a turntable or CD deck and stream it to the
 bridge over your network. The bridge offers each device to Music Assistant as a
 Live Input, serves it as a live WAV stream any HTTP player can read, and can

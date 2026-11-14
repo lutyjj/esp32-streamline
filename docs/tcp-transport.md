@@ -96,8 +96,14 @@ open through the learning and start-debounce window (about 2.1 seconds), then
 follows the new input's detected state. An idle input sends silence records.
 
 Queued audio survives connection setup and slow sends within the queue's
-fixed capacity. A failed send discards that batch and backs off for 250 ms
-before processing the queue.
+fixed capacity. A failed send discards that batch. The next attempt waits
+250 ms, and each further consecutive failure doubles the wait up to 30 seconds.
+A delivered batch, a pause, or maintenance restarts the schedule; a pause or
+maintenance that arrives during a wait applies within 100 ms. The sender logs
+the first failure, each change of cause, and the restored connection with its
+failure count and duration, not every attempt. In `tls-psk` mode ESP-IDF's TLS
+component also logs two lines per failed handshake, four a minute at the cap.
+`network_errors_total` counts every failed attempt.
 
 An established producer keeps its TCP connection during detected silence.
 The bridge's source idle timeout bounds the first packet and incomplete

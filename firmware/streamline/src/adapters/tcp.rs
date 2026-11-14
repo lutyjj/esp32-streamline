@@ -91,18 +91,17 @@ impl TcpClient {
 }
 
 impl PacketSink for TcpClient {
-    /// Send complete packets, logging any failure at the device edge and marking
-    /// TLS handshake rejections so the pipeline can count them separately.
     fn send(
         &mut self,
         bytes: &[u8],
         ready: impl FnOnce() -> bool,
     ) -> std::result::Result<Option<bool>, SendFailed> {
-        self.sender.send_all(bytes, ready).map_err(|error| {
-            let secure_handshake = error.is_secure_handshake();
-            log::warn!("TCP stream error: {error:#}");
-            SendFailed { secure_handshake }
-        })
+        self.sender
+            .send_all(bytes, ready)
+            .map_err(|error| SendFailed {
+                secure_handshake: error.is_secure_handshake(),
+                cause: format!("{error:#}"),
+            })
     }
 
     fn disconnect(&mut self) {

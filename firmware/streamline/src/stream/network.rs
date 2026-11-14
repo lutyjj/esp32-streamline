@@ -3,12 +3,12 @@
 use super::{
     effects::{Clock, Delay, PacketSink},
     queue::PacketQueue,
+    retry::Retry,
     status::StreamStatus,
 };
 use crate::packet::{AudioPacket, MAX_PACKET_BYTES};
 use std::{sync::Arc, time::Duration};
 
-const SEND_ERROR_BACKOFF_MS: u32 = 250;
 const CONTROL_POLL_MS: u32 = 100;
 const SEND_STALL_MS: u64 = 100;
 const BATCH_PACKETS: usize = 4;
@@ -23,8 +23,11 @@ pub fn run(
     clock: impl Clock,
 ) -> ! {
     let mut batch = Vec::with_capacity(MAX_BATCH_BYTES);
+    let mut retry = Retry::new();
     loop {
-        step(&mut sink, &queue, &status, &delay, &clock, &mut batch);
+        step(
+            &mut sink, &queue, &status, &mut retry, &delay, &clock, &mut batch,
+        );
     }
 }
 
@@ -36,6 +39,7 @@ fn step(
     sink: &mut impl PacketSink,
     queue: &PacketQueue<AudioPacket>,
     status: &StreamStatus,
+    retry: &mut Retry,
     delay: &impl Delay,
     clock: &impl Clock,
     batch: &mut Vec<u8>,
@@ -45,11 +49,18 @@ fn step(
         sink.disconnect();
         queue.suspend();
         *batch = Vec::new();
+        retry.restart_schedule();
         status.set_queue_depth(0);
         if status.transport_quiesce_requested() {
             status.acknowledge_transport_quiesced();
         }
         delay.delay_ms(CONTROL_POLL_MS);
+        return;
+    }
+    // Wait in control-poll slices so a pause or quiesce is never held behind a retry.
+    let wait = retry.wait_ms(clock.monotonic_millis());
+    if wait > 0 {
+        delay.delay_ms(wait.min(u64::from(CONTROL_POLL_MS)) as u32);
         return;
     }
     queue.resume();
@@ -74,7 +85,7 @@ fn step(
         payload_bytes += packet.payload_bytes();
         status.set_queue_depth(depth);
     }
-    send_batch(sink, batch, packets, payload_bytes, status, delay, clock);
+    send_batch(sink, batch, packets, payload_bytes, status, retry, clock);
 }
 
 fn send_batch(
@@ -83,7 +94,7 @@ fn send_batch(
     packets: usize,
     payload_bytes: usize,
     status: &StreamStatus,
-    delay: &impl Delay,
+    retry: &mut Retry,
     clock: &impl Clock,
 ) {
     let ready = || sending_allowed(status);
@@ -91,20 +102,31 @@ fn send_batch(
         return;
     }
     let started = clock.monotonic_millis();
-    match sink.send(bytes, ready) {
+    let result = sink.send(bytes, ready);
+    let now = clock.monotonic_millis();
+    match result {
         Ok(Some(reconnected)) => {
-            let elapsed = clock.monotonic_millis().saturating_sub(started);
+            let elapsed = now.saturating_sub(started);
             if elapsed >= SEND_STALL_MS {
                 status.record_send_stall(elapsed);
                 log::warn!("PCM send stalled for {elapsed} ms");
             }
             status.record_sent_batch(packets, payload_bytes, reconnected);
+            if let Some(restored) = retry.succeed(now) {
+                log::info!(
+                    "PCM stream restored; {} attempts failed over {} ms",
+                    restored.failures,
+                    restored.elapsed_ms
+                );
+            }
         }
         Ok(None) => {}
         Err(failure) => {
             status.record_failed_send(packets);
             status.record_network_error(failure.secure_handshake);
-            delay.delay_ms(SEND_ERROR_BACKOFF_MS);
+            if let Some(cause) = retry.fail(now, failure.cause) {
+                log::warn!("PCM stream interrupted, retrying with backoff: {cause}");
+            }
         }
     }
 }
@@ -158,7 +180,10 @@ mod tests {
                 return Ok(None);
             }
             if let Some(secure_handshake) = self.failure {
-                return Err(SendFailed { secure_handshake });
+                return Err(SendFailed {
+                    secure_handshake,
+                    cause: "refused".into(),
+                });
             }
             self.writes += 1;
             self.received.push(bytes.to_vec());
@@ -198,7 +223,15 @@ mod tests {
             queue.push_drop_oldest(packet);
         }
         let mut sink = sink(&time);
-        step(&mut sink, &queue, &status, &time, &time, &mut Vec::new());
+        step(
+            &mut sink,
+            &queue,
+            &status,
+            &mut Retry::new(),
+            &time,
+            &time,
+            &mut Vec::new(),
+        );
         assert_eq!(sink.received, vec![expected]);
         assert_eq!(status.snapshot().packets, 4);
         assert_eq!(status.snapshot().bytes, 4 * PAYLOAD_BYTES as u64);
@@ -212,7 +245,15 @@ mod tests {
         let queue = PacketQueue::new();
         queue.push_drop_oldest(packet());
         let mut sink = sink(&time);
-        step(&mut sink, &queue, &status, &time, &time, &mut Vec::new());
+        step(
+            &mut sink,
+            &queue,
+            &status,
+            &mut Retry::new(),
+            &time,
+            &time,
+            &mut Vec::new(),
+        );
         assert_eq!(sink.received, vec![packet().as_bytes().to_vec()]);
         assert_eq!(status.snapshot().packets, 1);
     }
@@ -235,7 +276,15 @@ mod tests {
             queue.push_drop_oldest(packet);
         }
         let mut sink = sink(&time);
-        step(&mut sink, &queue, &status, &time, &time, &mut Vec::new());
+        step(
+            &mut sink,
+            &queue,
+            &status,
+            &mut Retry::new(),
+            &time,
+            &time,
+            &mut Vec::new(),
+        );
         assert_eq!(sink.received, vec![expected]);
         assert_eq!(status.snapshot().packets, 4);
         assert_eq!(status.snapshot().bytes, 2048);
@@ -252,7 +301,15 @@ mod tests {
         }
         let mut sink = sink(&time);
         sink.failure = Some(false);
-        step(&mut sink, &queue, &status, &time, &time, &mut Vec::new());
+        step(
+            &mut sink,
+            &queue,
+            &status,
+            &mut Retry::new(),
+            &time,
+            &time,
+            &mut Vec::new(),
+        );
         assert_eq!(status.snapshot().network_errors, 1);
         assert_eq!(status.snapshot().send_failed_packets, 4);
         assert_eq!(status.snapshot().packets, 0);
@@ -262,15 +319,20 @@ mod tests {
     fn batches_bound_each_write_and_count_reconnections_once() {
         let time = Time::default();
         let status = StreamStatus::default();
+        let mut retry = Retry::new();
         let queue = PacketQueue::new();
         for _ in 0..8 {
             queue.push_drop_oldest(packet());
         }
         let mut sink = sink(&time);
         let mut batch = Vec::new();
-        step(&mut sink, &queue, &status, &time, &time, &mut batch);
+        step(
+            &mut sink, &queue, &status, &mut retry, &time, &time, &mut batch,
+        );
         assert_eq!(status.snapshot().queue_depth, 4);
-        step(&mut sink, &queue, &status, &time, &time, &mut batch);
+        step(
+            &mut sink, &queue, &status, &mut retry, &time, &time, &mut batch,
+        );
         assert_eq!(sink.received.len(), 2);
         assert!(sink.received.iter().all(|bytes| bytes.len() == 4 * 1048));
         assert_eq!(status.snapshot().packets, 8);
@@ -281,6 +343,7 @@ mod tests {
     fn retained_audio_is_sent_after_a_network_delay() {
         let time = Time::default();
         let status = StreamStatus::default();
+        let mut retry = Retry::new();
         let mut sink = sink(&time);
         let waiting = packet();
         time.delay_ms(500);
@@ -290,7 +353,7 @@ mod tests {
             1,
             PAYLOAD_BYTES,
             &status,
-            &time,
+            &mut retry,
             &time,
         );
         assert_eq!(sink.calls, 1);
@@ -303,6 +366,7 @@ mod tests {
     fn connection_setup_preserves_the_waiting_packet() {
         let time = Time::default();
         let status = StreamStatus::default();
+        let mut retry = Retry::new();
         let mut sink = sink(&time);
         sink.connect_ms = 2_000;
         send_batch(
@@ -311,7 +375,7 @@ mod tests {
             1,
             PAYLOAD_BYTES,
             &status,
-            &time,
+            &mut retry,
             &time,
         );
         assert_eq!(sink.calls, 1);
@@ -324,6 +388,7 @@ mod tests {
         for quiesce in [false, true] {
             let time = Time::default();
             let status = StreamStatus::default();
+            let mut retry = Retry::new();
             status.mark_transport_present();
             let mut sink = sink(&time);
             sink.control = Some((&status, quiesce));
@@ -333,7 +398,7 @@ mod tests {
                 1,
                 PAYLOAD_BYTES,
                 &status,
-                &time,
+                &mut retry,
                 &time,
             );
             assert_eq!(sink.writes, 0);
@@ -346,6 +411,7 @@ mod tests {
         for secure in [false, true] {
             let time = Time::default();
             let status = StreamStatus::default();
+            let mut retry = Retry::new();
             status.mark_transport_present();
             let mut sink = sink(&time);
             sink.failure = Some(secure);
@@ -355,14 +421,14 @@ mod tests {
                 1,
                 PAYLOAD_BYTES,
                 &status,
-                &time,
+                &mut retry,
                 &time,
             );
             assert_eq!(sink.calls, 1);
             assert_eq!(status.snapshot().network_errors, 1);
             assert_eq!(status.snapshot().tls_handshake_failures, u64::from(secure));
             assert!(!status.transport_quiesced());
-            assert_eq!(time.monotonic_millis(), u64::from(SEND_ERROR_BACKOFF_MS));
+            assert_eq!(retry.wait_ms(time.monotonic_millis()), 250);
         }
     }
 
@@ -370,6 +436,7 @@ mod tests {
     fn successful_sends_account_payload_reconnects_and_stalls() {
         let time = Time::default();
         let status = StreamStatus::default();
+        let mut retry = Retry::new();
         let mut sink = sink(&time);
         send_batch(
             &mut sink,
@@ -377,7 +444,7 @@ mod tests {
             1,
             PAYLOAD_BYTES,
             &status,
-            &time,
+            &mut retry,
             &time,
         );
         assert_eq!(status.snapshot().reconnects, 0);
@@ -388,7 +455,7 @@ mod tests {
             1,
             PAYLOAD_BYTES,
             &status,
-            &time,
+            &mut retry,
             &time,
         );
         let snapshot = status.snapshot();
@@ -404,6 +471,7 @@ mod tests {
         for quiesce in [false, true] {
             let time = Time::default();
             let status = StreamStatus::default();
+            let mut retry = Retry::new();
             status.mark_transport_present();
             let queue = PacketQueue::new();
             queue.push_drop_oldest(packet());
@@ -414,7 +482,9 @@ mod tests {
             }
             let mut sink = sink(&time);
             let mut batch = Vec::with_capacity(MAX_BATCH_BYTES);
-            step(&mut sink, &queue, &status, &time, &time, &mut batch);
+            step(
+                &mut sink, &queue, &status, &mut retry, &time, &time, &mut batch,
+            );
             assert_eq!(sink.calls, 0);
             assert_eq!(sink.disconnects, 1);
             assert_eq!(batch.capacity(), 0);
@@ -422,9 +492,117 @@ mod tests {
             assert_eq!(status.transport_quiesced(), quiesce);
             status.end_transport_quiesce();
             status.set_streaming_enabled(true);
-            step(&mut sink, &queue, &status, &time, &time, &mut batch);
+            step(
+                &mut sink, &queue, &status, &mut retry, &time, &time, &mut batch,
+            );
             queue.push_drop_oldest(packet());
-            step(&mut sink, &queue, &status, &time, &time, &mut batch);
+            step(
+                &mut sink, &queue, &status, &mut retry, &time, &time, &mut batch,
+            );
+            assert_eq!(sink.writes, 1);
+        }
+    }
+
+    /// Step with a fresh packet queued each time until a batch is delivered or
+    /// `until_ms` passes, returning when each send was attempted.
+    fn attempt_times(
+        sink: &mut Sink<'_>,
+        queue: &PacketQueue<AudioPacket>,
+        status: &StreamStatus,
+        retry: &mut Retry,
+        time: &Time,
+        until_ms: u64,
+    ) -> Vec<u64> {
+        let writes = sink.writes;
+        let mut attempts = Vec::new();
+        let mut batch = Vec::new();
+        while time.monotonic_millis() < until_ms && sink.writes == writes {
+            queue.push_drop_oldest(packet());
+            let calls = sink.calls;
+            step(sink, queue, status, retry, time, time, &mut batch);
+            if sink.calls > calls {
+                attempts.push(time.monotonic_millis());
+            }
+        }
+        attempts
+    }
+
+    #[test]
+    fn an_unreachable_bridge_is_retried_at_doubling_intervals_up_to_thirty_seconds() {
+        let time = Time::default();
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        let mut retry = Retry::new();
+        let mut sink = sink(&time);
+        sink.failure = Some(false);
+        let attempts = attempt_times(&mut sink, &queue, &status, &mut retry, &time, 120_000);
+        let gaps: Vec<u64> = attempts.windows(2).map(|pair| pair[1] - pair[0]).collect();
+        assert_eq!(
+            gaps,
+            [250, 500, 1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]
+        );
+        assert_eq!(status.snapshot().network_errors, 10);
+
+        sink.failure = None;
+        let back_at = time.monotonic_millis();
+        let attempts = attempt_times(
+            &mut sink,
+            &queue,
+            &status,
+            &mut retry,
+            &time,
+            back_at + 60_000,
+        );
+        assert_eq!(attempts.len(), 1);
+        assert!(attempts[0] - back_at <= 30_000);
+        assert_eq!(sink.writes, 1);
+        assert_eq!(retry.wait_ms(time.monotonic_millis()), 0);
+    }
+
+    #[test]
+    fn a_pause_during_a_retry_wait_applies_at_once_and_resumes_without_waiting() {
+        for quiesce in [false, true] {
+            let time = Time::default();
+            let status = StreamStatus::default();
+            status.mark_transport_present();
+            let queue = PacketQueue::new();
+            let mut retry = Retry::new();
+            let mut sink = sink(&time);
+            sink.failure = Some(false);
+            attempt_times(&mut sink, &queue, &status, &mut retry, &time, 20_000);
+            assert!(retry.wait_ms(time.monotonic_millis()) > 1_000);
+            if quiesce {
+                status.request_transport_quiesce();
+            } else {
+                status.set_streaming_enabled(false);
+            }
+            let paused_at = time.monotonic_millis();
+            step(
+                &mut sink,
+                &queue,
+                &status,
+                &mut retry,
+                &time,
+                &time,
+                &mut Vec::new(),
+            );
+            assert_eq!(status.transport_quiesced(), quiesce);
+            assert_eq!(sink.disconnects, 1);
+            assert!(time.monotonic_millis() - paused_at <= u64::from(CONTROL_POLL_MS));
+
+            status.end_transport_quiesce();
+            status.set_streaming_enabled(true);
+            sink.failure = None;
+            let resumed_at = time.monotonic_millis();
+            let attempts = attempt_times(
+                &mut sink,
+                &queue,
+                &status,
+                &mut retry,
+                &time,
+                resumed_at + 10_000,
+            );
+            assert_eq!(attempts, [resumed_at]);
             assert_eq!(sink.writes, 1);
         }
     }

@@ -1,16 +1,18 @@
 //! The concrete effects the pipeline engines depend on.
 //!
-//! Adapters implement these at the device edge — I2S capture, the TCP sender,
-//! FreeRTOS delays — and report their own failures. The engines decide policy
-//! only, so the same code runs against fakes in host tests.
+//! Adapters implement these at the device edge: I2S capture, the TCP sender,
+//! FreeRTOS delays. The engines decide policy, so the same code runs against
+//! fakes in host tests.
 
 /// A source read failed. The source has already reported the cause.
 pub struct ReadFailed;
 
-/// A packet send failed. The sink has already reported the cause; the flag lets
-/// the pipeline count TLS handshake rejections apart from ordinary I/O errors.
+/// A packet send failed. The pipeline logs `cause` when a retry run starts or
+/// its cause changes; the flag counts TLS handshake rejections apart from
+/// ordinary I/O errors.
 pub struct SendFailed {
     pub secure_handshake: bool,
+    pub cause: String,
 }
 
 /// Captured PCM bytes, filled from the I2S input.

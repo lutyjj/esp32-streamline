@@ -10,6 +10,7 @@ mod effects;
 mod network;
 mod pause;
 mod queue;
+mod retry;
 mod status;
 
 pub use capture::CaptureEngine;

@@ -3,7 +3,12 @@ import { useState } from 'preact/hooks';
 import { setAudio } from '../lib/api';
 import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
-import { audioProfilesResource, contractResource, status } from '../state/device';
+import {
+  audioProfilesResource,
+  contractResource,
+  passthroughLocked,
+  status,
+} from '../state/device';
 import { lossCalloutVisible } from '../state/streamLoss';
 import { AnalogPassthrough } from './AnalogPassthrough';
 import { AudioDelivery } from './AudioDelivery';
@@ -236,7 +241,7 @@ export function AudioTab({
             capability={caps?.analog_passthrough}
             status={s.analog_passthrough}
             writable={writable}
-            provisioned={s.mode !== 'setup'}
+            locked={passthroughLocked.value}
           />
         )}
       </div>

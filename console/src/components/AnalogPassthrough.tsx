@@ -62,24 +62,23 @@ export function AnalogPassthrough({
   capability,
   status,
   writable,
-  provisioned,
+  locked,
 }: {
   capability?: AnalogPassthroughCapabilityStatus | null;
   status: AnalogPassthroughStatus;
   writable: boolean;
-  provisioned: boolean;
+  /** Why the switch cannot move right now; null when it can. */
+  locked: string | null;
 }) {
   if (!capability) return null;
   return (
-    <fieldset class="section-subsection" disabled={!writable || !provisioned}>
+    <fieldset class="section-subsection" disabled={!writable || Boolean(locked)}>
       <AnalogPassthroughToggle
         capability={capability}
         status={status}
-        disabled={!writable || !provisioned}
+        disabled={!writable || Boolean(locked)}
       />
-      {!provisioned && (
-        <p class="callout">Analog passthrough is available after setup completes.</p>
-      )}
+      {locked && <p class="callout">{locked}</p>}
     </fieldset>
   );
 }

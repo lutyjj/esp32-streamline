@@ -4,6 +4,8 @@ import { useState } from 'preact/hooks';
 import { generateAdminKey, isUnlocked, replaceAdminKey, useAuthEpoch } from '../lib/adminKey';
 import {
   factoryReset,
+  getFactoryResetUrl,
+  getRestartUrl,
   otaCheck,
   otaRollback,
   otaUpdate,
@@ -23,7 +25,7 @@ import {
   OTA_INSTALLING_PHASES,
   otaLog,
   prettyPhase,
-  restartLocked,
+  updateLock,
 } from '../state/ota';
 import { beginResetHandoff, resetHandoff, resetHandoffMessage } from '../state/resetHandoff';
 import { ApiTab } from './ApiTab';
@@ -578,7 +580,9 @@ function AccessCard() {
 
 export function ResetCard() {
   const writable = useWritable();
-  const locked = restartLocked.value;
+  const restartLock = updateLock(getRestartUrl());
+  const resetLock = updateLock(getFactoryResetUrl());
+  const locked = restartLock ?? resetLock;
   const restart = useTransact();
   const factory = useTransact();
 
@@ -617,7 +621,7 @@ export function ResetCard() {
         <TransactButton
           transact={restart}
           kind="secondary"
-          disabled={!writable || locked !== null}
+          disabled={!writable || restartLock !== null}
           onClick={() =>
             restart.run(() => restartDevice(), {
               busyText: 'Restarting…',
@@ -635,7 +639,7 @@ export function ResetCard() {
         <ConfirmButton
           label="Factory reset"
           confirmLabel="Erase everything"
-          disabled={!writable || locked !== null}
+          disabled={!writable || resetLock !== null}
           message="This erases Wi-Fi credentials, the stream target, audio settings and profiles, transport encryption keys, LED roles, the device name, the update schedule, and the admin key. Installed firmware stays. The device returns to its setup network."
           onConfirm={() =>
             factory.run(

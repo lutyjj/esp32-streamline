@@ -3,8 +3,9 @@ import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ResetCard } from '../src/components/SystemTab';
 import { setTransport } from '../src/lib/api';
-import { deviceStatus } from '../src/mocks/fixtures';
-import { refresh, status, unreachable } from '../src/state/device';
+import { deviceContract, deviceStatus } from '../src/mocks/fixtures';
+import { contract, refresh, status, unreachable } from '../src/state/device';
+import { UPDATE_BUSY_REASON } from '../src/state/ota';
 import { resetHandoff } from '../src/state/resetHandoff';
 
 let host: HTMLElement;
@@ -116,7 +117,12 @@ describe('maintenance during a firmware update', () => {
   const button = (label: string) =>
     [...host.querySelectorAll('button')].find((b) => b.textContent === label);
 
+  afterEach(() => {
+    contract.value = null;
+  });
+
   it('offers neither restart nor factory reset until the update finishes', () => {
+    contract.value = deviceContract();
     status.value = deviceStatus({
       auth_required: false,
       ota: { busy: true, phase: 'downloading' },
@@ -124,13 +130,13 @@ describe('maintenance during a firmware update', () => {
     mount();
     expect(button('Restart device')?.disabled).toBe(true);
     expect(button('Factory reset')?.disabled).toBe(true);
-    expect(host.textContent).toContain('A firmware update or check is running.');
+    expect(host.textContent).toContain(UPDATE_BUSY_REASON);
 
     act(() => {
       status.value = deviceStatus({ auth_required: false, ota: { busy: false, phase: 'idle' } });
     });
     expect(button('Restart device')?.disabled).toBe(false);
     expect(button('Factory reset')?.disabled).toBe(false);
-    expect(host.textContent).not.toContain('A firmware update or check is running.');
+    expect(host.textContent).not.toContain(UPDATE_BUSY_REASON);
   });
 });

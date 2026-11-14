@@ -13,6 +13,8 @@ owns installation commands.
   Last-known configuration cannot establish current audio delivery.
 - Every wait names its operation and completion evidence. A timer never proves
   a network join, successful reboot, or audible playback.
+- An action that can restart the device waits while a firmware update or
+  check runs, and says so beside it.
 - Failures explain the next action. Guided tasks offer cancellation or recovery.
 - Generated admin and audio keys have deliberate one-time reveals and copy actions.
 - Locked settings remain readable and offer contextual unlocking. Both consoles
@@ -163,8 +165,7 @@ claim completion. [OTA](ota.md) owns verification and rollback behavior.
 
 Settings → Troubleshooting exposes health, the protected device log, and raw status.
 Settings → Developer API exposes the machine interface. Settings → Restart & reset
-contains restart and confirmed factory reset. Both wait while a firmware update
-or check runs, and the page says so.
+contains restart and confirmed factory reset.
 
 A provisioned device that cannot reach its saved Wi-Fi serves a recovery console
 on its setup network, not first-run commissioning. A banner names the network and

@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
-import { type AudioProfileCatalog, setActiveAudioProfile, setAudioProfiles } from '../lib/api';
+import {
+  type AudioProfileCatalog,
+  getSetAudioProfileUrl,
+  setActiveAudioProfile,
+  setAudioProfiles,
+} from '../lib/api';
 import { errorMessage } from '../lib/errors';
 import { useTransact, useWritable } from '../lib/hooks';
 import {
@@ -10,6 +15,7 @@ import {
   updateProfile,
 } from '../lib/profiles';
 import { audioProfileLimits, audioProfiles, loadDeviceSettings, status } from '../state/device';
+import { updateLock } from '../state/ota';
 import { Button } from './Button';
 import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
@@ -18,6 +24,7 @@ import { ActionState, TransactButton } from './Transact';
 
 export function AudioProfiles({ draftPending = false }: { draftPending?: boolean }) {
   const writable = useWritable() && !draftPending;
+  const applyLock = updateLock(getSetAudioProfileUrl());
   const transact = useTransact();
   const catalog = audioProfiles.value;
   // Snapshot the live applied levels, so a profile saved right after a board
@@ -167,12 +174,13 @@ export function AudioProfiles({ draftPending = false }: { draftPending?: boolean
       <div class="profileactions">
         <TransactButton
           transact={transact}
-          disabled={!writable || !selected}
+          disabled={!writable || !selected || applyLock !== null}
           onClick={applySelected}
         >
           Apply profile
         </TransactButton>
         <ActionState state={transact.state} />
+        {applyLock && <span class="help">{applyLock}</span>}
       </div>
       <Disclosure title="Manage profiles" className="profile-share">
         <div class="field">

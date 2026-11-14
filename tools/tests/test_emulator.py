@@ -5,6 +5,7 @@ QEMU service relays output, with only the QEMU process faked.
 """
 
 import socket
+import subprocess
 import tempfile
 import threading
 import time
@@ -28,6 +29,14 @@ class FakeQemu:
         self.status: int | None = None
 
     def poll(self) -> int | None:
+        return self.status
+
+    def wait(self, timeout: float) -> int:
+        deadline = time.monotonic() + timeout
+        while self.status is None:
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired("qemu", timeout)
+            time.sleep(0.01)
         return self.status
 
 
@@ -118,6 +127,12 @@ class EmulatedApiTest(EmulatedDutTest):
             wait_for_api(self.api.fetch, timeout=60)
         self.assertLess(time.monotonic() - started, 5)
         self.assertIn("status 0 and GET /api/status failed", str(raised.exception))
+
+    @mock.patch.object(emulator, "OUTPUT_DRAIN", 0.1)
+    def test_a_request_that_fails_as_qemu_exits_names_the_exit(self) -> None:
+        self.later(0.3, lambda: setattr(self.qemu, "status", 0))
+        with self.assertRaises(EmulatorExited):
+            self.api.fetch("/api/status")
 
     def test_a_failed_request_while_qemu_runs_stays_a_connection_error(self) -> None:
         with self.assertRaises(OSError):

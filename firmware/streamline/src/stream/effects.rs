@@ -4,8 +4,11 @@
 //! FreeRTOS delays. The engines decide policy, so the same code runs against
 //! fakes in host tests.
 
-/// A source read failed. The source has already reported the cause.
-pub struct ReadFailed;
+/// A source read failed. The pipeline logs `cause` when a failure run starts
+/// or its cause changes.
+pub struct ReadFailed {
+    pub cause: String,
+}
 
 /// A packet send failed. The pipeline logs `cause` when a retry run starts or
 /// its cause changes; the flag counts TLS handshake rejections apart from

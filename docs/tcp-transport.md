@@ -57,7 +57,10 @@ source admission.
   round-trip time
 - scheduling: both PCM transports request IP precedence 4 (`IP_TOS=0x80`),
   which ESP-IDF maps to the Wi-Fi media access category
-- capture reads: 20 ms per DMA wait; failures back off for 10 ms
+- capture reads: 20 ms per DMA wait; failures back off for 10 ms.
+  `read_errors_total` counts every failure; the log carries the first
+  failure, each change of cause, and the recovery once reads have succeeded
+  for a second
 - DMA: six buffers of 240 stereo frames, or 30 ms at 48 kHz
 - queue: 48 packets (256 ms) in six fixed-capacity allocations; on pressure,
   discard the oldest packet. Each allocation holds eight packets so resuming

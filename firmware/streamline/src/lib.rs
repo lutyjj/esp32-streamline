@@ -46,6 +46,8 @@ pub mod state;
 pub mod stream;
 pub mod task_start;
 pub mod telemetry;
+#[cfg(test)]
+mod test_log;
 pub mod transport;
 pub mod transport_diagnostics;
 pub mod update;

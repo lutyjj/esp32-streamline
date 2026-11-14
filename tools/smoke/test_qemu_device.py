@@ -97,6 +97,8 @@ class ServedOtaImage:
     management_failure_sha256: str
     stall_started: threading.Event
     release_stall: threading.Event
+    # Each request path's latest client port: one port is one connection.
+    peer_ports: dict[str, int]
 
 
 # The application image ends with a 4 KB Secure Boot v2 signature sector; the
@@ -474,9 +476,16 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
     # by the handler only at request time.
     asset_url = ""
 
+    peer_ports: dict[str, int] = {}
+
     class OtaImageHandler(http.server.BaseHTTPRequestHandler):
+        # Keep-alive, as GitHub serves it, so a same-host redirect can reuse
+        # the connection.
+        protocol_version = "HTTP/1.1"
+
         def do_GET(self) -> None:
             path = self.path.partition("?")[0]
+            peer_ports[path] = self.client_address[1]
             if path == "/unavailable.bin":
                 self.send_error(503)
                 return
@@ -537,6 +546,7 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
             management_failure_sha256=hashlib.sha256(failure).hexdigest(),
             stall_started=stall_started,
             release_stall=release_stall,
+            peer_ports=peer_ports,
         )
     finally:
         release_stall.set()
@@ -558,6 +568,10 @@ def test_ota_install_boots_from_the_other_slot(
     # slot, and reboots — which under -no-reboot ends the QEMU process.
     provisioned_device.dut.qemu.wait(timeout=180)
     _assert_ota_url_absent_from_serial(provisioned_device)
+    ports = served_ota_image.peer_ports
+    assert ports["/release/streamline-qemu-ota.bin"] == ports["/streamline-qemu-ota.bin"], (
+        "the same-host redirect opened a second connection"
+    )
 
     updated = boot_device(
         flash=provisioned_device.flash,

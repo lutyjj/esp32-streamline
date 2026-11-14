@@ -66,10 +66,11 @@ Add a tool as a module in `src/streamline_tools/` with a console entry point in
 
 Boots and OTA assertions run once; a failed boot fails the test. When QEMU
 exits, as it does after a guest panic, a test that waits on its serial output
-or API fails within seconds and quotes QEMU's last output. The runner retains
-flash and eFuse files in `tools/.smoke-qemu/pytest/` and serial logs in
-`tools/.smoke-qemu/serial/`. The next run replaces the pytest directory, so
-copy a failed run before running again.
+or API fails within seconds and quotes QEMU's last output. A wait for an
+expected restart fails the same way when the guest panicked instead. The
+runner retains flash and eFuse files in `tools/.smoke-qemu/pytest/` and serial
+logs in `tools/.smoke-qemu/serial/`. The next run replaces the pytest
+directory, so copy a failed run before running again.
 
 CI uploads this state as `qemu-failure-<commit>-<attempt>` when the smoke job
 fails. Its `qemu-firmware-images-<commit>` artifact includes the matching

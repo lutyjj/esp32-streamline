@@ -466,6 +466,7 @@ dependencies = [
     { name = "pytest-embedded" },
     { name = "pytest-embedded-qemu" },
     { name = "pytest-xdist" },
+    { name = "qemu-qmp" },
     { name = "requests" },
 ]
 
@@ -488,6 +489,7 @@ requires-dist = [
     { name = "pytest-embedded", specifier = ">=2.8,<3" },
     { name = "pytest-embedded-qemu", specifier = ">=2.8,<3" },
     { name = "pytest-xdist", specifier = ">=3.6,<4" },
+    { name = "qemu-qmp", specifier = ">=0.0.3,<0.1" },
     { name = "requests", specifier = ">=2.32,<3" },
 ]
 

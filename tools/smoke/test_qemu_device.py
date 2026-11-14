@@ -7,6 +7,7 @@ device-agnostic API contract lives in `test_device_api.py`.
 """
 
 import dataclasses
+import errno
 import hashlib
 import http.server
 import itertools
@@ -84,6 +85,15 @@ def test_http_connections_during_startup_do_not_abort(
     assert not missed, f"startup requests missed registered routes: {missed}"
     ready = wait_for_api(device.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
+
+
+def test_boot_returns_once_qemu_holds_the_forwarded_port(boot_device: Callable[..., EmulatedDevice]) -> None:
+    # Any socket could take a port released for QEMU before QEMU binds it.
+    port = urlsplit(boot_device().api.base_url).port
+    assert port is not None
+    with socket.socket() as other, pytest.raises(OSError) as taken:
+        other.bind(("127.0.0.1", port))
+    assert taken.value.errno == errno.EADDRINUSE
 
 
 @dataclasses.dataclass(frozen=True)

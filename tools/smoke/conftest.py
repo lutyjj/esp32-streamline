@@ -9,8 +9,10 @@ unprovisioned flash, serial boot markers) carry the `emulated` marker and
 are skipped on hardware targets.
 """
 
+import asyncio
 import json
 import os
+import re
 import shutil
 import socket
 from collections.abc import Callable, Iterator, Sequence
@@ -20,8 +22,9 @@ from typing import Any
 
 import pexpect
 import pytest
-from pytest_embedded.dut_factory import DutFactory
-from pytest_embedded_qemu.qemu import QEMU_TARGETS
+from pytest_embedded import dut_factory
+from pytest_embedded_qemu.qemu import QEMU_TARGETS, Qemu
+from qemu.qmp import QMPClient
 
 from streamline_tools.device.api import DeviceApi, wait_for_api
 from streamline_tools.device.boot_log import serial_marker
@@ -44,6 +47,10 @@ API_TIMEOUT = 120.0
 # from a repeated character so secret scanners see no entropy in a test key.
 ADMIN_KEY = "a" * 48
 WIFI_PASSWORD = "qemu-test-password"
+# QEMU connects to its monitor while it starts, before the guest runs.
+MONITOR_TIMEOUT = 30.0
+# A forwarding rule's line in `info usernet`, read as QEMU's own tests do.
+_HOST_FORWARD = re.compile(r"TCP.HOST_FORWARD.*127\.0\.0\.1\s+(\d+)\s+10\.")
 
 
 def _hardware_url() -> str | None:
@@ -91,10 +98,25 @@ def expect_marker(dut: Any, marker: str, timeout: float = BOOT_TIMEOUT) -> bytes
     return before
 
 
-def _free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
+def _forwarded_port(monitor: socket.socket) -> int:
+    """Ask the QEMU that connects to `monitor` which host port its forwarding rule bound."""
+    monitor.settimeout(MONITOR_TIMEOUT)
+    connection, _ = monitor.accept()
+
+    async def info_usernet() -> object:
+        qmp = QMPClient()
+        async with asyncio.timeout(MONITOR_TIMEOUT):
+            await qmp.connect(connection)
+            try:
+                return await qmp.execute("human-monitor-command", {"command-line": "info usernet"})
+            finally:
+                await qmp.disconnect()
+
+    with connection:
+        report = asyncio.run(info_usernet())
+    match = _HOST_FORWARD.search(str(report))
+    assert match, f"QEMU reported no forwarded port: {report!r}"
+    return int(match[1])
 
 
 @dataclass(frozen=True)
@@ -122,13 +144,12 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
     Callers own every later expectation, so a boot sequence stays asserted in
     its test.
     """
-    booted: list[EmulatedDevice] = []
+    started: list[Any] = []
 
     def _start(flash: Path | None, admin_key: str | None) -> EmulatedDevice:
         if flash is None:
             flash = tmp_path / f"flash-{len(list(tmp_path.glob('flash-*.bin')))}.bin"
             shutil.copy(padded_image, flash)
-        port = _free_port()
         # The signed firmware targets ESP32 chip revision 3.0 (ECO3), required by
         # the RSA signature scheme, so its bootloader refuses a lower revision.
         # QEMU's built-in eFuse default reports v0.0; pytest-embedded ships an
@@ -138,20 +159,29 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
         # per boot keeps the emulated hardware identity out of the flash under test.
         efuse = tmp_path / f"efuse-{len(list(tmp_path.glob('efuse-*.bin')))}.bin"
         efuse.write_bytes(QEMU_TARGETS["esp32"].default_efuse)
-        dut = DutFactory.create(
-            embedded_services="qemu",
-            qemu_image_path=str(flash),
-            skip_regenerate_image=True,
-            qemu_extra_args=(
-                f"-no-reboot -nic user,model=open_eth,hostfwd=tcp:127.0.0.1:{port}-:80"
-                f" -drive file={efuse},if=none,format=raw,id=efuse"
-                " -global driver=nvram.esp32.efuse,property=drive,value=efuse"
-            ),
-        )
+        # QEMU binds the forwarded port itself and connects to this monitor, so
+        # no port is released before its user holds it. Without `-qmp`,
+        # pytest-embedded binds and releases a monitor port for QEMU to take.
+        # It adds the DUT's index within the test to a `-qmp` port.
+        with socket.create_server(("127.0.0.1", 0)) as monitor:
+            monitor_port = monitor.getsockname()[1]
+            qmp_base = monitor_port - dut_factory.DUT_GLOBAL_INDEX
+            dut = dut_factory.DutFactory.create(
+                embedded_services="qemu",
+                qemu_image_path=str(flash),
+                skip_regenerate_image=True,
+                qemu_cli_args=f"{Qemu.QEMU_DEFAULT_ARGS} -qmp tcp:127.0.0.1:{qmp_base}",
+                qemu_extra_args=(
+                    "-no-reboot -nic user,model=open_eth,hostfwd=tcp:127.0.0.1:0-:80"
+                    f" -drive file={efuse},if=none,format=raw,id=efuse"
+                    " -global driver=nvram.esp32.efuse,property=drive,value=efuse"
+                ),
+            )
+            started.append(dut.qemu)
+            assert dut.qemu.qmp_port == monitor_port, f"QEMU connects to {dut.qemu.qmp_port}, not the monitor"
+            port = _forwarded_port(monitor)
         api = DeviceApi(base_url=f"http://127.0.0.1:{port}", admin_key=admin_key)
-        device = EmulatedDevice(dut=dut, api=api, flash=flash)
-        booted.append(device)
-        return device
+        return EmulatedDevice(dut=dut, api=api, flash=flash)
 
     def _await(device: EmulatedDevice, markers: Sequence[str]) -> None:
         for marker in markers:
@@ -170,8 +200,8 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
         return device
 
     yield _boot
-    for device in booted:
-        device.dut.qemu.terminate()
+    for qemu in started:
+        qemu.terminate()
 
 
 @pytest.fixture

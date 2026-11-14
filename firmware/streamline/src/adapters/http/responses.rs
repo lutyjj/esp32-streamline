@@ -19,6 +19,24 @@ where
     reboot_response_with(request, restart, &api::Ack::rebooting())
 }
 
+/// Answer a saved write that only a boot applies: restart to apply a persisted
+/// value; a staged one waits for commissioning (see
+/// [`crate::mode::ConfigWrite::restart_applies`]).
+pub(super) fn restart_to_apply<C>(
+    request: embedded_svc::http::server::Request<C>,
+    state: &super::ApiState,
+) -> Result<()>
+where
+    C: embedded_svc::http::server::Connection,
+    C::Error: std::error::Error + Send + Sync + 'static,
+{
+    if state.mode.config_write().restart_applies() {
+        reboot_response(request, &state.restart)
+    } else {
+        json_response(request, 200, &api::Ack::ok())
+    }
+}
+
 pub(super) fn reboot_response_with<C>(
     request: embedded_svc::http::server::Request<C>,
     restart: &crate::restart::Restart,

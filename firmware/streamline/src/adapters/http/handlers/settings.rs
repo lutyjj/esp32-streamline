@@ -6,7 +6,7 @@ use crate::{api, boot_health, config::AutoUpdateSchedule, mutation::MutationErro
 
 use super::super::{
     requests::form,
-    responses::{json_response, mutation_error, reboot_response},
+    responses::{json_response, mutation_error, reboot_response, restart_to_apply},
     writes::{
         invalid_configuration, persist_configuration, update_configuration, validate_configuration,
     },
@@ -66,9 +66,8 @@ pub(super) fn register_network_writes(server: &mut ContractServer<'_>) -> Result
 
     // The stream target is a stage-3 change, not commissioning: it sets only
     // host and port and leaves Wi-Fi and the admin key untouched. Blank host
-    // clears the target ("no bridge yet"). A target change takes effect on the
-    // next boot; applying it to the running stream without a reboot is deferred
-    // (the stream target is fixed when the network task spawns).
+    // clears the target ("no bridge yet"). A boot applies it, because the
+    // network task fixes its target when it spawns.
     server.handler(api::SET_TARGET, move |mut request, state| {
         let result = (|| -> Result<(), MutationError> {
             let form: api::TargetSettingsRequest = form(&mut request)?;
@@ -78,7 +77,7 @@ pub(super) fn register_network_writes(server: &mut ContractServer<'_>) -> Result
             })
         })();
         match result {
-            Ok(()) => reboot_response(request, &state.restart),
+            Ok(()) => restart_to_apply(request, state),
             Err(error) => mutation_error(request, error),
         }
     })

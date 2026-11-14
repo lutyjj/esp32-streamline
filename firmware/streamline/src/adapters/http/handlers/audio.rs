@@ -11,7 +11,7 @@ use crate::{
 
 use super::super::{
     requests::form,
-    responses::{json_response, mutation_error, reboot_response},
+    responses::{json_response, mutation_error, restart_to_apply},
     writes::{save_audio_profiles, write_configuration_and_profiles},
     ApiState, ContractServer,
 };
@@ -26,8 +26,8 @@ pub(super) fn register_read(server: &mut ContractServer<'_>) -> Result<()> {
 pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
     // While streaming, audio params are written straight to the running codec
     // and play detection re-baselines to the new input scale; no reboot is
-    // needed. Setup mode has no running codec, so the values wait in the
-    // configuration and take effect when the device boots into streaming.
+    // needed. Without a running codec a boot applies them: setup mode stages
+    // them for commissioning, and any other mode restarts.
     server.handler(api::SET_AUDIO, move |mut request, state| {
         // Ok(true) means the settings were applied live.
         let result = (|| -> Result<bool, MutationError> {
@@ -43,7 +43,7 @@ pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
         })();
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
-            Ok(false) => reboot_response(request, &state.restart),
+            Ok(false) => restart_to_apply(request, state),
             Err(error) => mutation_error(request, error),
         }
     })?;
@@ -90,7 +90,7 @@ pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
         })();
         match result {
             Ok(true) => json_response(request, 200, &api::Ack::ok()),
-            Ok(false) => reboot_response(request, &state.restart),
+            Ok(false) => restart_to_apply(request, state),
             Err(error) => mutation_error(request, error),
         }
     })
@@ -98,8 +98,8 @@ pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
 
 /// Validate, apply, and commit audio settings, returning to custom settings
 /// (no active profile). `Ok(true)` means they were applied live; `Ok(false)`
-/// means the codec is down and a reboot applies them. Shared by the HTTP
-/// handler above and the `cycle_input` button action.
+/// means no codec runs and a boot applies them. Shared by the HTTP handler
+/// above and the `cycle_input` button action.
 pub(in crate::adapters) fn set_audio(
     state: &ApiState,
     audio: AudioSettings,

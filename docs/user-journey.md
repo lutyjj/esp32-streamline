@@ -98,7 +98,8 @@ signal.
 
 Audio places saved profiles beside the live meter. Adjust input opens a focused
 editor with its own live meter, Save, and Discard changes. Fields remain locked
-while saving. Changes apply when saved;
+while saving. Changes apply when saved, except on an unconfigured device, where
+they wait without a restart and apply once it starts on the home network;
 the meter describes applied settings while a draft is edited. A clipping warning
 offers calibration. The guide asks the owner to pause the source and play loud
 material. Cancellation restores entry levels and reports restoration failures;

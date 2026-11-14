@@ -1,10 +1,13 @@
+import { getResponse } from 'msw';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AudioTab } from '../src/components/AudioTab';
 import { type StatusResponse, setTransport } from '../src/lib/api';
+import { FakeDevice } from '../src/mocks/device';
 import { deviceStatus } from '../src/mocks/fixtures';
 import { refresh, status } from '../src/state/device';
+import { rebootWait } from '../src/state/rebootWait';
 
 let host: HTMLElement | null = null;
 
@@ -149,6 +152,37 @@ describe('AudioTab live reconcile', () => {
 describe('AudioTab on the setup network', () => {
   afterEach(() => {
     status.value = null;
+    rebootWait.value = null;
+    setTransport((request) => fetch(request));
+  });
+
+  it('saves setup-mode levels for after setup instead of restarting', async () => {
+    const device = new FakeDevice('first-boot');
+    setTransport(async (request) => {
+      const response = await getResponse(device.handlers, request, {
+        baseUrl: window.location.origin,
+      });
+      if (!response) throw new Error(`No mock handler for ${request.url}`);
+      return response;
+    });
+    status.value = deviceStatus({ mode: 'setup', auth_required: false });
+    const view = document.createElement('div');
+    render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, view);
+    const input = view.querySelector<HTMLInputElement>('#input_gain');
+    act(() => {
+      if (!input) throw new Error('gain field missing');
+      input.value = '3';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      view
+        .querySelector('form')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    await vi.waitFor(() => expect(view.textContent).toContain('apply once setup completes'));
+    expect(rebootWait.value).toBeNull();
+    render(null, view);
   });
 
   it('lets recovery turn a running local route off but not start one', async () => {

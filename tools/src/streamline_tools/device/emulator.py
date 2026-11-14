@@ -5,6 +5,7 @@ never ends, so pexpect never sees QEMU exit. These waits check the QEMU process
 instead and fail with its last serial output, which holds any guest panic.
 """
 
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
@@ -19,6 +20,8 @@ from streamline_tools.device.boot_log import serial_marker
 EXIT_POLL = 1.0
 # How long the output QEMU wrote before it exited gets to reach the expect stream.
 OUTPUT_DRAIN = 5.0
+# A request fails when QEMU closes its sockets on exit, a moment before the exit can be reaped.
+EXIT_GRACE = 1.0
 # Serial lines an exit failure quotes; a dual-core ESP-IDF panic report runs about 35.
 EXIT_TAIL_LINES = 80
 # pexpect is not thread-safe, and requests from several threads can fail at once.
@@ -52,12 +55,14 @@ def wait_for_marker(dut: Any, marker: str, timeout: float) -> bytes:
 
 
 def check_running(dut: Any, failure: str) -> None:
-    """Raise `EmulatorExited` if the QEMU behind a pytest-embedded DUT has exited."""
-    status = dut.qemu.poll()
-    if status is not None:
-        with _drain:
-            output: bytes = dut.expect(pexpect.TIMEOUT, timeout=OUTPUT_DRAIN)
-        raise _exited(status, failure, output)
+    """Raise `EmulatorExited` if the QEMU behind a pytest-embedded DUT exits within `EXIT_GRACE`."""
+    try:
+        status = dut.qemu.wait(timeout=EXIT_GRACE)
+    except subprocess.TimeoutExpired:
+        return
+    with _drain:
+        output: bytes = dut.expect(pexpect.TIMEOUT, timeout=OUTPUT_DRAIN)
+    raise _exited(status, failure, output)
 
 
 @dataclass(frozen=True)

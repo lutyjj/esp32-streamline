@@ -15,8 +15,8 @@ use esp_idf_svc::{
         esp_netif_dhcp_option_mode_t_ESP_NETIF_OP_SET, esp_netif_dhcps_option,
         esp_netif_dhcps_start, esp_netif_dhcps_stop, esp_netif_dns_info_t,
         esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN, esp_netif_get_handle_from_ifkey,
-        esp_netif_get_ip_info, esp_netif_ip_info_t, esp_netif_set_dns_info, esp_wifi_set_ps,
-        esp_wifi_sta_get_ap_info, wifi_ap_record_t, wifi_init_config_t,
+        esp_netif_get_ip_info, esp_netif_ip_info_t, esp_netif_is_netif_up, esp_netif_set_dns_info,
+        esp_wifi_set_ps, esp_wifi_sta_get_ap_info, wifi_ap_record_t, wifi_init_config_t,
         wifi_ps_type_t_WIFI_PS_NONE, EspError, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED,
         ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED, ESP_IPADDR_TYPE_V4, ESP_OK,
         WIFI_PRIVACY_ENHANCEMENTS_ENABLED, WIFI_RMAC_AUTO_RESET_INTERVAL,
@@ -381,9 +381,12 @@ pub fn access_point_address() -> Option<Ipv4Addr> {
     interface_ipv4(c"WIFI_AP_DEF")
 }
 
+/// The interface's address while it is up. `EspWifi::new` gives the soft-AP
+/// interface its static address whether or not the AP ever starts; ESP-IDF
+/// marks an interface up only once its driver has started it.
 fn interface_ipv4(key: &CStr) -> Option<Ipv4Addr> {
     let netif = unsafe { esp_netif_get_handle_from_ifkey(key.as_ptr()) };
-    if netif.is_null() {
+    if netif.is_null() || !unsafe { esp_netif_is_netif_up(netif) } {
         return None;
     }
     let mut info: esp_netif_ip_info_t = unsafe { core::mem::zeroed() };

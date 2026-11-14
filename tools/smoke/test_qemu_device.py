@@ -13,6 +13,7 @@ import http.server
 import itertools
 import json
 import re
+import signal
 import socket
 import threading
 import time
@@ -27,6 +28,7 @@ from conftest import ADMIN_KEY, API_TIMEOUT, CONSOLE_READY, WIFI_PASSWORD, Emula
 
 from streamline_tools.device.api import wait_for_api
 from streamline_tools.device.boot_log import without_interrupt_log_lines
+from streamline_tools.device.emulator import EmulatorExited
 
 pytestmark = pytest.mark.emulated
 
@@ -94,6 +96,27 @@ def test_boot_returns_once_qemu_holds_the_forwarded_port(boot_device: Callable[.
     with socket.socket() as other, pytest.raises(OSError) as taken:
         other.bind(("127.0.0.1", port))
     assert taken.value.errno == errno.EADDRINUSE
+
+
+# A guest panic ends QEMU under -no-reboot; a signal ends it the same way at a known point.
+def test_a_serial_wait_fails_promptly_once_qemu_exits(boot_device: Callable[..., EmulatedDevice]) -> None:
+    device = boot_device()
+    device.dut.qemu.send_signal(signal.SIGTERM)
+    started = time.monotonic()
+    with pytest.raises(EmulatorExited) as exited:
+        expect_marker(device.dut, CONSOLE_READY)
+    assert time.monotonic() - started < 10, "the serial wait outlived QEMU"
+    assert "terminating on signal 15" in str(exited.value), "the failure omits QEMU's last output"
+
+
+def test_an_api_wait_fails_promptly_once_qemu_exits(boot_device: Callable[..., EmulatedDevice]) -> None:
+    device = boot_device()
+    device.dut.qemu.send_signal(signal.SIGTERM)
+    started = time.monotonic()
+    with pytest.raises(EmulatorExited) as exited:
+        wait_for_api(device.api.fetch, API_TIMEOUT)
+    assert time.monotonic() - started < 10, "the API wait outlived QEMU"
+    assert "terminating on signal 15" in str(exited.value), "the failure omits QEMU's last output"
 
 
 @dataclasses.dataclass(frozen=True)

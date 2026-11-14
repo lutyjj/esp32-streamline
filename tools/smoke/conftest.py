@@ -20,14 +20,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pexpect
 import pytest
 from pytest_embedded import dut_factory
 from pytest_embedded_qemu.qemu import QEMU_TARGETS, Qemu
 from qemu.qmp import QMPClient
 
 from streamline_tools.device.api import DeviceApi, wait_for_api
-from streamline_tools.device.boot_log import serial_marker
+from streamline_tools.device.emulator import EmulatedApi, wait_for_marker
 from streamline_tools.device.flash_image import pad_flash_image
 from streamline_tools.secret_input import read_secret_fd
 
@@ -88,14 +87,10 @@ def expect_marker(dut: Any, marker: str, timeout: float = BOOT_TIMEOUT) -> bytes
     """Wait for a serial marker, even one an interrupt log line splits, and return the output before it.
 
     The main task prints the boot markers on core 0, where the emulated NIC's
-    interrupt also runs, so that interrupt's lines arrive whole.
+    interrupt also runs, so that interrupt's lines arrive whole. The wait fails
+    at once if QEMU exits first.
     """
-    try:
-        before: bytes = dut.expect(serial_marker(marker), timeout=timeout, return_what_before_match=True)
-    except (pexpect.EOF, pexpect.TIMEOUT) as error:
-        # pytest-embedded names the missing pattern, which is an unreadable regular expression.
-        raise type(error)(f"serial output never showed {marker!r}") from error
-    return before
+    return wait_for_marker(dut, marker, timeout)
 
 
 def _forwarded_port(monitor: socket.socket) -> int:
@@ -180,7 +175,7 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
             started.append(dut.qemu)
             assert dut.qemu.qmp_port == monitor_port, f"QEMU connects to {dut.qemu.qmp_port}, not the monitor"
             port = _forwarded_port(monitor)
-        api = DeviceApi(base_url=f"http://127.0.0.1:{port}", admin_key=admin_key)
+        api = EmulatedApi(base_url=f"http://127.0.0.1:{port}", admin_key=admin_key, dut=dut)
         return EmulatedDevice(dut=dut, api=api, flash=flash)
 
     def _await(device: EmulatedDevice, markers: Sequence[str]) -> None:

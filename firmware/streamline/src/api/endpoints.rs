@@ -640,7 +640,7 @@ mod spec {
         info(title = "StreamLine device API", version = "2.0.0"),
         paths(get_status, get_health, get_metrics, get_logs, get_coredump, get_coredump_image, post_coredump_erase, get_settings, get_audio_profiles, get_boards, get_bridges, get_openapi, set_wifi, set_target, set_transport_mode, stage_transport_key, verify_transport_key, activate_transport_key, discard_transport_key, rollback_transport_key, retire_transport_key, recover_transport, set_board, set_audio, set_analog_passthrough, set_led, set_button, set_audio_profiles, set_audio_profile, set_name, set_admin_key, set_firmware, set_stream, ota_check, ota_update, ota_rollback, unlock, restart, factory_reset),
         components(schemas(crate::board::Board, crate::profiles::AudioProfileCatalog)),
-        modifiers(&Security)
+        modifiers(&Security, &Restarting)
     )]
     struct ApiDoc;
 
@@ -657,6 +657,26 @@ mod spec {
                     "digest_auth",
                     SecurityScheme::Http(Http::new(HttpAuthScheme::Digest)),
                 );
+        }
+    }
+
+    /// Marks each [`RESTARTING`] operation `x-restarting: true`, so clients
+    /// read the update rule from the contract.
+    struct Restarting;
+
+    impl utoipa::Modify for Restarting {
+        fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+            for endpoint in RESTARTING {
+                openapi
+                    .paths
+                    .paths
+                    .get_mut(endpoint.path)
+                    .and_then(|item| item.post.as_mut())
+                    .expect("a restarting operation is a declared POST")
+                    .extensions
+                    .get_or_insert_with(Default::default)
+                    .insert("x-restarting".into(), true.into());
+            }
         }
     }
 

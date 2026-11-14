@@ -17,7 +17,8 @@ the device reboots.
 While `ota.busy` is true, the device refuses any request that can restart it or
 select another boot slot before that request changes anything. Restart, factory
 reset, rollback, and every other write that may reboot return `409`; the restart
-and factory-reset button actions do nothing.
+and factory-reset button actions do nothing. The contract marks each such
+operation `x-restarting: true`.
 An automatic attempt that cannot start retries after one minute, still waiting
 for idle audio and respecting the disabled schedule.
 

@@ -59,16 +59,22 @@ shows the same lines.
 Wi-Fi disconnects include the SDK reason code and signal level. Connection
 failures distinguish association from address acquisition and include the
 numeric SDK error. HTTP route-registration messages are suppressed so they
-cannot fill the retained log before the console becomes reachable. On a
-provisioned device, HTTP warnings and errors remain enabled.
+cannot fill the retained log before the console becomes reachable.
+
+Once the device serves its API, a request a client gets wrong adds no line.
+ESP-IDF's HTTP request tags (`httpd_uri`, `httpd_parse` and `httpd_txrx`)
+report errors only, as in ESP-IDF's captive-portal example, and so does
+esp-idf-svc's HTTP server. The warning each such request raises is therefore
+not logged: a path not found, a method the path does not serve, an oversized
+URI or header, or a connection the client dropped before the response ended.
+The client still receives the error status. The device keeps no record of the
+request, so a network scanner or a misconfigured poller cannot push the
+device's own lines out.
 
 While the setup network runs, a client that joins it sends a steady stream of
 DNS lookups and captive-portal probes. The log keeps no line per lookup or
-redirect. ESP-IDF's HTTP request tags (`httpd_uri`, `httpd_parse` and
-`httpd_txrx`) report errors only, as in ESP-IDF's captive-portal example, so
-their warnings are not logged: a path not found, an oversized header, or a
-connection the client dropped. A client's DNS and HTTP traffic cannot push the
-setup lines out; each client that joins still adds its join lines.
+redirect, so that traffic cannot push the setup lines out either; each client
+that joins still adds its join lines.
 
 Allocation failures are recorded with the size requested, the caller, the free
 heap, and the largest free block, before any abort that follows them. On a

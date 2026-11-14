@@ -7,6 +7,7 @@
 
 mod capture;
 mod effects;
+mod failure_run;
 mod network;
 mod pause;
 mod queue;

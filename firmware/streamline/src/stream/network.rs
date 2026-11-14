@@ -120,7 +120,7 @@ fn send_batch(
                 log::warn!("PCM send stalled for {elapsed} ms");
             }
             status.record_sent_batch(packets, payload_bytes, reconnected);
-            if let Some(failures) = retry.deliver(now, reconnected) {
+            if let Some(failures) = retry.deliver(now) {
                 log::info!("PCM stream restored after {failures} failed attempts");
             }
         }

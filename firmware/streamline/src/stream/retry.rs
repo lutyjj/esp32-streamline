@@ -1,5 +1,6 @@
 //! When the PCM sender retries after a failure, and which failures it logs.
 
+use super::failure_run::FailureRun;
 use backon::{BackoffBuilder, ExponentialBackoff, ExponentialBuilder};
 use std::time::Duration;
 
@@ -14,26 +15,14 @@ const SCHEDULE: ExponentialBuilder = ExponentialBuilder::new()
     .with_max_delay(MAX_DELAY)
     .without_max_times();
 
-/// A run of failures ends only once one connection has delivered this long, so
-/// a bridge that accepts a connection and then closes it stays on the schedule.
-const MIN_UPTIME_MS: u64 = 1_000;
-
 /// After this long without queue storage the sender asks for a restart, which
 /// releases the fragmented heap.
 const STORAGE_WAIT_MS: u64 = 60_000;
 
-/// Consecutive failed attempts. The log carries the first cause, each changed
-/// cause, and the end of the run, never every attempt.
-struct Run {
-    failures: u64,
-    cause: String,
-}
-
 pub struct Retry {
     delays: ExponentialBackoff,
     next_attempt_ms: Option<u64>,
-    run: Option<Run>,
-    connected_ms: Option<u64>,
+    failures: FailureRun,
     storage_refused_ms: Option<u64>,
 }
 
@@ -42,8 +31,7 @@ impl Retry {
         Self {
             delays: SCHEDULE.build(),
             next_attempt_ms: None,
-            run: None,
-            connected_ms: None,
+            failures: FailureRun::default(),
             storage_refused_ms: None,
         }
     }
@@ -59,31 +47,16 @@ impl Retry {
     pub fn fail(&mut self, now_ms: u64, cause: String) -> Option<&str> {
         let delay = self.delays.next().unwrap_or(MAX_DELAY);
         self.next_attempt_ms = Some(now_ms.saturating_add(delay.as_millis() as u64));
-        self.connected_ms = None;
-        match &mut self.run {
-            Some(run) => {
-                run.failures += 1;
-                if run.cause == cause {
-                    return None;
-                }
-                run.cause = cause;
-            }
-            None => self.run = Some(Run { failures: 1, cause }),
-        }
-        self.run.as_ref().map(|run| run.cause.as_str())
+        self.failures.fail(cause)
     }
 
     /// Record a delivered batch. Returns the failure count of the run it ends.
-    pub fn deliver(&mut self, now_ms: u64, new_connection: bool) -> Option<u64> {
-        if new_connection {
-            self.connected_ms = Some(now_ms);
-        }
-        let connected_ms = self.connected_ms?;
-        if self.run.is_none() || now_ms.saturating_sub(connected_ms) < MIN_UPTIME_MS {
-            return None;
-        }
+    /// Only that end restarts the schedule, so a bridge that accepts each
+    /// connection and then closes it stays on the schedule.
+    pub fn deliver(&mut self, now_ms: u64) -> Option<u64> {
+        let failures = self.failures.succeed(now_ms)?;
         self.restart_schedule();
-        self.run.take().map(|run| run.failures)
+        Some(failures)
     }
 
     /// Record a resume the heap refused. Returns whether refusals have lasted
@@ -103,7 +76,7 @@ impl Retry {
     pub fn restart_schedule(&mut self) {
         self.delays = SCHEDULE.build();
         self.next_attempt_ms = None;
-        self.connected_ms = None;
+        self.failures.interrupt();
         self.storage_refused_ms = None;
     }
 }
@@ -143,46 +116,26 @@ mod tests {
     }
 
     #[test]
-    fn a_run_reports_its_first_cause_each_change_and_its_end() {
-        let mut retry = Retry::new();
-        assert_eq!(retry.fail(0, "refused".into()), Some("refused"));
-        assert_eq!(retry.fail(250, "refused".into()), None);
-        assert_eq!(retry.fail(750, "rejected".into()), Some("rejected"));
-        assert_eq!(retry.fail(1_750, "rejected".into()), None);
-        assert_eq!(retry.deliver(3_750, true), None);
-        assert_eq!(retry.deliver(4_750, false), Some(4));
-        assert_eq!(retry.deliver(5_000, false), None);
-        assert_eq!(retry.fail(5_000, "rejected".into()), Some("rejected"));
-    }
-
-    #[test]
-    fn a_connection_dropped_before_the_minimum_uptime_keeps_the_run_and_its_schedule() {
+    fn a_connection_dropped_within_a_second_keeps_the_run_and_its_schedule() {
         let mut retry = Retry::new();
         retry.fail(0, "refused".into());
-        assert_eq!(retry.deliver(250, true), None);
-        assert_eq!(retry.deliver(1_249, false), None);
+        assert_eq!(retry.deliver(250), None);
+        assert_eq!(retry.deliver(1_249), None);
         assert_eq!(retry.fail(1_249, "reset".into()), Some("reset"));
         assert_eq!(retry.wait_ms(1_249), 500);
-        assert_eq!(retry.deliver(1_749, true), None);
-        assert_eq!(retry.deliver(2_749, false), Some(2));
+        assert_eq!(retry.deliver(1_749), None);
+        assert_eq!(retry.deliver(2_749), Some(2));
         assert_eq!(retry.fail(2_749, "reset".into()), Some("reset"));
         assert_eq!(retry.wait_ms(2_749), 250);
-    }
-
-    #[test]
-    fn delivery_without_a_failure_reports_nothing() {
-        let mut retry = Retry::new();
-        assert_eq!(retry.deliver(0, true), None);
-        assert_eq!(retry.deliver(5_000, false), None);
     }
 
     #[test]
     fn success_restarts_the_schedule() {
         let mut retry = Retry::new();
         spacing(&mut retry, 5);
-        retry.deliver(0, true);
-        assert_eq!(retry.deliver(MIN_UPTIME_MS, false), Some(5));
-        assert_eq!(retry.wait_ms(MIN_UPTIME_MS), 0);
+        retry.deliver(0);
+        assert_eq!(retry.deliver(1_000), Some(5));
+        assert_eq!(retry.wait_ms(1_000), 0);
         assert_eq!(spacing(&mut retry, 2), [250, 500]);
     }
 
@@ -194,8 +147,8 @@ mod tests {
         assert_eq!(retry.wait_ms(0), 0);
         assert_eq!(retry.fail(20_000, "refused".into()), None);
         assert_eq!(retry.wait_ms(20_000), 250);
-        retry.deliver(21_000, true);
-        assert_eq!(retry.deliver(22_000, false), Some(6));
+        retry.deliver(21_000);
+        assert_eq!(retry.deliver(22_000), Some(6));
     }
 
     #[test]

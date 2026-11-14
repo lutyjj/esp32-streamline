@@ -8,7 +8,8 @@ owns installation commands.
 
 - Input activity, device transmission, bridge reception, and player connections
   are separate facts. Saving a target proves none of them.
-- Failed status reads replace live indicators with an unavailable state.
+- Failed status reads, including reads unanswered after five seconds, replace
+  live indicators with an unavailable state.
   Last-known configuration cannot establish current audio delivery.
 - Every wait names its operation and completion evidence. A timer never proves
   a network join, successful reboot, or audible playback.

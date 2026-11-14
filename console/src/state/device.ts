@@ -20,6 +20,13 @@ import { rebootWaitTick } from './rebootWait';
 import { resetHandoff } from './resetHandoff';
 
 export const POLL_MS = 1500;
+/**
+ * A status read that has not answered by now counts as failed. A connection
+ * the network silently drops never errors on its own, and while one read hangs
+ * every later poll is skipped, so live indicators would freeze instead of
+ * turning unavailable.
+ */
+export const STATUS_TIMEOUT_MS = 5000;
 export const PEAK_HOLD_MS = 2500;
 
 export interface PeakHold {
@@ -122,7 +129,7 @@ export async function refresh(): Promise<void> {
   if (refreshing) return;
   refreshing = true;
   try {
-    const s = await getStatus();
+    const s = await getStatus({ signal: AbortSignal.timeout(STATUS_TIMEOUT_MS) });
     applyStatus(s);
     // A recovered expected reboot just applied new settings; re-read them.
     if (rebootWaitTick(false)) loadDeviceSettings().catch(() => {});

@@ -1,7 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTransport } from '../src/lib/api';
 import { deviceStatus } from '../src/mocks/fixtures';
-import { audioMoving, bridgeConnection, refresh, status, unreachable } from '../src/state/device';
+import {
+  audioMoving,
+  bridgeConnection,
+  refresh,
+  STATUS_TIMEOUT_MS,
+  status,
+  unreachable,
+} from '../src/state/device';
 
 describe('bridgeConnection', () => {
   beforeEach(() => {
@@ -18,6 +25,35 @@ describe('bridgeConnection', () => {
     await refresh();
     expect(unreachable.value).toBe(true);
     expect(bridgeConnection.value).toBe('unavailable');
+  });
+
+  it('turns a status read that never answers into an unavailable device', async () => {
+    // A connection the network drops silently: no response, no error, until aborted.
+    setTransport(
+      (request) =>
+        new Promise((_, reject) =>
+          request.signal.addEventListener('abort', () => reject(request.signal.reason)),
+        ),
+    );
+    // The test owns the clock: the platform deadline runs on fake timers.
+    vi.useFakeTimers();
+    const deadline = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), ms);
+      return controller.signal;
+    });
+    try {
+      const poll = refresh();
+      await vi.advanceTimersByTimeAsync(STATUS_TIMEOUT_MS - 1);
+      expect(unreachable.value).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await poll;
+      expect(deadline).toHaveBeenCalledWith(STATUS_TIMEOUT_MS);
+    } finally {
+      deadline.mockRestore();
+      vi.useRealTimers();
+    }
+    expect(unreachable.value).toBe(true);
   });
 
   it('clears live transmission evidence on failure and establishes a new baseline after recovery', async () => {

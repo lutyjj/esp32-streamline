@@ -145,3 +145,27 @@ describe('AudioTab live reconcile', () => {
     expect(writes).toBe(0);
   });
 });
+
+describe('AudioTab on the setup network', () => {
+  afterEach(() => {
+    status.value = null;
+  });
+
+  it('keeps local analog output switchable in recovery but not before commissioning', async () => {
+    // A device in recovery keeps its persisted route and accepts the write;
+    // an unconfigured one has nothing to persist it into yet.
+    for (const [mode, enabled] of [
+      ['recovery', true],
+      ['setup', false],
+    ] as const) {
+      status.value = deviceStatus({ mode, auth_required: false });
+      const view = document.createElement('div');
+      await act(async () =>
+        render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, view),
+      );
+      const toggle = view.querySelector<HTMLInputElement>('input[role="switch"]');
+      expect(toggle?.disabled, mode).toBe(!enabled);
+      render(null, view);
+    }
+  });
+});

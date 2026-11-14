@@ -66,6 +66,10 @@ pub struct StreamStatus {
     /// writes it, and only from inside its quiesced branch, so it cannot be
     /// confused with an ordinary disconnect between two sends.
     transport_quiesced: AtomicBool,
+    /// The sender's request for a restart after the heap kept refusing the
+    /// queue's storage. The provisioned loop admits it like any automatic
+    /// restart, so a running update defers it.
+    restart_needed: AtomicBool,
 }
 
 impl StreamStatus {
@@ -128,6 +132,14 @@ impl StreamStatus {
     /// the close must be visible to it, not merely have happened.
     pub(crate) fn acknowledge_transport_quiesced(&self) {
         self.transport_quiesced.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn set_restart_needed(&self, needed: bool) {
+        self.restart_needed.store(needed, Ordering::Relaxed);
+    }
+
+    pub fn restart_needed(&self) -> bool {
+        self.restart_needed.load(Ordering::Relaxed)
     }
 
     /// Ask the capture task to restart play detection from scratch. Called

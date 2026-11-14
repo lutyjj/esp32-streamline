@@ -50,6 +50,7 @@ fn step(
         queue.suspend();
         *batch = Vec::new();
         retry.restart_schedule();
+        status.set_restart_needed(false);
         status.set_queue_depth(0);
         if status.transport_quiesce_requested() {
             status.acknowledge_transport_quiesced();
@@ -63,9 +64,14 @@ fn step(
         delay.delay_ms(wait.min(u64::from(CONTROL_POLL_MS)) as u32);
         return;
     }
+    let now = clock.monotonic_millis();
     if let Err(cause) = reserve_storage(queue, batch) {
-        report_failure(retry, clock.monotonic_millis(), cause.to_owned());
+        status.set_restart_needed(retry.refuse_storage(now));
+        report_failure(retry, now, cause.to_owned());
         return;
+    }
+    if retry.reserve_storage() {
+        status.set_restart_needed(false);
     }
     let Some((packet, depth)) =
         queue.pop_timeout(Duration::from_millis(u64::from(CONTROL_POLL_MS)))
@@ -128,7 +134,8 @@ fn send_batch(
 }
 
 /// Reallocate what a pause released. A fragmented heap can refuse it after
-/// maintenance; streaming then stays paused until a retry succeeds.
+/// maintenance; streaming then stays paused until a retry succeeds or the
+/// refusal lasts long enough to restart.
 fn reserve_storage(
     queue: &PacketQueue<AudioPacket>,
     batch: &mut Vec<u8>,
@@ -660,11 +667,53 @@ mod tests {
             }
         });
         assert_eq!(sink.calls, 0);
+        assert!(!status.restart_needed());
         assert_eq!(queue.push_drop_oldest(packet()), (false, 0));
 
         let attempts = attempt_times(&mut sink, &queue, &status, &mut retry, &time, 10_000);
         assert_eq!(attempts, [3_850]);
         assert_eq!(sink.writes, 1);
+    }
+
+    #[test]
+    fn a_heap_that_refuses_the_queue_for_a_minute_asks_for_a_restart_until_it_recovers() {
+        use crate::fragmented_heap::with_largest_block;
+
+        let time = Time::default();
+        let status = StreamStatus::default();
+        status.mark_transport_present();
+        let queue = PacketQueue::new();
+        let mut retry = Retry::new();
+        let mut sink = sink(&time);
+        status.request_transport_quiesce();
+        step(
+            &mut sink,
+            &queue,
+            &status,
+            &mut retry,
+            &time,
+            &time,
+            &mut Vec::new(),
+        );
+        status.end_transport_quiesce();
+        with_largest_block(8_192, || {
+            while time.monotonic_millis() < 62_000 {
+                step(
+                    &mut sink,
+                    &queue,
+                    &status,
+                    &mut retry,
+                    &time,
+                    &time,
+                    &mut Vec::new(),
+                );
+            }
+        });
+        assert!(status.restart_needed());
+
+        let attempts = attempt_times(&mut sink, &queue, &status, &mut retry, &time, 200_000);
+        assert_eq!(attempts.len(), 1);
+        assert!(!status.restart_needed());
     }
 
     /// A bridge that accepts each connection and closes it after the first write.

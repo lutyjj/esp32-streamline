@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import queue
@@ -33,6 +34,11 @@ from streamline_bridge.transport import (
     TransportStateStore,
     parse_identity,
 )
+
+# TLS record content types (RFC 8446, section 5.1).
+TLS_CHANGE_CIPHER_SPEC = 20
+TLS_HANDSHAKE = 22
+TLS_APPLICATION_DATA = 23
 
 
 def make_pipeline() -> AudioPipeline:
@@ -80,6 +86,47 @@ def tls_attempt(
     if isinstance(server_result, AuthenticatedConnection):
         server_result.socket.close()
     return client_error, server_result
+
+
+def server_flight_record_types(authenticator: TlsPskAuthenticator, identity: str, psk: bytes) -> list[int]:
+    """Send one PSK ClientHello and return the TLS record types of the bridge's reply."""
+    server_socket, client_socket = socket.socketpair()
+    server_socket.settimeout(2)
+    client_socket.settimeout(2)
+
+    def authenticate() -> None:
+        # The client never finishes the handshake, so authentication fails.
+        with contextlib.suppress(OSError, ssl.SSLError, ValueError):
+            authenticator.authenticate(server_socket, ("192.0.2.10", 39000))
+
+    worker = threading.Thread(target=authenticate)
+    worker.start()
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.set_psk_client_callback(lambda _hint: (identity, psk))
+    client = context.wrap_bio(ssl.MemoryBIO(), outgoing := ssl.MemoryBIO(), server_hostname="bridge")
+    with contextlib.suppress(ssl.SSLWantReadError):
+        client.do_handshake()
+    client_socket.sendall(outgoing.read())
+    types: list[int] = []
+    pending = b""
+    # The encrypted remainder of the server's flight arrives as application_data.
+    while TLS_APPLICATION_DATA not in types:
+        chunk = client_socket.recv(4096)
+        if not chunk:
+            break
+        pending += chunk
+        while len(pending) >= 5 and len(pending) >= 5 + int.from_bytes(pending[3:5], "big"):
+            types.append(pending[0])
+            pending = pending[5 + int.from_bytes(pending[3:5], "big") :]
+    client_socket.close()
+    worker.join(timeout=3)
+    if worker.is_alive():
+        raise AssertionError("TLS authentication did not finish")
+    return types
 
 
 class TransportStateStoreTests(unittest.TestCase):
@@ -321,6 +368,18 @@ class TransportAuthenticationTests(unittest.TestCase):
                 self.assertNotIsInstance(server_failure, AuthenticatedConnection)
 
             self.assertEqual(authenticator.snapshot(), (0, 4))
+
+    def test_handshake_sends_no_middlebox_change_cipher_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            keys = TransportStateStore(Path(temporary) / "keys.json")
+            keys.put(self.key_id, self.psk)
+            authenticator = TlsPskAuthenticator(keys)
+
+            types = server_flight_record_types(authenticator, f"eli1:1:{self.key_id}", bytes.fromhex(self.psk))
+
+            self.assertEqual(types[0], TLS_HANDSHAKE)
+            self.assertIn(TLS_APPLICATION_DATA, types)
+            self.assertNotIn(TLS_CHANGE_CIPHER_SPEC, types)
 
     def test_cleartext_bytes_fail_before_authentication(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

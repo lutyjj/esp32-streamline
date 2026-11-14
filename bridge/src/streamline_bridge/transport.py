@@ -149,6 +149,9 @@ class TlsPskAuthenticator:
         context.minimum_version = ssl.TLSVersion.TLSv1_3
         context.maximum_version = ssl.TLSVersion.TLSv1_3
         context.options |= ssl.OP_NO_TICKET
+        # A middlebox-compatibility change_cipher_spec makes the device's dynamic
+        # mbedTLS buffers reserve a full 16 KiB record for each handshake.
+        context.options &= ~ssl.OP_ENABLE_MIDDLEBOX_COMPAT
         context.num_tickets = 0
         context.set_psk_server_callback(self._lookup_psk)
         self._context = context

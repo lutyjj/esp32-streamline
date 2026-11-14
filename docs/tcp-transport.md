@@ -18,6 +18,9 @@ Encrypted mode requires this exact profile:
 - client identity `eli1:1:<key-id>`, where the key id matches
   `eli1-[0-9a-f]{32}`
 - no session tickets or early data
+- no middlebox-compatibility `change_cipher_spec` record from the bridge; ESP-IDF's
+  dynamic TLS buffers reserve a full 16 KiB receive record when one arrives,
+  which a fragmented heap cannot always supply
 
 The bridge and device use one target port, TCP `39000` by default. Each side
 selects exactly one mode. A cleartext bridge rejects TLS; a TLS bridge rejects

@@ -48,6 +48,13 @@ const MOCK_UPDATED_VERSION = '0.5.0-mock';
 /** The realm the firmware names in every digest challenge. */
 const DIGEST_REALM = 'streamline';
 
+/** Operations the contract marks `x-restarting`, which the device refuses while an update is busy. */
+const RESTARTING: ReadonlySet<string> = new Set(
+  Object.entries(contract.paths as Record<string, { post?: { 'x-restarting'?: boolean } }>)
+    .filter(([, operations]) => operations.post?.['x-restarting'])
+    .map(([path]) => path),
+);
+
 /**
  * Where in the journey the fake device starts: `steady` is a provisioned,
  * streaming device; `first-boot` is an unconfigured one on its setup network;
@@ -395,13 +402,16 @@ export class FakeDevice {
 
   /**
    * POST: writes require the admin key once the device has one, exactly as
-   * `deviceFetch` answers the challenge. The result may be an error
-   * `HttpResponse`.
+   * `deviceFetch` answers the challenge, and a restarting write waits for a
+   * busy update. The result may be an error `HttpResponse`.
    */
   private write(path: string, apply: (body: FormBody) => JsonBodyType | Response): HttpHandler {
     return http.post(path, async ({ request }) => {
       const denied = this.deny(request);
       if (denied) return denied;
+      if (this.status.ota.busy && RESTARTING.has(path)) {
+        return reject(409, 'a firmware update or check is in progress; retry after it finishes');
+      }
       const form = await request.formData().catch(() => null);
       const body: FormBody = form
         ? Object.fromEntries([...form.entries()].map(([key, value]) => [key, String(value)]))

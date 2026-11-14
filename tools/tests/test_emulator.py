@@ -21,7 +21,7 @@ from pytest_embedded.log import PexpectProcess
 
 from streamline_tools.device import emulator
 from streamline_tools.device.api import wait_for_api
-from streamline_tools.device.emulator import EmulatedApi, EmulatorExited, wait_for_marker
+from streamline_tools.device.emulator import EmulatedApi, EmulatorExited, wait_for_marker, wait_for_restart
 
 
 class FakeQemu:
@@ -100,6 +100,37 @@ class WaitForMarkerTest(EmulatedDutTest):
             wait_for_marker(self.dut, "console ready", timeout=0.5)
         self.assertGreaterEqual(time.monotonic() - started, 0.5)
         self.assertEqual(str(raised.exception), "serial output never showed 'console ready'")
+
+
+class WaitForRestartTest(EmulatedDutTest):
+    def test_a_restart_returns_once_qemu_exits(self) -> None:
+        self.serial.write(b"I (5210) streamline::adapters::ota: OTA installed custom image; rebooting\r\n")
+        self.later(0.2, lambda: setattr(self.qemu, "status", 0))
+        started = time.monotonic()
+        wait_for_restart(self.dut, timeout=60)
+        self.assertLess(time.monotonic() - started, emulator.OUTPUT_DRAIN)
+
+    @mock.patch.object(emulator, "OUTPUT_DRAIN", 0.1)
+    def test_a_panic_in_place_of_the_restart_fails_with_its_report(self) -> None:
+        self.serial.write(b"Guru Meditation Error: Core  0 panic'ed (Double exception).\r\n")
+        self.later(0.2, lambda: self.serial.write(b"Rebooting...\r\n"))
+        self.later(0.3, lambda: setattr(self.qemu, "status", 0))
+        with self.assertRaises(EmulatorExited) as raised:
+            wait_for_restart(self.dut, timeout=60)
+        message = str(raised.exception)
+        self.assertIn("status 0 after a panic in place of the expected restart", message)
+        self.assertIn("panic'ed (Double exception)", message)
+        self.assertTrue(message.endswith("Rebooting..."), message)
+
+    @mock.patch.object(emulator, "OUTPUT_DRAIN", 0.1)
+    def test_a_stack_overflow_in_place_of_the_restart_fails(self) -> None:
+        # An abort prints its details in place of the Guru Meditation line.
+        self.serial.write(b"***ERROR*** A stack overflow in task main has been detected.\r\n\r\n")
+        self.serial.write(b"Backtrace: 0x40081f2a:0x3ffbb6d0 0x4008a3b9:0x3ffbb6f0\r\n")
+        self.qemu.status = 0
+        with self.assertRaises(EmulatorExited) as raised:
+            wait_for_restart(self.dut, timeout=60)
+        self.assertIn("A stack overflow in task main", str(raised.exception))
 
 
 class EmulatedApiTest(EmulatedDutTest):

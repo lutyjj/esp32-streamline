@@ -12,11 +12,14 @@ from streamline_tools.device.checks import CheckResult
 # A real board resolves its mode as provisioned or as the setup AP.
 DEVICE_BOOT_COMPLETE = ("StreamLine provisioned", "setup AP started:")
 
-# Fragments that mark a failed boot in ESP-IDF and Rust output.
+# Fragments that open each panic report the firmware can print: an ESP-IDF
+# exception, `abort()`, failed assert or stack overflow, or a Rust panic. Another
+# `esp_system_abort` source enabled in sdkconfig needs its message here.
 PANIC_MARKERS = (
     "Guru Meditation Error",
     "abort() was called",
     "assert failed:",
+    "A stack overflow in task",
     "panicked at",
 )
 

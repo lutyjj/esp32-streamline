@@ -49,6 +49,7 @@ class BootChecksTest(unittest.TestCase):
             "Guru Meditation Error: Core 0 panic'ed (LoadProhibited)",
             "abort() was called at PC 0x400893a1",
             "assert failed: foo bar.c:1 (cond)",
+            "***ERROR*** A stack overflow in task main has been detected.",
             "thread 'main' panicked at src/main.rs:10:5:",
         ):
             with self.subTest(marker_line=marker_line):

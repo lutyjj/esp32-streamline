@@ -26,7 +26,7 @@ from pytest_embedded_qemu.qemu import QEMU_TARGETS, Qemu
 from qemu.qmp import QMPClient
 
 from streamline_tools.device.api import DeviceApi, wait_for_api
-from streamline_tools.device.emulator import EmulatedApi, wait_for_marker
+from streamline_tools.device.emulator import EmulatedApi, wait_for_marker, wait_for_restart
 from streamline_tools.device.flash_image import pad_flash_image
 from streamline_tools.device.qemu_relay import POLL_INTERVAL, QemuRelay
 from streamline_tools.secret_input import read_secret_fd
@@ -218,7 +218,7 @@ def provisioned_device(boot_device: Callable[..., EmulatedDevice]) -> EmulatedDe
         {"ssid": "qemu-smoke-lab", "password": WIFI_PASSWORD, "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
-    setup_boot.dut.qemu.wait(timeout=60)
+    wait_for_restart(setup_boot.dut, 60)
 
     device = boot_device(flash=setup_boot.flash, admin_key=ADMIN_KEY, until=("StreamLine provisioned", CONSOLE_READY))
     ready = wait_for_api(device.api.fetch, API_TIMEOUT)

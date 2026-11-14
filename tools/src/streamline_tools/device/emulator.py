@@ -9,12 +9,13 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pexpect
 
 from streamline_tools.device.api import DeviceApi
-from streamline_tools.device.boot_log import serial_marker
+from streamline_tools.device.boot_log import PANIC_MARKERS, serial_marker
 
 # A serial wait checks this often whether QEMU still runs.
 EXIT_POLL = 1.0
@@ -52,6 +53,23 @@ def wait_for_marker(dut: Any, marker: str, timeout: float) -> bytes:
             if time.monotonic() >= deadline:
                 # pytest-embedded names the missing pattern, which is an unreadable regular expression.
                 raise pexpect.TIMEOUT(f"serial output never showed {marker!r}") from error
+
+
+def wait_for_restart(dut: Any, timeout: float) -> None:
+    """Wait for the guest behind a pytest-embedded QEMU DUT to restart, which ends QEMU under `-no-reboot`.
+
+    Raises `EmulatorExited` if QEMU's serial output shows a panic, and
+    `subprocess.TimeoutExpired` if QEMU still runs at the deadline.
+    """
+    status = dut.qemu.wait(timeout=timeout)
+    # The firmware saves a core dump to flash before a panic resets it
+    # (`sdkconfig.defaults`), which takes QEMU seconds, so the panic report's
+    # first line has reached the DUT's log by now.
+    log = Path(dut.logfile).read_bytes()
+    if any(marker.encode() in log for marker in PANIC_MARKERS):
+        with _drain:
+            output: bytes = dut.expect(pexpect.TIMEOUT, timeout=OUTPUT_DRAIN)
+        raise _exited(status, "after a panic in place of the expected restart", output)
 
 
 def check_running(dut: Any, failure: str) -> None:

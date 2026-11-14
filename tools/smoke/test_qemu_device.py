@@ -28,7 +28,7 @@ from conftest import ADMIN_KEY, API_TIMEOUT, CONSOLE_READY, WIFI_PASSWORD, Emula
 
 from streamline_tools.device.api import wait_for_api
 from streamline_tools.device.boot_log import without_interrupt_log_lines
-from streamline_tools.device.emulator import EmulatorExited
+from streamline_tools.device.emulator import EmulatorExited, wait_for_restart
 
 pytestmark = pytest.mark.emulated
 
@@ -282,7 +282,7 @@ def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
         {"ssid": "qemu-smoke-lab", "password": WIFI_PASSWORD, "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
-    setup_boot.dut.qemu.wait(timeout=60)
+    wait_for_restart(setup_boot.dut, 60)
     provisioned = boot_device(
         flash=setup_boot.flash,
         admin_key=ADMIN_KEY,
@@ -316,7 +316,7 @@ def test_an_open_network_commissions_only_by_explicit_choice_and_persists(
         {"ssid": "qemu-open-lab", "open_network": "true", "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"open commissioning write returned HTTP {code}: {body[:200]!r}"
-    setup_boot.dut.qemu.wait(timeout=60)
+    wait_for_restart(setup_boot.dut, 60)
 
     provisioned = boot_device(
         flash=setup_boot.flash,
@@ -462,7 +462,7 @@ def test_led_role_assignment_persists_and_is_reversible(
     # The assignment lives in NVS, not just memory: it survives a reboot.
     code, _ = provisioned_device.api.post_form("/api/restart", {})
     assert code == 200
-    provisioned_device.dut.qemu.wait(timeout=60)
+    wait_for_restart(provisioned_device.dut, 60)
     rebooted = boot_device(
         flash=provisioned_device.flash,
         admin_key=ADMIN_KEY,
@@ -501,7 +501,7 @@ def test_button_action_assignment_persists_and_is_reversible(
     # The assignment lives in NVS, not just memory: it survives a reboot.
     code, _ = provisioned_device.api.post_form("/api/restart", {})
     assert code == 200
-    provisioned_device.dut.qemu.wait(timeout=60)
+    wait_for_restart(provisioned_device.dut, 60)
     rebooted = boot_device(
         flash=provisioned_device.flash,
         admin_key=ADMIN_KEY,
@@ -559,7 +559,7 @@ def test_factory_reset_returns_to_setup_and_keeps_the_setup_password(
     # alphabet, inside WPA2-Personal's 8..=63 passphrase bounds.
     assert re.fullmatch(r"([a-km-np-z2-9]{4}-){3}[a-km-np-z2-9]{4}", password)
 
-    device.dut.qemu.wait(timeout=60)
+    wait_for_restart(device.dut, 60)
     stored = _partition_bytes(device.flash, _NVS)
     assert not any(credential in stored for credential in credentials), "a credential survived reset in flash"
     seeded = b"\xa5" * 32 in _partition_bytes(device.flash, _COREDUMP)
@@ -679,7 +679,7 @@ def test_ota_install_boots_from_the_other_slot(
 
     # The device downloads through the emulated network, writes the inactive
     # slot, and reboots — which under -no-reboot ends the QEMU process.
-    provisioned_device.dut.qemu.wait(timeout=180)
+    wait_for_restart(provisioned_device.dut, 180)
     _assert_ota_url_absent_from_serial(provisioned_device)
     ports = served_ota_image.peer_ports
     assert ports["/release/streamline-qemu-ota.bin"] == ports["/streamline-qemu-ota.bin"], (
@@ -698,7 +698,7 @@ def test_ota_install_boots_from_the_other_slot(
 
     code, body = updated.api.post_form("/api/restart", {})
     assert code == 200, f"restart returned HTTP {code}: {body[:200]!r}"
-    updated.dut.qemu.wait(timeout=60)
+    wait_for_restart(updated.dut, 60)
     confirmed = boot_device(
         flash=updated.flash,
         admin_key=ADMIN_KEY,
@@ -720,7 +720,7 @@ def test_commissioning_an_updated_setup_device_keeps_the_new_slot(
         {"url": served_ota_image.download_url, "sha256": served_ota_image.sha256},
     )
     assert code == 202, f"OTA start was answered with HTTP {code}: {body[:200]!r}"
-    setup.dut.qemu.wait(timeout=180)
+    wait_for_restart(setup.dut, 180)
 
     updated = boot_device(
         flash=setup.flash,
@@ -732,7 +732,7 @@ def test_commissioning_an_updated_setup_device_keeps_the_new_slot(
         {"ssid": "qemu-smoke-lab", "password": WIFI_PASSWORD, "admin_key": ADMIN_KEY},
     )
     assert code == 200, f"commissioning write returned HTTP {code}: {body[:200]!r}"
-    updated.dut.qemu.wait(timeout=60)
+    wait_for_restart(updated.dut, 60)
 
     commissioned = boot_device(
         flash=updated.flash,
@@ -752,12 +752,12 @@ def test_failed_management_startup_reboots_and_rolls_back_with_diagnostics(
         {"url": served_ota_image.management_failure_url, "sha256": served_ota_image.management_failure_sha256},
     )
     assert code == 202, f"OTA returned HTTP {code}: {body[:200]!r}"
-    provisioned_device.dut.qemu.wait(timeout=180)
+    wait_for_restart(provisioned_device.dut, 180)
 
     failed = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
     expect_marker(failed.dut, f"Loaded app from partition at offset {_OTA_1_OFFSET}")
     expect_marker(failed.dut, "firmware startup failed:")
-    failed.dut.qemu.wait(timeout=30)
+    wait_for_restart(failed.dut, 30)
 
     recovered = boot_device(
         flash=failed.flash,

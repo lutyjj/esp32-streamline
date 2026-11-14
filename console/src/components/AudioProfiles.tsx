@@ -132,7 +132,8 @@ export function AudioProfiles({ draftPending = false }: { draftPending?: boolean
     transact.run(
       async () => {
         const ack = await setActiveAudioProfile(target.id);
-        await loadDeviceSettings();
+        // A restart re-reads settings when the device returns.
+        if (!ack.rebooting) await loadDeviceSettings();
         return ack;
       },
       {

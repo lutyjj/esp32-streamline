@@ -2,11 +2,12 @@ import { getResponse } from 'msw';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AudioProfiles } from '../src/components/AudioProfiles';
 import { AudioTab } from '../src/components/AudioTab';
 import { type StatusResponse, setTransport } from '../src/lib/api';
 import { FakeDevice } from '../src/mocks/device';
-import { deviceStatus } from '../src/mocks/fixtures';
-import { refresh, status } from '../src/state/device';
+import { deviceContract, deviceStatus } from '../src/mocks/fixtures';
+import { audioProfiles, contract, refresh, status } from '../src/state/device';
 import { rebootWait } from '../src/state/rebootWait';
 
 let host: HTMLElement | null = null;
@@ -212,5 +213,50 @@ describe('AudioTab on the setup network', () => {
       }
       render(null, view);
     }
+  });
+});
+
+describe('AudioProfiles', () => {
+  afterEach(() => {
+    status.value = null;
+    contract.value = null;
+    audioProfiles.value = null;
+    rebootWait.value = null;
+    setTransport((request) => fetch(request));
+  });
+
+  it('narrates a restart the activation answers without waiting on a settings read', async () => {
+    status.value = deviceStatus({ auth_required: false });
+    contract.value = deviceContract();
+    audioProfiles.value = {
+      board_id: status.value.capabilities.board_id,
+      schema_version: 1,
+      profiles: [
+        {
+          id: 'vinyl',
+          name: 'Vinyl',
+          audio: { input_line: 2, input_gain: 0, adc_attenuation_db: 9 },
+        },
+      ],
+      active_profile_id: null,
+    };
+    // A device that is going down answers the write, then never the reads.
+    setTransport((request) =>
+      request.method === 'POST'
+        ? Promise.resolve(jsonResponse({ ok: true, rebooting: true }))
+        : new Promise<Response>(() => {}),
+    );
+    const view = document.createElement('div');
+    await act(async () => render(<AudioProfiles />, view));
+
+    await act(async () =>
+      [...view.querySelectorAll('button')]
+        .find((button) => button.textContent === 'Apply profile')
+        ?.click(),
+    );
+
+    await vi.waitFor(() => expect(rebootWait.value).not.toBeNull());
+    expect(view.textContent).toContain('Saved — device is restarting');
+    render(null, view);
   });
 });

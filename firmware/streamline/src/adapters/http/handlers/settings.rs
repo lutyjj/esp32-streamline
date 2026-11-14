@@ -7,7 +7,9 @@ use crate::{api, boot_health, config::AutoUpdateSchedule, mutation::MutationErro
 use super::super::{
     requests::form,
     responses::{json_response, mutation_error, reboot_response},
-    writes::{persist_configuration, update_configuration, validate_configuration},
+    writes::{
+        invalid_configuration, persist_configuration, update_configuration, validate_configuration,
+    },
     ApiState, ContractServer,
 };
 
@@ -33,14 +35,18 @@ pub(super) fn register_network_writes(server: &mut ContractServer<'_>) -> Result
             // after and the two cannot be posted separately. Absent target
             // fields are preserved, so a steady-state Wi-Fi change leaves the
             // target alone.
-            let next = recovery::replace_wifi(
-                current,
-                form.ssid,
-                form.password,
-                form.admin_key,
-                form.target_host,
-                form.target_port,
-            );
+            let next = recovery::WifiPassword::from_form(form.password, form.open_network)
+                .and_then(|password| {
+                    recovery::replace_wifi(
+                        current,
+                        form.ssid,
+                        password,
+                        form.admin_key,
+                        form.target_host,
+                        form.target_port,
+                    )
+                })
+                .map_err(invalid_configuration)?;
             // Validate and confirm before saving, so a rejected write changes nothing.
             validate_configuration(state, &next)?;
             boot_health::confirm_before_commissioning(
@@ -153,6 +159,7 @@ where
         &api::SettingsResponse {
             device_name: &config.device_name,
             ssid: &config.ssid,
+            open_network: config.open_network(),
             target_host: &config.target_host,
             target_port: config.target_port,
             transport: api::TransportStatus {

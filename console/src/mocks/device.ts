@@ -454,8 +454,22 @@ export class FakeDevice {
   private join(body: FormBody): JsonBodyType | Response {
     const ssid = (body.ssid ?? '').trim();
     if (!ssid) return reject(400, 'ssid must not be empty');
+    // Like the firmware: only `open_network` makes a network open, and a blank
+    // password keeps a stored one, which a saved open network does not have.
+    const open = body.open_network === 'true';
+    if (open && body.password) {
+      return reject(400, 'invalid configuration: PasswordForOpenNetwork');
+    }
+    const storedPassword = this.config.ssid !== '' && !this.config.open_network;
+    if (!open && !body.password && !storedPassword) {
+      return reject(400, 'invalid configuration: MissingWifiPassword');
+    }
+    if (body.password && !wpa2Password(body.password)) {
+      return reject(400, 'invalid configuration: MalformedWifiPassword');
+    }
     if (body.admin_key) this.adminKey = body.admin_key;
     this.config.ssid = ssid;
+    this.config.open_network = open;
     // An absent target keeps the stored one; an empty host clears it.
     if (body.target_host !== undefined) {
       this.config.target_host = body.target_host;
@@ -667,6 +681,15 @@ function num(value: string | undefined): number | null {
   if (value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+/** The firmware's WPA2 password shape: 8 to 63 bytes, or a 64-digit hex PSK, without NUL. */
+function wpa2Password(password: string): boolean {
+  const bytes = new TextEncoder().encode(password).length;
+  return (
+    !password.includes('\0') &&
+    ((bytes >= 8 && bytes <= 63) || (bytes === 64 && /^[0-9a-fA-F]{64}$/.test(password)))
+  );
 }
 
 function reject(status: number, message: string): Response {

@@ -36,6 +36,7 @@ const limits: AudioProfileImportLimits = {
 const config: SettingsResponse = {
   device_name: '',
   ssid: 'home',
+  open_network: false,
   target_host: '',
   target_port: 39000,
   transport: {

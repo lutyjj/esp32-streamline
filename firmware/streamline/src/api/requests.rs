@@ -13,9 +13,15 @@ pub struct WifiSettingsRequest {
     #[cfg_attr(feature = "api-spec", schema(min_length = 1))]
     pub ssid: String,
     /// WPA2 password: 8 to 63 bytes or a 64-digit hexadecimal PSK, without NUL.
-    /// Empty preserves the stored password; first commissioning requires one.
+    /// Empty keeps the stored password, so a protected network that has none
+    /// stored needs one. Must be empty when `open_network` is true.
     #[serde(default)]
     pub password: String,
+    /// Join `ssid` as an open network, without a password. The device then
+    /// joins only an open network by that name.
+    #[serde(default)]
+    #[cfg_attr(feature = "api-spec", schema(default = false))]
+    pub open_network: bool,
     /// Optional bridge host set during first commissioning.
     #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/]*$"))]
     pub target_host: Option<String>,
@@ -202,5 +208,9 @@ mod tests {
                 .expect("valid form");
         assert_eq!(form.ssid, "Studio WiFi");
         assert_eq!(form.target_host.as_deref(), Some("bridge.local"));
+        assert!(!form.open_network);
+        let form: WifiSettingsRequest =
+            serde_urlencoded::from_str("ssid=Cafe&open_network=true").expect("valid form");
+        assert!(form.open_network);
     }
 }

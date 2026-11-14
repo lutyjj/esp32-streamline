@@ -142,6 +142,7 @@ pub fn settings() -> Value {
     let settings = SettingsResponse {
         device_name: "",
         ssid: SSID,
+        open_network: false,
         target_host: BRIDGE_HOST,
         target_port: BRIDGE_PORT,
         transport: TransportStatus {

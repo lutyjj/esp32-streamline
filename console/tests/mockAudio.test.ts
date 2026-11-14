@@ -50,7 +50,11 @@ describe('mock audio transport', () => {
   it('does not transmit during setup or without a bridge target', async () => {
     const setup = await getStatus();
     expect((await getStatus()).metrics.packets_total).toBe(setup.metrics.packets_total);
-    await setWifi({ ssid: 'Example network', admin_key: MOCK_ADMIN_KEY });
+    await setWifi({
+      ssid: 'Example network',
+      password: 'example-password',
+      admin_key: MOCK_ADMIN_KEY,
+    });
     const untargeted = await getStatus();
     expect(untargeted.mode).toBe('provisioned');
     expect((await getStatus()).metrics.packets_total).toBe(untargeted.metrics.packets_total);

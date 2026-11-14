@@ -239,6 +239,46 @@ def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
     assert json.loads(body)["device_name"] == "staged-name"
 
 
+def test_an_open_network_commissions_only_by_explicit_choice_and_persists(
+    boot_device: Callable[..., EmulatedDevice],
+) -> None:
+    """Emulated: needs a device on a fresh unprovisioned flash."""
+    setup_boot = boot_device(until=("setup console started", CONSOLE_READY))
+    _expect_api_up(setup_boot)
+    # Without the choice a blank password keeps a stored one, which a fresh device lacks.
+    for fields, error in [
+        ({"ssid": "qemu-open-lab", "admin_key": ADMIN_KEY}, b"MissingWifiPassword"),
+        (
+            {"ssid": "qemu-open-lab", "password": WIFI_PASSWORD, "open_network": "true", "admin_key": ADMIN_KEY},
+            b"PasswordForOpenNetwork",
+        ),
+    ]:
+        code, body = setup_boot.api.post_form("/api/settings/wifi", fields)
+        assert code == 400 and error in body, f"{sorted(fields)} was answered with HTTP {code}: {body[:200]!r}"
+    code, body = setup_boot.api.post_form(
+        "/api/settings/wifi",
+        {"ssid": "qemu-open-lab", "open_network": "true", "admin_key": ADMIN_KEY},
+    )
+    assert code == 200, f"open commissioning write returned HTTP {code}: {body[:200]!r}"
+    setup_boot.dut.qemu.wait(timeout=60)
+
+    provisioned = boot_device(
+        flash=setup_boot.flash,
+        admin_key=ADMIN_KEY,
+        until=("StreamLine provisioned", CONSOLE_READY),
+    )
+    _expect_api_up(provisioned)
+    code, body = provisioned.api.fetch("/api/settings")
+    assert code == 200
+    settings = json.loads(body)
+    assert (settings["ssid"], settings["open_network"]) == ("qemu-open-lab", True)
+    # Leaving an open network for a protected one needs its password.
+    code, body = provisioned.api.post_form("/api/settings/wifi", {"ssid": "qemu-smoke-lab"})
+    assert code == 400 and b"MissingWifiPassword" in body, (
+        f"a protected network without a password was answered with HTTP {code}: {body[:200]!r}"
+    )
+
+
 def test_provisioning_persists_across_reboot(provisioned_device: EmulatedDevice) -> None:
     # The fixture performed the commissioning write and the reboot; what is
     # left to assert is the durable outcome.

@@ -2,7 +2,7 @@
 
 use crate::{
     board::Board,
-    config::{AudioSettings, AutoUpdateSchedule, RuntimeConfig},
+    config::{AudioSettings, AutoUpdateSchedule, ConfigError, RuntimeConfig},
     transport::DEFAULT_PORT,
 };
 
@@ -29,25 +29,54 @@ pub fn setup_baseline(board: &Board, persisted: Option<RuntimeConfig>) -> Runtim
     })
 }
 
+/// What a Wi-Fi write asks for the network's password.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WifiPassword {
+    /// A protected network keeps the stored password.
+    Keep,
+    /// A protected network with this password.
+    Replace(String),
+    /// An open network, joined without a password.
+    Open,
+}
+
+impl WifiPassword {
+    /// Read a form's password and open-network choice. A blank password keeps
+    /// the stored one, so only the explicit choice makes a network open.
+    pub fn from_form(password: String, open_network: bool) -> Result<Self, ConfigError> {
+        match (open_network, password.is_empty()) {
+            (true, true) => Ok(Self::Open),
+            (true, false) => Err(ConfigError::PasswordForOpenNetwork),
+            (false, true) => Ok(Self::Keep),
+            (false, false) => Ok(Self::Replace(password)),
+        }
+    }
+}
+
 /// Apply a Wi-Fi form without requiring the write-only values again. Missing
 /// target fields preserve their values, as they do outside recovery mode.
 pub fn replace_wifi(
     mut current: RuntimeConfig,
     ssid: String,
-    password: String,
+    password: WifiPassword,
     admin_key: String,
     target_host: Option<String>,
     target_port: Option<u16>,
-) -> RuntimeConfig {
-    current.ssid = ssid;
-    if !password.is_empty() {
-        current.password = password;
+) -> Result<RuntimeConfig, ConfigError> {
+    match password {
+        WifiPassword::Keep if current.password.is_empty() => {
+            return Err(ConfigError::MissingWifiPassword)
+        }
+        WifiPassword::Keep => {}
+        WifiPassword::Replace(password) => current.password = password,
+        WifiPassword::Open => current.password.clear(),
     }
+    current.ssid = ssid;
     if !admin_key.is_empty() {
         current.admin_key = admin_key;
     }
     current.update_target(target_host, target_port);
-    current
+    Ok(current)
 }
 
 /// Change memory only after its durable write succeeds. The ESP-IDF HTTP
@@ -103,6 +132,7 @@ mod tests {
     fn first_setup_uses_descriptor_defaults_and_no_key() {
         let baseline = setup_baseline(&board(), None);
         assert_eq!(baseline.admin_key, "");
+        assert!(!baseline.open_network());
         assert_eq!(baseline.audio.input_line, board().default_line());
         assert_eq!(baseline.target_port, 39_000);
     }
@@ -119,11 +149,12 @@ mod tests {
         let after = replace_wifi(
             before.clone(),
             "new-wifi".to_owned(),
-            String::new(),
+            WifiPassword::Keep,
             String::new(),
             None,
             None,
-        );
+        )
+        .unwrap();
         assert_eq!(after.ssid, "new-wifi");
         assert_eq!(after.password, before.password);
         assert_eq!(after.admin_key, before.admin_key);
@@ -141,6 +172,62 @@ mod tests {
     }
 
     #[test]
+    fn only_the_explicit_choice_makes_a_network_open() {
+        assert_eq!(
+            WifiPassword::from_form(String::new(), true),
+            Ok(WifiPassword::Open)
+        );
+        assert_eq!(
+            WifiPassword::from_form(String::new(), false),
+            Ok(WifiPassword::Keep)
+        );
+        assert_eq!(
+            WifiPassword::from_form("home-password".to_owned(), false),
+            Ok(WifiPassword::Replace("home-password".to_owned()))
+        );
+        assert_eq!(
+            WifiPassword::from_form("home-password".to_owned(), true),
+            Err(ConfigError::PasswordForOpenNetwork)
+        );
+    }
+
+    #[test]
+    fn an_open_network_drops_the_stored_password_and_validates() {
+        let board = board();
+        let open = replace_wifi(
+            configured(),
+            "cafe".to_owned(),
+            WifiPassword::Open,
+            String::new(),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(open.open_network());
+        assert_eq!(open.validate(&board), Ok(()));
+    }
+
+    #[test]
+    fn a_protected_network_needs_a_password_when_none_is_stored() {
+        let mut open = configured();
+        open.password.clear();
+        let first_setup = setup_baseline(&board(), None);
+        for current in [open, first_setup] {
+            assert_eq!(
+                replace_wifi(
+                    current,
+                    "home-wifi".to_owned(),
+                    WifiPassword::Keep,
+                    crate::config::TEST_ADMIN_KEY.to_owned(),
+                    None,
+                    None,
+                ),
+                Err(ConfigError::MissingWifiPassword)
+            );
+        }
+    }
+
+    #[test]
     fn commissioning_carries_staged_settings_into_the_first_persisted_configuration() {
         let board = board();
         let mut staged = setup_baseline(&board, None);
@@ -155,11 +242,12 @@ mod tests {
         let commissioned = replace_wifi(
             staged.clone(),
             "home-wifi".to_owned(),
-            "home-password".to_owned(),
+            WifiPassword::Replace("home-password".to_owned()),
             crate::config::TEST_ADMIN_KEY.to_owned(),
             None,
             None,
-        );
+        )
+        .unwrap();
 
         assert_eq!(commissioned.validate(&board), Ok(()));
         assert_eq!(commissioned.device_name, staged.device_name);
@@ -177,11 +265,12 @@ mod tests {
         let next = replace_wifi(
             current.clone(),
             "new-wifi".to_owned(),
-            String::new(),
+            WifiPassword::Keep,
             String::new(),
             None,
             None,
-        );
+        )
+        .unwrap();
 
         let result = commit_after_persist(&mut current, next, |_| Err::<(), _>("interrupted"));
 
@@ -211,11 +300,12 @@ mod tests {
             let mut next = replace_wifi(
                 current,
                 "new-wifi".to_owned(),
-                String::new(),
+                WifiPassword::Keep,
                 String::new(),
                 host.map(str::to_owned),
                 port,
-            );
+            )
+            .unwrap();
             assert_eq!(next.transport.keys.pending_verified(), !changed);
             let activation = next.transport.keys.activate();
             if changed {

@@ -115,7 +115,7 @@ pub(super) fn write_configuration_and_profiles(
     Ok(())
 }
 
-fn invalid_configuration(error: ConfigError) -> MutationError {
+pub(super) fn invalid_configuration(error: ConfigError) -> MutationError {
     MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
 }
 

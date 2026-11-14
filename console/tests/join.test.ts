@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, isUnlocked } from '../src/lib/adminKey';
 import { setTransport } from '../src/lib/api';
+import type { WifiCredentials } from '../src/lib/wifi';
 import { deviceStatus } from '../src/mocks/fixtures';
 import { status } from '../src/state/device';
 import { expectedHostname, handoff, handoffMessage, joinNetwork } from '../src/state/join';
 import { rebootWait } from '../src/state/rebootWait';
 import { setupKey } from '../src/state/setupKey';
+
+/** A protected network with a typed password. */
+const PW: WifiCredentials = { password: 'pw', open_network: false };
 
 beforeEach(() => {
   status.value = null;
@@ -29,13 +33,14 @@ describe('joinNetwork', () => {
 
     await joinNetwork({
       ssid: '  studio ',
-      password: 'pw',
+      credentials: PW,
       target: { host: ' bridge.local ', port: '' },
       rememberKey: false,
     });
     const fields = new URLSearchParams(body);
     expect(fields.get('ssid')).toBe('studio');
     expect(fields.get('password')).toBe('pw');
+    expect(fields.get('open_network')).toBe('false');
     expect(fields.get('admin_key')).toBe('generated-key');
     expect(fields.get('target_host')).toBe('bridge.local');
     expect(fields.get('target_port')).toBe('39000');
@@ -51,7 +56,11 @@ describe('joinNetwork', () => {
     });
     setupKey.value = '';
 
-    await joinNetwork({ ssid: 'studio', password: '', rememberKey: false });
+    await joinNetwork({
+      ssid: 'studio',
+      credentials: { password: '', open_network: false },
+      rememberKey: false,
+    });
     const fields = new URLSearchParams(body);
     expect(fields.has('target_host')).toBe(false);
     expect(fields.has('target_port')).toBe(false);
@@ -64,9 +73,9 @@ describe('joinNetwork', () => {
   it('unlocks this browser and flags the handoff, without a reboot wait', async () => {
     setTransport(async () => new Response('{"rebooting":true}', { status: 200 }));
 
-    await expect(joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: false })).resolves.toBe(
-      'confirmed',
-    );
+    await expect(
+      joinNetwork({ ssid: 'studio', credentials: PW, rememberKey: false }),
+    ).resolves.toBe('confirmed');
     expect(isUnlocked()).toBe(true);
     expect(handoff.value).toBe('confirmed');
     // The fallback escalation lives in rebootWait; a first join must never
@@ -77,7 +86,7 @@ describe('joinNetwork', () => {
   it('changes nothing when the device rejects the save', async () => {
     setTransport(async () => new Response('{"error":"ssid is required"}', { status: 400 }));
 
-    await expect(joinNetwork({ ssid: '', password: 'pw', rememberKey: true })).rejects.toThrow(
+    await expect(joinNetwork({ ssid: '', credentials: PW, rememberKey: true })).rejects.toThrow(
       'ssid is required',
     );
     expect(isUnlocked()).toBe(false);
@@ -92,7 +101,7 @@ describe('joinNetwork', () => {
       throw new TypeError('NetworkError when attempting to fetch resource.');
     });
 
-    await expect(joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: true })).resolves.toBe(
+    await expect(joinNetwork({ ssid: 'studio', credentials: PW, rememberKey: true })).resolves.toBe(
       'unconfirmed',
     );
     expect(handoff.value).toBe('unconfirmed');

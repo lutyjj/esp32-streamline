@@ -14,7 +14,13 @@ import {
   removeProfile,
   updateProfile,
 } from '../lib/profiles';
-import { audioProfileLimits, audioProfiles, loadDeviceSettings, status } from '../state/device';
+import {
+  audioProfileLimits,
+  audioProfiles,
+  firstRun,
+  loadDeviceSettings,
+  status,
+} from '../state/device';
 import { updateLock } from '../state/ota';
 import { Button } from './Button';
 import { ConfirmButton } from './ConfirmButton';
@@ -129,7 +135,13 @@ export function AudioProfiles({ draftPending = false }: { draftPending?: boolean
         await loadDeviceSettings();
         return ack;
       },
-      { busyText: `Applying ${target.name}…`, okText: `${target.name} is active` },
+      {
+        busyText: `Applying ${target.name}…`,
+        okText: firstRun.value
+          ? `${target.name} is selected; its levels apply once setup completes`
+          : `${target.name} is active`,
+        reboots: `the ${target.name} profile`,
+      },
     );
   }
 
@@ -168,7 +180,11 @@ export function AudioProfiles({ draftPending = false }: { draftPending?: boolean
               </option>
             ))}
           </select>
-          <span class="help">Applying is instant and survives a restart.</span>
+          <span class="help">
+            {firstRun.value
+              ? 'Applied levels wait until setup completes.'
+              : 'Applying is instant and survives a restart.'}
+          </span>
         </div>
       </div>
       <div class="profileactions">

@@ -23,7 +23,9 @@ impl<S> TestSource<S> {
 impl<S: PcmSource> PcmSource for TestSource<S> {
     fn read(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<usize, ReadFailed> {
         let read = self.source.read(buffer, timeout_ms)?;
-        let samples = buffer.get_mut(..read).ok_or(ReadFailed)?;
+        let samples = buffer.get_mut(..read).ok_or_else(|| ReadFailed {
+            cause: "source returned more bytes than requested".into(),
+        })?;
         for byte in samples {
             let sample: i16 = if self.position < PERIOD_BYTES / 2 {
                 1024

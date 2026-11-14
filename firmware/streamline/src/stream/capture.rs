@@ -2,6 +2,7 @@
 
 use super::{
     effects::{Clock, Delay, PcmSource, ReadFailed},
+    failure_run::FailureRun,
     queue::PacketQueue,
     status::StreamStatus,
 };
@@ -28,6 +29,7 @@ pub struct CaptureEngine {
     charged_frames: u64,
     lost_frame_remainder: u64,
     buffered_frames: u32,
+    failures: FailureRun,
 }
 
 impl CaptureEngine {
@@ -42,6 +44,7 @@ impl CaptureEngine {
             charged_frames: 0,
             lost_frame_remainder: 0,
             buffered_frames,
+            failures: FailureRun::default(),
         }
     }
 
@@ -82,12 +85,22 @@ impl CaptureEngine {
                 return;
             }
             Ok(bytes) if bytes <= requested => bytes,
-            Ok(_) | Err(ReadFailed) => {
-                status.record_read_error();
-                self.backoff(clock, status);
+            Ok(_) => {
+                self.read_failed(
+                    "source returned more bytes than requested".into(),
+                    clock,
+                    status,
+                );
+                return;
+            }
+            Err(ReadFailed { cause }) => {
+                self.read_failed(cause, clock, status);
                 return;
             }
         };
+        if let Some(failures) = self.failures.succeed(now) {
+            log::info!("I2S capture restored after {failures} failed reads");
+        }
         if bytes < requested {
             status.record_short_read();
         }
@@ -131,6 +144,14 @@ impl CaptureEngine {
             status.record_queue_drop();
         }
         status.set_queue_depth(depth);
+    }
+
+    fn read_failed(&mut self, cause: String, clock: &(impl Delay + Clock), status: &StreamStatus) {
+        status.record_read_error();
+        if let Some(cause) = self.failures.fail(cause) {
+            log::error!("I2S read failed: {cause}");
+        }
+        self.backoff(clock, status);
     }
 
     fn backoff(&mut self, clock: &(impl Delay + Clock), status: &StreamStatus) {
@@ -182,6 +203,7 @@ mod tests {
             queue::PacketQueue,
             status::StreamStatus,
         },
+        test_log::logged_lines,
     };
 
     /// A sample amplitude well above the detector's start threshold.
@@ -246,6 +268,12 @@ mod tests {
             }
             result
         }
+    }
+
+    fn failed(cause: &str) -> Result<usize, ReadFailed> {
+        Err(ReadFailed {
+            cause: cause.into(),
+        })
     }
 
     #[derive(Default)]
@@ -565,7 +593,7 @@ mod tests {
         let mut source = TimedSource {
             clock: &clock,
             elapsed: 20,
-            source: ScriptedSource::new([Err(ReadFailed), Err(ReadFailed)]),
+            source: ScriptedSource::new([failed("ESP_ERR_TIMEOUT"), failed("ESP_ERR_TIMEOUT")]),
         };
         let status = StreamStatus::default();
         let mut engine = CaptureEngine::new(1_440);
@@ -577,6 +605,48 @@ mod tests {
         assert_eq!(status.snapshot().sequence, 5); // (60 - 30) ms * 48 / 256
         assert_eq!(status.snapshot().capture_lost_packets, 5);
         assert_eq!(status.snapshot().read_errors, 2);
+    }
+
+    #[test]
+    fn a_persistent_read_failure_logs_once_per_run_at_the_unchanged_cadence() {
+        let clock = Time::default();
+        let reads: VecDeque<_> = (0..100)
+            .map(|_| failed("ESP_ERR_TIMEOUT"))
+            .chain([failed("ESP_ERR_INVALID_STATE")])
+            .chain((0..250).map(|_| Ok(PAYLOAD_BYTES)))
+            .collect();
+        let mut source = TimedSource {
+            clock: &clock,
+            elapsed: 20,
+            source: ScriptedSource::new(reads),
+        };
+        let status = StreamStatus::default();
+        let mut engine = CaptureEngine::new(1_440);
+        let ((), failing) = logged_lines(|| {
+            for _ in 0..101 {
+                engine.step(&mut source, None, &status, &clock);
+            }
+        });
+        assert_eq!(clock.monotonic_millis(), 101 * 30);
+        assert_eq!(status.snapshot().read_errors, 101);
+        assert_eq!(
+            failing,
+            [
+                "ERROR I2S read failed: ESP_ERR_TIMEOUT",
+                "ERROR I2S read failed: ESP_ERR_INVALID_STATE",
+            ]
+        );
+
+        source.elapsed = 5;
+        let ((), recovering) = logged_lines(|| {
+            for _ in 0..250 {
+                engine.step(&mut source, None, &status, &clock);
+            }
+        });
+        assert_eq!(
+            recovering,
+            ["INFO I2S capture restored after 101 failed reads"]
+        );
     }
 
     #[test]

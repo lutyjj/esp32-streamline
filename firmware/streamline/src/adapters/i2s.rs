@@ -49,9 +49,7 @@ impl Capture {
 }
 
 impl PcmSource for Capture {
-    /// Fill the requested tail, blocking on the DMA driver. A driver error is
-    /// logged here at the device edge and surfaced as [`ReadFailed`] so the
-    /// capture policy can back off without depending on ESP-IDF error types.
+    /// Fill the requested tail, blocking on the DMA driver.
     fn read(
         &mut self,
         samples: &mut [u8],
@@ -59,9 +57,8 @@ impl PcmSource for Capture {
     ) -> std::result::Result<usize, ReadFailed> {
         self.driver
             .read(samples, TickType::new_millis(u64::from(timeout_ms)).ticks())
-            .map_err(|error| {
-                log::error!("I2S read failed: {error:#}");
-                ReadFailed
+            .map_err(|error| ReadFailed {
+                cause: error.to_string(),
             })
     }
 }

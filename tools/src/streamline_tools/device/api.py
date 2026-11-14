@@ -19,7 +19,8 @@ from requests.auth import HTTPDigestAuth
 from streamline_tools.device.checks import CheckResult
 
 # A fetch takes an API path such as "/api/status" and returns
-# (HTTP status code, response body). Errors surface as raised OSError.
+# (HTTP status code, response body). Errors surface as raised OSError; a fetch
+# raises anything else to end a poll, as `EmulatedApi` does once QEMU exits.
 ApiFetch = Callable[[str], tuple[int, bytes]]
 
 #: The one account the single-owner device has.

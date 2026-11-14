@@ -11,7 +11,8 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
   device, real or emulated. One module per concern: `flash_image` prepares
   merged images for QEMU, `capture` reads serial output to a boot marker,
   `boot_log` judges a captured transcript, `api` talks to the device HTTP
-  surface, `checks` is the shared result model.
+  surface, `emulator` ends a wait on an emulated device once QEMU exits,
+  `checks` is the shared result model.
 - `src/streamline_tools/smoke.py`: the `streamline-smoke` CLI over that
   library.
 - `smoke/`: the device test suite (pytest + pytest-embedded) over the same
@@ -62,8 +63,10 @@ Add a tool as a module in `src/streamline_tools/` with a console entry point in
 
 ### Debug a failed emulated run
 
-Boots and OTA assertions run once; a failed boot fails the test. The runner
-retains flash and eFuse files in `tools/.smoke-qemu/pytest/` and serial logs in
+Boots and OTA assertions run once; a failed boot fails the test. When QEMU
+exits, as it does after a guest panic, a test that waits on its serial output
+or API fails within seconds and quotes QEMU's last output. The runner retains
+flash and eFuse files in `tools/.smoke-qemu/pytest/` and serial logs in
 `tools/.smoke-qemu/serial/`. The next run replaces the pytest directory, so
 copy a failed run before running again.
 

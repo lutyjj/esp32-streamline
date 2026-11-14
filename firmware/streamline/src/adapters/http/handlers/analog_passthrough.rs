@@ -2,7 +2,9 @@
 
 use anyhow::Result;
 
-use crate::{analog_passthrough::AnalogPassthroughRoute, api, mutation::MutationError};
+use crate::{
+    analog_passthrough::AnalogPassthroughRoute, api, mode::ConfigWrite, mutation::MutationError,
+};
 
 use super::super::{
     requests::form,
@@ -25,6 +27,11 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
                 next.analog_passthrough_enabled = form.enabled;
                 Ok(next.audio.input_line)
             })?;
+            // Setup mode runs no codec; the staged route starts with the
+            // first boot after commissioning.
+            if state.mode.config_write() == ConfigWrite::Stage {
+                return Ok(());
+            }
 
             let Some(codec) = &state.codec else {
                 let mut passthrough = state

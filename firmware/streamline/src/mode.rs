@@ -42,6 +42,15 @@ pub enum ConfigWrite {
     Stage,
 }
 
+impl ConfigWrite {
+    /// Whether a value that only a boot applies calls for a restart now. A
+    /// staged value waits for the restart that ends commissioning, and an
+    /// earlier restart would discard it.
+    pub const fn restart_applies(self) -> bool {
+        matches!(self, Self::Persist)
+    }
+}
+
 impl Mode {
     /// Stable API and metrics name for this mode.
     pub const fn as_str(self) -> &'static str {
@@ -105,6 +114,13 @@ mod tests {
         assert_eq!(Mode::Setup.config_write(), ConfigWrite::Stage);
         assert_eq!(Mode::Recovery.config_write(), ConfigWrite::Persist);
         assert_eq!(Mode::Provisioned.config_write(), ConfigWrite::Persist);
+    }
+
+    #[test]
+    fn a_staged_value_waits_for_commissioning_instead_of_a_restart() {
+        assert!(!Mode::Setup.config_write().restart_applies());
+        assert!(Mode::Recovery.config_write().restart_applies());
+        assert!(Mode::Provisioned.config_write().restart_applies());
     }
 
     #[test]

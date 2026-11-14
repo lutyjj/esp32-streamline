@@ -107,7 +107,11 @@ Core modules may define narrow traits that adapters implement. Core code does no
 Management startup reserves one restart worker before it publishes the device state to the routes.
 A successful rebooting mutation signals that worker before sending its response;
 a disconnected client cannot cancel the reboot. Further HTTP and button writes
-are refused until restart. Configuration validates the station driver's SSID
+are refused until restart. In setup mode, settings writes keep their values in
+memory until commissioning persists them, so a write that a boot applies, such
+as the stream target or audio levels, answers without restarting. Any restart
+before commissioning, including the one a board selection needs to load its
+descriptor, discards those values. Configuration validates the station driver's SSID
 and WPA2 password limits before committing Wi-Fi settings. An empty password
 saves an open network, which a Wi-Fi write chooses only through `open_network`.
 The station then joins only an open network by that name; with a password it

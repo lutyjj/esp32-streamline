@@ -210,18 +210,40 @@ def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
 
     # A settings write that commissioning does not gate applies to the running
     # configuration instead of failing on the Wi-Fi credentials it never sent.
-    code, body = setup_boot.api.post_form("/api/settings/name", {"name": "staged-name"})
-    assert code == 200, f"setup-mode rename was answered with HTTP {code}: {body[:200]!r}"
+    # One that a boot applies waits for commissioning instead of restarting,
+    # since a restart would discard what it staged.
+    staged = {
+        "/api/settings/name": {"name": "staged-name"},
+        "/api/settings/audio": {"input_line": "1", "input_gain": "0", "adc_attenuation_db": "9"},
+        "/api/settings/target": {"target_host": "192.0.2.20", "target_port": "39001"},
+        "/api/settings/analog-passthrough": {"enabled": "true"},
+        "/api/settings/firmware": {"auto_update_schedule": "disabled"},
+    }
+    for path, fields in staged.items():
+        code, body = setup_boot.api.post_form(path, fields)
+        assert code == 200 and json.loads(body) == {"ok": True}, (
+            f"setup-mode {path} was answered with HTTP {code}: {body[:200]!r}"
+        )
+    expected = {
+        "device_name": "staged-name",
+        "input_line": 1,
+        "adc_attenuation_db": 9,
+        "target_host": "192.0.2.20",
+        "target_port": 39001,
+        "analog_passthrough_enabled": True,
+        "auto_update_schedule": "disabled",
+    }
     code, body = setup_boot.api.fetch("/api/settings")
     assert code == 200
-    assert json.loads(body)["device_name"] == "staged-name"
+    settings = json.loads(body)
+    assert {key: settings[key] for key in expected} == expected
 
     # A transport key binds to a bridge and must survive the reboot that
     # activates it, so it names that precondition rather than staging.
     code, body = setup_boot.api.post_form("/api/transport/keys/stage", {})
     assert code == 503, f"setup-mode key staging was answered with HTTP {code}: {body[:200]!r}"
 
-    # Commissioning carries the staged name into the first persisted generation.
+    # Commissioning carries the staged values into the first persisted generation.
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
         {"ssid": "qemu-smoke-lab", "password": WIFI_PASSWORD, "admin_key": ADMIN_KEY},
@@ -236,7 +258,8 @@ def test_setup_mode_stages_settings_and_refuses_what_needs_commissioning(
     _expect_api_up(provisioned)
     code, body = provisioned.api.fetch("/api/settings")
     assert code == 200
-    assert json.loads(body)["device_name"] == "staged-name"
+    settings = json.loads(body)
+    assert {key: settings[key] for key in expected} == expected
 
 
 def test_an_open_network_commissions_only_by_explicit_choice_and_persists(

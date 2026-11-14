@@ -6,6 +6,7 @@ import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import {
   audioProfilesResource,
   contractResource,
+  firstRun,
   passthroughLocked,
   status,
 } from '../state/device';
@@ -66,8 +67,11 @@ export function AudioTab({
       },
       {
         busyText: 'Saving…',
-        okText: 'Input settings applied',
-        // In setup mode the codec is not running, so the device restarts instead.
+        // Setup mode runs no codec: the levels wait for the first boot on Wi-Fi.
+        okText: firstRun.value
+          ? 'Saved. These levels apply once setup completes.'
+          : 'Input settings applied',
+        // A device whose codec is down restarts to apply them.
         reboots: 'the audio settings',
       },
     );

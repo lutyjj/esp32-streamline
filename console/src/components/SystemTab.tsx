@@ -23,6 +23,7 @@ import {
   OTA_INSTALLING_PHASES,
   otaLog,
   prettyPhase,
+  restartLocked,
 } from '../state/ota';
 import { beginResetHandoff, resetHandoff, resetHandoffMessage } from '../state/resetHandoff';
 import { ApiTab } from './ApiTab';
@@ -577,6 +578,7 @@ function AccessCard() {
 
 export function ResetCard() {
   const writable = useWritable();
+  const locked = restartLocked.value;
   const restart = useTransact();
   const factory = useTransact();
 
@@ -615,7 +617,7 @@ export function ResetCard() {
         <TransactButton
           transact={restart}
           kind="secondary"
-          disabled={!writable}
+          disabled={!writable || locked !== null}
           onClick={() =>
             restart.run(() => restartDevice(), {
               busyText: 'Restarting…',
@@ -633,7 +635,7 @@ export function ResetCard() {
         <ConfirmButton
           label="Factory reset"
           confirmLabel="Erase everything"
-          disabled={!writable}
+          disabled={!writable || locked !== null}
           message="This erases Wi-Fi credentials, the stream target, audio settings and profiles, transport encryption keys, LED roles, the device name, the update schedule, and the admin key. Installed firmware stays. The device returns to its setup network."
           onConfirm={() =>
             factory.run(
@@ -657,6 +659,7 @@ export function ResetCard() {
           }
         />
       </SettingRow>
+      {locked && <p class="callout">{locked}</p>}
       <SectionActions compact>
         <ActionState state={restart.state} />
         <ActionState state={factory.state} />

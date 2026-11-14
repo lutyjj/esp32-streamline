@@ -200,9 +200,10 @@ jobs:
         with:
           name: qemu-firmware-images-${{ github.sha }}
           path: dist/firmware
-      # Two workers on four vCPUs leave half the CPUs for QEMU; more workers
-      # reproduce the "no healthy response" setup flake.
-      - run: make tools-smoke-qemu SMOKE_JOBS=2
+      # One test at a time: each emulator keeps about two vCPUs busy, so a
+      # second one overloads this four-vCPU runner and slows emulated flash
+      # writes.
+      - run: make tools-smoke-qemu
       - name: Preserve failed QEMU state
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -76,8 +76,9 @@ qemu-image:
 
 OTA_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-ota.bin
 FAILURE_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-fail-management-ota.bin
-# Each test boots its own QEMU. Oversubscribing the host reproduces the "no healthy
-# response" setup flake.
+# Each test boots its own QEMU, which keeps about two host CPUs busy. Give each
+# worker that much: an oversubscribed host slows emulated flash writes past the
+# client's timeout.
 SMOKE_JOBS ?=
 API_CONTRACT := $(REPO_ROOT)/docs/openapi.json
 CONTRACT_MOUNT := -v "$(API_CONTRACT):/contract/openapi.json:ro" -e STREAMLINE_API_CONTRACT=/contract/openapi.json

@@ -115,7 +115,8 @@ descriptor, discards those values. Configuration validates the station driver's 
 and WPA2 password limits before committing Wi-Fi settings. An empty password
 saves an open network, which a Wi-Fi write chooses only through `open_network`.
 The station then joins only an open network by that name; with a password it
-joins only WPA2 or stronger networks.
+joins only WPA2 or stronger networks. The station does not use Enhanced Open
+(OWE), so it cannot join an OWE-only network.
 
 The [user journey](user-journey.md) owns the visible behavior of these states. The [security model](security.md) owns who may call each surface.
 

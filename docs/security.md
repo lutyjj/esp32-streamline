@@ -58,8 +58,9 @@ staying cloud-free.
   the joined network and the hosts the device reached, and the
   `/api/coredump` reads return a panic's copy of task memory, which can hold
   anything the firmware held. Setup mode has no key, so it serves both
-  without one. No line the log keeps carries a key, password, or PSK; the
-  setup-network password reaches only the serial port.
+  without one. No line the log keeps carries a key, password, or PSK, or
+  reveals one's length; the setup-network password reaches only the serial
+  port.
 - Credentials ride in a script-set `Authorization` header, not a cookie, so
   the API is CSRF-safe: a cross-origin request triggers a CORS preflight the
   device never approves, and no browser attaches the digest response

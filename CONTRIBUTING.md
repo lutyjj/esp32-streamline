@@ -52,6 +52,12 @@ unlocks with 48 `a`s as the admin key; the bridge with the token
 `make console-e2e` runs the Playwright journey specs against the same
 backends.
 
+The Home Assistant add-on's AppArmor profile has two gates.
+`make ha-addon-lint` compiles the profile, which cannot show that a kernel
+enforces it. `make ha-addon-apparmor-test` runs the add-on image under a
+disposable enforcing copy of the profile, so it needs a Docker host with
+AppArmor enabled. `make test` leaves it out; `make ha-addon-check` runs it.
+
 ## Pull requests
 
 - Branch from `mainline`; do not push to it directly.

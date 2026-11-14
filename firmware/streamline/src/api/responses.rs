@@ -481,8 +481,8 @@ pub struct CoredumpResponse {
 pub struct LogsResponse {
     pub current: BootLog,
     /// The boot before this one. `null` after a power cycle, which clears the
-    /// memory the lines were held in, and on a device that has not restarted
-    /// since it started capturing.
+    /// memory the lines were held in, on a device that has not restarted
+    /// since it started capturing, and in setup mode, which erases them.
     pub previous: Option<BootLog>,
 }
 

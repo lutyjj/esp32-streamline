@@ -20,7 +20,7 @@ staying cloud-free.
 |---|---|---|
 | HTTP writes (`:80`) | Digest-authenticated once provisioned; nonce counts kill replay | No key, no control (config, target, reset); capturing traffic yields nothing that authorizes a later write |
 | HTTP reads (`:80`) | Open; never returns secrets | Status and metrics readable, no control |
-| Device log (`/api/logs`) | Admin-key gated | Owner-only; returns the network name, bridge host, and addresses the firmware logged. Never contains keys. See [diagnostics](diagnostics.md). |
+| Device log (`/api/logs`) | Admin-key gated; open in setup mode, which serves only its own boot's lines | Owner-only; returns the network name, bridge host, and addresses the firmware logged. Never contains keys. See [diagnostics](diagnostics.md). |
 | Crash dump (`/api/coredump`, `/api/coredump/image`) | Admin-key gated | Owner-only; a dump copies task memory at a panic and can contain secrets. See [diagnostics](diagnostics.md#crash-dumps). |
 | Setup AP | WPA2 with a per-device password minted at first boot; writes open only until an admin key is set | Joining needs the password from the device's serial log, the flasher, or its label. The password is device identity: no reset changes it, no read API returns it, and the factory-reset response is its only API appearance. A button held at power-on starts the AP open for one boot, providing physical recovery from a lost password. |
 | OTA update (`/api/ota/update`) | Admin-key gated; vendor RSA-3072 signature verified before commit, plus SHA-256 and auto-rollback | Owner-only; only firmware signed by the trusted key installs |

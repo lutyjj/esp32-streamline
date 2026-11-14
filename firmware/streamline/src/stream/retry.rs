@@ -18,6 +18,10 @@ const SCHEDULE: ExponentialBuilder = ExponentialBuilder::new()
 /// a bridge that accepts a connection and then closes it stays on the schedule.
 const MIN_UPTIME_MS: u64 = 1_000;
 
+/// After this long without queue storage the sender asks for a restart, which
+/// releases the fragmented heap.
+const STORAGE_WAIT_MS: u64 = 60_000;
+
 /// Consecutive failed attempts. The log carries the first cause, each changed
 /// cause, and the end of the run, never every attempt.
 struct Run {
@@ -30,6 +34,7 @@ pub struct Retry {
     next_attempt_ms: Option<u64>,
     run: Option<Run>,
     connected_ms: Option<u64>,
+    storage_refused_ms: Option<u64>,
 }
 
 impl Retry {
@@ -39,6 +44,7 @@ impl Retry {
             next_attempt_ms: None,
             run: None,
             connected_ms: None,
+            storage_refused_ms: None,
         }
     }
 
@@ -80,12 +86,25 @@ impl Retry {
         self.run.take().map(|run| run.failures)
     }
 
+    /// Record a resume the heap refused. Returns whether refusals have lasted
+    /// long enough to restart.
+    pub fn refuse_storage(&mut self, now_ms: u64) -> bool {
+        let since = *self.storage_refused_ms.get_or_insert(now_ms);
+        now_ms.saturating_sub(since) >= STORAGE_WAIT_MS
+    }
+
+    /// Record a reserved resume. Returns whether the heap had refused it.
+    pub fn reserve_storage(&mut self) -> bool {
+        self.storage_refused_ms.take().is_some()
+    }
+
     /// Let the next attempt run at once, as after a pause, which also closes
     /// the connection. An open run stays open, so its end is still reported.
     pub fn restart_schedule(&mut self) {
         self.delays = SCHEDULE.build();
         self.next_attempt_ms = None;
         self.connected_ms = None;
+        self.storage_refused_ms = None;
     }
 }
 
@@ -177,5 +196,17 @@ mod tests {
         assert_eq!(retry.wait_ms(20_000), 250);
         retry.deliver(21_000, true);
         assert_eq!(retry.deliver(22_000, false), Some(6));
+    }
+
+    #[test]
+    fn storage_refused_for_a_minute_asks_for_a_restart_until_it_is_reserved() {
+        let mut retry = Retry::new();
+        assert!(!retry.refuse_storage(1_000));
+        assert!(!retry.refuse_storage(1_000 + STORAGE_WAIT_MS - 1));
+        assert!(retry.refuse_storage(1_000 + STORAGE_WAIT_MS));
+        retry.reserve_storage();
+        assert!(!retry.refuse_storage(2 * STORAGE_WAIT_MS));
+        retry.restart_schedule();
+        assert!(!retry.refuse_storage(4 * STORAGE_WAIT_MS));
     }
 }

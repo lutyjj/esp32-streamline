@@ -63,7 +63,8 @@ source admission.
   discard the oldest packet. Each allocation holds eight packets so resuming
   after HTTPS needs only 8,384 contiguous bytes per allocation. A heap
   without such a block keeps audio paused, and the sender retries on its
-  failure schedule
+  failure schedule. After a minute without the storage, the device restarts
+  once no update is running
 - send admission: retain queued audio through network delays and connection
   setup; check streaming controls again before writing
 - pause: stop enqueueing and admitting sends, close the connection, discard

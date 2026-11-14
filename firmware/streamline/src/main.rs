@@ -270,6 +270,22 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
                         continue;
                     }
                 }
+                if state
+                    .stream
+                    .as_ref()
+                    .is_some_and(|stream| stream.restart_needed())
+                {
+                    let admitted =
+                        state
+                            .restart
+                            .request_when_idle(&state.control, &state.ota, || {
+                                Ok::<_, std::convert::Infallible>(())
+                            });
+                    if matches!(admitted, Ok(true)) {
+                        log::warn!("audio queue memory stayed unavailable; restarting");
+                    }
+                    continue;
+                }
                 let schedule = state
                     .config
                     .lock()

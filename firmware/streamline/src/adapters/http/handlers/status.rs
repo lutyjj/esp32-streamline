@@ -87,10 +87,10 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         .as_ref()
         .map(|stream| stream.snapshot())
         .unwrap_or_default();
-    let (mode, wifi_status) = if state.mode.setup_network_active() {
-        ("setup", "ap")
+    let wifi_status = if state.mode.setup_network_active() {
+        "ap"
     } else {
-        ("provisioned", "connected")
+        "connected"
     };
     let ota = state.ota.snapshot();
     let rollback = crate::adapters::ota::rollback_target();
@@ -98,7 +98,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
         firmware_version: env!("CARGO_PKG_VERSION"),
         firmware_variant: crate::telemetry::FirmwareVariant::current(),
         device_name: config.device_name.clone(),
-        mode,
+        mode: state.mode,
         config_source: "nvs",
         web_server: true,
         configuration_writable: true,
@@ -110,6 +110,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             sta_ip: wifi::station_ip().unwrap_or_default(),
             ap_ip: wifi::access_point_ip().unwrap_or_default(),
             rssi_dbm: wifi::rssi().unwrap_or(0),
+            join_failure: wifi::join_failure(),
         },
         target: TargetTelemetry {
             host: config.target_host.clone(),
@@ -205,7 +206,7 @@ impl<'a> api::StatusResponse<'a> {
         health: &'a HealthReport,
     ) -> Self {
         let indicator_state = indicator::select(
-            snapshot.mode == "setup",
+            snapshot.mode.setup_network_active(),
             health.status == Severity::Blocking,
             snapshot.audio.playing,
         );
@@ -226,6 +227,7 @@ impl<'a> api::StatusResponse<'a> {
                 sta_ip: &snapshot.wifi.sta_ip,
                 ap_ip: &snapshot.wifi.ap_ip,
                 rssi_dbm: snapshot.wifi.rssi_dbm,
+                join_failure: snapshot.wifi.join_failure,
             },
             target: api::TargetStatus {
                 target_host: &snapshot.target.host,

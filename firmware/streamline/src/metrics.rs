@@ -28,7 +28,7 @@ impl<W: Write> PrometheusWriter<W> {
             "Firmware build and runtime mode.",
             &[
                 ("version", snapshot.firmware_version),
-                ("mode", snapshot.mode),
+                ("mode", snapshot.mode.as_str()),
             ],
         )?;
         self.gauge(
@@ -532,7 +532,7 @@ streamline_ota_busy 0\n"
             firmware_version: "0.3.3",
             firmware_variant: crate::telemetry::FirmwareVariant::Standard,
             device_name: "Study CD player".to_owned(),
-            mode: "provisioned",
+            mode: crate::mode::Mode::Provisioned,
             config_source: "nvs",
             web_server: true,
             configuration_writable: true,
@@ -544,6 +544,7 @@ streamline_ota_busy 0\n"
                 sta_ip: "192.0.2.50".to_owned(),
                 ap_ip: String::new(),
                 rssi_dbm: -54,
+                join_failure: None,
             },
             target: TargetTelemetry {
                 host: "bridge.local".to_owned(),

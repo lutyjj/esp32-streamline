@@ -6,7 +6,7 @@ pub struct TelemetrySnapshot {
     pub firmware_variant: FirmwareVariant,
     /// Friendly device name; empty when unnamed.
     pub device_name: String,
-    pub mode: &'static str,
+    pub mode: crate::mode::Mode,
     pub config_source: &'static str,
     pub web_server: bool,
     pub configuration_writable: bool,
@@ -32,6 +32,7 @@ pub struct WifiTelemetry {
     pub sta_ip: String,
     pub ap_ip: String,
     pub rssi_dbm: i32,
+    pub join_failure: Option<crate::join_failure::JoinFailure>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

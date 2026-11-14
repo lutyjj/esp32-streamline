@@ -23,6 +23,7 @@ pub mod health;
 pub mod hex;
 pub mod identity;
 pub mod indicator;
+pub mod join_failure;
 pub mod led;
 pub mod levels;
 pub mod logs;

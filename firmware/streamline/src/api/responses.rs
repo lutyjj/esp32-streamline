@@ -146,8 +146,7 @@ pub struct StatusResponse<'a> {
     pub firmware_version: &'a str,
     pub firmware_variant: crate::telemetry::FirmwareVariant,
     pub device_name: &'a str,
-    #[cfg_attr(feature = "api-spec", schema(inline))]
-    pub mode: &'a str,
+    pub mode: crate::mode::Mode,
     pub config_source: &'a str,
     pub web_server: bool,
     pub configuration_writable: bool,
@@ -354,6 +353,9 @@ pub struct WifiStatus<'a> {
     pub sta_ip: &'a str,
     pub ap_ip: &'a str,
     pub rssi_dbm: i32,
+    /// Why the latest attempt to join the saved network failed; null while
+    /// joined or before any attempt.
+    pub join_failure: Option<crate::join_failure::JoinFailure>,
 }
 
 #[derive(Serialize)]

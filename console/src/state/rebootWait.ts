@@ -1,11 +1,13 @@
 /**
  * Narration for expected reboots: while a wait is active, failed status polls
  * are normal rather than alarming, and the first successful poll announces
- * recovery. Overdue reboots warn that the device may have fallen back to its
- * setup network.
+ * recovery. An overdue reboot warns that the device may have fallen back to
+ * its setup network; one from recovery leaves the lost contact to the
+ * recovery banner.
  */
 
 import { signal } from '@preact/signals';
+import type { StatusResponse } from '../lib/api';
 import { toast } from './toasts';
 
 /** Failed polls (~1.5 s each) before warning that a reboot is overdue. */
@@ -41,8 +43,13 @@ export function beginRebootWait(label: string, toastText?: string, onRecover?: (
   );
 }
 
-/** Feed one poll outcome; returns true when the tick was consumed by a wait. */
-export function rebootWaitTick(pollFailed: boolean): boolean {
+/**
+ * Feed one poll outcome and the mode the device last reported; returns true
+ * when the tick was consumed by a wait. A reboot from recovery can end on the
+ * home network, out of this browser's reach, so once it is overdue its failed
+ * polls go to the recovery banner, and a late return still ends the wait.
+ */
+export function rebootWaitTick(pollFailed: boolean, mode?: StatusResponse['mode']): boolean {
   const wait = rebootWait.value;
   if (!wait) return false;
   if (!pollFailed) {
@@ -53,6 +60,7 @@ export function rebootWaitTick(pollFailed: boolean): boolean {
     return true;
   }
   wait.failedPolls += 1;
+  if (mode === 'recovery' && wait.failedPolls >= REBOOT_WARN_POLLS) return false;
   if (wait.failedPolls === REBOOT_WARN_POLLS) {
     toast(
       'Still offline after a minute — the device may have fallen back to its setup network; check your Wi-Fi list for esp32-streamline-…',

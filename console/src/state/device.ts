@@ -164,7 +164,7 @@ export async function refresh(): Promise<void> {
     pollFailures.value += 1;
     audioMoving.value = false;
     lastPcmBytes = -1;
-    if (!rebootWaitTick(true) && !resetHandoff.value) unreachable.value = true;
+    if (!rebootWaitTick(true, status.value?.mode) && !resetHandoff.value) unreachable.value = true;
   } finally {
     refreshing = false;
   }

@@ -172,7 +172,9 @@ the admin key. Blank write-only password fields retain stored values. Changing
 Wi-Fi leaves audio, target, profiles, identity, board, and update schedule intact
 and ends in the same network handoff as first contact. When contact ends, the
 console says the device has probably rejoined if its setup network is gone and
-names the home-network address that confirms it. The setup password survives resets;
+names the home-network address that confirms it. A restart or rebooting save from
+recovery ends the same way when the device stays away from its setup network for
+a minute. The setup password survives resets;
 physical boot recovery remains available when that password is lost.
 
 A codec fault leaves network management reachable. Factory reset returns to

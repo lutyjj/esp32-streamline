@@ -111,3 +111,26 @@ describe('factory reset handoff', () => {
     expect(host.textContent).toContain('192.168.71.1');
   });
 });
+
+describe('maintenance during a firmware update', () => {
+  const button = (label: string) =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent === label);
+
+  it('offers neither restart nor factory reset until the update finishes', () => {
+    status.value = deviceStatus({
+      auth_required: false,
+      ota: { busy: true, phase: 'downloading' },
+    });
+    mount();
+    expect(button('Restart device')?.disabled).toBe(true);
+    expect(button('Factory reset')?.disabled).toBe(true);
+    expect(host.textContent).toContain('A firmware update or check is running.');
+
+    act(() => {
+      status.value = deviceStatus({ auth_required: false, ota: { busy: false, phase: 'idle' } });
+    });
+    expect(button('Restart device')?.disabled).toBe(false);
+    expect(button('Factory reset')?.disabled).toBe(false);
+    expect(host.textContent).not.toContain('A firmware update or check is running.');
+  });
+});

@@ -3,7 +3,7 @@
  * change, and reboot expectations when the device goes quiet mid-install.
  */
 
-import { effect, signal, untracked } from '@preact/signals';
+import { computed, effect, signal, untracked } from '@preact/signals';
 import { pollFailures, status } from './device';
 import { beginRebootWait, rebootWait } from './rebootWait';
 import { toast } from './toasts';
@@ -24,6 +24,16 @@ export const PHASE_LABELS: Record<string, string> = {
  * checks which firmware returns without presuming that installation succeeded.
  */
 export const OTA_INSTALLING_PHASES = ['downloading', 'verifying', 'installed'];
+
+/**
+ * Why restart and factory reset cannot run right now, or null when they can.
+ * The device refuses both while an update or check is busy.
+ */
+export const restartLocked = computed<string | null>(() =>
+  status.value?.ota.busy
+    ? 'A firmware update or check is running. Restart and factory reset are available when it finishes.'
+    : null,
+);
 
 export function prettyPhase(phase: string): string {
   return PHASE_LABELS[phase] || phase;

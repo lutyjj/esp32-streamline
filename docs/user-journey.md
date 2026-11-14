@@ -160,7 +160,8 @@ claim completion. [OTA](ota.md) owns verification and rollback behavior.
 
 Settings → Troubleshooting exposes health, the protected device log, and raw status.
 Settings → Developer API exposes the machine interface. Settings → Restart & reset
-contains restart and confirmed factory reset.
+contains restart and confirmed factory reset. Both wait while a firmware update
+or check runs, and the page says so.
 
 A provisioned device that cannot reach its saved Wi-Fi serves a recovery console
 on its setup network, not first-run commissioning. A banner names the network and

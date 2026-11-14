@@ -114,12 +114,8 @@ fn send_batch(
                 log::warn!("PCM send stalled for {elapsed} ms");
             }
             status.record_sent_batch(packets, payload_bytes, reconnected);
-            if let Some(restored) = retry.succeed(now) {
-                log::info!(
-                    "PCM stream restored; {} attempts failed over {} ms",
-                    restored.failures,
-                    restored.elapsed_ms
-                );
+            if let Some(failures) = retry.deliver(now, reconnected) {
+                log::info!("PCM stream restored after {failures} failed attempts");
             }
         }
         Ok(None) => {}
@@ -669,5 +665,76 @@ mod tests {
         let attempts = attempt_times(&mut sink, &queue, &status, &mut retry, &time, 10_000);
         assert_eq!(attempts, [3_850]);
         assert_eq!(sink.writes, 1);
+    }
+
+    /// A bridge that accepts each connection and closes it after the first write.
+    struct ClosingBridge {
+        time: Time,
+        writes_on_connection: usize,
+        connections: Vec<u64>,
+    }
+    impl PacketSink for ClosingBridge {
+        fn send(
+            &mut self,
+            _bytes: &[u8],
+            ready: impl FnOnce() -> bool,
+        ) -> Result<Option<bool>, SendFailed> {
+            let new_connection = self.writes_on_connection == 0;
+            if new_connection {
+                self.connections.push(self.time.monotonic_millis());
+            }
+            if !ready() {
+                return Ok(None);
+            }
+            self.writes_on_connection += 1;
+            if self.writes_on_connection > 1 {
+                self.writes_on_connection = 0;
+                return Err(SendFailed {
+                    secure_handshake: false,
+                    cause: "connection reset".into(),
+                });
+            }
+            Ok(Some(new_connection))
+        }
+        fn disconnect(&mut self) {
+            self.writes_on_connection = 0;
+        }
+    }
+
+    #[test]
+    fn a_bridge_that_closes_each_accepted_connection_stays_on_the_backoff_schedule() {
+        let time = Time::default();
+        let status = StreamStatus::default();
+        let queue = PacketQueue::new();
+        let mut retry = Retry::new();
+        let mut bridge = ClosingBridge {
+            time: time.clone(),
+            writes_on_connection: 0,
+            connections: Vec::new(),
+        };
+        let mut batch = Vec::new();
+        while time.monotonic_millis() < 120_000 {
+            for _ in 0..4 {
+                queue.push_drop_oldest(packet());
+            }
+            step(
+                &mut bridge,
+                &queue,
+                &status,
+                &mut retry,
+                &time,
+                &time,
+                &mut batch,
+            );
+        }
+        let gaps: Vec<u64> = bridge
+            .connections
+            .windows(2)
+            .map(|pair| pair[1] - pair[0])
+            .collect();
+        assert_eq!(
+            gaps,
+            [250, 500, 1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]
+        );
     }
 }

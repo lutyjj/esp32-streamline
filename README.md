@@ -93,8 +93,9 @@ Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 
 ### 2. Run the bridge
 
-**Home Assistant OS / Supervised**: add this repository as a Home Assistant
-add-on repository, install **ESP32 StreamLine Bridge**, and start it. The add-on
+**Home Assistant OS / Supervised**: add `https://github.com/lutyjj/esp32-streamline`
+as a Home Assistant add-on repository, install **ESP32 StreamLine Bridge**, and
+start it. The add-on
 listens on the same ports as the container: PCM on `39000/tcp` and HTTP WAV on
 `8088/tcp`. The PCM port accepts either cleartext or TLS, as selected in the
 bridge configuration, never both.

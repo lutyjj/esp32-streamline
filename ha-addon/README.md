@@ -1,57 +1,13 @@
 # ESP32 StreamLine Bridge add-on
 
-This add-on runs the StreamLine bridge inside Home Assistant OS or Home
-Assistant Supervised. It accepts ESP32 PCM on TCP `39000` in one configured
-mode (cleartext or authenticated TLS 1.3) and publishes live WAV, status, and
-health on HTTP `8088`. It runs on the host network so devices can
-[discover it](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/bridge.md#discovery)
-over mDNS.
+This add-on runs the StreamLine bridge in Home Assistant. ESP32 StreamLine
+devices capture analog audio from a turntable or CD deck and stream it to the
+bridge over your network. The bridge offers each device to Music Assistant as a
+Live Input, serves it as a live WAV stream any HTTP player can read, and can
+record it as lossless WAV.
 
-## Install
-
-Add `https://github.com/lutyjj/esp32-streamline` as a Home Assistant add-on
-repository, then install **ESP32 StreamLine Bridge**.
-
-## Configure
-
-`source_allow` is optional. Leave it blank to accept any LAN source, or enter a
-comma-separated list of ESP32 IPv4 addresses to admit. The
-[bridge reference](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/bridge.md)
-owns the option defaults, constraints, and source lifecycle contract.
-
-Set a private `api_token` of at least 16 characters once; it unlocks every
-bridge control in the Web UI, including encryption and recordings.
-
-Set `recordings_enabled` to enable lossless WAV recording. The add-on stores
-files in its private working directory and exposes the recording flow in its
-Web UI. Recordings survive restarts and updates, but backups exclude them and
-a restore or uninstall removes them. Download every completed WAV you want to
-keep.
-
-To encrypt PCM, generate the device's one-time bridge credential, add it in
-the Web UI, switch the bridge to encrypted mode there, then verify and
-activate on the device. The coordinated switch briefly interrupts audio. The
-[PCM transport workflow](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/tcp-transport.md#enable-encryption)
-owns cutover, credential replacement, and recovery.
-
-## Confinement
-
-Supervisor applies the bundled AppArmor profile on supported hosts. The
-[security reference](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/security.md#host-containment)
-owns its permissions and limits. `make ha-addon-lint` compiles the profile with
-AppArmor's parser; compilation alone does not verify kernel enforcement.
-`make ha-addon-apparmor-test` uses a disposable enforcing profile to check the
-production image's startup, key persistence, recording download and recovery,
-shutdown, and denied writes and shell execution. It requires an AppArmor-enabled Docker host and removes
-the test profile afterward. The add-on check runs both gates.
-
-## Use
-
-Point each ESP32 device at the Home Assistant host on port `39000`. Set
-`sendspin_server_url` to offer every source to Music Assistant as a Live Input;
-the [add-on documentation](https://github.com/lutyjj/esp32-streamline/blob/mainline/ha-addon/DOCS.md#play-it-in-music-assistant)
-covers pairing. Snapcast, Icecast, or any HTTP consumer reads
-`http://<home-assistant-host>:8088/streamline.wav`.
-
-With several ESP32 sources, select one with
-`http://<home-assistant-host>:8088/streamline.wav?source=<source-id>`.
+The **Documentation** tab
+([DOCS.md](https://github.com/lutyjj/esp32-streamline/blob/mainline/ha-addon/DOCS.md))
+covers setup and configuration. The
+[project README](https://github.com/lutyjj/esp32-streamline/blob/mainline/README.md)
+covers the devices, from supported boards to first setup.

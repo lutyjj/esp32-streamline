@@ -113,3 +113,9 @@ Set `public_url` to the bridge's HTTP address reachable by your players, for
 example `http://192.0.2.20:8088`, then restart the add-on. Use the published HTTP
 port, not the PCM input port or Home Assistant ingress address. Listen uses
 this address for playback links while management stays within ingress.
+
+## Security
+
+The [security notes](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/security.md#bridge)
+cover the add-on's network exposure, its API token, and its AppArmor
+confinement.

@@ -1,5 +1,7 @@
 offline = true
 include_fragments = "anchor-only"
+# Absolute links to this repository's default branch resolve in the checkout mounted at /repo.
+remap = ['^https://github\.com/lutyjj/esp32-streamline/(blob|tree)/mainline/ file:///repo/']
 exclude_path = ["dist", "firmware/streamline/target", "node_modules"]
 # Vite resolves this npm package asset; the console build and browser font test verify it.
 exclude = ['^file:///.*/console/src/@fontsource-variable/nunito-sans/files/nunito-sans-latin-wght-normal\.woff2$']

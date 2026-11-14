@@ -12,7 +12,8 @@ the Web UI. Encryption and recordings both need it.
 
 The add-on runs on the host network and advertises itself over mDNS under its
 `bridge_name` option, `StreamLine Bridge` by default, so devices on the same
-network can offer it during setup ([discovery](../docs/bridge.md#discovery)).
+network can offer it during setup
+([discovery](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/bridge.md#discovery)).
 Its ports are fixed at `39000` and `8088`: Home Assistant does not remap ports
 of an add-on on the host network.
 
@@ -71,10 +72,10 @@ validates immediately.
 4. Verify and activate encryption from the device console. Audio resumes over
    TLS.
 
-[PCM transport workflow](../docs/tcp-transport.md#enable-encryption) covers
-credential replacement, rollback, recovery, API equivalents, and the expected
-coordinated interruption. If several devices use one add-on, switch them
-together.
+[PCM transport workflow](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/tcp-transport.md#enable-encryption)
+covers credential replacement, rollback, recovery, API equivalents, and the
+expected coordinated interruption. If several devices use one add-on, switch
+them together.
 
 ## Record a source
 
@@ -102,8 +103,9 @@ Leave `source_allow` blank to accept any LAN source. Set it to a comma-separated
 list of ESP32 IPv4 addresses to reject unexpected PCM peers. Encrypted source
 identity still comes from its authenticated key id.
 
-The [bridge reference](../docs/bridge.md) defines every add-on tuning option,
-its default, and its validation rule.
+The
+[bridge reference](https://github.com/lutyjj/esp32-streamline/blob/mainline/docs/bridge.md)
+defines every add-on tuning option, its default, and its validation rule.
 
 ### Player address
 

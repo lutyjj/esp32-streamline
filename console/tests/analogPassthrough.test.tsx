@@ -7,28 +7,9 @@ const off = { enabled: false, active: false, fault: null };
 describe('AnalogPassthrough', () => {
   it('is absent when the selected board does not advertise the route', () => {
     const host = document.createElement('div');
-    render(<AnalogPassthrough status={off} writable mode="provisioned" />, host);
+    render(<AnalogPassthrough status={off} writable provisioned />, host);
 
     expect(host.textContent).toBe('');
-  });
-
-  it('shows the kept route in recovery and says when it can change', () => {
-    const host = document.createElement('div');
-    render(
-      <AnalogPassthrough
-        capability={{ output_line: 2, label: '3.5 mm output' }}
-        status={{ enabled: true, active: true, fault: null }}
-        writable
-        mode="recovery"
-      />,
-      host,
-    );
-
-    const toggle = host.querySelector<HTMLInputElement>('input[role="switch"]');
-    expect(toggle?.checked).toBe(true);
-    expect(toggle?.disabled).toBe(true);
-    expect(host.textContent).toContain('once StreamLine is back on your Wi-Fi');
-    expect(host.textContent).not.toContain('after setup completes');
   });
 
   it('offers one switch that names the jack and its limits, with no duplicate status', () => {
@@ -38,7 +19,7 @@ describe('AnalogPassthrough', () => {
         capability={{ output_line: 2, label: '3.5 mm output' }}
         status={{ enabled: true, active: true, fault: null }}
         writable
-        mode="provisioned"
+        provisioned
       />,
       host,
     );
@@ -64,7 +45,7 @@ describe('AnalogPassthrough', () => {
         capability={{ output_line: 2, label: 'output jack' }}
         status={{ enabled: true, active: false, fault: 'codec write failed' }}
         writable
-        mode="provisioned"
+        provisioned
       />,
       host,
     );
@@ -81,7 +62,7 @@ describe('AnalogPassthrough', () => {
         capability={{ output_line: 2, label: 'output jack' }}
         status={{ enabled: false, active: false, fault: 'power-down failed' }}
         writable
-        mode="provisioned"
+        provisioned
       />,
       host,
     );

@@ -236,7 +236,7 @@ export function AudioTab({
             capability={caps?.analog_passthrough}
             status={s.analog_passthrough}
             writable={writable}
-            mode={s.mode}
+            provisioned={s.mode !== 'setup'}
           />
         )}
       </div>

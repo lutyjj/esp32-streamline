@@ -1,8 +1,4 @@
-import type {
-  AnalogPassthroughCapabilityStatus,
-  AnalogPassthroughStatus,
-  DeviceMode,
-} from '../lib/api';
+import type { AnalogPassthroughCapabilityStatus, AnalogPassthroughStatus } from '../lib/api';
 import { setAnalogPassthrough } from '../lib/api';
 import { useTransact } from '../lib/hooks';
 import { loadDeviceSettings } from '../state/device';
@@ -61,34 +57,29 @@ export function AnalogPassthroughToggle({
   );
 }
 
-/** Why the switch waits while the device is on its setup network. */
-const WAITS_FOR: Partial<Record<DeviceMode, string>> = {
-  setup: 'Analog passthrough is available after setup completes.',
-  recovery: 'You can change analog passthrough once StreamLine is back on your Wi-Fi.',
-};
-
 /** Capability-driven analog passthrough subsection of Input settings. */
 export function AnalogPassthrough({
   capability,
   status,
   writable,
-  mode,
+  provisioned,
 }: {
   capability?: AnalogPassthroughCapabilityStatus | null;
   status: AnalogPassthroughStatus;
   writable: boolean;
-  mode: DeviceMode;
+  provisioned: boolean;
 }) {
   if (!capability) return null;
-  const waits = WAITS_FOR[mode];
   return (
-    <fieldset class="section-subsection" disabled={!writable || Boolean(waits)}>
+    <fieldset class="section-subsection" disabled={!writable || !provisioned}>
       <AnalogPassthroughToggle
         capability={capability}
         status={status}
-        disabled={!writable || Boolean(waits)}
+        disabled={!writable || !provisioned}
       />
-      {waits && <p class="callout">{waits}</p>}
+      {!provisioned && (
+        <p class="callout">Analog passthrough is available after setup completes.</p>
+      )}
     </fieldset>
   );
 }

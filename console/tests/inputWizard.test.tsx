@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputWizard } from '../src/components/InputWizard';
 import { setTransport } from '../src/lib/api';
 import { CAL_POLL_MS, CAL_SILENCE_SAMPLES } from '../src/lib/calibration';
-import { deviceStatus } from '../src/mocks/fixtures';
-import { status } from '../src/state/device';
+import { deviceContract, deviceStatus } from '../src/mocks/fixtures';
+import { contract, status } from '../src/state/device';
+import { UPDATE_BUSY_REASON } from '../src/state/ota';
 
 let mountedHost: HTMLElement | null = null;
 
@@ -27,6 +28,41 @@ describe('InputWizard', () => {
     vi.clearAllTimers();
     vi.useRealTimers();
     setTransport((request) => fetch(request));
+    contract.value = null;
+  });
+
+  it('waits to raise levels while a firmware update or check runs', async () => {
+    vi.useFakeTimers();
+    contract.value = deviceContract();
+    const quiet = deviceStatus({
+      auth_required: false,
+      metrics: { playing: false, rms_left: 20, rms_right: 0, peak_abs_left: 0, peak_abs_right: 0 },
+    });
+    setTransport(async () => jsonResponse(quiet));
+    mountedHost = document.createElement('div');
+    render(<InputWizard onClose={() => {}} />, mountedHost);
+    const continueButton = () =>
+      [...(mountedHost?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+        (candidate) => candidate.textContent === 'Continue',
+      );
+    act(() =>
+      [...(mountedHost?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+        .find((candidate) => candidate.textContent === 'Start')
+        ?.click(),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CAL_POLL_MS * CAL_SILENCE_SAMPLES);
+    });
+
+    act(() => {
+      status.value = deviceStatus({ auth_required: false, ota: { busy: true, phase: 'checking' } });
+    });
+    expect(continueButton()?.disabled).toBe(true);
+    expect(mountedHost.textContent).toContain(UPDATE_BUSY_REASON);
+    act(() => {
+      status.value = deviceStatus({ auth_required: false });
+    });
+    expect(continueButton()?.disabled).toBe(false);
   });
 
   it('announces the passthrough choice and adds its step on capable boards', () => {

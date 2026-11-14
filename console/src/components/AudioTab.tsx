@@ -23,7 +23,7 @@ import { Meter } from './Meter';
 import { Notice, WarningIcon } from './Notice';
 import { ResourceNotice } from './ResourceNotice';
 import { Section, SectionActions } from './Section';
-import { ActionState, TransactButton } from './Transact';
+import { ActionState, LockReason, TransactButton } from './Transact';
 
 export function AudioTab({
   onCalibrate,
@@ -111,6 +111,7 @@ export function AudioTab({
                   Calibrate levels
                 </Button>
                 <Button onClick={dismissClipCallout}>Dismiss</Button>
+                <LockReason reason={locked} />
               </div>
             </aside>
           )}
@@ -231,7 +232,7 @@ export function AudioTab({
                   Save
                 </TransactButton>
                 <ActionState state={transact.state} />
-                {locked && <span class="help">{locked}</span>}
+                <LockReason reason={locked} />
                 <Button
                   disabled={!dirty || transact.busy}
                   onClick={() => {

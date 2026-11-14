@@ -46,3 +46,8 @@ export function ActionState({ state }: { state: ActionStateValue }) {
     </span>
   );
 }
+
+/** Why an action is unavailable right now, shown where its result would be. */
+export function LockReason({ reason }: { reason: string | null }) {
+  return reason ? <span class="actionstate">{reason}</span> : null;
+}

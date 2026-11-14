@@ -47,7 +47,6 @@ export {
   getBridges,
   getFactoryResetUrl,
   getLogs,
-  getOtaRollbackUrl,
   getRestartUrl,
   getRollbackTransportKeyUrl,
   getSetAudioProfileUrl,

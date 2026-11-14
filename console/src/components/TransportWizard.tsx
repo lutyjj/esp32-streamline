@@ -13,7 +13,7 @@ import {
 import { ConfirmButton } from './ConfirmButton';
 import { CredentialReveal } from './CredentialReveal';
 import { FlowDialog, type FlowStep } from './FlowDialog';
-import { ActionState } from './Transact';
+import { ActionState, LockReason } from './Transact';
 
 /**
  * The guided encryption setup: create the device's bridge credential, enroll
@@ -190,7 +190,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           <ActionState state={lifecycle.state} />
-          {activateLock && <p class="help">{activateLock}</p>}
+          <LockReason reason={activateLock} />
         </div>
       ),
       primary: {

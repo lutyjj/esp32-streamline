@@ -20,7 +20,7 @@ import { Button } from './Button';
 import { ConfirmButton } from './ConfirmButton';
 import { Disclosure } from './Disclosure';
 import { Section } from './Section';
-import { ActionState, TransactButton } from './Transact';
+import { ActionState, LockReason, TransactButton } from './Transact';
 
 export function AudioProfiles({ draftPending = false }: { draftPending?: boolean }) {
   const writable = useWritable() && !draftPending;
@@ -180,7 +180,7 @@ export function AudioProfiles({ draftPending = false }: { draftPending?: boolean
           Apply profile
         </TransactButton>
         <ActionState state={transact.state} />
-        {applyLock && <span class="help">{applyLock}</span>}
+        <LockReason reason={applyLock} />
       </div>
       <Disclosure title="Manage profiles" className="profile-share">
         <div class="field">

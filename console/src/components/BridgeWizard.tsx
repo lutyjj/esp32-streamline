@@ -10,7 +10,7 @@ import { REBOOT_OVERDUE_TEXT, rebootOverdue, rebootWait } from '../state/rebootW
 import { setupWizardRequested } from '../state/transport';
 import { BridgeFinder } from './BridgeFinder';
 import { FlowDialog, type FlowStep } from './FlowDialog';
-import { ActionState } from './Transact';
+import { ActionState, LockReason } from './Transact';
 
 /** Default PCM port the bridge and its Home Assistant add-on both publish. */
 const BRIDGE_PORT = 39000;
@@ -209,7 +209,7 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
           {needsSave ? (
             <>
               <ActionState state={connect.state} />
-              {saveLock && <p class="help">{saveLock}</p>}
+              <LockReason reason={saveLock} />
             </>
           ) : (
             <p class={`wizhint ${live.cls}`}>{live.text}</p>

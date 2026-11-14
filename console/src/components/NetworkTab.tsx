@@ -25,7 +25,7 @@ import { KeyReveal } from './KeyReveal';
 import { OpenNetworkChoice } from './OpenNetworkChoice';
 import { ResourceNotice } from './ResourceNotice';
 import { Section, SectionActions, SectionStack } from './Section';
-import { ActionState, TransactButton } from './Transact';
+import { ActionState, LockReason, TransactButton } from './Transact';
 import { TransportCard } from './TransportCard';
 
 export function NetworkTab({
@@ -233,7 +233,7 @@ export function NetworkTab({
             Save &amp; restart
           </TransactButton>
           <ActionState state={wifiTransact.state} />
-          {wifiLock && <span class="help">{wifiLock}</span>}
+          <LockReason reason={wifiLock} />
         </SectionActions>
       </Section>
       {!setup && (
@@ -317,7 +317,7 @@ export function NetworkTab({
           Save &amp; restart
         </TransactButton>
         <ActionState state={targetTransact.state} />
-        {targetLock && <span class="help">{targetLock}</span>}
+        <LockReason reason={targetLock} />
         {!setup && !noBridge.value && (
           <Chip tone={moving ? 'good' : connecting ? 'warn' : 'neutral'} dot className="healthchip">
             {bridgeConnection.value === 'unavailable'

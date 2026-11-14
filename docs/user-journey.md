@@ -167,8 +167,9 @@ or check runs, and the page says so.
 
 A provisioned device that cannot reach its saved Wi-Fi serves a recovery console
 on its setup network, not first-run commissioning. A banner names the network and
-what the latest join attempt found: no such network in range, or a rejected
-password. The device retries every minute and rejoins on its own; Change Wi-Fi
+what the latest join attempt found: no such network in range, a rejected
+password, or security the saved settings cannot use, such as a network that
+added or removed its password. The device retries every minute and rejoins on its own; Change Wi-Fi
 opens Settings → Wi-Fi for a renamed network or a new password. Unlock requires
 the admin key. A blank password field keeps the stored password; a saved open
 network has none to keep, so switching it to a protected one needs the password. Changing

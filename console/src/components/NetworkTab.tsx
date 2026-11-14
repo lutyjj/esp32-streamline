@@ -16,6 +16,7 @@ import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
 import { Button } from './Button';
 import { Chip } from './Chip';
+import { Disclosure } from './Disclosure';
 import { GuidePrompt } from './GuidePrompt';
 import { KeyReveal } from './KeyReveal';
 import { ResourceNotice } from './ResourceNotice';
@@ -133,7 +134,9 @@ export function NetworkTab({
         }
       >
         {recovering && s.diagnostics.last_fallback && (
-          <p class="lead">Startup report: {s.diagnostics.last_fallback}</p>
+          <Disclosure title="Startup report">
+            <p class="lead">{s.diagnostics.last_fallback}</p>
+          </Disclosure>
         )}
         <div class="formgrid">
           <div class="field">

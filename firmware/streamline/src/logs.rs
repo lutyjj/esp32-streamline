@@ -149,6 +149,14 @@ impl<const N: usize> LogBuffer<N> {
         }
     }
 
+    /// Add one whole line, such as a Rust record or an allocation failure. It
+    /// starts its own line even when a chunk left one open, and ends it.
+    pub fn append_line(&mut self, line: &[u8]) {
+        self.terminate();
+        self.append(line);
+        self.terminate();
+    }
+
     /// Lines discarded to make room since this boot claimed the buffer.
     pub const fn dropped(&self) -> u64 {
         self.dropped
@@ -451,6 +459,33 @@ mod tests {
             vec!["I (1001) wifi:wifi driver task: 3ffc8a74, prio:23"]
         );
         assert_eq!(sequences(&buffer), vec![0]);
+    }
+
+    const ALLOCATION_FAILURE: &str = "E heap: heap_caps_calloc could not allocate 16725 bytes \
+        (caps 0x804); 56232 bytes free, largest block 15872";
+
+    #[test]
+    fn a_whole_line_ends_before_the_next_chunk() {
+        let mut buffer = started();
+        buffer.append_line(ALLOCATION_FAILURE.as_bytes());
+        buffer.append(b"E (154099) Dynamic Impl: alloc(16725 bytes) failed\n");
+        assert_eq!(
+            texts(&buffer),
+            vec![
+                ALLOCATION_FAILURE,
+                "E (154099) Dynamic Impl: alloc(16725 bytes) failed"
+            ]
+        );
+        assert_eq!(sequences(&buffer), vec![0, 1]);
+    }
+
+    #[test]
+    fn a_whole_line_never_joins_a_line_a_chunk_left_open() {
+        let mut buffer = started();
+        buffer.append(b"I (1001) wifi:");
+        buffer.append_line(ALLOCATION_FAILURE.as_bytes());
+        assert_eq!(texts(&buffer), vec!["I (1001) wifi:", ALLOCATION_FAILURE]);
+        assert_eq!(sequences(&buffer), vec![0, 1]);
     }
 
     #[test]

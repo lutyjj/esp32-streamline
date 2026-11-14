@@ -141,7 +141,8 @@ For silence-gated sources, interpret the
 
 A panic writes an ELF core dump to the dedicated `coredump` flash partition,
 where it survives reboots and rollbacks, which touch only the app slots. The dump is a copy of task memory at the moment of the crash, so like
-the log it sits behind the admin key.
+the log it sits behind the admin key. Setup mode has no key and serves a stored
+dump to anyone on its setup network; see [security](security.md#attack-surface).
 The API verifies the stored checksum before reporting or serving a dump.
 Verification runs on request, after the scheduler has started.
 

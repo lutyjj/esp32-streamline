@@ -22,7 +22,7 @@ staying cloud-free.
 | HTTP writes (`:80`) | Digest-authenticated once provisioned; nonce counts kill replay | No key, no control (config, target, reset); capturing traffic yields nothing that authorizes a later write |
 | HTTP reads (`:80`) | Open; never returns secrets | Status and metrics readable, no control |
 | Device log (`/api/logs`) | Admin-key gated; open in setup mode, which serves only its own boot's lines | Owner-only; returns the network name, bridge host, and addresses the firmware logged. Never contains keys. See [diagnostics](diagnostics.md). |
-| Crash dump (`/api/coredump`, `/api/coredump/image`) | Admin-key gated | Owner-only; a dump copies task memory at a panic and can contain secrets. See [diagnostics](diagnostics.md#crash-dumps). |
+| Crash dump (`/api/coredump`, `/api/coredump/image`) | Admin-key gated; open in setup mode, which has no key | A dump copies task memory at a panic and can contain secrets. In setup mode anyone on the setup network can download the stored one. Factory reset erases it, so a dump read there comes from a panic during setup, such as one while a Wi-Fi password was being commissioned, or from a boot whose stored settings the device could no longer read. See [diagnostics](diagnostics.md#crash-dumps). |
 | Setup AP | WPA2 with a per-device password minted at first boot; writes open only until an admin key is set | Joining needs the password from the device's serial log, the flasher, or its label. The password is device identity: no reset changes it, no read API returns it, and the factory-reset response is its only API appearance. A button held at power-on starts the AP open for one boot, providing physical recovery from a lost password. |
 | OTA update (`/api/ota/update`) | Admin-key gated; vendor RSA-3072 signature verified before commit, plus SHA-256 and auto-rollback | Owner-only; only firmware signed by the trusted key installs |
 | Custom-image OTA (`/api/ota/update` with `url`+`sha256`) | Admin-key gated; pinned by the admin SHA-256 and verified against the trusted signing key | Owner-only; a forged image is rejected even when its digest matches, so the URL may be plain HTTP |
@@ -57,8 +57,9 @@ staying cloud-free.
   same digest gate: `/api/logs` returns what the firmware logged, which names
   the joined network and the hosts the device reached, and the
   `/api/coredump` reads return a panic's copy of task memory, which can hold
-  anything the firmware held. No line the log keeps carries a key, password,
-  or PSK; the setup-network password reaches only the serial port.
+  anything the firmware held. Setup mode has no key, so it serves both
+  without one. No line the log keeps carries a key, password, or PSK; the
+  setup-network password reaches only the serial port.
 - Credentials ride in a script-set `Authorization` header, not a cookie, so
   the API is CSRF-safe: a cross-origin request triggers a CORS preflight the
   device never approves, and no browser attaches the digest response

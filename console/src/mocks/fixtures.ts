@@ -14,6 +14,7 @@ import type {
   StatusResponse,
   TransportStatus,
 } from '../lib/api';
+import type { ApiDocument } from '../lib/contract';
 
 // A single narrowing cast, not `as unknown`: JSON imports widen enum values
 // to `string`, but the structures must still line up, so a missing or
@@ -23,6 +24,11 @@ const CONFIG_EXAMPLE = contract.components.schemas.SettingsResponse.example as S
 const SETUP_NETWORK_EXAMPLE = contract.components.schemas.SetupNetworkResponse
   .example as SetupNetworkResponse;
 const BRIDGES_EXAMPLE = contract.components.schemas.BridgesResponse.example as BridgesResponse;
+
+/** The contract the device serves, as the console loads it. */
+export function deviceContract(): ApiDocument {
+  return structuredClone(contract) as ApiDocument;
+}
 
 /** The bridges the example device's network advertises. */
 export function discoveredBridges(): BridgesResponse['bridges'] {

@@ -1,6 +1,6 @@
 import './audio.css';
 import { useState } from 'preact/hooks';
-import { setAudio } from '../lib/api';
+import { getSetAudioUrl, setAudio } from '../lib/api';
 import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
 import { clipCalloutVisible, dismissClipCallout } from '../state/clipCallout';
 import {
@@ -10,6 +10,7 @@ import {
   passthroughLocked,
   status,
 } from '../state/device';
+import { updateLock } from '../state/ota';
 import { lossCalloutVisible } from '../state/streamLoss';
 import { AnalogPassthrough } from './AnalogPassthrough';
 import { AudioDelivery } from './AudioDelivery';
@@ -45,6 +46,7 @@ export function AudioTab({
   const gain = useDeviceField(audio ? String(audio.input_gain) : null);
   const atten = useDeviceField(audio ? String(audio.adc_attenuation_db) : null);
   const dirty = line.dirty || gain.dirty || atten.dirty;
+  const locked = updateLock(getSetAudioUrl());
 
   function save(e: SubmitEvent) {
     e.preventDefault();
@@ -105,7 +107,7 @@ export function AudioTab({
               </strong>
               <p>Lower the input level or calibrate to prevent distortion.</p>
               <div class="clipping-actions">
-                <Button disabled={!writable} onClick={onCalibrate}>
+                <Button disabled={!writable || locked !== null} onClick={onCalibrate}>
                   Calibrate levels
                 </Button>
                 <Button onClick={dismissClipCallout}>Dismiss</Button>
@@ -147,10 +149,13 @@ export function AudioTab({
         <Button onClick={() => setTuning(!tuning)} aria-expanded={tuning}>
           {tuning ? 'Close input editor' : 'Adjust input'}
         </Button>
-        <Button disabled={!writable || dirty || transact.busy} onClick={onCalibrate}>
+        <Button
+          disabled={!writable || dirty || transact.busy || locked !== null}
+          onClick={onCalibrate}
+        >
           Calibrate input
         </Button>
-        <p>Set levels once. Save a profile for each source you use.</p>
+        <p>{locked ?? 'Set levels once. Save a profile for each source you use.'}</p>
       </div>
       <div class="audio-controls" hidden={!tuning}>
         <Section gated title="Adjust input" lead="Changes apply when you save.">
@@ -218,10 +223,15 @@ export function AudioTab({
                 </div>
               </div>
               <SectionActions>
-                <TransactButton transact={transact} type="submit" disabled={!writable || !dirty}>
+                <TransactButton
+                  transact={transact}
+                  type="submit"
+                  disabled={!writable || !dirty || locked !== null}
+                >
                   Save
                 </TransactButton>
                 <ActionState state={transact.state} />
+                {locked && <span class="help">{locked}</span>}
                 <Button
                   disabled={!dirty || transact.busy}
                   onClick={() => {

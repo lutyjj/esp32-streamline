@@ -1,6 +1,8 @@
 import { useState } from 'preact/hooks';
+import { getActivateTransportKeyUrl } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config } from '../state/device';
+import { updateLock } from '../state/ota';
 import { rebootWait } from '../state/rebootWait';
 import {
   type SetupWizardStep,
@@ -27,6 +29,7 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
     c ? setupWizardStep(c.transport) : 'credential',
   );
   const lifecycle = useTransact();
+  const activateLock = updateLock(getActivateTransportKeyUrl());
 
   if (!c) return null;
   const credential = transport.revealed.value;
@@ -186,12 +189,13 @@ export function TransportWizard({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           <ActionState state={lifecycle.state} />
+          {activateLock && <p class="help">{activateLock}</p>}
         </div>
       ),
       primary: {
         label: 'Activate encryption',
         transact: lifecycle,
-        disabled: !writable,
+        disabled: !writable || activateLock !== null,
         onClick: activate,
       },
     },

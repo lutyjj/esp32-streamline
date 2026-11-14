@@ -3,8 +3,9 @@
  * change, and reboot expectations when the device goes quiet mid-install.
  */
 
-import { computed, effect, signal, untracked } from '@preact/signals';
-import { pollFailures, status } from './device';
+import { effect, signal, untracked } from '@preact/signals';
+import { restartingWrite } from '../lib/contract';
+import { contract, pollFailures, status } from './device';
 import { beginRebootWait, rebootWait } from './rebootWait';
 import { toast } from './toasts';
 
@@ -25,15 +26,17 @@ export const PHASE_LABELS: Record<string, string> = {
  */
 export const OTA_INSTALLING_PHASES = ['downloading', 'verifying', 'installed'];
 
+export const UPDATE_BUSY_REASON = 'Available when the firmware update or check finishes.';
+
 /**
- * Why restart and factory reset cannot run right now, or null when they can.
- * The device refuses both while an update or check is busy.
+ * Why the write at `path` cannot run right now, or null when it can. The
+ * device refuses every write its contract marks `x-restarting` while an update
+ * or check is busy; without the contract the device's own refusal stands.
  */
-export const restartLocked = computed<string | null>(() =>
-  status.value?.ota.busy
-    ? 'A firmware update or check is running. Restart and factory reset are available when it finishes.'
-    : null,
-);
+export function updateLock(path: string): string | null {
+  const doc = contract.value;
+  return status.value?.ota.busy && doc && restartingWrite(doc, path) ? UPDATE_BUSY_REASON : null;
+}
 
 export function prettyPhase(phase: string): string {
   return PHASE_LABELS[phase] || phase;

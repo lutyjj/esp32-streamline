@@ -1,7 +1,13 @@
 import { useState } from 'preact/hooks';
-import { restart } from '../lib/api';
+import {
+  getRestartUrl,
+  getRollbackTransportKeyUrl,
+  getSetTransportModeUrl,
+  restart,
+} from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
 import { config, onSetupNetwork } from '../state/device';
+import { updateLock } from '../state/ota';
 import {
   setupWizardRequested,
   transport,
@@ -38,6 +44,10 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
   const journey = transportJourney(status);
   const secure = status.mode === 'tls-psk';
   const setupUnderway = journey === 'provision' || journey === 'activate';
+  const cleartextLock = secure ? updateLock(getSetTransportModeUrl()) : null;
+  const restartLock = credential?.recovery ? updateLock(getRestartUrl()) : null;
+  const rollbackLock = actions.canRollback ? updateLock(getRollbackTransportKeyUrl()) : null;
+  const recoveryLock = cleartextLock ?? restartLock;
 
   const credentialRows: [string, string][] = [];
   if (status.active_key_id) credentialRows.push(['Active credential', status.active_key_id]);
@@ -61,7 +71,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           <ConfirmButton
             label="Disable encryption & restart"
             confirmLabel="Disable & restart"
-            disabled={!writable}
+            disabled={!writable || cleartextLock !== null}
             message="The device restarts and streams unencrypted. Switch the bridge to cleartext first or audio stays paused."
             onConfirm={() =>
               recovery.run(() => transport.useCleartext(current), {
@@ -97,13 +107,14 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           <TransactButton
             transact={recovery}
             kind="danger"
-            disabled={!writable}
+            disabled={!writable || restartLock !== null}
             onClick={() => recovery.run(() => restart(), { reboots: 'transport recovery' })}
           >
             Restart into cleartext
           </TransactButton>
         )}
         <ActionState state={recovery.state} />
+        {recoveryLock && <span class="help">{recoveryLock}</span>}
       </SectionActions>
     </Disclosure>
   );
@@ -182,7 +193,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
               <TransactButton
                 transact={lifecycle}
                 kind="secondary"
-                disabled={!writable}
+                disabled={!writable || rollbackLock !== null}
                 onClick={() =>
                   lifecycle.run(() => transport.rollback(), { reboots: 'the previous PCM key' })
                 }
@@ -204,6 +215,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
               />
             )}
             <ActionState state={lifecycle.state} />
+            {rollbackLock && <span class="help">{rollbackLock}</span>}
           </SectionActions>
           {recoverySection}
         </Disclosure>

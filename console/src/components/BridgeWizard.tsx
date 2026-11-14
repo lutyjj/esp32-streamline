@@ -1,10 +1,11 @@
 import { useState } from 'preact/hooks';
-import { type DiscoveredBridge, setTarget } from '../lib/api';
+import { type DiscoveredBridge, getSetTargetUrl, setTarget } from '../lib/api';
 import { consoleAddress } from '../lib/consoleAddress';
 import { useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
 import { bridgeConnection, config, onSetupNetwork } from '../state/device';
 import { consoleAddressAfterUse } from '../state/discovery';
+import { updateLock } from '../state/ota';
 import { rebootWait } from '../state/rebootWait';
 import { setupWizardRequested } from '../state/transport';
 import { BridgeFinder } from './BridgeFinder';
@@ -83,6 +84,7 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
   const [filledConsoleUrl, setFilledConsoleUrl] = useState('');
   const handoffUrl = consoleAddress(consoleUrl);
   const connect = useTransact();
+  const saveLock = updateLock(getSetTargetUrl());
 
   const secure = c?.transport.mode === 'tls-psk';
   const hasBridge = Boolean(c?.target_host);
@@ -204,7 +206,10 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
             </div>
           </div>
           {needsSave ? (
-            <ActionState state={connect.state} />
+            <>
+              <ActionState state={connect.state} />
+              {saveLock && <p class="help">{saveLock}</p>}
+            </>
           ) : (
             <p class={`wizhint ${live.cls}`}>{live.text}</p>
           )}
@@ -215,7 +220,7 @@ export function BridgeWizard({ onClose }: { onClose: () => void }) {
         ? {
             label: 'Save & connect',
             transact: connect,
-            disabled: !writable || !host.trim() || !port,
+            disabled: !writable || !host.trim() || !port || saveLock !== null,
             onClick: save,
           }
         : { label: 'Continue', onClick: () => setStep('encrypt') },

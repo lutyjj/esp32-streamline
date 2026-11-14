@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { setTarget, setWifi } from '../lib/api';
+import { getSetTargetUrl, getSetWifiUrl, setTarget, setWifi } from '../lib/api';
 import { useDeviceField, useTransact, useWritable } from '../lib/hooks';
 import { normalizeTargetHost } from '../lib/target';
 import { storesWifiPassword, wifiCredentials } from '../lib/wifi';
@@ -13,6 +13,7 @@ import {
   unreachable,
 } from '../state/device';
 import { handoffMessage, joinNetwork } from '../state/join';
+import { updateLock } from '../state/ota';
 import { setupKey } from '../state/setupKey';
 import { toast } from '../state/toasts';
 import { BridgeFinder } from './BridgeFinder';
@@ -45,6 +46,9 @@ export function NetworkTab({
   const recovering = s?.mode === 'recovery';
   const wifiTransact = useTransact();
   const targetTransact = useTransact();
+  const wifiLock = updateLock(getSetWifiUrl());
+  // First setup sends the target with commissioning, a Wi-Fi write.
+  const targetLock = updateLock(firstSetup ? getSetWifiUrl() : getSetTargetUrl());
 
   const c = config.value;
   const { value: ssid, set: setSsid } = useDeviceField(c?.ssid ?? null);
@@ -223,12 +227,13 @@ export function NetworkTab({
         <SectionActions>
           <TransactButton
             transact={wifiTransact}
-            disabled={!writable || !c || (firstSetup && !keySaved)}
+            disabled={!writable || !c || (firstSetup && !keySaved) || wifiLock !== null}
             onClick={saveWifi}
           >
             Save &amp; restart
           </TransactButton>
           <ActionState state={wifiTransact.state} />
+          {wifiLock && <span class="help">{wifiLock}</span>}
         </SectionActions>
       </Section>
       {!setup && (
@@ -306,12 +311,13 @@ export function NetworkTab({
       <SectionActions>
         <TransactButton
           transact={targetTransact}
-          disabled={!writable || !c || (firstSetup && !keySaved)}
+          disabled={!writable || !c || (firstSetup && !keySaved) || targetLock !== null}
           onClick={saveTarget}
         >
           Save &amp; restart
         </TransactButton>
         <ActionState state={targetTransact.state} />
+        {targetLock && <span class="help">{targetLock}</span>}
         {!setup && !noBridge.value && (
           <Chip tone={moving ? 'good' : connecting ? 'warn' : 'neutral'} dot className="healthchip">
             {bridgeConnection.value === 'unavailable'

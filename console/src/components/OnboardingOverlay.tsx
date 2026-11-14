@@ -1,7 +1,9 @@
 import { useState } from 'preact/hooks';
+import { getSetWifiUrl } from '../lib/api';
 import { errorMessage } from '../lib/errors';
 import { wifiCredentials } from '../lib/wifi';
 import { expectedHostname, handoff, joinNetwork } from '../state/join';
+import { updateLock } from '../state/ota';
 import { setupKey } from '../state/setupKey';
 import { Button } from './Button';
 import { DialogSheet } from './DialogSheet';
@@ -20,6 +22,7 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const joinLock = step === 'key' ? updateLock(getSetWifiUrl()) : null;
 
   function next() {
     setError('');
@@ -76,9 +79,9 @@ export function OnboardingOverlay({ onClose }: { onClose: () => void }) {
             </Button>
           )}
           <div class="sheetfoot-row">
-            <output class="actionstate err">{error}</output>
+            <output class={`actionstate${error ? ' err' : ''}`}>{error || joinLock}</output>
             {step !== 'joining' && (
-              <Button kind="primary" busy={busy} onClick={next}>
+              <Button kind="primary" busy={busy} disabled={joinLock !== null} onClick={next}>
                 {step === 'wifi' ? 'Continue' : 'I saved my key, join network'}
               </Button>
             )}

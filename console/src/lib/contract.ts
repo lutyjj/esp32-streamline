@@ -29,6 +29,8 @@ export interface ApiPathOperation {
   security?: Record<string, string[]>[];
   requestBody?: { content?: Record<string, { schema?: ApiSchema }> };
   responses?: Record<string, { description?: string }>;
+  /** The operation can restart the device, so the device refuses it while an update is busy. */
+  'x-restarting'?: boolean;
 }
 
 export interface ApiDocument {
@@ -44,6 +46,11 @@ export function resolveSchema(doc: ApiDocument, schema?: ApiSchema): ApiSchema |
   if (!schema?.$ref) return schema;
   if (!schema.$ref.startsWith(REF_PREFIX)) return undefined;
   return doc.components?.schemas?.[schema.$ref.slice(REF_PREFIX.length)];
+}
+
+/** Whether the contract marks the write at `path` as one that can restart the device. */
+export function restartingWrite(doc: ApiDocument, path: string): boolean {
+  return doc.paths?.[path]?.post?.['x-restarting'] === true;
 }
 
 /** The audio-profile import limits the device declares on its schema. */

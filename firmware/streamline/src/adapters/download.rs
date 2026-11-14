@@ -98,10 +98,13 @@ impl HttpGet {
             .context("cannot reset method for redirect")?;
             check(unsafe { sys::esp_http_client_set_redirection(self.client) })
                 .context("cannot follow redirect")?;
-            // A redirect may cross hosts or ride a connection the server
-            // already closed; reconnect instead of reusing it.
-            check(unsafe { sys::esp_http_client_close(self.client) })
-                .context("cannot close redirected connection")?;
+            // Reuse a kept-alive connection, as esp_http_client_perform does: a
+            // same-host hop then skips a TLS handshake. The client already
+            // closed the connection if the redirect changed host or port.
+            if !unsafe { sys::esp_http_client_is_persistent_connection(self.client) } {
+                check(unsafe { sys::esp_http_client_close(self.client) })
+                    .context("cannot close redirected connection")?;
+            }
         }
         bail!("too many redirects")
     }

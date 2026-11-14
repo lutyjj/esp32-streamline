@@ -28,7 +28,8 @@ use log::{Log, Metadata, Record};
 
 use esp_idf_svc::sys::{
     esp_get_free_heap_size, esp_log_set_vprintf, esp_random, esp_rom_printf,
-    heap_caps_get_largest_free_block, heap_caps_register_failed_alloc_callback, va_list, ESP_OK,
+    heap_caps_get_largest_free_block, heap_caps_register_failed_alloc_callback, printf, va_list,
+    ESP_OK,
 };
 
 use crate::logs::{LogBuffer, MAX_LINE_BYTES};
@@ -185,8 +186,9 @@ unsafe extern "C" fn capture_line(format: *const c_char, arguments: va_list) -> 
         guard.current.append(&line[..length]);
     }
     // Outside the lock: a UART write is slow enough to stall every other task
-    // that wants to log.
-    unsafe { esp_rom_printf(c"%s".as_ptr(), line.as_ptr()) };
+    // that wants to log. `printf` holds the stdout lock that Rust records hold,
+    // so lines that tasks on either core log reach the UART whole.
+    unsafe { printf(c"%s".as_ptr(), line.as_ptr()) };
     written
 }
 

@@ -77,6 +77,10 @@ into the next boot.
 - **Anything after a power cycle.** Retention across a restart relies on RAM
   the reset does not clear. Pulling power clears it, so `previous` is `null`
   after one.
+- **The boot before setup mode.** An unconfigured device serves its log
+  without a key, and the boot before it may have run configured, as one does
+  before a factory reset. Setup mode erases those lines, so `previous` is
+  `null`.
 
 ## Sizes
 

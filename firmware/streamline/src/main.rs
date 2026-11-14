@@ -140,6 +140,9 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     #[cfg(feature = "qemu")]
     let _network = network;
 
+    if mode == Mode::Setup {
+        logs::discard_previous();
+    }
     if mode == Mode::Provisioned {
         if let Err(error) = time::start() {
             log::warn!("SNTP initialization failed: {error:#}");

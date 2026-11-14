@@ -460,6 +460,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
+    { name = "pexpect" },
     { name = "pyelftools" },
     { name = "pytest" },
     { name = "pytest-embedded" },
@@ -473,6 +474,7 @@ dev = [
     { name = "mypy" },
     { name = "ruamel-yaml" },
     { name = "ruff" },
+    { name = "types-pexpect" },
     { name = "types-requests" },
     { name = "wcmatch" },
 ]
@@ -480,6 +482,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.5.2,<3" },
+    { name = "pexpect", specifier = ">=4.9,<5" },
     { name = "pyelftools", specifier = ">=0.32,<1" },
     { name = "pytest", specifier = ">=9.1.1,<10" },
     { name = "pytest-embedded", specifier = ">=2.8,<3" },
@@ -493,8 +496,18 @@ dev = [
     { name = "mypy" },
     { name = "ruamel-yaml", specifier = ">=0.19.1,<0.20" },
     { name = "ruff" },
+    { name = "types-pexpect" },
     { name = "types-requests" },
     { name = "wcmatch", specifier = ">=12.0,<13" },
+]
+
+[[package]]
+name = "types-pexpect"
+version = "4.9.0.20260518"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/84/c52c4841aeaf1d56551f14335ca99a40e7e04b4f8358b402115910828e8e/types_pexpect-4.9.0.20260518.tar.gz", hash = "sha256:38c373798209428dd90988b6fd4b8839c68c7e3ed79215f1ab11fa42d7ff9427", size = 13568, upload-time = "2026-05-18T06:03:35.378Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/11/17b1da645d5f2a12e4db83ae38dbb732fbac96fb3bd7416635c844f7d24e/types_pexpect-4.9.0.20260518-py3-none-any.whl", hash = "sha256:bf2422e825e4efe29cc4a1b7bdc3c375ae97d9c3046ce6b2018c100fb049c262", size = 17087, upload-time = "2026-05-18T06:03:34.14Z" },
 ]
 
 [[package]]

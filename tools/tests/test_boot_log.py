@@ -2,7 +2,7 @@
 
 import unittest
 
-from streamline_tools.device.boot_log import boot_checks, strip_ansi
+from streamline_tools.device.boot_log import boot_checks, serial_marker, strip_ansi, without_interrupt_log_lines
 from streamline_tools.device.checks import CheckResult
 
 HEALTHY_BOOT = """\
@@ -72,6 +72,37 @@ class BootChecksTest(unittest.TestCase):
 
     def test_strip_ansi_removes_color_codes(self) -> None:
         self.assertEqual(strip_ansi("\x1b[0;32mI (1) boot:\x1b[0m ok"), "I (1) boot: ok")
+
+
+# The OpenCores Ethernet interrupt's warning, captured inside a task's line.
+INTERRUPT_LINE = b"W opencores.emac: RX frame dropped (0x14)\r\n"
+SPLIT_MARKER_LINE = b"I (4085) streamline_firmware: consol" + INTERRUPT_LINE + b"e ready\r\n"
+
+
+class SerialMarkerTest(unittest.TestCase):
+    def test_marker_split_by_interrupt_log_lines_still_matches(self) -> None:
+        twice = b"I (9) streamline_firmware: con" + INTERRUPT_LINE + b"sole re" + INTERRUPT_LINE * 2 + b"ady\r\n"
+        for output in (b"I (4085) streamline_firmware: console ready\r\n", SPLIT_MARKER_LINE, twice):
+            with self.subTest(output=output):
+                self.assertIsNotNone(serial_marker("console ready").search(output))
+
+    def test_task_log_line_inside_a_marker_does_not_match(self) -> None:
+        # Tasks print whole lines under the stdout lock; only an interrupt line splits one.
+        output = b"I (4085) streamline_firmware: consol" + b"I (4086) other: line\r\n" + b"e ready\r\n"
+        self.assertIsNone(serial_marker("console ready").search(output))
+
+    def test_marker_text_is_matched_literally(self) -> None:
+        self.assertIsNone(serial_marker("emac.up").search(b"emac up"))
+        self.assertIsNotNone(serial_marker("emac.up").search(b"emac.up"))
+
+    def test_removing_interrupt_lines_rejoins_split_lines(self) -> None:
+        output = (
+            INTERRUPT_LINE + b"W (7113) httpd_uri: URI '/api/settin" + INTERRUPT_LINE + b"gs/firmware' not found\r\n"
+        )
+        self.assertEqual(
+            without_interrupt_log_lines(output),
+            b"W (7113) httpd_uri: URI '/api/settings/firmware' not found\r\n",
+        )
 
 
 if __name__ == "__main__":

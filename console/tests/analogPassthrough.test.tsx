@@ -7,7 +7,7 @@ const off = { enabled: false, active: false, fault: null };
 describe('AnalogPassthrough', () => {
   it('is absent when the selected board does not advertise the route', () => {
     const host = document.createElement('div');
-    render(<AnalogPassthrough status={off} writable provisioned />, host);
+    render(<AnalogPassthrough status={off} writable locked={null} />, host);
 
     expect(host.textContent).toBe('');
   });
@@ -19,7 +19,7 @@ describe('AnalogPassthrough', () => {
         capability={{ output_line: 2, label: '3.5 mm output' }}
         status={{ enabled: true, active: true, fault: null }}
         writable
-        provisioned
+        locked={null}
       />,
       host,
     );
@@ -45,7 +45,7 @@ describe('AnalogPassthrough', () => {
         capability={{ output_line: 2, label: 'output jack' }}
         status={{ enabled: true, active: false, fault: 'codec write failed' }}
         writable
-        provisioned
+        locked={null}
       />,
       host,
     );
@@ -62,7 +62,7 @@ describe('AnalogPassthrough', () => {
         capability={{ output_line: 2, label: 'output jack' }}
         status={{ enabled: false, active: false, fault: 'power-down failed' }}
         writable
-        provisioned
+        locked={null}
       />,
       host,
     );

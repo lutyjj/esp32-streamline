@@ -92,6 +92,19 @@ export const onSetupNetwork = computed(() => {
   const mode = status.value?.mode;
   return mode === 'setup' || mode === 'recovery';
 });
+/**
+ * Why the analog passthrough switch cannot move right now, or null when it can.
+ * Recovery starts the codec only for a route that was on at boot, so there it
+ * can turn the route off but not on.
+ */
+export const passthroughLocked = computed<string | null>(() => {
+  const s = status.value;
+  if (s?.mode === 'setup') return 'Analog passthrough is available after setup completes.';
+  if (s?.mode === 'recovery' && !s.analog_passthrough.enabled) {
+    return 'You can turn analog passthrough on once StreamLine is back on your Wi-Fi.';
+  }
+  return null;
+});
 /** Provisioned but no bridge configured yet: capture runs, nothing streams. */
 export const noBridge = computed(
   () =>

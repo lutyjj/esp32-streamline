@@ -151,20 +151,28 @@ describe('AudioTab on the setup network', () => {
     status.value = null;
   });
 
-  it('keeps local analog output switchable in recovery but not before commissioning', async () => {
-    // A device in recovery keeps its persisted route and accepts the write;
-    // an unconfigured one has nothing to persist it into yet.
-    for (const [mode, enabled] of [
-      ['recovery', true],
-      ['setup', false],
+  it('lets recovery turn a running local route off but not start one', async () => {
+    // Recovery starts the codec only for a route that was on at boot, and an
+    // unconfigured device has nothing to persist the route into yet.
+    for (const [mode, routeOn, enabled] of [
+      ['recovery', true, true],
+      ['recovery', false, false],
+      ['setup', false, false],
     ] as const) {
-      status.value = deviceStatus({ mode, auth_required: false });
+      status.value = deviceStatus({
+        mode,
+        auth_required: false,
+        analog_passthrough: { enabled: routeOn, active: routeOn, fault: null },
+      });
       const view = document.createElement('div');
       await act(async () =>
         render(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, view),
       );
       const toggle = view.querySelector<HTMLInputElement>('input[role="switch"]');
-      expect(toggle?.disabled, mode).toBe(!enabled);
+      expect(toggle?.disabled, `${mode} with the route ${routeOn ? 'on' : 'off'}`).toBe(!enabled);
+      if (mode === 'recovery' && !routeOn) {
+        expect(view.textContent).toContain('once StreamLine is back on your Wi-Fi');
+      }
       render(null, view);
     }
   });

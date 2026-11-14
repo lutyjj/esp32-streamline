@@ -12,7 +12,7 @@
 //! account of what it was doing beforehand.
 //!
 //! Allocation failures are captured the same way. The hook ESP-IDF calls when
-//! an allocation cannot be satisfied runs before the abort that follows it, so
+//! an allocation cannot be satisfied runs before any abort that follows it, so
 //! the requested size, the caller, and the heap that was left land in the
 //! buffer and survive into the next boot.
 

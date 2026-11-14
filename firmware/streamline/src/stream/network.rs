@@ -63,8 +63,10 @@ fn step(
         delay.delay_ms(wait.min(u64::from(CONTROL_POLL_MS)) as u32);
         return;
     }
-    queue.resume();
-    batch.reserve_exact(MAX_BATCH_BYTES);
+    if let Err(cause) = reserve_storage(queue, batch) {
+        report_failure(retry, clock.monotonic_millis(), cause.to_owned());
+        return;
+    }
     let Some((packet, depth)) =
         queue.pop_timeout(Duration::from_millis(u64::from(CONTROL_POLL_MS)))
     else {
@@ -124,10 +126,28 @@ fn send_batch(
         Err(failure) => {
             status.record_failed_send(packets);
             status.record_network_error(failure.secure_handshake);
-            if let Some(cause) = retry.fail(now, failure.cause) {
-                log::warn!("PCM stream interrupted, retrying with backoff: {cause}");
-            }
+            report_failure(retry, now, failure.cause);
         }
+    }
+}
+
+/// Reallocate what a pause released. A fragmented heap can refuse it after
+/// maintenance; streaming then stays paused until a retry succeeds.
+fn reserve_storage(
+    queue: &PacketQueue<AudioPacket>,
+    batch: &mut Vec<u8>,
+) -> Result<(), &'static str> {
+    queue
+        .resume()
+        .map_err(|_| "cannot reserve memory for queued audio")?;
+    batch
+        .try_reserve_exact(MAX_BATCH_BYTES)
+        .map_err(|_| "cannot reserve memory for the send batch")
+}
+
+fn report_failure(retry: &mut Retry, now: u64, cause: String) {
+    if let Some(cause) = retry.fail(now, cause) {
+        log::warn!("PCM stream interrupted, retrying with backoff: {cause}");
     }
 }
 
@@ -605,5 +625,49 @@ mod tests {
             assert_eq!(attempts, [resumed_at]);
             assert_eq!(sink.writes, 1);
         }
+    }
+
+    #[test]
+    fn a_resume_the_heap_cannot_hold_retries_on_the_schedule_until_memory_returns() {
+        use crate::fragmented_heap::with_largest_block;
+
+        let time = Time::default();
+        let status = StreamStatus::default();
+        status.mark_transport_present();
+        let queue = PacketQueue::new();
+        let mut retry = Retry::new();
+        let mut sink = sink(&time);
+        status.request_transport_quiesce();
+        step(
+            &mut sink,
+            &queue,
+            &status,
+            &mut retry,
+            &time,
+            &time,
+            &mut Vec::new(),
+        );
+        status.end_transport_quiesce();
+
+        // Reserves fail at 100, 350, 850 and 1,850 ms; memory returns before the next.
+        with_largest_block(8_192, || {
+            while time.monotonic_millis() < 2_000 {
+                step(
+                    &mut sink,
+                    &queue,
+                    &status,
+                    &mut retry,
+                    &time,
+                    &time,
+                    &mut Vec::new(),
+                );
+            }
+        });
+        assert_eq!(sink.calls, 0);
+        assert_eq!(queue.push_drop_oldest(packet()), (false, 0));
+
+        let attempts = attempt_times(&mut sink, &queue, &status, &mut retry, &time, 10_000);
+        assert_eq!(attempts, [3_850]);
+        assert_eq!(sink.writes, 1);
     }
 }

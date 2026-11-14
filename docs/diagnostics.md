@@ -61,8 +61,8 @@ numeric SDK error. HTTP route-registration messages are suppressed so they
 cannot fill the retained log before the console becomes reachable; HTTP
 warnings and errors remain enabled.
 
-Allocation failures are recorded before the abort that follows them, with the
-size requested, the caller, the free heap, and the largest free block. On a
+Allocation failures are recorded with the size requested, the caller, the free
+heap, and the largest free block, before any abort that follows them. On a
 device that runs out of memory that record is the diagnosis, and it survives
 into the next boot.
 

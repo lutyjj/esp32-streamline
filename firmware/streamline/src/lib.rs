@@ -20,6 +20,8 @@ pub mod codec;
 pub mod config;
 #[cfg(any(test, feature = "pcm-frame-vectors"))]
 pub mod conformance;
+#[cfg(test)]
+mod fragmented_heap;
 pub mod health;
 pub mod hex;
 pub mod identity;

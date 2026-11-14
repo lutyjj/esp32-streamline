@@ -1,7 +1,7 @@
 //! Fixed-capacity, drop-oldest packet queue between the capture and network tasks.
 
 use std::{
-    collections::VecDeque,
+    collections::{TryReserveError, VecDeque},
     sync::{Condvar, Mutex},
     time::Duration,
 };
@@ -23,12 +23,16 @@ struct PacketStorage<T> {
 }
 
 impl<T> PacketStorage<T> {
-    fn new() -> Self {
-        Self {
-            chunks: std::array::from_fn(|_| VecDeque::with_capacity(CHUNK_DEPTH)),
+    fn new() -> Result<Self, TryReserveError> {
+        let mut chunks = std::array::from_fn(|_| VecDeque::new());
+        for chunk in &mut chunks {
+            chunk.try_reserve_exact(CHUNK_DEPTH)?;
+        }
+        Ok(Self {
+            chunks,
             head: 0,
             len: 0,
-        }
+        })
     }
 
     fn pop_front(&mut self) -> Option<T> {
@@ -56,7 +60,9 @@ pub struct PacketQueue<T> {
 impl<T> PacketQueue<T> {
     pub fn new() -> Self {
         Self {
-            packets: Mutex::new(Some(PacketStorage::new())),
+            packets: Mutex::new(Some(
+                PacketStorage::new().expect("startup heap holds the packet queue"),
+            )),
             ready: Condvar::new(),
         }
     }
@@ -89,11 +95,14 @@ impl<T> PacketQueue<T> {
         self.ready.notify_one();
     }
 
-    pub fn resume(&self) {
-        self.packets
-            .lock()
-            .expect("packet queue poisoned")
-            .get_or_insert_with(PacketStorage::new);
+    /// Reallocate the storage [`Self::suspend`] released. A heap without a
+    /// block for every chunk leaves admission closed for the caller to retry.
+    pub fn resume(&self) -> Result<(), TryReserveError> {
+        let mut packets = self.packets.lock().expect("packet queue poisoned");
+        if packets.is_none() {
+            *packets = Some(PacketStorage::new()?);
+        }
+        Ok(())
     }
 
     /// Wait up to `timeout` for a packet, returning it and the remaining
@@ -220,7 +229,7 @@ mod tests {
                     .all(|capacity| capacity * std::mem::size_of::<AudioPacket>() <= 16 * 1024));
             }
             queue.suspend();
-            queue.resume();
+            queue.resume().unwrap();
         }
     }
 
@@ -239,9 +248,23 @@ mod tests {
         assert_eq!(queue.push_drop_oldest(2), (false, 0));
         assert!(queue.packets.lock().unwrap().is_none());
         assert_eq!(pop(&queue), None);
-        queue.resume();
+        queue.resume().unwrap();
         queue.push_drop_oldest(3);
-        queue.resume();
+        queue.resume().unwrap();
         assert_eq!(pop(&queue), Some((3, 0)));
+    }
+
+    #[test]
+    fn a_resume_the_heap_cannot_hold_keeps_admission_closed_until_a_retry_succeeds() {
+        use crate::{fragmented_heap::with_largest_block, packet::AudioPacket};
+
+        let queue = PacketQueue::new();
+        queue.suspend();
+        // The device heap reported this largest block when a resume aborted.
+        assert!(with_largest_block(8_192, || queue.resume()).is_err());
+        assert!(queue.packets.lock().unwrap().is_none());
+        assert_eq!(queue.push_drop_oldest(AudioPacket::silence(1)), (false, 0));
+        queue.resume().unwrap();
+        assert_eq!(queue.push_drop_oldest(AudioPacket::silence(2)), (false, 1));
     }
 }

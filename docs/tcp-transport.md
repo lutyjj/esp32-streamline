@@ -61,7 +61,9 @@ source admission.
 - DMA: six buffers of 240 stereo frames, or 30 ms at 48 kHz
 - queue: 48 packets (256 ms) in six fixed-capacity allocations; on pressure,
   discard the oldest packet. Each allocation holds eight packets so resuming
-  after HTTPS needs only 8,384 contiguous bytes per allocation
+  after HTTPS needs only 8,384 contiguous bytes per allocation. A heap
+  without such a block keeps audio paused, and the sender retries on its
+  failure schedule
 - send admission: retain queued audio through network delays and connection
   setup; check streaming controls again before writing
 - pause: stop enqueueing and admitting sends, close the connection, discard

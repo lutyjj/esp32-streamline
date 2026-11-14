@@ -12,6 +12,10 @@ import dataclasses
 import json
 import os
 import re
+import socket
+import struct
+from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 import requests
@@ -53,6 +57,51 @@ def test_unrouted_requests_answer_404_or_405(device_api: DeviceApi, api_methods:
     assert code == 405, (post_only, body)
     code, body = device_api.post_form(get_only, {})
     assert code == 405, (get_only, body)
+
+
+def test_requests_a_client_gets_wrong_leave_the_log_alone(
+    authed_device_api: DeviceApi, api_methods: dict[str, frozenset[str]]
+) -> None:
+    # Any client on the network can send these, so none may add a line that
+    # pushes the device's own diagnostics out of its log.
+    stranger = dataclasses.replace(authed_device_api, admin_key=None)
+    post_only = min(path for path, methods in api_methods.items() if methods == {"post"})
+    before = _current_log(authed_device_api)
+    for probe in range(5):
+        assert stranger.fetch(f"/api/no-such-endpoint?probe={probe}")[0] == 404
+        assert stranger.post_form("/api/no-such-endpoint", {})[0] == 404
+        assert stranger.fetch(post_only)[0] == 405
+        assert stranger.fetch("/" + "u" * 1024)[0] == 414
+        response = requests.get(authed_device_api.base_url + "/api/status", headers={"X-Probe": "h" * 2048}, timeout=10)
+        assert response.status_code == 431
+        _drop_mid_response(authed_device_api.base_url, "/")
+    after = _current_log(authed_device_api)
+    assert after["boot"] == before["boot"], "the device restarted during the probes"
+    first_new = before["first_sequence"] + len(before["text"].splitlines())
+    added = [
+        line
+        for sequence, line in enumerate(after["text"].splitlines(), start=after["first_sequence"])
+        if sequence >= first_new
+    ]
+    assert not [line for line in added if re.search(r"\bhttpd_(uri|txrx|parse)\b|esp_idf_svc::http::server", line)], (
+        added
+    )
+
+
+def _drop_mid_response(base_url: str, path: str) -> None:
+    """Request `path`, then reset the connection before the response ends."""
+    address = urlsplit(base_url)
+    with socket.create_connection((str(address.hostname), int(address.port or 80)), timeout=10) as connection:
+        connection.sendall(f"GET {path} HTTP/1.1\r\nHost: device\r\nAccept-Encoding: gzip\r\n\r\n".encode())
+        connection.recv(1024)
+        connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+
+
+def _current_log(api: DeviceApi) -> dict[str, Any]:
+    code, body = api.fetch("/api/logs")
+    assert code == 200, f"GET /api/logs answered HTTP {code}"
+    current: dict[str, Any] = json.loads(body)["current"]
+    return current
 
 
 def test_signed_firmware_reports_its_trusted_key(device_api: DeviceApi) -> None:

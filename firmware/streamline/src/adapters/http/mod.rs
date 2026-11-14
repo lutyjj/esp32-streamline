@@ -290,12 +290,14 @@ pub fn start(
     let console_url = captive_portal_address.map(|address| {
         CString::new(crate::captive_portal::console_url(address)).expect("a URL has no NUL byte")
     });
-    if console_url.is_some() {
-        // Redirected probes ask for paths no route serves, and the server warns
-        // on each. ESP-IDF's captive-portal example quiets the same tags.
-        for tag in [c"httpd_uri", c"httpd_txrx", c"httpd_parse"] {
-            unsafe { sys::esp_log_level_set(tag.as_ptr(), sys::esp_log_level_t_ESP_LOG_ERROR) };
-        }
+    // Each request a client gets wrong, such as an unknown path or an oversized
+    // header, warns under these tags, so any client could push the device's own
+    // lines out of the log; ESP-IDF's captive-portal example quiets them too.
+    // Errors still log. The warnings stay on until the API serves: a startup
+    // request that misses a route still shows, and so does a client's mistake
+    // in that window.
+    for tag in [c"httpd_uri", c"httpd_txrx", c"httpd_parse"] {
+        unsafe { sys::esp_log_level_set(tag.as_ptr(), sys::esp_log_level_t_ESP_LOG_ERROR) };
     }
     if CAPTIVE_PORTAL.set(console_url).is_err() || listener.state.set(state).is_err() {
         bail!("API state is already published");

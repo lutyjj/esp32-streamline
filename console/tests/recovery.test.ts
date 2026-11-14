@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import type { StatusResponse } from '../src/lib/api';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { type StatusResponse, setTransport } from '../src/lib/api';
 import { deviceStatus } from '../src/mocks/fixtures';
-import { recoveryStory } from '../src/state/recovery';
+import { refresh, status, unreachable } from '../src/state/device';
+import { beginRebootWait, REBOOT_WARN_POLLS, rebootWait } from '../src/state/rebootWait';
+import { recovery, recoveryStory } from '../src/state/recovery';
+import { toasts } from '../src/state/toasts';
 
 function recovering(joinFailure: StatusResponse['wifi']['join_failure']): StatusResponse {
   return deviceStatus({
@@ -46,5 +49,47 @@ describe('recoveryStory', () => {
     expect(story?.text).toContain('If its setup network is gone');
     expect(story?.text).toContain('reconnect to Study Wi-Fi');
     expect(story?.text).toContain('http://streamline-0000.local/');
+  });
+});
+
+describe('a reboot from recovery', () => {
+  afterEach(() => {
+    status.value = null;
+    unreachable.value = false;
+    rebootWait.value = null;
+    toasts.value = [];
+    setTransport((request) => fetch(request));
+  });
+
+  it('that stays away names the home address, and a late return still completes it', async () => {
+    // The device restarted onto its home network, so the setup network is gone.
+    status.value = recovering('network-not-found');
+    setTransport(async () => {
+      throw new TypeError('setup network gone');
+    });
+    beginRebootWait('the restart');
+    toasts.value = [];
+
+    for (let poll = 0; poll < REBOOT_WARN_POLLS; poll += 1) await refresh();
+
+    expect(recovery.value?.kind).toBe('left');
+    expect(recovery.value?.text).toContain('http://streamline-0000.local/');
+    expect(toasts.value.map((entry) => entry.text).join(' ')).not.toContain('setup network');
+
+    // The saved network was still down after all: the device is back in recovery.
+    const reads: string[] = [];
+    setTransport(async (request) => {
+      reads.push(new URL(request.url).pathname);
+      return new Response(JSON.stringify(recovering('network-not-found')), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    await refresh();
+
+    expect(rebootWait.value).toBeNull();
+    expect(unreachable.value).toBe(false);
+    expect(toasts.value.map((entry) => entry.text)).toContain('Back online — the restart applied');
+    // A completed wait re-reads the settings the reboot applied.
+    await vi.waitFor(() => expect(reads).toContain('/api/settings'));
   });
 });

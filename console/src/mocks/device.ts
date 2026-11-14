@@ -19,6 +19,7 @@ import type {
   AudioProfileCatalog,
   BoardCatalogResponse,
   BootLog,
+  DiscoveredBridge,
   LogsResponse,
   SettingsResponse,
   StatusResponse,
@@ -32,7 +33,7 @@ interface MockLogLine {
 }
 
 import { DIGEST_USERNAME, digestResponse, parseDigestFields } from '../lib/digest';
-import { deviceConfig, deviceStatus, setupNetwork } from './fixtures';
+import { deviceConfig, deviceStatus, discoveredBridges, setupNetwork } from './fixtures';
 
 /**
  * The admin key the fake device accepts once provisioned: the canonical
@@ -98,6 +99,8 @@ type FormBody = Partial<Record<string, string>>;
 
 export class FakeDevice {
   readonly handlers: HttpHandler[];
+  /** What a browse of the device's network finds; tests replace it. */
+  bridges: DiscoveredBridge[] = discoveredBridges();
   private status!: StatusResponse;
   private config!: SettingsResponse;
   private profiles!: AudioProfileCatalog;
@@ -129,6 +132,12 @@ export class FakeDevice {
       this.read('/api/health', () => this.status.health),
       this.read('/api/audio-profiles', () => this.profiles),
       this.read('/api/boards', () => this.boards()),
+      // Like the firmware, browse only from the home network.
+      http.get('/api/bridges', () =>
+        this.status.mode === 'provisioned'
+          ? HttpResponse.json({ bridges: this.bridges })
+          : reject(503, 'bridge discovery needs the home network'),
+      ),
       this.read('/api/openapi.json', () => contract),
       this.readAuthorized('/api/logs', () => this.nextLogs()),
       this.readAuthorized('/api/coredump', () => ({

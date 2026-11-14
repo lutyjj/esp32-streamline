@@ -3,6 +3,7 @@
 mod analog_passthrough;
 pub(in crate::adapters) mod audio;
 mod board;
+mod bridges;
 mod buttons;
 mod coredump;
 mod leds;
@@ -25,6 +26,7 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
     settings::register_read(server)?;
     audio::register_read(server)?;
     board::register_read(server)?;
+    bridges::register(server)?;
     system::register_contract(server)?;
     settings::register_network_writes(server)?;
     transport::register(server)?;

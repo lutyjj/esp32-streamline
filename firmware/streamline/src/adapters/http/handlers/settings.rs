@@ -195,8 +195,11 @@ fn refresh_mdns_name(state: &ApiState, display_name: &str) {
     let Some(mdns) = &state.mdns else {
         return;
     };
-    let mut advertisement = mdns.lock().expect("mDNS lock poisoned");
-    if let Err(error) = advertisement.set_instance_name(display_name) {
+    if let Err(error) = mdns
+        .lock()
+        .expect("mDNS lock poisoned")
+        .set_instance_name(display_name)
+    {
         log::warn!("could not refresh mDNS instance name: {error:#}");
     }
 }

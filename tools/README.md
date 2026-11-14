@@ -49,6 +49,8 @@ the suite against the real board's URL after the serial check. Tests that
 need a fresh flash image, serial boot expectations, or destructive lifecycle
 transitions (commissioning persistence, key gating, factory reset, the OTA
 slot switch) carry the `emulated` marker and skip on hardware with a reason.
+With `STREAMLINE_SMOKE_BRIDGE` set in `.env` to a bridge's `host:port`, the
+discovery test also requires the board to find that bridge on its network.
 
 QEMU emulates no Wi-Fi PHY or audio, and a warm restart is out of contract
 (the emulated NIC survives a soft reset), so each emulated boot is one QEMU

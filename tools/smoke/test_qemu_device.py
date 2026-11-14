@@ -280,6 +280,21 @@ def test_profile_snapshots_survive_repeated_nvs_replacement_and_reboot(
     assert rebooted.api.post_form("/api/unlock", {})[0] == 200
 
 
+def test_bridge_discovery_ends_within_its_browse_window(provisioned_device: EmulatedDevice) -> None:
+    started = time.monotonic()
+    code, body = provisioned_device.api.fetch("/api/bridges")
+
+    assert code == 200, f"discovery answered HTTP {code}: {body[:200]!r}"
+    # QEMU's user-mode network carries no multicast, so no bridge can answer.
+    assert json.loads(body) == {"bridges": []}
+    assert time.monotonic() - started < 6, "discovery outlasted its three-second browse"
+
+    started = time.monotonic()
+    code, _ = provisioned_device.api.fetch("/api/bridges")
+    assert code == 200
+    assert time.monotonic() - started < 2, "a request right after a browse browsed again"
+
+
 def test_provisioned_device_gates_writes_behind_the_key(provisioned_device: EmulatedDevice) -> None:
     stranger = dataclasses.replace(provisioned_device.api, admin_key=None)
     code, _ = stranger.post_form("/api/settings/name", {"name": "intruder"})

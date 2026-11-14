@@ -26,7 +26,7 @@ use esp_idf_svc::{
 };
 
 use crate::{
-    adapters::{codec::DeviceCodec, mdns::MdnsAdvertisement, nvs::ConfigStore},
+    adapters::{codec::DeviceCodec, mdns::Mdns, nvs::ConfigStore},
     analog_passthrough::AnalogPassthroughState,
     api::{self, Endpoint, HttpMethod},
     board,
@@ -63,7 +63,7 @@ pub struct ApiState {
     /// stays available in network recovery when persisted local output is on.
     pub codec: Option<Arc<Mutex<DeviceCodec<'static>>>>,
     pub analog_passthrough: Arc<Mutex<AnalogPassthroughState>>,
-    pub mdns: Option<Arc<Mutex<MdnsAdvertisement>>>,
+    pub mdns: Option<Arc<Mutex<Mdns>>>,
     pub ota: Arc<OtaProgress>,
     /// The startup health verdict, assembled once at boot (see [`crate::health`]).
     pub health: Arc<HealthReport>,
@@ -185,7 +185,8 @@ impl<'a> ContractServer<'a> {
         self.inner
             .fn_handler(endpoint.path, method(endpoint), move |request| {
                 let state = gate.wait();
-                let _control = state.control.lock().expect("control lock poisoned");
+                let _control = (!api::OUTSIDE_CONTROL.contains(&endpoint))
+                    .then(|| state.control.lock().expect("control lock poisoned"));
                 if let Err(challenge) = auth::authorized_for(&request, state, endpoint) {
                     return responses::unauthorized(request, &challenge);
                 }

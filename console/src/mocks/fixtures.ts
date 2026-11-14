@@ -8,6 +8,7 @@
 
 import contract from '../../../docs/openapi.json';
 import type {
+  BridgesResponse,
   SettingsResponse,
   SetupNetworkResponse,
   StatusResponse,
@@ -21,6 +22,12 @@ const STATUS_EXAMPLE = contract.components.schemas.StatusResponse.example as Sta
 const CONFIG_EXAMPLE = contract.components.schemas.SettingsResponse.example as SettingsResponse;
 const SETUP_NETWORK_EXAMPLE = contract.components.schemas.SetupNetworkResponse
   .example as SetupNetworkResponse;
+const BRIDGES_EXAMPLE = contract.components.schemas.BridgesResponse.example as BridgesResponse;
+
+/** The bridges the example device's network advertises. */
+export function discoveredBridges(): BridgesResponse['bridges'] {
+  return structuredClone(BRIDGES_EXAMPLE.bridges);
+}
 
 /** The example device's setup network, so its SSID shape follows the firmware's. */
 export function setupNetwork(overrides: Partial<SetupNetworkResponse> = {}): SetupNetworkResponse {

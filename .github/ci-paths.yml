@@ -77,6 +77,7 @@ ha-addon:
 firmware:
   - *shared
   - 'firmware/**'
+  - 'docs/bridge-discovery.json'
   - 'docs/pcm-protocol.md'
   - 'docs/pcm-transport.json'
   - 'docs/pcm-frame-vectors.json'

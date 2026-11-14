@@ -1,15 +1,18 @@
 import { type ComponentChildren, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { AudioProfiles } from '../src/components/AudioProfiles';
 import { AudioTab } from '../src/components/AudioTab';
 import { BridgeWizard } from '../src/components/BridgeWizard';
 import { NetworkTab } from '../src/components/NetworkTab';
+import { OnboardingOverlay } from '../src/components/OnboardingOverlay';
 import { TransportCard } from '../src/components/TransportCard';
 import { TransportWizard } from '../src/components/TransportWizard';
 import { forgetAdminKey, unlockSettings } from '../src/lib/adminKey';
 import { deviceConfig, deviceContract, deviceStatus, transportStatus } from '../src/mocks/fixtures';
-import { config, contract, status } from '../src/state/device';
+import { audioProfiles, config, contract, status } from '../src/state/device';
 import { UPDATE_BUSY_REASON } from '../src/state/ota';
+import { transport } from '../src/state/transport';
 
 const KEY_ID = 'eli1-0123456789abcdef0123456789abcdef';
 let host: HTMLElement;
@@ -22,10 +25,21 @@ function click(label: string): void {
   act(() => button(label)?.click());
 }
 
-function updating(busy: boolean): void {
+function updating(busy: boolean, mode: 'setup' | 'provisioned' = 'provisioned'): void {
   act(() => {
-    status.value = deviceStatus({ ota: { busy, phase: busy ? 'checking' : 'idle' } });
+    status.value = deviceStatus({
+      mode,
+      auth_required: mode === 'provisioned',
+      ota: { busy, phase: busy ? 'checking' : 'idle' },
+    });
   });
+}
+
+function type(selector: string, value: string): void {
+  const field = host.querySelector<HTMLInputElement>(selector);
+  if (!field) throw new Error(`${selector} missing`);
+  field.value = value;
+  field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /** Render `view` during an update, then once it ends, and return `label`'s disabled states. */
@@ -59,6 +73,8 @@ afterEach(() => {
   contract.value = null;
   status.value = null;
   config.value = null;
+  audioProfiles.value = null;
+  transport.revealed.value = undefined;
   forgetAdminKey();
 });
 
@@ -70,6 +86,43 @@ describe('actions that restart the device during an update', () => {
     expect(
       lockedThenFree(<NetworkTab section="bridge" onSetupBridge={() => {}} />, 'Save & restart'),
     ).toEqual([true, false]);
+  });
+
+  it('waits to save input levels or apply a profile', () => {
+    expect(
+      lockedThenFree(<AudioTab onCalibrate={() => {}} onSetupBridge={() => {}} />, 'Save', [], () =>
+        type('#input_gain', '5'),
+      ),
+    ).toEqual([true, false]);
+    audioProfiles.value = {
+      board_id: deviceStatus().capabilities.board_id,
+      schema_version: 1,
+      profiles: [
+        {
+          id: 'vinyl',
+          name: 'Vinyl',
+          audio: { input_line: 2, input_gain: 0, adc_attenuation_db: 9 },
+        },
+      ],
+      active_profile_id: null,
+    };
+    expect(lockedThenFree(<AudioProfiles />, 'Apply profile')).toEqual([true, false]);
+  });
+
+  it('waits to commission the device from first-run setup', () => {
+    const join = 'I saved my key, join network';
+    act(() => render(null, host));
+    updating(true, 'setup');
+    act(() => render(<OnboardingOverlay onClose={() => {}} />, host));
+    act(() => {
+      type('#ob_ssid', 'Home');
+      type('#ob_password', 'correct horse');
+    });
+    click('Continue');
+    expect(button(join)?.disabled).toBe(true);
+    expect(host.textContent).toContain(UPDATE_BUSY_REASON);
+    updating(false, 'setup');
+    expect(button(join)?.disabled).toBe(false);
   });
 
   it('waits to calibrate input levels', () => {
@@ -118,6 +171,26 @@ describe('actions that restart the device during an update', () => {
       false,
     ]);
     expect(lockedThenFree(card, 'Disable encryption & restart', ['Disable encryption'])).toEqual([
+      true,
+      false,
+    ]);
+  });
+
+  it('waits to restart into cleartext after a credential recovery', () => {
+    config.value = deviceConfig({
+      transport: transportStatus({ pending_key_id: KEY_ID }),
+    });
+    transport.revealed.value = {
+      contract_version: 1,
+      key_id: KEY_ID,
+      psk: '01'.repeat(32),
+      recovery: true,
+    };
+    const summary = () =>
+      [...host.querySelectorAll<HTMLButtonElement>('.disclosure-summary')]
+        .find((b) => b.textContent === 'Recovery')
+        ?.click();
+    expect(lockedThenFree(<TransportCard />, 'Restart into cleartext', [], summary)).toEqual([
       true,
       false,
     ]);

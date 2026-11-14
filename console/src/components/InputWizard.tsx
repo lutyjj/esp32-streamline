@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
-import { getStatus, setAudio } from '../lib/api';
+import { getSetAudioUrl, getStatus, setAudio } from '../lib/api';
 import {
   CAL_ATTEN_MAX,
   CAL_ATTEN_STEP,
@@ -10,11 +10,13 @@ import { errorMessage } from '../lib/errors';
 import { dbfs } from '../lib/format';
 import { useWritable } from '../lib/hooks';
 import { loadDeviceSettings, status } from '../state/device';
+import { updateLock } from '../state/ota';
 import { toast } from '../state/toasts';
 import { AnalogPassthroughToggle } from './AnalogPassthrough';
 import { FlowDialog, type FlowStep } from './FlowDialog';
 import { Kv } from './Kv';
 import { MeterRow } from './Meter';
+import { LockReason } from './Transact';
 
 interface LogLine {
   text: string;
@@ -59,6 +61,8 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
   /** Board-reported ceiling; the wizard never walks past what the ADC has. */
   const attenMax = status.value?.capabilities.adc_atten_max_db ?? CAL_ATTEN_MAX;
   const passthrough = status.value?.capabilities.analog_passthrough;
+  // The loud step and a restore both write levels.
+  const locked = updateLock(getSetAudioUrl());
 
   function calibration(): CalibrationEngine {
     if (engine.current) return engine.current;
@@ -259,12 +263,13 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
             <i style={{ width: `${progress * 100}%` }} />
           </div>
           {silenceNote && <p class="body wznote">{silenceNote}</p>}
+          {floorOk && <LockReason reason={locked} />}
         </div>
       ),
       secondary: [{ label: 'Back', onClick: () => show('prepare') }],
       primary: {
         label: silenceNote ? 'Measure again' : 'Continue',
-        disabled: !floorOk && !silenceNote,
+        disabled: floorOk ? locked !== null : !silenceNote,
         onClick: () => show(floorOk ? 'loud' : 'silence'),
       },
     },
@@ -350,10 +355,15 @@ export function InputWizard({ onClose }: { onClose: () => void }) {
                     {restoreError}. Check that the device is reachable, then retry. You can also
                     close and set the level manually in Audio.
                   </p>
+                  <LockReason reason={locked} />
                 </div>
               </div>
             ),
-            primary: { label: 'Retry restore', onClick: () => close(true) },
+            primary: {
+              label: 'Retry restore',
+              disabled: locked !== null,
+              onClick: () => close(true),
+            },
           } satisfies FlowStep,
         ]
       : []),

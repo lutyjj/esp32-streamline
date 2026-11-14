@@ -21,7 +21,7 @@ import { Disclosure } from './Disclosure';
 import { Kv } from './Kv';
 import { Section, SectionActions } from './Section';
 import { SettingRow } from './SettingRow';
-import { ActionState, TransactButton } from './Transact';
+import { ActionState, LockReason, TransactButton } from './Transact';
 
 /**
  * The Encrypted audio settings task. Setup — create, enroll, verify,
@@ -114,7 +114,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
           </TransactButton>
         )}
         <ActionState state={recovery.state} />
-        {recoveryLock && <span class="help">{recoveryLock}</span>}
+        <LockReason reason={recoveryLock} />
       </SectionActions>
     </Disclosure>
   );
@@ -215,7 +215,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
               />
             )}
             <ActionState state={lifecycle.state} />
-            {rollbackLock && <span class="help">{rollbackLock}</span>}
+            <LockReason reason={rollbackLock} />
           </SectionActions>
           {recoverySection}
         </Disclosure>

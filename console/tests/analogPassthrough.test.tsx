@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { AnalogPassthrough } from '../src/components/AnalogPassthrough';
 import { deviceStatus } from '../src/mocks/fixtures';
 import { status as device } from '../src/state/device';
@@ -7,6 +7,10 @@ import { status as device } from '../src/state/device';
 const off = { enabled: false, active: false, fault: null };
 
 describe('AnalogPassthrough', () => {
+  afterEach(() => {
+    device.value = null;
+  });
+
   it('is absent when the selected board does not advertise the route', () => {
     const host = document.createElement('div');
     render(<AnalogPassthrough status={off} writable locked={null} />, host);
@@ -70,7 +74,6 @@ describe('AnalogPassthrough', () => {
       />,
       host,
     );
-    device.value = null;
 
     expect(host.textContent).toContain('retries it once it is back on your Wi-Fi');
     expect(host.textContent).not.toContain('on again');

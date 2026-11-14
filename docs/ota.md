@@ -30,8 +30,10 @@ for idle audio and respecting the disabled schedule.
    the SNTP wait; certificate validity dates remain enforced by mbedTLS. An unset
    clock waits up to 45 seconds for synchronization. Plain HTTP skips this step.
 3. The worker fetches `releases/latest/download/SHA256SUMS`. The `-ota.bin` entry
-   supplies the release version and expected digest. A failed fetch retries once
-   after one second, with the failed connection released.
+   supplies the release version and expected digest. A redirect to the same host
+   reuses the open connection, so the lookup performs one TLS handshake with
+   GitHub and one with its asset host. A failed fetch retries once after one
+   second, with the failed connection released.
 4. A check reports `up-to-date` or `update-available` and resumes audio. An install
    proceeds only if the release is newer than the running firmware.
 5. The image streams into the inactive slot while SHA-256 is calculated. The TLS

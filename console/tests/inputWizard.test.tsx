@@ -151,6 +151,17 @@ describe('InputWizard', () => {
     expect(button('Retry restore')).toBeDefined();
     expect(button('Close without restoring')).toBeDefined();
 
+    // A firmware update or check holds the retry, since it writes levels.
+    act(() => {
+      contract.value = deviceContract();
+      status.value = deviceStatus({ auth_required: false, ota: { busy: true, phase: 'checking' } });
+    });
+    expect(button('Retry restore')?.disabled).toBe(true);
+    expect(mountedHost?.textContent).toContain(UPDATE_BUSY_REASON);
+    act(() => {
+      status.value = deviceStatus({ auth_required: false });
+    });
+
     act(() => button('Retry restore')?.click());
     await vi.waitFor(() => expect(writes).toEqual([0, 9, 9]));
     expect(onClose).not.toHaveBeenCalled();

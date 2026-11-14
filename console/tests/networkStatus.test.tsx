@@ -1,11 +1,14 @@
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { NetworkTab } from '../src/components/NetworkTab';
 import { SystemTab } from '../src/components/SystemTab';
 import { forgetAdminKey, unlockSettings } from '../src/lib/adminKey';
+import { setTransport } from '../src/lib/api';
 import { deviceConfig, deviceStatus } from '../src/mocks/fixtures';
 import { audioMoving, config, status, unreachable } from '../src/state/device';
+import { handoff } from '../src/state/join';
+import { rebootWait } from '../src/state/rebootWait';
 
 const host = document.createElement('div');
 afterEach(() => {
@@ -13,7 +16,9 @@ afterEach(() => {
   unreachable.value = false;
   status.value = null;
   config.value = null;
+  handoff.value = null;
   forgetAdminKey();
+  setTransport((request) => fetch(request));
 });
 
 it('does not describe a failed poll as quiet audio or connected Wi-Fi', () => {
@@ -70,4 +75,43 @@ it('preserves the unsaved target guard across settings navigation', async () => 
   });
   await navigate('#/settings/security');
   expect(encryption()?.disabled).toBe(false);
+});
+
+it('changes Wi-Fi in recovery through the handoff, keeping the target and key', async () => {
+  status.value = deviceStatus({
+    mode: 'recovery',
+    wifi: {
+      ssid: 'Study Wi-Fi',
+      status: 'ap',
+      ap_ip: '192.168.71.1',
+      join_failure: 'credentials-rejected',
+    },
+    diagnostics: {
+      last_fallback: 'v0.9.0: Wi-Fi station connection failed (credentials-rejected)',
+    },
+  });
+  config.value = deviceConfig({ ssid: 'Study Wi-Fi', target_host: '192.0.2.20' });
+  unlockSettings('a'.repeat(48), false);
+  let body = '';
+  setTransport(async (request) => {
+    body = await request.text();
+    return new Response('{"ok":true,"rebooting":true}', { status: 200 });
+  });
+  await act(async () => render(<NetworkTab section="wifi" onSetupBridge={() => {}} />, host));
+  expect(host.textContent).toContain('Not connected. Change the details below');
+  expect(host.textContent).toContain('Device report: v0.9.0: Wi-Fi station connection failed');
+  expect(host.textContent).not.toContain('Not configured yet');
+
+  const save = Array.from(host.querySelectorAll('button')).find(
+    (button) => button.textContent === 'Save & restart',
+  );
+  await act(async () => save?.click());
+  await vi.waitFor(() => expect(handoff.value).toBe('confirmed'));
+
+  const fields = new URLSearchParams(body);
+  expect(fields.get('ssid')).toBe('Study Wi-Fi');
+  expect(fields.get('password')).toBe('');
+  expect(fields.has('target_host')).toBe(false);
+  // This browser stays on the setup network the device leaves; no reboot wait.
+  expect(rebootWait.value).toBeNull();
 });

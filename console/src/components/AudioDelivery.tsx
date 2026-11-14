@@ -1,6 +1,6 @@
 import { setStream } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
-import { bridgeConnection, noBridge, status, unreachable } from '../state/device';
+import { bridgeConnection, noBridge, onSetupNetwork, status, unreachable } from '../state/device';
 import { blockingHealth } from '../state/health';
 import { Button } from './Button';
 import { ActionState, TransactButton } from './Transact';
@@ -15,6 +15,20 @@ export function AudioDelivery({ onSetupBridge }: { onSetupBridge: () => void }) 
         {unreachable.value
           ? 'Device unavailable. Check your network; this page retries automatically.'
           : 'Connecting to your device…'}
+      </div>
+    );
+  // Capture and streaming run only on the home network.
+  if (onSetupNetwork.value && !unreachable.value)
+    return (
+      <div class="delivery-status">
+        <div>
+          <strong>{s.mode === 'recovery' ? 'Waiting for Wi-Fi' : 'Not on your network yet'}</strong>
+          <p>
+            {s.mode === 'recovery'
+              ? `Audio resumes once StreamLine rejoins ${s.wifi.ssid}.`
+              : 'Join StreamLine to your Wi-Fi to start capturing audio.'}
+          </p>
+        </div>
       </div>
     );
   const fault = blockingHealth.value;

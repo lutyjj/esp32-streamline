@@ -5,14 +5,14 @@
  */
 
 import { computed, effect, signal } from '@preact/signals';
-import { setupMode, status } from './device';
+import { onSetupNetwork, status } from './device';
 
 /** True while the user has dismissed the callout for the current counter run. */
 export const clipDismissed = signal(false);
 
 export const clipCalloutVisible = computed(() => {
   const s = status.value;
-  if (!s || setupMode.value) return false;
+  if (!s || onSetupNetwork.value) return false;
   return s.metrics.clipped_samples_total > 0 && !clipDismissed.value;
 });
 

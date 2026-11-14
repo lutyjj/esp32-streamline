@@ -78,7 +78,13 @@ let lastPcmBytes = -1;
 /** True when PCM bytes increased between the last two polls. */
 export const audioMoving = signal(false);
 
-export const setupMode = computed(() => status.value?.mode === 'setup');
+/** Unconfigured: first-run onboarding owns the console. */
+export const firstRun = computed(() => status.value?.mode === 'setup');
+/** The device serves this console from its setup network, with capture and streaming down. */
+export const onSetupNetwork = computed(() => {
+  const mode = status.value?.mode;
+  return mode === 'setup' || mode === 'recovery';
+});
 /** Provisioned but no bridge configured yet: capture runs, nothing streams. */
 export const noBridge = computed(
   () =>
@@ -103,7 +109,7 @@ export const bridgeConnection = computed<BridgeConnection>(() => {
   const s = status.value;
   if (unreachable.value) return 'unavailable';
   if (!s) return 'unset';
-  if (s.mode === 'setup') return 'setup';
+  if (s.mode !== 'provisioned') return 'setup';
   if (!s.target.target_host) return 'unset';
   if (!s.stream.enabled || !s.metrics.playing) return 'idle';
   return audioMoving.value ? 'sending' : 'connecting';

@@ -11,7 +11,7 @@ import { SystemTab } from './components/SystemTab';
 import { Toasts } from './components/Toasts';
 import { TransportWizard } from './components/TransportWizard';
 import { useWritable } from './lib/hooks';
-import { setupMode, status, unreachable } from './state/device';
+import { firstRun, status, unreachable } from './state/device';
 import { handoff, handoffMessage } from './state/join';
 import {
   CONSOLE_NAVIGATION,
@@ -19,6 +19,7 @@ import {
   navigateTo,
   useConsoleView,
 } from './state/navigation';
+import { recovery } from './state/recovery';
 import { toast } from './state/toasts';
 import { setupWizardRequested } from './state/transport';
 
@@ -36,7 +37,7 @@ export function App() {
   const [unlockOpen, setUnlockOpen] = useState(false);
 
   // An unconfigured device goes straight into first-run onboarding, once.
-  const setup = setupMode.value;
+  const setup = firstRun.value;
   useEffect(() => {
     if (setup && !onboardingSeen) {
       setOnboardingSeen(true);
@@ -86,6 +87,16 @@ export function App() {
     >
       {handoff.value ? (
         <Notice tone="warn">{handoffMessage()}</Notice>
+      ) : recovery.value ? (
+        <Notice tone="warn">
+          {recovery.value.text}
+          {recovery.value.kind === 'retrying' && (
+            <>
+              {' '}
+              <a href="#/settings/wifi">Change Wi-Fi</a>
+            </>
+          )}
+        </Notice>
       ) : (
         unreachable.value && <Notice tone="warn">Device unreachable — retrying…</Notice>
       )}

@@ -8,10 +8,12 @@
 import { setupWorker } from 'msw/browser';
 import { type DeviceScenario, FakeDevice } from './device';
 
+const SCENARIOS: readonly DeviceScenario[] = ['steady', 'first-boot', 'recovery'];
+
 /** The journey stage the fake device starts in, from `?scenario=`. */
 function scenarioFromLocation(): DeviceScenario {
   const requested = new URLSearchParams(window.location.search).get('scenario');
-  return requested === 'first-boot' ? 'first-boot' : 'steady';
+  return SCENARIOS.find((scenario) => scenario === requested) ?? 'steady';
 }
 
 export async function startDeviceMock(): Promise<void> {

@@ -26,6 +26,31 @@ test('first boot: Wi-Fi, admin key, join, provisioned', async ({ page }) => {
   await expect(page.getByRole('button', { name: /^Unlocked/ })).toBeVisible();
 });
 
+// Stage 6, per docs/user-journey.md: a provisioned device that cannot reach its
+// Wi-Fi explains why on its setup network instead of opening first-run setup,
+// and a Wi-Fi change keeps its key and target and ends in the network handoff.
+test('recovery: the cause is named and a Wi-Fi change hands off', async ({ page }) => {
+  await page.goto('/?scenario=recovery');
+  await expect(page.getByText(/can’t find home\. It retries every minute/)).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'First-run setup' })).toBeHidden();
+  await expect(page.getByText('Waiting for Wi-Fi')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Change Wi-Fi' }).click();
+  await expect(page.getByText(/^Device report: .*network-not-found/)).toBeVisible();
+  await page.getByRole('button', { name: 'Unlock to edit' }).click();
+  await page.getByPlaceholder('admin key').fill(mockAdminKey);
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  await page.getByLabel('Network name').fill('New Wi-Fi');
+  await page.getByRole('button', { name: 'Save & restart' }).click();
+
+  await expect(
+    page.getByText(/Settings saved\. Reconnect to your own Wi-Fi/).first(),
+  ).toBeVisible();
+  const settings = await page.evaluate(async () => (await fetch('/api/settings')).json());
+  expect(settings.ssid).toBe('New Wi-Fi');
+  expect(settings.target_host).not.toBe('');
+});
+
 // Stage 2's failure promise: a rejected key names the rejection and leaves
 // settings locked.
 test('a wrong admin key is rejected and settings stay locked', async ({ page }) => {

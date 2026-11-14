@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { restart } from '../lib/api';
 import { useTransact, useWritable } from '../lib/hooks';
-import { config, setupMode } from '../state/device';
+import { config, onSetupNetwork } from '../state/device';
 import {
   setupWizardRequested,
   transport,
@@ -32,7 +32,7 @@ export function TransportCard({ targetDirty = false }: { targetDirty?: boolean }
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
 
-  if (!current || setupMode.value) return null;
+  if (!current || onSetupNetwork.value) return null;
   const status = current.transport;
   const actions = transportActions(status);
   const journey = transportJourney(status);

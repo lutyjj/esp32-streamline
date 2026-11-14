@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { errorMessage } from '../lib/errors';
-import { expectedHostname, handoffConfirmed, joinNetwork } from '../state/join';
+import { expectedHostname, handoff, joinNetwork } from '../state/join';
 import { setupKey } from '../state/setupKey';
 import { Button } from './Button';
 import { DialogSheet } from './DialogSheet';
@@ -134,8 +134,8 @@ function JoiningStep({ ssid }: { ssid: string }) {
 
   return (
     <div>
-      <h3>{handoffConfirmed.value ? `Joining ${ssid}…` : 'Check the network handoff'}</h3>
-      {!handoffConfirmed.value && (
+      <h3>{handoff.value === 'confirmed' ? `Joining ${ssid}…` : 'Check the network handoff'}</h3>
+      {handoff.value !== 'confirmed' && (
         <p class="wznote">
           The connection ended before the save could be confirmed. Keep your admin key. Try the
           home-network address, or return to setup and retry.

@@ -3,19 +3,13 @@ import { forgetAdminKey, isUnlocked } from '../src/lib/adminKey';
 import { setTransport } from '../src/lib/api';
 import { deviceStatus } from '../src/mocks/fixtures';
 import { status } from '../src/state/device';
-import {
-  expectedHostname,
-  handoff,
-  handoffConfirmed,
-  handoffMessage,
-  joinNetwork,
-} from '../src/state/join';
+import { expectedHostname, handoff, handoffMessage, joinNetwork } from '../src/state/join';
 import { rebootWait } from '../src/state/rebootWait';
 import { setupKey } from '../src/state/setupKey';
 
 beforeEach(() => {
   status.value = null;
-  handoff.value = false;
+  handoff.value = null;
   rebootWait.value = null;
   forgetAdminKey();
   setupKey.value = 'generated-key';
@@ -33,22 +27,48 @@ describe('joinNetwork', () => {
       return new Response('{"rebooting":true}', { status: 200 });
     });
 
-    await joinNetwork({ ssid: '  studio ', password: 'pw', rememberKey: false });
+    await joinNetwork({
+      ssid: '  studio ',
+      password: 'pw',
+      target: { host: ' bridge.local ', port: '' },
+      rememberKey: false,
+    });
     const fields = new URLSearchParams(body);
     expect(fields.get('ssid')).toBe('studio');
     expect(fields.get('password')).toBe('pw');
     expect(fields.get('admin_key')).toBe('generated-key');
-    expect(fields.get('target_host')).toBe('');
+    expect(fields.get('target_host')).toBe('bridge.local');
     expect(fields.get('target_port')).toBe('39000');
+  });
+
+  it('leaves the stored target and key alone when it carries none', async () => {
+    // Recovery: the device keeps a target the owner did not touch, and an
+    // empty key keeps its stored one.
+    let body = '';
+    setTransport(async (request) => {
+      body = await request.text();
+      return new Response('{"rebooting":true}', { status: 200 });
+    });
+    setupKey.value = '';
+
+    await joinNetwork({ ssid: 'studio', password: '', rememberKey: false });
+    const fields = new URLSearchParams(body);
+    expect(fields.has('target_host')).toBe(false);
+    expect(fields.has('target_port')).toBe(false);
+    expect(fields.get('password')).toBe('');
+    expect(fields.get('admin_key')).toBe('');
+    expect(handoff.value).toBe('confirmed');
+    expect(isUnlocked()).toBe(false);
   });
 
   it('unlocks this browser and flags the handoff, without a reboot wait', async () => {
     setTransport(async () => new Response('{"rebooting":true}', { status: 200 }));
 
-    await joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: false });
+    await expect(joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: false })).resolves.toBe(
+      'confirmed',
+    );
     expect(isUnlocked()).toBe(true);
-    expect(handoff.value).toBe(true);
-    expect(handoffConfirmed.value).toBe(true);
+    expect(handoff.value).toBe('confirmed');
     // The fallback escalation lives in rebootWait; a first join must never
     // arm it, because this browser stays on the vanished setup network.
     expect(rebootWait.value).toBeNull();
@@ -61,7 +81,7 @@ describe('joinNetwork', () => {
       'ssid is required',
     );
     expect(isUnlocked()).toBe(false);
-    expect(handoff.value).toBe(false);
+    expect(handoff.value).toBeNull();
   });
 
   it('preserves access but marks a dropped connection as unconfirmed', async () => {
@@ -72,13 +92,12 @@ describe('joinNetwork', () => {
       throw new TypeError('NetworkError when attempting to fetch resource.');
     });
 
-    await expect(
-      joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: true }),
-    ).resolves.toEqual({ rebooting: true });
-    expect(handoffConfirmed.value).toBe(false);
+    await expect(joinNetwork({ ssid: 'studio', password: 'pw', rememberKey: true })).resolves.toBe(
+      'unconfirmed',
+    );
+    expect(handoff.value).toBe('unconfirmed');
     expect(handoffMessage()).toContain('before the save could be confirmed');
     expect(isUnlocked()).toBe(true);
-    expect(handoff.value).toBe(true);
     // Still a first join: never arm the fallback escalation.
     expect(rebootWait.value).toBeNull();
   });

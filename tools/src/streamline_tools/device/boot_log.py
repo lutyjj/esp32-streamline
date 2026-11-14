@@ -26,11 +26,26 @@ _APP_VERSION = re.compile(r"App version:\s+(\S+)")
 # The ROM prints one `rst:0x..` banner per reset; more than one inside a
 # single capture window means the firmware rebooted underneath the check.
 _RESET_BANNER = re.compile(r"^rst:0x", re.MULTILINE)
+# ESP-IDF's interrupt-safe log (`ESP_DRAM_LOGx`) prints `W tag: message` with no
+# timestamp, straight to the UART and outside the stdout lock, so an interrupt
+# lands its whole line inside one a task on the same core is printing.
+_INTERRUPT_LOG_LINE = rb"[EWIDV] [\w.-]+: [^\r\n]*\r?\n"
 
 
 def strip_ansi(text: str) -> str:
     """Remove ANSI color and cursor escapes that espflash adds to monitor output."""
     return _ANSI_ESCAPES.sub("", text)
+
+
+def serial_marker(marker: str) -> re.Pattern[bytes]:
+    """Match `marker` in raw serial output, even where interrupt log lines split it."""
+    gap = b"(?:" + _INTERRUPT_LOG_LINE + b")*"
+    return re.compile(gap.join(re.escape(bytes([byte])) for byte in marker.encode()))
+
+
+def without_interrupt_log_lines(output: bytes) -> bytes:
+    """Serial output with interrupt log lines removed, rejoining the lines they split."""
+    return re.sub(_INTERRUPT_LOG_LINE, b"", output)
 
 
 def boot_checks(transcript: str) -> list[CheckResult]:

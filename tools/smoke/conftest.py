@@ -18,11 +18,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pexpect
 import pytest
 from pytest_embedded.dut_factory import DutFactory
 from pytest_embedded_qemu.qemu import QEMU_TARGETS
 
 from streamline_tools.device.api import DeviceApi, wait_for_api
+from streamline_tools.device.boot_log import serial_marker
 from streamline_tools.device.flash_image import pad_flash_image
 from streamline_tools.secret_input import read_secret_fd
 
@@ -73,6 +75,20 @@ def padded_image(tmp_path_factory: pytest.TempPathFactory) -> Path:
     image = tmp_path_factory.mktemp("image") / "flash.bin"
     image.write_bytes(pad_flash_image(Path(source).read_bytes()))
     return image
+
+
+def expect_marker(dut: Any, marker: str, timeout: float = BOOT_TIMEOUT) -> bytes:
+    """Wait for a serial marker, even one an interrupt log line splits, and return the output before it.
+
+    The main task prints the boot markers on core 0, where the emulated NIC's
+    interrupt also runs, so that interrupt's lines arrive whole.
+    """
+    try:
+        before: bytes = dut.expect(serial_marker(marker), timeout=timeout, return_what_before_match=True)
+    except (pexpect.EOF, pexpect.TIMEOUT) as error:
+        # pytest-embedded names the missing pattern, which is an unreadable regular expression.
+        raise type(error)(f"serial output never showed {marker!r}") from error
+    return before
 
 
 def _free_port() -> int:
@@ -139,7 +155,7 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
 
     def _await(device: EmulatedDevice, markers: Sequence[str]) -> None:
         for marker in markers:
-            device.dut.expect_exact(marker, timeout=BOOT_TIMEOUT)
+            expect_marker(device.dut, marker)
 
     def _boot(
         flash: Path | None = None,

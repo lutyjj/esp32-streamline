@@ -21,9 +21,10 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import pytest
-from conftest import ADMIN_KEY, API_TIMEOUT, CONSOLE_READY, WIFI_PASSWORD, EmulatedDevice
+from conftest import ADMIN_KEY, API_TIMEOUT, CONSOLE_READY, WIFI_PASSWORD, EmulatedDevice, expect_marker
 
 from streamline_tools.device.api import wait_for_api
+from streamline_tools.device.boot_log import without_interrupt_log_lines
 
 pytestmark = pytest.mark.emulated
 
@@ -69,17 +70,16 @@ def test_http_connections_during_startup_do_not_abort(
     for client in clients:
         client.start()
     try:
-        device.dut.expect_exact("management listener initialized", timeout=120)
-        device.dut.expect_exact("setup console started", timeout=120)
-        startup = device.dut.expect_exact(CONSOLE_READY, timeout=120, return_what_before_match=True)
+        expect_marker(device.dut, "management listener initialized")
+        expect_marker(device.dut, "setup console started")
+        startup = expect_marker(device.dut, CONSOLE_READY)
     finally:
         stop.set()
         for client in clients:
             client.join()
     # Every route registers before the network comes up, so no startup request
     # can meet a route table that is still being filled in.
-    assert isinstance(startup, bytes)
-    missed = re.findall(rb"URI '[^']*' not found", startup)
+    missed = re.findall(rb"URI '[^']*' not found", without_interrupt_log_lines(startup))
     assert not missed, f"startup requests missed registered routes: {missed}"
     ready = wait_for_api(device.api.fetch, API_TIMEOUT)
     assert ready.passed, ready.detail
@@ -192,9 +192,9 @@ def _assert_ota_url_absent_from_serial(device: EmulatedDevice) -> None:
 
 def test_fresh_boot_reaches_setup_console(boot_device: Callable[..., EmulatedDevice]) -> None:
     device = boot_device(until="using board descriptor '")
-    device.dut.expect_exact("emulated ethernet up", timeout=30)
-    device.dut.expect_exact("setup console started", timeout=30)
-    device.dut.expect_exact(CONSOLE_READY, timeout=30)
+    expect_marker(device.dut, "emulated ethernet up", timeout=30)
+    expect_marker(device.dut, "setup console started", timeout=30)
+    expect_marker(device.dut, CONSOLE_READY, timeout=30)
     _expect_api_up(device)
     assert _mode(device) == "setup"
 
@@ -657,8 +657,8 @@ def test_failed_management_startup_reboots_and_rolls_back_with_diagnostics(
     provisioned_device.dut.qemu.wait(timeout=180)
 
     failed = boot_device(flash=provisioned_device.flash, admin_key=ADMIN_KEY)
-    failed.dut.expect_exact(f"Loaded app from partition at offset {_OTA_1_OFFSET}", timeout=120)
-    failed.dut.expect_exact("firmware startup failed:", timeout=120)
+    expect_marker(failed.dut, f"Loaded app from partition at offset {_OTA_1_OFFSET}")
+    expect_marker(failed.dut, "firmware startup failed:")
     failed.dut.qemu.wait(timeout=30)
 
     recovered = boot_device(

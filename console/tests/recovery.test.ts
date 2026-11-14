@@ -34,6 +34,14 @@ describe('recoveryStory', () => {
     expect(story?.text).not.toContain('rejoins on its own');
   });
 
+  it('asks to recheck the password choice when the security does not match', () => {
+    const story = recoveryStory(recovering('security-mismatch'), false);
+    expect(story?.text).toContain('Study Wi-Fi doesn’t accept the security saved for it');
+    expect(story?.text).toContain('a security mode StreamLine can’t join');
+    expect(story?.text).toContain('update the saved details');
+    expect(story?.text).not.toContain('rejoins on its own');
+  });
+
   it('claims no cause it was not told', () => {
     for (const failure of ['other', null] as const) {
       expect(recoveryStory(recovering(failure), false)?.text).toContain('can’t join Study Wi-Fi');

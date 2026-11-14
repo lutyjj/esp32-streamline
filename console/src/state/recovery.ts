@@ -22,6 +22,8 @@ function recoveryCause(s: StatusResponse): string {
       return `StreamLine can’t find ${ssid}.`;
     case 'credentials-rejected':
       return `${ssid} didn’t accept the saved password, or its signal is too weak to finish joining.`;
+    case 'security-mismatch':
+      return `${ssid} doesn’t accept the security saved for it: it may have added or removed its password, or it uses a security mode StreamLine can’t join.`;
     default:
       return `StreamLine can’t join ${ssid}.`;
   }
@@ -39,7 +41,9 @@ export function recoveryStory(s: StatusResponse | null, lost: boolean): Recovery
   const retry =
     s.wifi.join_failure === 'credentials-rejected'
       ? 'It keeps retrying every minute; if the password changed, enter the new one.'
-      : 'It retries every minute and rejoins on its own when the network is back.';
+      : s.wifi.join_failure === 'security-mismatch'
+        ? 'It keeps retrying every minute; if the network’s password changed, update the saved details.'
+        : 'It retries every minute and rejoins on its own when the network is back.';
   return { kind: 'retrying', text: `${recoveryCause(s)} ${retry}` };
 }
 

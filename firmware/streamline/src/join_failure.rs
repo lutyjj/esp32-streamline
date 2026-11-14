@@ -5,11 +5,14 @@ use serde::Serialize;
 
 /// ESP-IDF `wifi_err_reason_t` values that decide the class, as ESP-IDF's
 /// station guide documents them: `NO_AP_FOUND` when no scan finds the network,
-/// and the handshake timeouts for a wrong password (or, for 204, a signal too
-/// weak to finish).
+/// the handshake timeouts for a wrong password (or, for 204, a signal too weak
+/// to finish), and the two `NO_AP_FOUND_*` codes for a network found with
+/// security the saved settings cannot use.
 const REASON_4WAY_HANDSHAKE_TIMEOUT: u16 = 15;
 const REASON_NO_AP_FOUND: u16 = 201;
 const REASON_HANDSHAKE_TIMEOUT: u16 = 204;
+const REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY: u16 = 210;
+const REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD: u16 = 211;
 
 /// The class of the station's latest join failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -21,6 +24,10 @@ pub enum JoinFailure {
     /// The network's handshake failed, which a wrong password causes and a
     /// signal too weak to finish joining can also cause.
     CredentialsRejected,
+    /// The network is there, but its security does not match the saved
+    /// settings: it is open and a password is saved, it needs a password and
+    /// none is saved, or it uses a mode the device does not support.
+    SecurityMismatch,
     /// Any other disconnect reason.
     Other,
 }
@@ -31,6 +38,9 @@ impl JoinFailure {
         match reason {
             REASON_NO_AP_FOUND => Self::NetworkNotFound,
             REASON_4WAY_HANDSHAKE_TIMEOUT | REASON_HANDSHAKE_TIMEOUT => Self::CredentialsRejected,
+            REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY | REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD => {
+                Self::SecurityMismatch
+            }
             _ => Self::Other,
         }
     }
@@ -40,6 +50,7 @@ impl JoinFailure {
         match self {
             Self::NetworkNotFound => "network-not-found",
             Self::CredentialsRejected => "credentials-rejected",
+            Self::SecurityMismatch => "security-mismatch",
             Self::Other => "other",
         }
     }
@@ -66,11 +77,21 @@ mod tests {
     }
 
     #[test]
-    fn a_dropped_or_incompatible_association_names_no_cause_it_cannot_prove() {
+    fn a_network_found_with_other_security_reads_as_a_mismatch() {
+        for reason in [210, 211] {
+            assert_eq!(
+                JoinFailure::from_reason(reason),
+                JoinFailure::SecurityMismatch,
+                "{reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_dropped_or_weak_association_names_no_cause_it_cannot_prove() {
         // Beacon loss and an access point leaving are outages, and a network that
-        // is present with an unusable security mode or signal is neither gone nor
-        // a password problem.
-        for reason in [1, 8, 200, 202, 203, 205, 210, 211, 212] {
+        // is present with too weak a signal is neither gone nor a settings problem.
+        for reason in [1, 8, 200, 202, 203, 205, 212] {
             assert_eq!(
                 JoinFailure::from_reason(reason),
                 JoinFailure::Other,
@@ -84,6 +105,7 @@ mod tests {
         for failure in [
             JoinFailure::NetworkNotFound,
             JoinFailure::CredentialsRejected,
+            JoinFailure::SecurityMismatch,
             JoinFailure::Other,
         ] {
             assert_eq!(

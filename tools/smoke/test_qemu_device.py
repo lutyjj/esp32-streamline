@@ -16,6 +16,7 @@ import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -281,18 +282,19 @@ def test_profile_snapshots_survive_repeated_nvs_replacement_and_reboot(
 
 
 def test_bridge_discovery_ends_within_its_browse_window(provisioned_device: EmulatedDevice) -> None:
+    # The HTTP task serves one request at a time, so the second request waits
+    # behind the first one's browse and must reuse its bridges.
     started = time.monotonic()
-    code, body = provisioned_device.api.fetch("/api/bridges")
+    with ThreadPoolExecutor(max_workers=2) as clients:
+        answers = list(clients.map(provisioned_device.api.fetch, ["/api/bridges"] * 2))
 
-    assert code == 200, f"discovery answered HTTP {code}: {body[:200]!r}"
-    # QEMU's user-mode network carries no multicast, so no bridge can answer.
-    assert json.loads(body) == {"bridges": []}
-    assert time.monotonic() - started < 6, "discovery outlasted its three-second browse"
-
-    started = time.monotonic()
-    code, _ = provisioned_device.api.fetch("/api/bridges")
-    assert code == 200
-    assert time.monotonic() - started < 2, "a request right after a browse browsed again"
+    for code, body in answers:
+        assert code == 200, f"discovery answered HTTP {code}: {body[:200]!r}"
+        # QEMU's user-mode network carries no multicast, so no bridge can answer.
+        assert json.loads(body) == {"bridges": []}
+    # One three-second browse answers both; a second browse would end at six seconds or later.
+    elapsed = time.monotonic() - started
+    assert elapsed < 6, f"two discovery requests took {elapsed:.1f}s, more than one browse"
 
 
 def test_provisioned_device_gates_writes_behind_the_key(provisioned_device: EmulatedDevice) -> None:

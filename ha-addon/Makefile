@@ -27,6 +27,7 @@ apparmor-image:
 lint: apparmor-image
 	@test "$(BUILD_ARCH)" = "amd64" -o "$(BUILD_ARCH)" = "aarch64" || (echo "BUILD_ARCH must be amd64 or aarch64" >&2; exit 2)
 	@test "$(VERSION)" = "$(CONFIG_VERSION)" || (echo "VERSION=$(VERSION) does not match ha-addon/config.yaml ($(CONFIG_VERSION))" >&2; exit 2)
+	@! grep -HnoE '\]\([^)]*\)' DOCS.md README.md | grep -v ':](https://' || (echo "Home Assistant renders add-on Markdown outside the repository; link with absolute https:// URLs" >&2; exit 2)
 	$(APPARMOR_RUN) apparmor_parser --skip-kernel-load --skip-cache \
 		--kernel-features /etc/apparmor.d/abi/3.0 --warn=all --Werror /apparmor.txt
 	@test "$$($(APPARMOR_RUN) apparmor_parser --skip-cache --names /apparmor.txt)" = "streamline_bridge" || (echo "expected one streamline_bridge AppArmor profile" >&2; exit 2)

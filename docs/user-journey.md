@@ -159,9 +159,9 @@ password. The device retries every minute and rejoins on its own; Change Wi-Fi
 opens Settings → Wi-Fi for a renamed network or a new password. Unlock requires
 the admin key. Blank write-only password fields retain stored values. Changing
 Wi-Fi leaves audio, target, profiles, identity, board, and update schedule intact
-and ends in the same network handoff as first contact. When the setup network
-closes, the console says the device has likely rejoined and names the
-home-network address that confirms it. The setup password survives resets;
+and ends in the same network handoff as first contact. When contact ends, the
+console says the device has probably rejoined if its setup network is gone and
+names the home-network address that confirms it. The setup password survives resets;
 physical boot recovery remains available when that password is lost.
 
 A codec fault leaves network management reachable. Factory reset returns to

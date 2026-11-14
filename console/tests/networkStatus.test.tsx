@@ -99,7 +99,7 @@ it('changes Wi-Fi in recovery through the handoff, keeping the target and key', 
   });
   await act(async () => render(<NetworkTab section="wifi" onSetupBridge={() => {}} />, host));
   expect(host.textContent).toContain('Not connected. Change the details below');
-  expect(host.textContent).toContain('Device report: v0.9.0: Wi-Fi station connection failed');
+  expect(host.textContent).toContain('Startup report: v0.9.0: Wi-Fi station connection failed');
   expect(host.textContent).not.toContain('Not configured yet');
 
   const save = Array.from(host.querySelectorAll('button')).find(

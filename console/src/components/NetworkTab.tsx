@@ -133,7 +133,7 @@ export function NetworkTab({
         }
       >
         {recovering && s.diagnostics.last_fallback && (
-          <p class="lead">Device report: {s.diagnostics.last_fallback}</p>
+          <p class="lead">Startup report: {s.diagnostics.last_fallback}</p>
         )}
         <div class="formgrid">
           <div class="field">

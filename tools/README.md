@@ -12,7 +12,8 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
   merged images for QEMU, `capture` reads serial output to a boot marker,
   `boot_log` judges a captured transcript, `api` talks to the device HTTP
   surface, `emulator` ends a wait on an emulated device once QEMU exits,
-  `checks` is the shared result model.
+  `qemu_relay` feeds QEMU's output to pytest-embedded, `checks` is the
+  shared result model.
 - `src/streamline_tools/smoke.py`: the `streamline-smoke` CLI over that
   library.
 - `smoke/`: the device test suite (pytest + pytest-embedded) over the same

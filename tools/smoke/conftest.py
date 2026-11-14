@@ -28,6 +28,7 @@ from qemu.qmp import QMPClient
 from streamline_tools.device.api import DeviceApi, wait_for_api
 from streamline_tools.device.emulator import EmulatedApi, wait_for_marker
 from streamline_tools.device.flash_image import pad_flash_image
+from streamline_tools.device.qemu_relay import POLL_INTERVAL, QemuRelay
 from streamline_tools.secret_input import read_secret_fd
 
 BOOT_TIMEOUT = 120.0
@@ -124,7 +125,9 @@ class EmulatedDevice:
 
 
 @pytest.fixture
-def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., EmulatedDevice]]:
+def boot_device(
+    padded_image: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Callable[..., EmulatedDevice]]:
     """Boot an emulated device on a fresh flash copy, or re-boot an existing one.
 
     A guest-initiated restart is out of contract under QEMU (the emulated NIC
@@ -140,6 +143,7 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
     its test.
     """
     started: list[Any] = []
+    monkeypatch.setattr(Qemu, "REDIRECT_CLS", QemuRelay)
 
     def _start(flash: Path | None, admin_key: str | None) -> EmulatedDevice:
         if flash is None:
@@ -173,6 +177,8 @@ def boot_device(padded_image: Path, tmp_path: Path) -> Iterator[Callable[..., Em
                 ),
             )
             started.append(dut.qemu)
+            # A regular file always polls readable, so pexpect paces its reads with this delay alone.
+            dut.pexpect_proc.delayafterread = POLL_INTERVAL
             assert dut.qemu.qmp_port == monitor_port, f"QEMU connects to {dut.qemu.qmp_port}, not the monitor"
             port = _forwarded_port(monitor)
         api = EmulatedApi(base_url=f"http://127.0.0.1:{port}", admin_key=admin_key, dut=dut)

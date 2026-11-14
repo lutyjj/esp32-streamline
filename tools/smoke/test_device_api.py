@@ -43,6 +43,16 @@ def test_api_serves_status_and_contract(device_api: DeviceApi) -> None:
     assert not failed, failed
 
 
+def test_the_boot_log_never_states_a_password_length(authed_device_api: DeviceApi) -> None:
+    current = _current_log(authed_device_api)
+    if current["first_sequence"] > 0:
+        pytest.skip("this boot's first lines were already dropped; restart the device to check them")
+    # Some ESP-IDF Wi-Fi warnings quote a password's length, so the failure
+    # message leaves the match out.
+    states_a_length = re.search(r"(?i)password length is [1-9]", current["text"]) is not None
+    assert not states_a_length, "a line of this boot's log states a password's length"
+
+
 def test_unrouted_requests_answer_404_or_405(device_api: DeviceApi, api_methods: dict[str, frozenset[str]]) -> None:
     unknown = "/api/no-such-endpoint"
     assert unknown not in api_methods

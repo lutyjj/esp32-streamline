@@ -3,14 +3,13 @@
 use core::{
     convert::TryInto,
     ffi::CStr,
+    mem::MaybeUninit,
     sync::atomic::{AtomicU16, Ordering},
 };
 use std::net::Ipv4Addr;
 
 use anyhow::{anyhow, Context, Result};
-use embedded_svc::wifi::{
-    AccessPointConfiguration, AuthMethod, ClientConfiguration, Configuration,
-};
+use embedded_svc::wifi::{AccessPointConfiguration, AuthMethod, Configuration};
 use esp_idf_svc::{
     eventloop::{EspSubscription, EspSystemEventLoop, System},
     hal::{delay::FreeRtos, modem::Modem},
@@ -20,10 +19,14 @@ use esp_idf_svc::{
         esp_netif_dhcps_start, esp_netif_dhcps_stop, esp_netif_dns_info_t,
         esp_netif_dns_type_t_ESP_NETIF_DNS_MAIN, esp_netif_get_handle_from_ifkey,
         esp_netif_get_ip_info, esp_netif_ip_info_t, esp_netif_is_netif_up, esp_netif_set_dns_info,
-        esp_wifi_set_ps, esp_wifi_sta_get_ap_info, wifi_ap_record_t, wifi_init_config_t,
-        wifi_ps_type_t_WIFI_PS_NONE, EspError, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED,
-        ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED, ESP_IPADDR_TYPE_V4, ESP_OK,
-        WIFI_PRIVACY_ENHANCEMENTS_ENABLED, WIFI_RMAC_AUTO_RESET_INTERVAL,
+        esp_wifi_set_config, esp_wifi_set_mode, esp_wifi_set_ps, esp_wifi_sta_get_ap_info,
+        wifi_ap_record_t, wifi_auth_mode_t_WIFI_AUTH_OPEN, wifi_auth_mode_t_WIFI_AUTH_WPA2_PSK,
+        wifi_config_t, wifi_init_config_t, wifi_interface_t_WIFI_IF_STA, wifi_mode_t,
+        wifi_mode_t_WIFI_MODE_APSTA, wifi_mode_t_WIFI_MODE_STA, wifi_ps_type_t_WIFI_PS_NONE,
+        wifi_scan_method_t_WIFI_ALL_CHANNEL_SCAN, wifi_sta_config_t, EspError,
+        ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED, ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED,
+        ESP_IPADDR_TYPE_V4, ESP_OK, WIFI_PRIVACY_ENHANCEMENTS_ENABLED,
+        WIFI_RMAC_AUTO_RESET_INTERVAL,
     },
     wifi::{BlockingWifi, EspWifi, WifiEvent},
 };
@@ -141,23 +144,54 @@ const AP_READY_POLL_INTERVAL_MS: u32 = 100;
 const STATION_READY_POLLS: u32 = 50;
 const STATION_READY_POLL_INTERVAL_MS: u32 = 100;
 
-/// The saved home network as a station configuration, shared by the initial
-/// connect and the recovery retry. The auth method is ESP-IDF's threshold: a
+/// Apply the saved home network as the station configuration, shared by the
+/// initial connect and recovery. The auth mode is ESP-IDF's threshold: a
 /// protected network accepts WPA2 or stronger, never an open network by the
 /// same name.
-fn station_config(config: &RuntimeConfig) -> Result<ClientConfiguration> {
-    Ok(ClientConfiguration {
-        ssid: config.ssid.as_str().try_into()?,
-        bssid: None,
-        auth_method: if config.open_network() {
-            AuthMethod::None
-        } else {
-            AuthMethod::WPA2Personal
-        },
-        password: config.password.as_str().try_into()?,
-        channel: None,
-        ..Default::default()
+///
+/// Workaround: esp-idf-sys's bindings place the station's flag bits and
+/// `sae_h2e_identifier` later than ESP-IDF's compiler does, so none of them can
+/// be set through the bindings, and esp-idf-svc's conversion leaves the bytes
+/// ESP-IDF reads as flags, such as `owe_enabled`, uninitialized. Zeroed memory,
+/// as in ESP-IDF's station example, leaves every flag off.
+fn set_station(config: &RuntimeConfig) -> Result<()> {
+    let mut wifi_config = MaybeUninit::<wifi_config_t>::zeroed();
+    // SAFETY: all-zero bytes are a valid configuration, and the fields below
+    // are written in place, so no byte ESP-IDF reads is left uninitialized.
+    let station = unsafe { &mut (*wifi_config.as_mut_ptr()).sta };
+    copy_field(&mut station.ssid, &config.ssid).context("Wi-Fi network name")?;
+    copy_field(&mut station.password, &config.password).context("Wi-Fi password")?;
+    // Join the strongest access point of the network, not the first found.
+    station.scan_method = wifi_scan_method_t_WIFI_ALL_CHANNEL_SCAN;
+    station.threshold.authmode = if config.open_network() {
+        wifi_auth_mode_t_WIFI_AUTH_OPEN
+    } else {
+        wifi_auth_mode_t_WIFI_AUTH_WPA2_PSK
+    };
+    esp_error(unsafe {
+        esp_wifi_set_config(wifi_interface_t_WIFI_IF_STA, wifi_config.as_mut_ptr())
     })
+    .context("configure Wi-Fi station")
+}
+
+/// The bindings place the station's first flag unit at byte 132, where ESP-IDF's
+/// compiler packs it into byte 130 after the two-byte `pmf_cfg`. This fails once
+/// the bindings change; then recheck whether `set_station` still needs its
+/// workaround.
+const _: () = assert!(core::mem::offset_of!(wifi_sta_config_t, _bitfield_1) == 132);
+
+/// The error leaves out the value's length, which for a password is secret.
+fn copy_field(field: &mut [u8], value: &str) -> Result<()> {
+    let capacity = field.len();
+    field
+        .get_mut(..value.len())
+        .ok_or_else(|| anyhow!("exceeds the driver's {capacity}-byte field"))?
+        .copy_from_slice(value.as_bytes());
+    Ok(())
+}
+
+fn set_mode(mode: wifi_mode_t) -> Result<()> {
+    esp_error(unsafe { esp_wifi_set_mode(mode) }).context("set Wi-Fi mode")
 }
 
 /// Start the radio with modem sleep off.
@@ -177,7 +211,8 @@ fn start_radio(wifi: &mut WifiController<'_>) -> Result<()> {
 }
 
 pub fn connect_station(wifi: &mut WifiController<'_>, config: &RuntimeConfig) -> Result<()> {
-    wifi.set_configuration(&Configuration::Client(station_config(config)?))?;
+    set_mode(wifi_mode_t_WIFI_MODE_STA)?;
+    set_station(config)?;
     start_radio(wifi)?;
 
     let mut attempt = 1;
@@ -266,12 +301,12 @@ fn start_ap(
         channel: 1,
         ..Default::default()
     };
-    let configuration = match station {
-        Some(config) => Configuration::Mixed(station_config(config)?, access_point),
-        None => Configuration::AccessPoint(access_point),
-    };
-
-    wifi.set_configuration(&configuration)?;
+    wifi.set_configuration(&Configuration::AccessPoint(access_point))?;
+    // The station stays out of esp-idf-svc's conversion; see `set_station`.
+    if let Some(config) = station {
+        set_mode(wifi_mode_t_WIFI_MODE_APSTA)?;
+        set_station(config)?;
+    }
     start_radio(wifi)?;
     wait_access_point_ready(wifi, station.is_none())?;
     if let Err(error) = advertise_setup_dns() {

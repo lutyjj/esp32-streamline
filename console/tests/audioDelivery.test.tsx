@@ -18,18 +18,21 @@ it('keeps quiet input distinct in delivery and hookup narration while silence re
   let records = 100;
   let bytes = 0;
   let playing = false;
+  // The hookup step browses for bridges; this network has none.
   setTransport(
-    async () =>
+    async (request) =>
       new Response(
         JSON.stringify(
-          deviceStatus({
-            metrics: {
-              packets_total: records,
-              silence_packets_total: records,
-              bytes_total: bytes,
-              playing,
-            },
-          }),
+          new URL(request.url).pathname === '/api/bridges'
+            ? { bridges: [] }
+            : deviceStatus({
+                metrics: {
+                  packets_total: records,
+                  silence_packets_total: records,
+                  bytes_total: bytes,
+                  playing,
+                },
+              }),
         ),
       ),
   );

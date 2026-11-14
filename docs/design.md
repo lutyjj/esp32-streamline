@@ -185,6 +185,7 @@ them.
 | One advertised address: `--tcp-bind`, or the default route's | Matches aiosendspin's Sendspin server and sends only an address valid on the interface it leaves from (RFC 6762 section 6.2) |
 | TXT carries `txtvers` and `http_port` only | RFC 6763 section 6.7 asks for the version tag; the listener mode stays out because it changes at runtime |
 | The device browses on request, not in the background | One ESP-IDF query of up to three seconds per request, reused for two seconds after it ends, keeps boot, capture, and the setup network free of multicast work |
+| The console fills the target with the advertised IPv4 address | The device then dials an address, not a `.local` name it must resolve at every reconnect; a moved bridge needs a new search or a typed address |
 | The firmware reads ESP-IDF's raw results | esp-idf-svc 0.53's `EspMdns::query_ptr` panics on a name or TXT value that is not UTF-8, and any network host chooses those bytes |
 | The Home Assistant add-on uses host networking | Multicast does not leave Supervisor's private add-on network. Host networking costs one point of the add-on security rating and Home Assistant's add-on guidance advises against it; the ESPHome and Matter Server add-ons accept the same trade for mDNS. The bridge binds the same two ports either way |
 

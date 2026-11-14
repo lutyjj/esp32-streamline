@@ -7,7 +7,7 @@ import {
   config,
   configResource,
   noBridge,
-  setupMode,
+  onSetupNetwork,
   status,
   unreachable,
 } from '../state/device';
@@ -36,8 +36,9 @@ export function NetworkTab({
 }) {
   const writable = useWritable();
   const s = status.value;
-  const setup = setupMode.value;
+  const setup = onSetupNetwork.value;
   const firstSetup = s?.auth_required === false;
+  const recovering = s?.mode === 'recovery';
   const wifiTransact = useTransact();
   const targetTransact = useTransact();
 
@@ -55,29 +56,35 @@ export function NetworkTab({
   const passwordEditable = firstSetup || editingPassword;
 
   /**
-   * Commissioning is one atomic write (Wi-Fi + the initial target + the admin
-   * key): the device leaves for the home network right after, so both cards
-   * drive the same first-join handoff. This browser stays behind on the
-   * vanishing setup network, so it is a handoff, not a reboot wait.
+   * A Wi-Fi save on the setup network sends the device away from this browser,
+   * so it is a handoff, not a reboot wait. Commissioning is one atomic write
+   * (Wi-Fi, the initial target, the admin key), so both cards drive it; a
+   * recovery change keeps the stored target and key.
    */
-  async function commission() {
-    const host = normalizeTargetHost(targetHost);
-    const data = await joinNetwork({ ssid, password, targetHost: host, targetPort, rememberKey });
+  async function handOff() {
+    await joinNetwork({
+      ssid,
+      password: passwordEditable ? password : '',
+      target: firstSetup ? { host: normalizeTargetHost(targetHost), port: targetPort } : undefined,
+      rememberKey,
+    });
     toast(handoffMessage(), 'wait', 0);
-    return data;
+    return undefined;
   }
+  const handOffOpts = {
+    busyText: 'Saving…',
+    okText: 'Follow the network handoff instructions above.',
+  };
 
   /** Steady state: Wi-Fi and the stream target are separate writes, so a bad
    * target host cannot fail a Wi-Fi save and vice versa. */
   function saveWifi() {
     wifiTransact.run(
       () =>
-        firstSetup
-          ? commission()
+        setup
+          ? handOff()
           : setWifi({ ssid: ssid.trim(), password: passwordEditable ? password : '' }),
-      firstSetup
-        ? { busyText: 'Saving…', okText: 'Follow the network handoff instructions above.' }
-        : { busyText: 'Saving…', reboots: 'the Wi-Fi settings' },
+      setup ? handOffOpts : { busyText: 'Saving…', reboots: 'the Wi-Fi settings' },
     );
   }
 
@@ -85,14 +92,12 @@ export function NetworkTab({
     targetTransact.run(
       () =>
         firstSetup
-          ? commission()
+          ? handOff()
           : setTarget({
               target_host: normalizeTargetHost(targetHost),
               target_port: Number(targetPort),
             }),
-      firstSetup
-        ? { busyText: 'Saving…', okText: 'Follow the network handoff instructions above.' }
-        : { busyText: 'Saving…', reboots: 'the stream target' },
+      firstSetup ? handOffOpts : { busyText: 'Saving…', reboots: 'the stream target' },
     );
   }
 
@@ -116,15 +121,20 @@ export function NetworkTab({
         lead={
           unreachable.value
             ? 'Device unavailable. Connection details are last known; check your network.'
-            : setup
-              ? 'Not configured yet — join the device to your home network.'
-              : s?.wifi.status === 'connected'
-                ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi_dbm} dBm · ${s.wifi.sta_ip}`
-                : s
-                  ? 'Wi-Fi disconnected. Check your router or update the network below.'
-                  : 'Checking Wi-Fi…'
+            : recovering
+              ? 'Not connected. Change the details below if the network’s name or password changed.'
+              : setup
+                ? 'Not configured yet — join the device to your home network.'
+                : s?.wifi.status === 'connected'
+                  ? `Connected to ${s.wifi.ssid} · ${s.wifi.rssi_dbm} dBm · ${s.wifi.sta_ip}`
+                  : s
+                    ? 'Wi-Fi disconnected. Check your router or update the network below.'
+                    : 'Checking Wi-Fi…'
         }
       >
+        {recovering && s.diagnostics.last_fallback && (
+          <p class="lead">Device report: {s.diagnostics.last_fallback}</p>
+        )}
         <div class="formgrid">
           <div class="field">
             <label for="ssid">Network name</label>

@@ -8,7 +8,7 @@
 
 import { computed } from '@preact/signals';
 import type { HealthCheck } from '../lib/api';
-import { setupMode, status } from './device';
+import { onSetupNetwork, status } from './device';
 
 /**
  * The blocking startup check to surface, or `null` when the last boot was
@@ -17,6 +17,6 @@ import { setupMode, status } from './device';
  */
 export const blockingHealth = computed<HealthCheck | null>(() => {
   const s = status.value;
-  if (!s || setupMode.value) return null;
+  if (!s || onSetupNetwork.value) return null;
   return s.health?.checks.find((check) => check.severity === 'blocking') ?? null;
 });

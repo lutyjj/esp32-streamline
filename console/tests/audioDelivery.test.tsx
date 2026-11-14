@@ -91,3 +91,18 @@ it('explains an external streaming pause with a resume action', () => {
   expect(host.querySelector('button')?.textContent).toBe('Resume');
   render(null, host);
 });
+
+it('names the Wi-Fi wait in recovery instead of narrating quiet input', () => {
+  status.value = deviceStatus({
+    mode: 'recovery',
+    wifi: { ssid: 'Study Wi-Fi', status: 'ap' },
+    metrics: { playing: false },
+  });
+  const host = document.createElement('div');
+  render(<AudioDelivery onSetupBridge={() => {}} />, host);
+  expect(host.textContent).toContain('Waiting for Wi-Fi');
+  expect(host.textContent).toContain('Audio resumes once StreamLine rejoins Study Wi-Fi.');
+  expect(host.textContent).not.toContain('Input is quiet');
+  expect(host.querySelector('button')).toBeNull();
+  render(null, host);
+});

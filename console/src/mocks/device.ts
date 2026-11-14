@@ -49,9 +49,26 @@ const DIGEST_REALM = 'streamline';
 
 /**
  * Where in the journey the fake device starts: `steady` is a provisioned,
- * streaming device; `first-boot` is an unconfigured one on its setup network.
+ * streaming device; `first-boot` is an unconfigured one on its setup network;
+ * `recovery` is a provisioned one that cannot find its saved Wi-Fi and serves
+ * its setup network while it retries.
  */
-export type DeviceScenario = 'steady' | 'first-boot';
+export type DeviceScenario = 'steady' | 'first-boot' | 'recovery';
+
+/** What a device off its home network reports: no capture, nothing sent. */
+const SILENT_METRICS = {
+  playing: false,
+  sequence: 0,
+  packets_total: 0,
+  bytes_total: 0,
+  peak_abs_left: 0,
+  peak_abs_right: 0,
+  rms_left: 0,
+  rms_right: 0,
+};
+
+/** The setup network's Wi-Fi fields, as the firmware reports them. */
+const SETUP_NETWORK_WIFI = { status: 'ap', sta_ip: '', ap_ip: '192.168.71.1', rssi_dbm: 0 };
 
 /** Deterministic peak-level sweep, one step per status poll. */
 const PEAK_STEPS = [30800, 24500, 28100, 21900, 26400, 31200];
@@ -253,23 +270,30 @@ export class FakeDevice {
       this.status = deviceStatus({ metrics: { playing: true } });
       this.config = deviceConfig();
       this.adminKey = MOCK_ADMIN_KEY;
+    } else if (scenario === 'recovery') {
+      this.config = deviceConfig();
+      this.status = deviceStatus({
+        mode: 'recovery',
+        wifi: {
+          ...SETUP_NETWORK_WIFI,
+          ssid: this.config.ssid,
+          join_failure: 'network-not-found',
+        },
+        diagnostics: {
+          last_fallback:
+            'v0.9.0: Wi-Fi station connection failed (network-not-found): Wi-Fi connect failed after 3 attempts',
+        },
+        metrics: SILENT_METRICS,
+      });
+      this.adminKey = MOCK_ADMIN_KEY;
     } else {
       this.status = deviceStatus({
         mode: 'setup',
         auth_required: false,
-        wifi: { ssid: '', status: 'setup', sta_ip: '', ap_ip: '192.168.71.1', rssi_dbm: 0 },
+        wifi: { ...SETUP_NETWORK_WIFI, ssid: '' },
         target: { target_host: '' },
         // The contract example streams; an unconfigured device is silent.
-        metrics: {
-          playing: false,
-          sequence: 0,
-          packets_total: 0,
-          bytes_total: 0,
-          peak_abs_left: 0,
-          peak_abs_right: 0,
-          rms_left: 0,
-          rms_right: 0,
-        },
+        metrics: SILENT_METRICS,
       });
       this.config = deviceConfig({ ssid: '', target_host: '' });
       this.adminKey = null;
@@ -382,7 +406,11 @@ export class FakeDevice {
   private nextStatus(): StatusResponse {
     const metrics = this.status.metrics;
     metrics.sequence += 100;
-    if (this.status.stream.enabled && this.config.target_host && this.status.mode !== 'setup') {
+    if (
+      this.status.stream.enabled &&
+      this.config.target_host &&
+      this.status.mode === 'provisioned'
+    ) {
       metrics.packets_total += 100;
       if (metrics.playing) metrics.bytes_total += 102400;
       else metrics.silence_packets_total += 100;
@@ -421,6 +449,7 @@ export class FakeDevice {
       sta_ip: '192.0.2.10',
       ap_ip: '',
       rssi_dbm: -55,
+      join_failure: null,
     });
     this.status.target.target_host = this.config.target_host;
     this.status.target.target_port = this.config.target_port;

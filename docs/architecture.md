@@ -90,7 +90,7 @@ The Rust library separates portable application logic from ESP-IDF integration:
 - Crate-root modules define validated models and policies. They compile and test on the host.
 - `adapters/` owns ESP-IDF, hardware, sockets, flash, NVS, and device HTTP bindings.
 - `runtime.rs` wires the capture and network tasks on the ESP32.
-- `main.rs` is the composition root. It selects setup or provisioned mode once at boot and gives each adapter its dependencies.
+- `main.rs` is the composition root. It selects setup, recovery, or provisioned mode once at boot and gives each adapter its dependencies.
 
 Core modules may define narrow traits that adapters implement. Core code does not import a concrete ESP-IDF driver. Hardware observations enter the core as data, and core decisions return as typed values.
 

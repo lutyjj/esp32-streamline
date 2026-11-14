@@ -6,7 +6,7 @@
  */
 
 import { computed, effect, signal } from '@preact/signals';
-import { setupMode, status } from './device';
+import { onSetupNetwork, status } from './device';
 
 /** Consecutive clean polls (~1.5 s each) before a loss episode is declared over. */
 export const CLEAR_AFTER_POLLS = 20;
@@ -19,7 +19,7 @@ export const episodeDrops = signal(0);
 export const cleanPolls = signal(0);
 
 export const lossCalloutVisible = computed(
-  () => episodeDrops.value > 0 && !setupMode.value && status.value !== null,
+  () => episodeDrops.value > 0 && !onSetupNetwork.value && status.value !== null,
 );
 
 // The effect tracks only the status poll; the bookkeeping signals are peeked

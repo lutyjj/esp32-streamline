@@ -1,89 +1,40 @@
+<img src="console/src/icon.svg" alt="" width="72">
+
 # ESP32 StreamLine
 
-[![CI](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml/badge.svg)](https://github.com/lutyjj/esp32-streamline/actions/workflows/ci.yml)
+Turns an ESP32 audio board into a network source for your turntable or CD deck. The board captures its line input and sends raw PCM over Wi-Fi to a small self-hosted bridge, which hands every source to Music Assistant as a Live Input and serves it as a live WAV stream for anything else. The device stays dumb on purpose: encoding, buffering and playback belong to the bridge and the players. Firmware in Rust on ESP-IDF, the bridge in Python, and a Preact console the device serves itself.
 
-ESP32 StreamLine turns a supported ESP32 line-in board into a network audio
-source. It captures analog audio from a turntable or CD deck and streams the raw
-PCM over TCP/Wi-Fi to a self-hosted bridge. The bridge offers each source to
-Music Assistant as a Live Input over Sendspin and publishes a live HTTP WAV
-stream that Snapcast, Icecast, or any HTTP consumer can read.
+- Sets up from a phone: the board opens its own setup network, and its console joins your Wi-Fi and finds the bridge
+- Shows up in Music Assistant as a Live Input, and can start playing when a record starts
+- Live HTTP WAV for Snapcast, Icecast or any other player, plus lossless recordings
+- Pauses on silence and resumes on the same connection when the music starts
+- Can play the input through the board's own output while it streams
+- Source profiles per deck, switched live from the console or the API
+- Optional TLS 1.3 for the audio, with a key per device and forward secrecy
+- Signed OTA updates from GitHub releases, rolled back if an image fails to boot
+- Everything the console does is an HTTP API first ([OpenAPI](docs/openapi.json)), so scripts and agents can drive the device without a browser
 
-## Features
+How it works under the hood: [design notes](docs/design.md) and [architecture](docs/architecture.md).
 
-- **Dumb device architecture:** the ESP32 captures and moves packets. Encoding,
-  buffering, and syncing live on the bridge. See [design notes](docs/design.md).
-- **Zero-config commissioning:** an unconfigured device opens a setup AP,
-  WPA2-protected by a password it generates once and prints on its serial
-  log. A small web console joins Wi-Fi, then handles the stream target and
-  audio levels. A per-device admin key gates every write through digest
-  authentication, so the key never crosses the network; reads stay open,
-  apart from the device log and crash dumps.
-- **Signal-gated streaming:** the device pauses PCM on sustained silence and
-  resumes on the same connection when the input plays.
-- **Local analog output:** supported boards can send the selected input
-  directly through the codec to a local output while capture and streaming
-  continue independently.
-- **Source profiles**: save complete input settings for sources such as CD
-  and vinyl, switch them live from the console or API, and share the versioned
-  board-bound catalog. See [audio profiles](docs/audio-profiles.md).
-- **Music Assistant Live Input:** the bridge publishes every source to Music
-  Assistant over Sendspin. Pair it once with a token; it then plays on any
-  Music Assistant player or group and can start when a record starts. See
-  [Music Assistant live inputs](docs/bridge.md#music-assistant-live-inputs).
-- **Self-hosted bridge:** one Docker container turns the TCP PCM stream into
-  a live HTTP WAV stream. An adaptive playout buffer smooths Wi-Fi jitter and
-  conceals gaps. See the [PCM protocol](docs/pcm-protocol.md).
-- **Opt-in encrypted PCM:** TLS 1.3 authenticates each device with its own
-  key and provides forward secrecy. Cleartext remains available for first
-  setup and explicit recovery. See [PCM transport](docs/tcp-transport.md).
-- **Lossless recording**: an optional bridge page and API preserve one source
-  as a finite 48 kHz, 16-bit stereo WAV, with sequence gaps measured and
-  represented as silence. See [lossless recordings](docs/recordings.md).
-- **Verified automatic OTA updates:** the device pulls new GitHub releases
-  over HTTPS, verifies their SHA-256, and rolls back automatically if an image
-  fails to boot. See [OTA updates](docs/ota.md).
+## Screenshots
 
-The device speaks plain HTTP on a trusted LAN. Read the
-[security notes](docs/security.md) before exposing any port.
+![The device console's Audio page, sending audio to the bridge](docs/screenshots/audio.png)
+
+![First-run setup joining the home Wi-Fi](docs/screenshots/setup.png)
+
+![The bridge console with a live source and a connected player](docs/screenshots/bridge.png)
+
+<img src="docs/screenshots/phone.png" alt="The device console on a phone, dark theme" width="320">
 
 ## Hardware
 
-- **Official preset**: Ai-Thinker ESP32 Audio Kit v2.2 (ES8388)
-- **Codec**: ES8388 (I2C address `0x10`)
-- **Flash**: 4 MB or larger
-- **Chip revision**: ESP32 rev 3.0 or later (ECO3). On-device firmware signing
-  ([firmware signing](docs/ota.md#firmware-signing)) uses the RSA scheme, which
-  earlier revisions do not support.
-
-Board support is descriptor-driven: presets define the codec, I2C/I2S pin map,
-input labels, audio limits, assignable LEDs and buttons, and optional local
-analog output.
-Official presets and BYOD descriptors use the same JSON contract when the codec
-driver is compiled into the firmware. The release firmware is a generic ESP32
-app image with an embedded official descriptor catalog. See
-[design notes](docs/design.md#board-support).
-
-### LEDs and buttons
-
-A board advertises the LEDs and buttons it wires. You assign each LED a role
-(**Status**, **On** or **Off**) and each button a press action: start or stop
-streaming, switch input line, step gain or attenuation, restart, or factory
-reset, which gives an unreachable device a physical way back to setup.
-Assignments apply without a reboot. [LEDs](docs/design.md#leds) and
-[buttons](docs/design.md#buttons) cover the roles, actions, API and the
-official preset's wiring.
+The official preset is the Ai-Thinker ESP32 Audio Kit v2.2 with its ES8388 codec. A board needs 4 MB of flash and an ESP32 rev 3.0 (ECO3) or later, because signed firmware uses the RSA scheme earlier revisions lack. Other boards with a supported codec run from a JSON [board descriptor](docs/design.md#board-support), which also maps their [LEDs](docs/design.md#leds) and [buttons](docs/design.md#buttons).
 
 ## Quick start
 
-### 1. Flash the firmware
+### 1. Flash the board
 
-**Browser:** open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/)
-in desktop Chrome or Edge, connect the board over USB, and click
-**Connect & Install**.
-
-**Terminal:** download the latest `streamline-X.Y.Z-full.bin` from
-[Releases](https://github.com/lutyjj/esp32-streamline/releases), then flash it with
-[esptool](https://docs.espressif.com/projects/esptool/) (`pip install esptool`):
+Open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/) in desktop Chrome, Edge, or Firefox 151 or newer, connect the board over USB, and click **Connect & install**. From a terminal, download `streamline-X.Y.Z-full.bin` from [Releases](https://github.com/lutyjj/esp32-streamline/releases) and flash it with [esptool](https://docs.espressif.com/projects/esptool/):
 
 ```sh
 esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 streamline-X.Y.Z-full.bin
@@ -93,16 +44,9 @@ Adjust `-p` to your port: `/dev/cu.usbserial-0001` on macOS, `COM3` on Windows.
 
 ### 2. Run the bridge
 
-**Home Assistant OS / Supervised**: go to **Settings → Apps → Install app**,
-open the three-dot menu, select **Repositories**, and add
-`https://github.com/lutyjj/esp32-streamline`. Then install the
-**ESP32 StreamLine Bridge** app and start it. The app
-listens on the same ports as the container: PCM on `39000/tcp` and HTTP WAV on
-`8088/tcp`. The PCM port accepts either cleartext or TLS, as selected in the
-bridge configuration, never both.
+**Home Assistant:** go to **Settings → Apps → Install app**, open the three-dot menu, choose **Repositories**, and add `https://github.com/lutyjj/esp32-streamline`. Then install **ESP32 StreamLine Bridge** and start it.
 
-**Docker:** create `docker-compose.yml` on your server and start it with
-`docker compose up -d`:
+**Docker:** save this as `docker-compose.yml` and run `docker compose up -d`:
 
 ```yaml
 services:
@@ -137,161 +81,36 @@ volumes:
   streamline-transport:
 ```
 
-Host networking lets devices [discover the bridge](docs/bridge.md#discovery)
-during setup; it needs Docker Engine on Linux. On Docker Desktop, replace
-`network_mode: host` with `ports:` entries for `39000:39000/tcp` and
-`8088:8088/tcp`, and type the bridge's address on the device.
+Host networking lets devices [discover the bridge](docs/bridge.md#discovery) during setup, and it needs Docker Engine on Linux. On Docker Desktop, publish `39000:39000/tcp` and `8088:8088/tcp` instead and type the bridge's address on the device.
 
-To offer every source to Music Assistant, point the bridge at its Sendspin
-server and set the bridge API token (at least 16 characters) before
-`docker compose up -d`:
+### 3. Set up the device
 
-```sh
-export STREAMLINE_SENDSPIN_SERVER_URL=ws://<music-assistant-host>:8927/sendspin
-export STREAMLINE_API_TOKEN=replace-with-a-private-token
-```
+1. Read the setup network's name and password from the WebFlasher's **Logs & console** (or `espflash monitor`); the board prints both when it starts. No password at hand? Hold KEY1 while plugging the board in, and the setup network starts open for that one boot.
+2. Join `esp32-streamline-XXXX`. The setup console opens by itself, or at `http://192.168.71.1/`.
+3. Enter your Wi-Fi and **save the admin key** it generates. The device shows it once, every later settings change needs it, and losing it means a reflash.
+4. After the reboot, open `http://streamline-xxxx.local/` (or the device's IP if your network drops mDNS), pick the bridge under **Settings → Connect a player**, and set levels under **Audio**.
 
-The Home Assistant app calls the same setting `sendspin_server_url`. Once a
-device streams, open the bridge console's **Settings → Music Assistant**,
-create a pairing token for the source, and paste it into the setup of
-`StreamLine <source>` in Music Assistant. The source then appears under Live
-Inputs. [Music Assistant live inputs](docs/bridge.md#music-assistant-live-inputs)
-covers pairing and automatic playback.
+The stream is then live at `http://<bridge-host>:8088/streamline.wav`. To play it in Music Assistant, create a pairing token in the bridge console's **Settings → Music Assistant** and paste it into the source's setup there; [Music Assistant live inputs](docs/bridge.md#music-assistant-live-inputs) covers the rest.
 
-The HTTP stream goes live at `http://<bridge-host>:8088/streamline.wav` for
-any other player. A connected device with streaming enabled provides a
-playable stream even when its input is quiet; see the
-[silence contract](docs/pcm-protocol.md#receiver-playout).
-With several ESP32 sources, select one with
-`http://<bridge-host>:8088/streamline.wav?source=<source-id>`. `/status` serves
-per-source JSON stats. `make bridge-run BRIDGE_ARGS='--help'` lists the tuning
-flags.
+Updates install daily once the audio goes idle, and **Settings → Updates** changes that. See [OTA updates](docs/ota.md).
 
-To record, enable the bridge's writable volume and set the bridge API token (at
-least 16 characters) before `docker compose up -d`:
+## Configuration
 
-```sh
-export STREAMLINE_RECORDINGS_DIR=/recordings
-export STREAMLINE_API_TOKEN=replace-with-a-private-token
-```
+Compose reads these from your shell or a `.env` file beside it. The Home Assistant app has matching options on its configuration page.
 
-Then open `http://<bridge-host>:8088/recordings`.
-[Lossless recordings](docs/recordings.md) covers storage, the app option and
-the API.
+| Variable | Sets |
+|---|---|
+| `STREAMLINE_SENDSPIN_SERVER_URL` | Music Assistant's Sendspin server, such as `ws://<host>:8927/sendspin`, to publish every source as a Live Input |
+| `STREAMLINE_API_TOKEN` | Bridge API token, at least 16 characters; Music Assistant and recordings need it |
+| `STREAMLINE_RECORDINGS_DIR` | `/recordings` turns on [lossless recordings](docs/recordings.md) |
+| `STREAMLINE_SOURCE_ALLOW` | Device IPv4 addresses allowed to stream, comma-separated |
 
-Set `STREAMLINE_SOURCE_ALLOW` to the device IPv4 address, or a comma-separated
-list, whenever those addresses are stable. Keep ports `39000` and `8088` on a
-trusted LAN; neither is an internet-facing service.
+Every other bridge option is in the [bridge reference](docs/bridge.md#tuning-options).
 
-### 3. Configure the device
+## Security
 
-1. Read the setup network's password from the flasher's **Logs & console**
-   view (or `espflash monitor`); the board prints its SSID and password when
-   it starts. Pre-provisioned boards carry both on a label. No password at
-   hand? Hold the board's first key (KEY1 on the Audio Kit) while plugging it
-   in: the setup network starts open for that one boot.
-2. Join the `esp32-streamline-XXXX` Wi-Fi network with that password. The
-   operating system should
-   offer or open the setup console; if it does not, open `http://192.168.71.1/`.
-3. Enter your Wi-Fi credentials and continue to the generated admin key.
-4. **Save the generated admin key.** The device never shows it again. The key
-   unlocks every later settings change; lose it and you must reflash.
-5. Join. The device reboots onto your network and advertises its console as
-   `http://streamline-xxxx.local/`.
-6. Open the station console, then pick the bridge the device finds, or type its host, in **Settings → Connect a player** and
-   calibrate from **Audio**. Save a source profile when several players need
-   different input levels.
-
-Cleartext PCM is the compatibility default. To encrypt it, generate the device
-credential, switch the bridge's PCM port to TLS, provision and verify the
-credential, then activate encryption on the device. This coordinated switch
-briefly interrupts audio. Follow the
-[complete cutover and recovery workflow](docs/tcp-transport.md#enable-encryption).
-
-Open the console at its `.local` name to tune audio, change settings, or reset
-the device. Use the station IP if your network does not pass mDNS. For
-monitoring, scrape `http://<esp32-host>/api/metrics`; JSON diagnostics live at
-`/api/status`.
-
-### 4. Update
-
-Daily automatic updates are enabled by default and wait for idle audio. Console
-→ **Settings** → **Updates** can switch to weekly, disable them, check immediately,
-or install manually. [OTA updates](docs/ota.md) covers the flow, rollback, and
-the one-time serial reflash that pre-OTA devices need.
+The device and the bridge speak plain HTTP and belong on a trusted LAN; read the [security notes](docs/security.md) before exposing a port. The audio is cleartext until you [turn on encryption](docs/tcp-transport.md#enable-encryption), a short coordinated switch between device and bridge.
 
 ## Development
 
-Everything builds and checks in containers. Install only Docker (or Podman)
-and `make`. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and the PR flow;
-[AGENTS.md](AGENTS.md) states the engineering rules.
-
-```sh
-make help                                 # all targets
-make lint && make test                    # local baseline before a PR
-make repository-check                      # docs, metadata, versions, advisories
-make firmware-build                       # cross-compile the firmware
-make firmware-flash                       # flash from the host
-make firmware-monitor                     # interactive serial monitor
-make firmware-capture CAPTURE_SECS=30     # bounded serial capture for scripts
-make bridge-up                            # run the bridge from source
-```
-
-Flashing runs on the host because Docker Desktop on macOS cannot reliably
-expose serial devices. Install the tool once with `cargo install espflash`, or
-use the [Nix shell](CONTRIBUTING.md#development). Flash over serial with
-`make firmware-flash`, not a bare `espflash flash`: the target also writes the
-rollback bootloader and the two-slot partition table that OTA updates depend
-on, with a flash-size header that matches the chip.
-
-espflash selects the serial port. When exactly one USB serial adapter is
-attached and espflash recognizes it (CP210x, CH340) or remembers it, every
-serial target uses it without configuration. Otherwise set `ESPFLASH_PORT`,
-for example `ESPFLASH_PORT=/dev/ttyUSB0 make firmware-capture`; for a single
-unrecognized adapter, `make firmware-flash` also offers to remember it.
-Unconfigured, `firmware-capture` and `tools-smoke-device` fail when several
-adapters are attached. With one unrecognized adapter, `tools-smoke-device`
-fails, and `firmware-capture` fails too unless it runs in a terminal, where it
-waits at espflash's port prompt until its window ends.
-
-A device already on the network needs none of that to be read: it serves its
-own log, this boot and the one before it, at `GET /api/logs`, and the crash
-dump a panic leaves behind at `GET /api/coredump/image`. See
-[diagnostics](docs/diagnostics.md).
-
-Docs: [architecture](docs/architecture.md) ·
-[bridge reference](docs/bridge.md) ·
-[diagnostics](docs/diagnostics.md) ·
-[lossless recordings](docs/recordings.md) ·
-[design](docs/design.md) ·
-[user journey](docs/user-journey.md) ·
-[audio profiles](docs/audio-profiles.md) ·
-[PCM protocol](docs/pcm-protocol.md) ·
-[TCP transport](docs/tcp-transport.md) ·
-[OTA](docs/ota.md) ·
-[security](docs/security.md)
-
-### Releases
-
-To release, merge the release PR that
-[release-please](https://github.com/googleapis/release-please) keeps open on
-`mainline`. Publication then runs on its own, as
-[build, CI, and release](docs/architecture.md#build-ci-and-release) describes,
-and signs the firmware with the `FIRMWARE_SIGNING_KEY` secret
-([firmware signing](docs/ota.md#firmware-signing)). If publication is
-interrupted, rerun **Actions → Release** with the same tag; every step
-converges. Never edit the version files or changelog by hand. Land a
-Conventional Commit and let the release PR carry it.
-[Artifact verification](docs/security.md#release-artifact-verification) shows
-how to check what a release published.
-
-## Scope
-
-StreamLine is an audio ingestion source, not a network renderer. It captures
-and transports; playback, encoding, and multiroom sync belong to the software
-consuming the stream.
-
-## AI usage
-
-AI contributions are welcome. This project is built with heavy AI usage.
-Agents: follow [AGENTS.md](AGENTS.md).
+Everything builds and checks in containers, so you need Docker or Podman and `make`. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, flashing and releases, and [AGENTS.md](AGENTS.md) holds the engineering rules for people and agents alike.

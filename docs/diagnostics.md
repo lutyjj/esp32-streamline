@@ -210,7 +210,7 @@ settings unlock, for the same reason the endpoint needs the key.
 
 ## When serial is still the answer
 
-Reach for [`make firmware-monitor`](../README.md#development) when the device
+Reach for [`make firmware-monitor`](../CONTRIBUTING.md#flashing-and-serial) when the device
 does not reach the network at all or when the earliest boot lines matter.
 Everything else is readable over the API.
 

@@ -5,7 +5,7 @@ Rules for AI coding agents in this repository. Humans follow them too — see
 
 ## Understand before changing
 
-Read [README.md](README.md) and `docs/` first. Do not re-derive decisions
+Read [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md), and `docs/` first. Do not re-derive decisions
 already documented there.
 
 ## Value engineering time
@@ -216,9 +216,9 @@ and secrets (`.env`) stay out of git. See `.gitignore`; extend it if needed.
 
 Never bump version files or edit `ha-addon/CHANGELOG.md` by hand: land a
 Conventional Commit and let the release PR carry it. The
-[README release steps](README.md#releases) own the flow.
+[release steps](CONTRIBUTING.md#releases) own the flow.
 
 ## Docs win on conflict
 
-If anything here conflicts with `README.md` or `docs/`, the docs win and this
+If anything here conflicts with `README.md`, `CONTRIBUTING.md`, or `docs/`, the docs win and this
 file is stale — update it.

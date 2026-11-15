@@ -3,5 +3,8 @@
   "MD033": false,
   "MD034": false,
   "MD040": false,
+  "MD041": {
+    "allow_preamble": true
+  },
   "MD060": false
 }

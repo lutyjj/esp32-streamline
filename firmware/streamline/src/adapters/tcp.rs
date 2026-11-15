@@ -86,7 +86,10 @@ enum Connection {
 impl TcpClient {
     pub fn new(target: TargetAddress) -> Self {
         Self {
-            sender: ReconnectingSender::new(AdapterConnector(target)),
+            sender: ReconnectingSender::new(AdapterConnector {
+                target,
+                lowest_stack_free: u32::MAX,
+            }),
         }
     }
 }
@@ -148,15 +151,20 @@ impl std::error::Error for TcpSendError {
     }
 }
 
-struct AdapterConnector(TargetAddress);
+struct AdapterConnector {
+    target: TargetAddress,
+    /// The lowest stack high-water mark a handshake has logged.
+    lowest_stack_free: u32,
+}
 
 impl PcmConnector for AdapterConnector {
     type Error = TcpSendError;
     type Stream = Connection;
 
     fn connect(&mut self) -> std::result::Result<Self::Stream, Self::Error> {
-        let socket = resolve_socket(&self.0.host, self.0.port).map_err(TcpSendError::io)?;
-        match &self.0.security {
+        let socket =
+            resolve_socket(&self.target.host, self.target.port).map_err(TcpSendError::io)?;
+        match &self.target.security {
             TransportSecurity::Cleartext => {
                 let stream = TcpStream::connect_timeout(&socket, CLEARTEXT_TIMEOUT)
                     .with_context(|| format!("TCP connect to {} failed", socket))
@@ -170,9 +178,16 @@ impl PcmConnector for AdapterConnector {
             }
             TransportSecurity::TlsPsk(key) => {
                 let quiet = QuietEspTls::new();
-                TlsConnection::connect(socket, key.clone())
-                    .map(|stream| Connection::Tls(stream, quiet))
-                    .map_err(TcpSendError::handshake)
+                let stream =
+                    TlsConnection::connect(socket, key.clone()).map_err(TcpSendError::handshake)?;
+                // A null handle selects the sender task. The mark only falls, so a
+                // reconnect loop stops logging once it settles.
+                let free = unsafe { sys::uxTaskGetStackHighWaterMark(std::ptr::null_mut()) };
+                if free < self.lowest_stack_free {
+                    self.lowest_stack_free = free;
+                    log::info!("TLS PCM stack minimum free: {free} bytes");
+                }
+                Ok(Connection::Tls(stream, quiet))
             }
         }
     }
@@ -264,10 +279,6 @@ impl TlsConnection {
             unsafe { sys::esp_tls_conn_destroy(handle) };
             return Err(error);
         }
-        // A null handle selects the task performing this handshake.
-        log::info!("TLS PCM stack minimum free: {} bytes", unsafe {
-            sys::uxTaskGetStackHighWaterMark(std::ptr::null_mut())
-        });
         Ok(Self {
             handle,
             _key: key,

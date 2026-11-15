@@ -29,6 +29,20 @@ const embeddedFontLicense: Plugin = {
   },
 };
 
+// Vite never inlines `<link rel="icon">`, so each self-contained page carries the
+// icon as a data URL.
+const icon = readFileSync(resolve(import.meta.dirname, 'src/icon.svg'), 'utf8');
+const inlineIcon: Plugin = {
+  name: 'inline-icon',
+  transformIndexHtml: () => [
+    {
+      tag: 'link',
+      attrs: { rel: 'icon', href: `data:image/svg+xml,${encodeURIComponent(icon)}` },
+      injectTo: 'head',
+    },
+  ],
+};
+
 // In mock mode the device page's requests never reach the network (MSW
 // intercepts them), so `/api` can proxy to the real bridge for the bridge
 // page, along with the bridge's root-level routes.
@@ -50,7 +64,7 @@ export default defineConfig({
   // MSW serves its worker script on the dev server, whose public dir is the
   // read-only WebFlasher mount. It emits the script only beside a bundle that
   // imports `virtual:msw`, which no console entry does.
-  plugins: [preact(), viteSingleFile(), msw(), embeddedFontLicense],
+  plugins: [preact(), viteSingleFile(), msw(), embeddedFontLicense, inlineIcon],
   publicDir: webflasherDir,
   // Replaced statically so production builds drop the mock branch entirely.
   define: {

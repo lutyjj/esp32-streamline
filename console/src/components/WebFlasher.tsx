@@ -1,10 +1,10 @@
+import { Wordmark } from './Wordmark';
+
 export function WebFlasher() {
   return (
     <main class="wrap flasher">
       <header class="flasher-head">
-        <p class="wordmark">
-          Stream<span>Line</span>
-        </p>
+        <Wordmark />
         <p class="flasher-kicker">USB installer</p>
         <h1>Install a clean device</h1>
         <p class="flasher-intro">

@@ -11,9 +11,9 @@ fn main() {
 }
 
 /// Gzip the assets the HTTP adapter embeds, so the image stores and serves
-/// them compressed: raw, the console and OpenAPI document cost 194 KB of an
-/// OTA slot that compression cuts to 50 KB. The adapter `include_bytes!`s the
-/// results from `OUT_DIR` and serves them with `Content-Encoding: gzip`.
+/// them compressed, at under half their raw size. The adapter
+/// `include_bytes!`s the results from `OUT_DIR` and serves them with
+/// `Content-Encoding: gzip`.
 fn compress_embedded_assets() {
     let out_dir = std::env::var("OUT_DIR").expect("cargo sets OUT_DIR");
     for (source, compressed) in [

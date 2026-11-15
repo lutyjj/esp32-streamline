@@ -41,7 +41,7 @@ use crate::{
 };
 
 // Stored gzipped (build.rs compresses them into OUT_DIR) and served with
-// `Content-Encoding: gzip`: raw, these two assets cost 194 KB of the OTA slot.
+// `Content-Encoding: gzip`.
 const INDEX_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/index.html.gz"));
 const OPENAPI_GZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/openapi.json.gz"));
 

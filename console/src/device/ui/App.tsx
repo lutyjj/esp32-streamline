@@ -1,5 +1,13 @@
 import { effect, untracked } from '@preact/signals';
-import { Content, EmptyState, LinenProvider, Shell, UnsavedChangesGuard, useToast } from 'linen';
+import {
+  Content,
+  EmptyState,
+  LinenProvider,
+  Shell,
+  ToastProvider,
+  UnsavedChangesGuard,
+  useToast,
+} from 'linen';
 import { useEffect } from 'react';
 import icon from '../../icon.svg';
 import { CredentialDialog } from '../../shared/CredentialDialog';
@@ -15,18 +23,20 @@ import { PLACES, placeOf } from './places';
 export function App() {
   return (
     <LinenProvider navigation={hashNavigation}>
-      <UnsavedChangesGuard>
-        <Console />
-      </UnsavedChangesGuard>
-      <CredentialDialog
-        title="Unlock settings"
-        description="Settings change only with this device's admin key, which you saved when you set it up. A lost key needs a reflash."
-        label="Admin key"
-        username="admin"
-        remember="Remember on this browser"
-        rejected="The device did not accept this key. Check it and try again."
-        verify={verifyKey}
-      />
+      <ToastProvider>
+        <UnsavedChangesGuard>
+          <Console />
+        </UnsavedChangesGuard>
+        <CredentialDialog
+          title="Unlock settings"
+          description="Settings change only with this device's admin key, which you saved when you set it up. A lost key needs a reflash."
+          label="Admin key"
+          username="admin"
+          remember="Remember on this browser"
+          rejected="The device did not accept this key. Check it and try again."
+          verify={verifyKey}
+        />
+      </ToastProvider>
     </LinenProvider>
   );
 }

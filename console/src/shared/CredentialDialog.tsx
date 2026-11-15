@@ -66,9 +66,9 @@ function CredentialQuestion({
       }}
       title={title}
       description={description}
-      submitLabel="Unlock"
+      confirmLabel="Unlock"
       disabled={checking || secret.trim() === ''}
-      onSubmit={() => void submit()}
+      onConfirm={() => void submit()}
     >
       {username !== undefined && (
         <input type="text" autoComplete="username" value={username} readOnly hidden />

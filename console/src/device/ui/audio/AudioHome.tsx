@@ -201,7 +201,7 @@ function StreamCard({ activity }: { activity: AudioActivity }) {
     return (
       <Card>
         <CardHead title="Stream" />
-        <EmptyState title="No bridge yet" detail={ACTIVITY['no-bridge'].meaning}>
+        <EmptyState title="No bridge yet" description={ACTIVITY['no-bridge'].meaning}>
           <Link href="/bridge" className={buttonClass('primary')}>
             Connect a bridge
           </Link>

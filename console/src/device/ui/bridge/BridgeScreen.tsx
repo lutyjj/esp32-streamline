@@ -31,7 +31,7 @@ export function BridgeScreen() {
           ) : (
             <EmptyState
               title="No bridge yet"
-              detail="Capture and level setting work without one. A bridge turns the input into a stream your players can open."
+              description="Capture and level setting work without one. A bridge turns the input into a stream your players can open."
             />
           )}
         </Card>

@@ -159,7 +159,7 @@ function RestartAndReset() {
         open={asking}
         onOpenChange={setAsking}
         title="Restart the device?"
-        detail="Audio stops while it restarts, and the console reconnects once it answers."
+        description="Audio stops while it restarts, and the console reconnects once it answers."
         confirmLabel="Restart"
         onConfirm={() => void restartNow()}
       />

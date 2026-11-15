@@ -119,7 +119,7 @@ function Access() {
           label="Theme"
           value={preference}
           options={THEME_PREFERENCES.map((value) => ({ value, label: THEME_WORDS[value] }))}
-          onChange={setPreference}
+          onValueChange={setPreference}
         />
       </SettingRow>
     </Card>

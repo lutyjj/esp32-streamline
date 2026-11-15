@@ -37,11 +37,29 @@ const proxy = bridge
     )
   : { '/api': { target: `http://${process.env.STREAMLINE_DEVICE || '192.168.71.1'}` } };
 
+// Tests compile every dependency from its module build, so each one that
+// imports React meets preact/compat, as the browser bundle has it. Base UI's
+// store shim ships only as CommonJS, which Node would load past the aliases.
+const testResolution = {
+  alias: [
+    {
+      find: /^@testing-library\/react$/,
+      replacement: '@testing-library/react/dist/@testing-library/react.esm.js',
+    },
+    {
+      find: /^use-sync-external-store\/shim(\/with-selector)?(\/index)?(\.js)?$/,
+      replacement: resolve(import.meta.dirname, 'tests/use-sync-external-store.ts'),
+    },
+  ],
+  conditions: ['module', 'browser', 'development', 'import'],
+  noExternal: true as const,
+};
+
 // The build inlines everything into one dist/index.html so the firmware
 // embeds a single asset. The WebFlasher has its own self-contained entry.
 // The dev server proxies the API to a real device (`make dev DEVICE=<ip>`)
 // or serves the fake device beside a real bridge (`make dev-mock`).
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // MSW serves its worker script on the dev server, whose public dir is the
   // read-only WebFlasher mount. It emits the script only beside a bundle that
   // imports `virtual:msw`, which no console entry does.
@@ -49,7 +67,13 @@ export default defineConfig({
   publicDir: webflasherDir,
   // preact() resolves React to preact/compat; linen's Motion resolves to its
   // stand-in, so only the animations its stylesheet runs remain.
-  resolve: { alias: [{ find: /^motion(\/react)?$/, replacement: 'linen/still' }] },
+  resolve: {
+    ...(mode === 'test' ? testResolution : {}),
+    alias: [
+      { find: /^motion(\/react)?$/, replacement: 'linen/still' },
+      ...(mode === 'test' ? testResolution.alias : []),
+    ],
+  },
   // Replaced statically so production builds drop the mock branch entirely.
   define: {
     'import.meta.env.VITE_MOCK': JSON.stringify(process.env.VITE_MOCK ?? ''),
@@ -68,4 +92,4 @@ export default defineConfig({
     // Playwright owns tests/e2e; vitest must not collect its specs.
     exclude: ['tests/e2e/**', 'node_modules/**'],
   },
-});
+}));

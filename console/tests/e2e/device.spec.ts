@@ -64,3 +64,12 @@ test('a restart is narrated until the device answers from its new start', async 
   await answerKey(page, mockAdminKey);
   await expect(page.getByText('Back online after the restart.')).toBeVisible();
 });
+
+test('recovery names the network it cannot find and leads to its Wi-Fi', async ({ page }) => {
+  await page.goto('/?scenario=recovery#/audio');
+  const notice = page.getByRole('status').filter({ hasText: 'can’t find Old router' });
+  await expect(notice).toContainText('retries every minute');
+  await notice.getByRole('link', { name: 'Change Wi-Fi' }).click();
+  await expect(page).toHaveURL(/#\/device\/wifi$/);
+  await expect(page.getByText('Old router', { exact: true })).toBeVisible();
+});

@@ -302,7 +302,7 @@ manually with `run_qemu` enabled, or use `make smoke-qemu` to build and test
 the images in containers. The QEMU job reports failures without automatic
 retries or expected-failure markers.
 
-release-please owns the release lifecycle: `release-please-config.json` declares every version owner and lockfile, a generated release PR carries the version bump and changelog, and merging it creates the tag and a draft GitHub release. Publication verifies that exact commit and that its firmware rebuilds byte-for-byte, pushes write-once versioned images (the bridge, each Home Assistant app architecture and the app's multi-arch image), attaches firmware artifacts with an SPDX SBOM, and binds provenance attestations to every asset and image digest and SBOM attestations to the firmware and each single-platform image. It verifies those attestations before it publishes the release, and only then moves the `latest` image aliases and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. The root [README](../README.md#releases) owns the operator steps.
+release-please owns the release lifecycle: `release-please-config.json` declares every version owner and lockfile, a generated release PR carries the version bump and changelog, and merging it creates the tag and a draft GitHub release. Publication verifies that exact commit and that its firmware rebuilds byte-for-byte, pushes write-once versioned images (the bridge, each Home Assistant app architecture and the app's multi-arch image), attaches firmware artifacts with an SPDX SBOM, and binds provenance attestations to every asset and image digest and SBOM attestations to the firmware and each single-platform image. It verifies those attestations before it publishes the release, and only then moves the `latest` image aliases and the WebFlasher site. The [OTA reference](ota.md) owns image layout and rollback behavior. [CONTRIBUTING](../CONTRIBUTING.md#releases) owns the operator steps.
 
 The Makefiles remain routing and reproducibility boundaries. Keep component logic in language-native code and split reusable GitHub workflow mechanics into actions when more than one workflow owns the same lifecycle.
 
@@ -324,10 +324,12 @@ Use `node` only where an external platform defines that term. Use concrete board
 
 ## Document ownership
 
-- [README](../README.md) introduces the product, quick start, development entrypoints, and release procedure.
+- [README](../README.md) introduces the product, its quick start, and its configuration.
+- [CONTRIBUTING](../CONTRIBUTING.md) owns development setup, flashing, and the release procedure.
 - This document owns component and dependency boundaries.
 - [Design notes](design.md) own architectural decisions and integration choices.
 - [Bridge reference](bridge.md) owns bridge endpoints, source lifecycle, and tuning options.
+- [Device diagnostics](diagnostics.md) owns the device log, crash dumps, network captures, and streaming counters.
 - [Lossless recordings](recordings.md) owns bridge recording behavior, storage, and API semantics.
 - [User journey](user-journey.md) owns visible setup, steady-state, and recovery promises.
 - [The icon](icon.md) describes the icon's drawing and owns its derived files.

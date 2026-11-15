@@ -12,6 +12,7 @@ degrees. The name, drawn literally.
 |---|---|
 | Device console, bridge console, WebFlasher | `vite.config.ts` inlines it as each page's favicon, and `Wordmark` sets it before the name at 22 px. |
 | Home Assistant app | `make tools-icons` renders `ha-addon/icon.png` (128 px) and `ha-addon/logo.png` (250 px) with resvg. Run it after changing the drawing and commit what it writes. |
+| README | Shows the SVG. |
 
 ## The drawing
 

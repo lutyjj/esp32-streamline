@@ -10,5 +10,5 @@ boundaries and boot flow. The [PCM protocol](../../docs/pcm-protocol.md),
 and [security notes](../../docs/security.md) own their runtime contracts.
 
 Build, test, flash, and monitor commands live in the
-[root README](../../README.md#development). Follow [AGENTS.md](../../AGENTS.md)
+[contributing guide](../../CONTRIBUTING.md#development). Follow [AGENTS.md](../../AGENTS.md)
 for contribution and device-smoke requirements.

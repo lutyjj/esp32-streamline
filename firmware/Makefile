@@ -101,7 +101,7 @@ openapi-check: image
 pcm-frame-vectors: image
 	$(CONTAINER_RUN) cargo run --locked --quiet --features pcm-frame-vectors --bin streamline-pcm-frame-vectors -- $(CONTAINER_WORKSPACE)/docs/pcm-frame-vectors.json
 
-# Serial targets run espflash on the host; README.md#development says why.
+# Serial targets run espflash on the host; CONTRIBUTING.md#flashing-and-serial says why.
 
 # An explicit --flash-size stops espflash stamping a header the chip cannot boot.
 # Erasing otadata boots the flashed slot rather than an earlier OTA slot; NVS

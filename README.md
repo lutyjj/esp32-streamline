@@ -114,3 +114,7 @@ The device and the bridge speak plain HTTP and belong on a trusted LAN; read the
 ## Development
 
 Everything builds and checks in containers, so you need Docker or Podman and `make`. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, flashing and releases, and [AGENTS.md](AGENTS.md) holds the engineering rules for people and agents alike.
+
+## License
+
+[GPL-3.0-or-later](LICENSE)

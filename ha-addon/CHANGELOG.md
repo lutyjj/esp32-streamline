@@ -1,6 +1,18 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.18.1](https://github.com/lutyjj/esp32-streamline/compare/v0.18.0...v0.18.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **firmware:** keep ESP-TLS errors from PCM reconnects out of the device log ([79b3adb](https://github.com/lutyjj/esp32-streamline/commit/79b3adb5ec5145a26662efaa3ffeb9a694202c72))
+* **firmware:** keep requests a client gets wrong out of the device log ([9645029](https://github.com/lutyjj/esp32-streamline/commit/9645029f84ba6f1591da2fda348b2e4198aeff79))
+* **firmware:** log the PCM sender's handshake stack mark only when it falls ([e669f33](https://github.com/lutyjj/esp32-streamline/commit/e669f333c6514abcaa303d20f3d5f40be36871e4))
+* **firmware:** set the Wi-Fi station configuration from zeroed memory ([17e023b](https://github.com/lutyjj/esp32-streamline/commit/17e023bbb6cbd1758ab510fbc420408d2791a8a5))
+* **tools:** fail a QEMU restart wait that ends in a panic ([3e38a42](https://github.com/lutyjj/esp32-streamline/commit/3e38a425bd1556813159241e2d4f58c4b855564f))
+* **tools:** pace QEMU's output relay in the smoke harness ([db366c1](https://github.com/lutyjj/esp32-streamline/commit/db366c180135d5cdeef844685f33eb7efffd1238))
+
 ## [0.18.0](https://github.com/lutyjj/esp32-streamline/compare/v0.17.1...v0.18.0) (2026-11-14)
 
 

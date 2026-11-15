@@ -2,14 +2,18 @@ import { getResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTransport } from '../../src/device/lib/api';
 import { FakeDevice } from '../../src/device/mocks/device';
+import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
+  adoptFound,
   bridgeConsoleAddress,
   consoleAddressAfterUse,
   DISCOVERY_DEADLINE_MS,
   discovery,
   fillsTarget,
   findBridges,
+  searchOffered,
 } from '../../src/device/state/discovery';
+import { answering } from './answering';
 
 const BRIDGE = { name: 'StreamLine Bridge', host: '192.0.2.20', port: 39000, http_port: 8088 };
 
@@ -108,5 +112,34 @@ describe('bridge discovery', () => {
   it('builds the console address only from an advertised HTTP port', () => {
     expect(bridgeConsoleAddress(BRIDGE)).toBe('http://192.0.2.20:8088/');
     expect(bridgeConsoleAddress({ ...BRIDGE, http_port: null })).toBe('');
+  });
+
+  it('fills the form from a found bridge and keeps a console address the owner typed', () => {
+    const typed = {
+      entry: { host: '', port: '39000' },
+      console: 'https://ha.example/bridge',
+      consoleFilled: '',
+    };
+    expect(adoptFound(typed, BRIDGE)).toEqual({
+      entry: { host: '192.0.2.20', port: '39000' },
+      console: 'https://ha.example/bridge',
+      consoleFilled: '',
+    });
+    const empty = { entry: { host: '', port: '' }, console: '', consoleFilled: '' };
+    const used = adoptFound(empty, BRIDGE);
+    expect(used.console).toBe('http://192.0.2.20:8088/');
+    expect(adoptFound(used, { ...BRIDGE, host: '192.0.2.21' }).console).toBe(
+      'http://192.0.2.21:8088/',
+    );
+  });
+
+  it('offers the search only on the home network', () => {
+    answering(deviceStatus());
+    expect(searchOffered.value).toBe(true);
+    for (const mode of ['setup', 'recovery'] as const) {
+      answering(deviceStatus({ mode }));
+      expect(searchOffered.value).toBe(false);
+    }
+    answering(null);
   });
 });

@@ -1,19 +1,51 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeTargetHost } from '../../src/device/lib/target';
+import { bridgeSourcesLink } from '../../src/device/lib/consoleAddress';
+import { targetProblems, targetRequest } from '../../src/device/lib/target';
 
-// Stage 3: host and port are one form, but the device stores them apart. The
-// Network tab rejects a host that carries its own port, scheme, or path so the
-// save cannot land a value the device would misparse.
-describe('normalizeTargetHost', () => {
-  it('accepts a bare hostname or IP and trims surrounding space', () => {
-    expect(normalizeTargetHost('  bridge.local ')).toBe('bridge.local');
-    expect(normalizeTargetHost('192.0.2.10')).toBe('192.0.2.10');
-    expect(normalizeTargetHost('')).toBe('');
+// Stage 2: host and port are one form, but the device stores them apart, so a
+// host that carries its own port, scheme or path is refused rather than split.
+describe('targetProblems', () => {
+  it('passes a bare name or address with a port, trimming space', () => {
+    expect(targetProblems({ host: '  bridge.local ', port: ' 39000 ' })).toEqual([]);
+    expect(targetRequest({ host: '  bridge.local ', port: ' 39000 ' })).toEqual({
+      target_host: 'bridge.local',
+      target_port: 39000,
+    });
   });
 
-  it('rejects a host that smuggles in a port, scheme, or path', () => {
-    expect(() => normalizeTargetHost('bridge.local:39000')).toThrow(/port, scheme, or path/);
-    expect(() => normalizeTargetHost('http://bridge.local')).toThrow(/port, scheme, or path/);
-    expect(() => normalizeTargetHost('bridge.local/stream')).toThrow(/port, scheme, or path/);
+  it('refuses a host that carries a port, scheme, path or space', () => {
+    const hostText = (host: string) =>
+      targetProblems({ host, port: '39000' }).map((problem) => problem.text);
+    expect(hostText('bridge.local:39000')).toEqual(['Put the port in its own field.']);
+    expect(hostText('http://bridge.local')).toEqual([expect.stringContaining('http://')]);
+    expect(hostText('bridge.local/stream')).toEqual([expect.stringContaining('path')]);
+    expect(hostText('my bridge')).toEqual([expect.stringContaining('spaces')]);
+    expect(hostText('')).toEqual([expect.stringContaining('name or address')]);
+  });
+
+  it('takes a port from 1 to 65535 and nothing else', () => {
+    for (const port of ['', '0', '65536', '39000.5', '-1', 'http']) {
+      expect(targetProblems({ host: 'bridge.local', port })).toEqual([
+        { field: 'port', text: expect.stringContaining('1 to 65535') },
+      ]);
+    }
+    expect(targetProblems({ host: 'bridge.local', port: '65535' })).toEqual([]);
+  });
+});
+
+describe('bridgeSourcesLink', () => {
+  it('links to the sources, or to this device’s source, of a plain http address', () => {
+    expect(bridgeSourcesLink('http://bridge.local:8088')).toBe(
+      'http://bridge.local:8088/#/sources',
+    );
+    expect(bridgeSourcesLink(' http://192.0.2.20:8088/ ', 'eli1-00ab')).toBe(
+      'http://192.0.2.20:8088/#/sources/eli1-00ab',
+    );
+  });
+
+  it('refuses anything a link must not open', () => {
+    for (const address of ['javascript:alert(1)', 'http://user:pw@bridge.local', 'bridge.local']) {
+      expect(bridgeSourcesLink(address)).toBeUndefined();
+    }
   });
 });

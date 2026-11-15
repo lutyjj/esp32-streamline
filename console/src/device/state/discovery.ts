@@ -4,9 +4,11 @@
  * a stream target. Using one fills the target fields; only a save writes them.
  */
 
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import { errorMessage } from '../../shared/errors';
 import { type DiscoveredBridge, getBridges } from '../lib/api';
+import type { TargetEntry } from '../lib/target';
+import { status } from './device';
 
 export type Discovery =
   | { phase: 'idle' }
@@ -18,6 +20,9 @@ export type Discovery =
 export const DISCOVERY_DEADLINE_MS = 10_000;
 
 export const discovery = signal<Discovery>({ phase: 'idle' });
+
+/** The device browses only from the home network; the setup network offers the form alone. */
+export const searchOffered = computed(() => status.value?.mode === 'provisioned');
 
 let inflight: Promise<void> | null = null;
 
@@ -70,4 +75,22 @@ export function consoleAddressAfterUse(
   bridge: DiscoveredBridge,
 ): string | null {
   return current === '' || current === filled ? bridgeConsoleAddress(bridge) : null;
+}
+
+/** The target form: the entry, and the bridge console address beside it. */
+export interface TargetDraft {
+  entry: TargetEntry;
+  console: string;
+  /** The console address the last Use filled, so the next one may replace it. */
+  consoleFilled: string;
+}
+
+/** The form after Use: a found bridge fills the fields, and nothing is saved. */
+export function adoptFound(draft: TargetDraft, bridge: DiscoveredBridge): TargetDraft {
+  const filled = consoleAddressAfterUse(draft.console, draft.consoleFilled, bridge);
+  return {
+    entry: { host: bridge.host, port: String(bridge.port) },
+    console: filled ?? draft.console,
+    consoleFilled: filled ?? draft.consoleFilled,
+  };
 }

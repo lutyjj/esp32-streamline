@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { playbackUrl } from '../src/bridge/playback';
-import { consoleAddress } from '../src/device/lib/consoleAddress';
+import { bridgeSourcesLink } from '../src/device/lib/consoleAddress';
 
 it('uses the advertised player address rather than authenticated ingress', () => {
   expect(
@@ -21,6 +21,6 @@ it('supports a direct bridge and rejects credential-bearing addresses', () => {
     'http://192.0.2.20:8088/streamline.wav?source=B',
   );
   expect(playbackUrl('https://secret@example.com', '', 'http://localhost', 'B')).toBeUndefined();
-  expect(consoleAddress('javascript:alert(1)')).toBeUndefined();
-  expect(consoleAddress('http://bridge.local:8099')).toBe('http://bridge.local:8099/#/sources');
+  expect(bridgeSourcesLink('javascript:alert(1)')).toBeUndefined();
+  expect(bridgeSourcesLink('http://bridge.local:8099')).toBe('http://bridge.local:8099/#/sources');
 });

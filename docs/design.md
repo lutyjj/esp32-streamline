@@ -77,7 +77,7 @@ Measured against the Python 3.14 bridge, the supported ESP32 negotiates the
 exact profile with a 736.8 ms device handshake. The session consumes 36,476
 bytes of device heap, keeps at least 75,300 bytes free, and streams more than
 140 MB of 48 kHz stereo PCM for over ten uninterrupted minutes with zero network
-errors. The OTA image is 1,687,008 bytes, 83.04% of its application partition.
+errors.
 Wrong keys and unknown identities fail before source admission. The Python 3.15
 bridge admits the same device profile and rejects an unknown identity; its
 handshake and streaming figures have not been measured.
@@ -388,9 +388,8 @@ A host-only `utoipa` feature generates [the OpenAPI 3.1 contract](openapi.json)
 from the Rust module. `make firmware-openapi` refreshes the checked-in artifact;
 `make firmware-openapi-check` fails when it is stale. The device serves the same
 artifact at `GET /api/openapi.json`. The firmware stores this artifact and the
-embedded console gzipped and serves both with `Content-Encoding: gzip`.
-The pair occupies 194 KB raw or 50 KB compressed. Browsers and HTTP
-client libraries decompress transparently; raw `curl` needs `--compressed`.
+embedded console gzipped and serves both with `Content-Encoding: gzip`,
+under half their raw size. Browsers and HTTP client libraries decompress transparently; raw `curl` needs `--compressed`.
 
 The console runs Orval before lint, test, and build. Orval generates types and
 operation-named Fetch functions from the contract. The hand-written

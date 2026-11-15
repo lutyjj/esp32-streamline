@@ -90,7 +90,7 @@ describe('a restart', () => {
 describe('a handoff', () => {
   const join: ConnectionEvent = {
     type: 'handoff',
-    handoff: { kind: 'join', confirmed: true },
+    handoff: { kind: 'join', ssid: 'home', confirmed: true },
     at: 1000,
   };
 

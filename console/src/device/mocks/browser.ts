@@ -25,7 +25,10 @@ export async function startDeviceMock(): Promise<void> {
     const network = window.fetch.bind(window);
     window.fetch = async (input, init) => {
       const request = new Request(input, init);
-      return (await getResponse(device.handlers, request)) ?? network(request);
+      const response = await getResponse(device.handlers, request);
+      // A device off this network fails the request, as the browser's fetch does.
+      if (response?.type === 'error') throw new TypeError('Failed to fetch');
+      return response ?? network(request);
     };
     return;
   }

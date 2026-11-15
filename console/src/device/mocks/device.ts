@@ -101,6 +101,20 @@ const PREVIOUS_BOOT_TAIL = [
   'system: restarting into the new image',
 ];
 
+/**
+ * The networks the fake device can reach, with the password each takes; null
+ * is an open network. A join elsewhere fails the way the firmware reports it.
+ */
+const NETWORKS_IN_RANGE: Readonly<Record<string, string | null>> = {
+  home: 'correct horse',
+  'Cafe guest': null,
+};
+
+/** Status reads the device stays silent for while it restarts and tries a network. */
+const JOIN_ATTEMPT_READS = 4;
+
+type JoinFailure = NonNullable<StatusResponse['wifi']['join_failure']>;
+
 /** A parsed form body: every field arrives as a string. */
 type FormBody = Partial<Record<string, string>>;
 
@@ -108,11 +122,22 @@ export class FakeDevice {
   readonly handlers: HttpHandler[];
   /** What a browse of the device's network finds; tests replace it. */
   bridges: DiscoveredBridge[] = discoveredBridges();
+
+  /** Whether the source plays into the input; a quiet input is gated to silence records. */
+  set inputPlaying(playing: boolean) {
+    this.status.metrics.playing = playing;
+  }
   private status!: StatusResponse;
   private config!: SettingsResponse;
   private profiles!: AudioProfileCatalog;
   /** The accepted admin key; null while the device has none (setup mode). */
   private adminKey!: string | null;
+  /** The saved Wi-Fi password, which the device never reads back. */
+  private wifiPassword = '';
+  /** Status reads before the device answers on this browser's network again; Infinity once it left. */
+  private absentReads = 0;
+  /** What the device looks like when it answers again. */
+  private onReturn: (() => void) | null = null;
   private poll = 0;
   private keySerial = 0;
   /** This boot's captured log, and the one the last restart left behind. */
@@ -140,10 +165,12 @@ export class FakeDevice {
       this.read('/api/audio-profiles', () => this.profiles),
       this.read('/api/boards', () => this.boards()),
       // Like the firmware, browse only from the home network.
-      http.get('/api/bridges', () =>
-        this.status.mode === 'provisioned'
-          ? HttpResponse.json({ bridges: this.bridges })
-          : reject(503, 'bridge discovery needs the home network'),
+      http.get('/api/bridges', ({ request }) =>
+        !this.here(request)
+          ? HttpResponse.error()
+          : this.status.mode === 'provisioned'
+            ? HttpResponse.json({ bridges: this.bridges })
+            : reject(503, 'bridge discovery needs the home network'),
       ),
       this.read('/api/openapi.json', () => contract),
       this.readAuthorized('/api/logs', () => this.nextLogs()),
@@ -152,6 +179,7 @@ export class FakeDevice {
         size_bytes: this.coredump?.byteLength ?? 0,
       })),
       http.get('/api/coredump/image', ({ request }) => {
+        if (!this.here(request)) return HttpResponse.error();
         const denied = this.deny(request);
         if (denied) return denied;
         if (!this.coredump) return reject(404, 'no crash dump is stored');
@@ -163,7 +191,9 @@ export class FakeDevice {
         this.coredump = null;
         return { ok: true };
       }),
-      http.get('/api/metrics', () => new HttpResponse(this.metricsText())),
+      http.get('/api/metrics', ({ request }) =>
+        this.here(request) ? new HttpResponse(this.metricsText()) : HttpResponse.error(),
+      ),
       this.write('/api/unlock', () => ({ ok: true })),
       this.write('/api/settings/wifi', (body) => this.join(body)),
       this.write('/api/settings/target', (body) => {
@@ -286,8 +316,11 @@ export class FakeDevice {
       this.status = deviceStatus({ metrics: { playing: true } });
       this.config = deviceConfig();
       this.adminKey = MOCK_ADMIN_KEY;
+      this.wifiPassword = NETWORKS_IN_RANGE[this.config.ssid] ?? '';
     } else if (scenario === 'recovery') {
-      this.config = deviceConfig();
+      // The saved network is out of range, so the device serves recovery.
+      this.config = deviceConfig({ ssid: 'Old router' });
+      this.wifiPassword = 'old password';
       this.status = deviceStatus({
         mode: 'recovery',
         wifi: {
@@ -327,7 +360,30 @@ export class FakeDevice {
 
   /** GET: reads are open on the device. */
   private read(path: string, body: () => JsonBodyType): HttpHandler {
-    return http.get(path, () => HttpResponse.json(body()));
+    return http.get(path, ({ request }) =>
+      this.here(request) ? HttpResponse.json(body()) : HttpResponse.error(),
+    );
+  }
+
+  /**
+   * Whether the device answers on this browser's network now. A device that
+   * left answers nothing; each status read counts down an absence, and the
+   * read that ends it is answered by the device as it came back.
+   */
+  private here(request: Request): boolean {
+    if (this.absentReads === 0) return true;
+    if (new URL(request.url).pathname !== '/api/status') return false;
+    this.absentReads -= 1;
+    if (this.absentReads > 0) return false;
+    this.onReturn?.();
+    this.onReturn = null;
+    return true;
+  }
+
+  /** Leave this browser's network, for `reads` status reads or for good. */
+  private leave(reads: number, onReturn: (() => void) | null = null): void {
+    this.absentReads = reads;
+    this.onReturn = onReturn;
   }
 
   /**
@@ -336,6 +392,7 @@ export class FakeDevice {
    */
   private readAuthorized(path: string, body: () => JsonBodyType): HttpHandler {
     return http.get(path, ({ request }) => {
+      if (!this.here(request)) return HttpResponse.error();
       const denied = this.deny(request);
       if (denied) return denied;
       return HttpResponse.json(body());
@@ -407,6 +464,7 @@ export class FakeDevice {
    */
   private write(path: string, apply: (body: FormBody) => JsonBodyType | Response): HttpHandler {
     return http.post(path, async ({ request }) => {
+      if (!this.here(request)) return HttpResponse.error();
       const denied = this.deny(request);
       if (denied) return denied;
       if (this.status.ota.busy && RESTARTING.has(path)) {
@@ -456,8 +514,12 @@ export class FakeDevice {
   }
 
   /**
-   * First-join commissioning and the recovery form share this write: save
-   * Wi-Fi, adopt a supplied admin key, and come up provisioned.
+   * First contact, a recovery change and a change from the home network share
+   * this write: save Wi-Fi, adopt a supplied admin key, restart and join. A
+   * join that works takes the device off a setup network for good; one that
+   * fails brings it back there, after a restart and three attempts, with the
+   * cause. From the home network, only a new password for the same network
+   * brings it back to this browser.
    */
   private join(body: FormBody): JsonBodyType | Response {
     const ssid = (body.ssid ?? '').trim();
@@ -476,26 +538,61 @@ export class FakeDevice {
       return reject(400, 'invalid configuration: MalformedWifiPassword');
     }
     if (body.admin_key) this.adminKey = body.admin_key;
+    const fromHome = this.status.mode === 'provisioned';
+    const sameNetwork = ssid === this.config.ssid;
+    this.wifiPassword = open ? '' : body.password || this.wifiPassword;
     this.config.ssid = ssid;
     this.config.open_network = open;
     // An absent target keeps the stored one; an empty host clears it.
     if (body.target_host !== undefined) {
       this.config.target_host = body.target_host;
       this.config.target_port = num(body.target_port) ?? this.config.target_port;
+      this.status.target.target_host = this.config.target_host;
+      this.status.target.target_port = this.config.target_port;
     }
-    this.status.mode = 'provisioned';
     this.status.auth_required = this.adminKey !== null;
+    const failure = this.joinFailure(ssid, open);
+    if (failure) {
+      if (fromHome) this.leave(Number.POSITIVE_INFINITY);
+      else this.leave(JOIN_ATTEMPT_READS, () => this.recover(failure));
+    } else if (fromHome && sameNetwork) {
+      this.joined();
+    } else {
+      this.leave(Number.POSITIVE_INFINITY);
+    }
+    return { ok: true, rebooting: true };
+  }
+
+  /** Why joining `ssid` fails from here, or null when it works. */
+  private joinFailure(ssid: string, open: boolean): JoinFailure | null {
+    if (!(ssid in NETWORKS_IN_RANGE)) return 'network-not-found';
+    const password = NETWORKS_IN_RANGE[ssid];
+    if ((password === null) !== open) return 'security-mismatch';
+    if (password !== null && this.wifiPassword !== password) return 'credentials-rejected';
+    return null;
+  }
+
+  private joined(): void {
+    this.status.mode = 'provisioned';
     Object.assign(this.status.wifi, {
-      ssid,
+      ssid: this.config.ssid,
       status: 'connected',
       sta_ip: '192.0.2.10',
       ap_ip: '',
       rssi_dbm: -55,
       join_failure: null,
     });
-    this.status.target.target_host = this.config.target_host;
-    this.status.target.target_port = this.config.target_port;
-    return { ok: true, rebooting: true };
+  }
+
+  /** Back on the setup network beside a station that keeps retrying the saved one. */
+  private recover(failure: JoinFailure): void {
+    this.status.mode = 'recovery';
+    Object.assign(this.status.wifi, {
+      ...SETUP_NETWORK_WIFI,
+      ssid: this.config.ssid,
+      join_failure: failure,
+    });
+    Object.assign(this.status.metrics, SILENT_METRICS);
   }
 
   private transport() {

@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, isUnlocked } from '../../src/device/lib/adminKey';
 import { setTransport } from '../../src/device/lib/api';
-import type { WifiCredentials } from '../../src/device/lib/wifi';
-import { deviceStatus } from '../../src/device/mocks/fixtures';
+import type { WifiEntry } from '../../src/device/lib/wifi';
 import { connection } from '../../src/device/state/device';
-import { expectedHostname, handoffMessage, joinNetwork } from '../../src/device/state/join';
+import { joinBlocks, joinNetwork } from '../../src/device/state/join';
 import { setupKey } from '../../src/device/state/setupKey';
 import { answering } from './answering';
 
@@ -14,8 +13,17 @@ function handoff() {
   return now.phase === 'handoff' ? now.handoff : null;
 }
 
-/** A protected network with a typed password. */
-const PW: WifiCredentials = { password: 'pw', open_network: false };
+const HOME: WifiEntry = { ssid: '  studio ', password: 'correct horse', open: false };
+
+/** Answer every request as the device would to a saved Wi-Fi, keeping the body. */
+function accepting(): { body: URLSearchParams } {
+  const sent = { body: new URLSearchParams() };
+  setTransport(async (request) => {
+    sent.body = new URLSearchParams(await request.text());
+    return new Response('{"rebooting":true}', { status: 200 });
+  });
+  return sent;
+}
 
 beforeEach(() => {
   answering(null);
@@ -27,95 +35,73 @@ afterEach(() => {
   setTransport((request) => fetch(request));
 });
 
-describe('joinNetwork', () => {
-  it('sends the credentials with the generated admin key', async () => {
-    let body = '';
-    setTransport(async (request) => {
-      body = await request.text();
-      return new Response('{"rebooting":true}', { status: 200 });
-    });
-
-    await joinNetwork({
-      ssid: '  studio ',
-      credentials: PW,
-      target: { host: ' bridge.local ', port: '' },
-      rememberKey: false,
-    });
-    const fields = new URLSearchParams(body);
-    expect(fields.get('ssid')).toBe('studio');
-    expect(fields.get('password')).toBe('pw');
-    expect(fields.get('open_network')).toBe('false');
-    expect(fields.get('admin_key')).toBe('generated-key');
-    expect(fields.get('target_host')).toBe('bridge.local');
-    expect(fields.get('target_port')).toBe('39000');
+describe('joinBlocks', () => {
+  it('holds first contact until the owner confirms the key is kept elsewhere', () => {
+    const entry = { ssid: 'studio', password: 'correct horse', open: false };
+    expect(joinBlocks(entry, { storedPassword: false, keySaved: false })).toEqual([
+      { field: 'key', text: expect.stringContaining('saved outside this console') },
+    ]);
+    expect(joinBlocks(entry, { storedPassword: false, keySaved: true })).toEqual([]);
   });
 
-  it('leaves the stored target and key alone when it carries none', async () => {
-    // Recovery: the device keeps a target the owner did not touch, and an
-    // empty key keeps its stored one.
-    let body = '';
-    setTransport(async (request) => {
-      body = await request.text();
-      return new Response('{"rebooting":true}', { status: 200 });
-    });
+  it('asks no confirmation of a device that keeps its own key', () => {
     setupKey.value = '';
+    const entry = { ssid: 'studio', password: '', open: false };
+    expect(joinBlocks(entry, { storedPassword: true, keySaved: false })).toEqual([]);
+  });
 
-    await joinNetwork({
-      ssid: 'studio',
-      credentials: { password: '', open_network: false },
-      rememberKey: false,
-    });
-    const fields = new URLSearchParams(body);
-    expect(fields.has('target_host')).toBe(false);
-    expect(fields.has('target_port')).toBe(false);
-    expect(fields.get('password')).toBe('');
-    expect(fields.get('admin_key')).toBe('');
-    expect(handoff()).toEqual({ kind: 'join', confirmed: true });
+  it('lists the entry’s own problems beside the key', () => {
+    const blocks = joinBlocks(
+      { ssid: '', password: '', open: false },
+      { storedPassword: false, keySaved: false },
+    );
+    expect(blocks.map((block) => block.field)).toEqual(['ssid', 'password', 'key']);
+  });
+});
+
+describe('joinNetwork', () => {
+  it('sends the network with the generated admin key, and no bridge', async () => {
+    const sent = accepting();
+    await expect(joinNetwork(HOME, false)).resolves.toBe('confirmed');
+    expect(sent.body.get('ssid')).toBe('studio');
+    expect(sent.body.get('password')).toBe('correct horse');
+    expect(sent.body.get('open_network')).toBe('false');
+    expect(sent.body.get('admin_key')).toBe('generated-key');
+    expect(sent.body.has('target_host')).toBe(false);
+  });
+
+  it('hands off instead of waiting for a restart, and unlocks for a failed join', async () => {
+    accepting();
+    await joinNetwork(HOME, false);
+    // This browser stays on the setup network the device just closed.
+    expect(handoff()).toEqual({ kind: 'join', ssid: 'studio', confirmed: true });
+    expect(isUnlocked()).toBe(true);
+  });
+
+  it('keeps the stored key and password on a recovery change', async () => {
+    setupKey.value = '';
+    const sent = accepting();
+    await joinNetwork({ ssid: 'studio', password: '', open: false }, true);
+    expect(sent.body.get('password')).toBe('');
+    expect(sent.body.get('admin_key')).toBe('');
     expect(isUnlocked()).toBe(false);
   });
 
-  it('unlocks this browser and hands off instead of waiting for a restart', async () => {
-    setTransport(async () => new Response('{"rebooting":true}', { status: 200 }));
-
-    await expect(
-      joinNetwork({ ssid: 'studio', credentials: PW, rememberKey: false }),
-    ).resolves.toBe('confirmed');
-    expect(isUnlocked()).toBe(true);
-    // Never a restart wait: this browser stays on the vanished setup network.
-    expect(handoff()).toEqual({ kind: 'join', confirmed: true });
-  });
-
-  it('changes nothing when the device rejects the save', async () => {
+  it('changes nothing when the device refuses the save', async () => {
     setTransport(async () => new Response('{"error":"ssid is required"}', { status: 400 }));
-
-    await expect(joinNetwork({ ssid: '', credentials: PW, rememberKey: true })).rejects.toThrow(
-      'ssid is required',
-    );
+    await expect(joinNetwork(HOME, false)).rejects.toThrow('ssid is required');
     expect(isUnlocked()).toBe(false);
     expect(handoff()).toBeNull();
   });
 
-  it('preserves access but marks a dropped connection as unconfirmed', async () => {
-    // The device flushed its response, then tore down the setup AP as it
-    // rebooted — so the fetch rejects with a transport error after the save
-    // already succeeded. The join must land on the handoff, not "Not saved".
+  it('marks a connection that dropped before the answer as unconfirmed', async () => {
+    // The device flushed its answer, then closed the setup network as it
+    // restarted, so the request fails after a save that may have succeeded.
     setTransport(async () => {
       throw new TypeError('NetworkError when attempting to fetch resource.');
     });
-
-    await expect(joinNetwork({ ssid: 'studio', credentials: PW, rememberKey: true })).resolves.toBe(
-      'unconfirmed',
-    );
-    expect(handoff()).toEqual({ kind: 'join', confirmed: false });
-    expect(handoffMessage(false)).toContain('before the save could be confirmed');
+    await expect(joinNetwork(HOME, false)).resolves.toBe('unconfirmed');
+    expect(handoff()).toEqual({ kind: 'join', ssid: 'studio', confirmed: false });
     expect(isUnlocked()).toBe(true);
-  });
-});
-
-describe('expectedHostname', () => {
-  it('uses the advertised hostname and falls back to the placeholder', () => {
-    expect(expectedHostname()).toBe('streamline-xxxx.local');
-    answering(deviceStatus());
-    expect(expectedHostname()).toBe('streamline-0000.local');
   });
 });

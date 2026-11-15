@@ -1,84 +1,68 @@
 /**
- * Saving Wi-Fi from the setup network: first-join commissioning with the
- * generated admin key, or a recovery change that keeps the stored key. Both
- * the onboarding overlay and Settings → Wi-Fi go through here, so the paths
- * cannot drift.
- *
- * A first join is not a reboot wait: the device leaves for the home network
- * and this browser stays on the vanished setup AP, so polls never recover
- * here and fallback warnings would always mislead. The story is the handoff.
+ * Saving Wi-Fi from the setup network: first contact, which sends the admin
+ * key the owner kept along with the network, or a recovery change that keeps
+ * the stored key. Either way the device leaves for another network, so the
+ * story continues as a handoff, never as a restart wait.
  */
 
 import { unlockSettings } from '../lib/adminKey';
 import { ApiError, setWifi } from '../lib/api';
-import type { WifiCredentials } from '../lib/wifi';
-import { report, status } from './device';
+import { type WifiEntry, type WifiProblem, wifiCredentials, wifiProblems } from '../lib/wifi';
+import { report } from './device';
 import { setupKey } from './setupKey';
-
-export interface JoinRequest {
-  ssid: string;
-  /** From `wifiCredentials`, which decides open, new, or kept password. */
-  credentials: WifiCredentials;
-  /** Bridge target set during first setup; omitted, the device keeps its own. */
-  target?: { host: string; port: string };
-  rememberKey: boolean;
-}
 
 /**
  * How a submitted join ended: the device acknowledged the save, or the
  * connection dropped first and nothing establishes whether it saved. A
- * rejection is not an outcome here; `joinNetwork` throws it.
+ * refusal is not an outcome here; `joinNetwork` throws it.
  */
 export type JoinOutcome = 'confirmed' | 'unconfirmed';
 
-/** Console address on the home network, best known before the switch. */
-export function expectedHostname(): string {
-  return status.value?.wifi?.hostname || 'streamline-xxxx.local';
-}
+export type JoinBlock = WifiProblem | { field: 'key'; text: string };
 
-/** The one handoff story every surface renders. */
-export function handoffMessage(confirmed: boolean): string {
-  return `${confirmed ? 'Settings saved.' : 'The connection ended before the save could be confirmed.'} Reconnect to your own Wi-Fi, then open http://${expectedHostname()}/ to verify. Use your saved admin key at the new address. If it cannot be reached, return to the setup network and retry.`;
+/**
+ * What keeps a join from going. First contact also waits for the owner to
+ * confirm the generated key is kept outside this console: the device adopts
+ * it in the same write, and this browser cannot carry it to the home address.
+ */
+export function joinBlocks(
+  entry: WifiEntry,
+  { storedPassword, keySaved }: { storedPassword: boolean; keySaved: boolean },
+): JoinBlock[] {
+  const blocks: JoinBlock[] = wifiProblems(entry, storedPassword);
+  if (setupKey.value !== '' && !keySaved) {
+    blocks.push({ field: 'key', text: 'Confirm the admin key is saved outside this console.' });
+  }
+  return blocks;
 }
 
 /**
- * Save Wi-Fi credentials and advance to the handoff. Commissioning is one
- * atomic write to `/api/settings/wifi` — the device reboots onto the home
- * network right after, so the initial stream target rides along here rather
- * than through a separate `/api/settings/target` call that could not complete.
- *
- * The device flushes its response before it restarts, so an HTTP error status
- * ([`ApiError`]) is a real rejection the caller must show inline. But the same
- * restart tears down the setup AP this browser is on, so the connection can
- * drop *after* a successful save — `fetch` then rejects with a transport error
- * that is not an `ApiError`. Keep that outcome unconfirmed and explain how
- * to verify the station address or return to setup and retry.
+ * Save the network and hand off. The device flushes its response before it
+ * restarts, so an HTTP error ([`ApiError`]) is a refusal the caller shows
+ * beside the form. The same restart tears down the setup network this browser
+ * is on, so the connection can drop after a successful save: that outcome
+ * stays unconfirmed.
  */
-export async function joinNetwork(req: JoinRequest): Promise<JoinOutcome> {
+export async function joinNetwork(entry: WifiEntry, storedPassword: boolean): Promise<JoinOutcome> {
+  const ssid = entry.ssid.trim();
   let outcome: JoinOutcome;
   try {
     await setWifi({
-      ssid: req.ssid.trim(),
-      ...req.credentials,
-      ...(req.target && {
-        target_host: req.target.host.trim(),
-        target_port: Number(req.target.port || status.value?.target?.target_port || 39000),
-      }),
+      ssid,
+      ...wifiCredentials(entry.open, entry.password, storedPassword),
       admin_key: setupKey.value,
     });
     outcome = 'confirmed';
-  } catch (err) {
-    // A status came back and it was a rejection: nothing was saved, surface it.
-    if (err instanceof ApiError) throw err;
-    // A lost response cannot establish whether the device saved the request.
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     outcome = 'unconfirmed';
   }
-  // Browser custody is limited to this origin; the owner carries the saved
-  // key to the station address. Recovery has no generated key to adopt.
-  if (setupKey.value) unlockSettings(setupKey.value, req.rememberKey);
+  // Should the join fail, the device returns to this setup network, and the
+  // owner fixes the network without typing the key again.
+  if (setupKey.value) unlockSettings(setupKey.value, false);
   report({
     type: 'handoff',
-    handoff: { kind: 'join', confirmed: outcome === 'confirmed' },
+    handoff: { kind: 'join', ssid, confirmed: outcome === 'confirmed' },
     at: Date.now(),
   });
   return outcome;

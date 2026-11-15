@@ -18,7 +18,7 @@ describe('deviceNotice', () => {
     expect(deviceNotice({ phase: 'opening' })).toBeNull();
     const handoff: Connection = {
       phase: 'handoff',
-      handoff: { kind: 'join', confirmed: true },
+      handoff: { kind: 'join', ssid: 'home', confirmed: true },
       since: 0,
       seen: home,
     };

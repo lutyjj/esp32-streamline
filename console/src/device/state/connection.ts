@@ -24,8 +24,8 @@ export interface Sighting {
 
 /** The device left this browser's network on purpose, so nothing here can answer. */
 export type Handoff =
-  /** Wi-Fi saved from the setup network; unconfirmed when the connection dropped first. */
-  | { kind: 'join'; confirmed: boolean }
+  /** Wi-Fi saved; unconfirmed when the connection dropped before the device answered. */
+  | { kind: 'join'; ssid: string; confirmed: boolean }
   /** Factory reset; the setup network the response named, or null when it was lost. */
   | { kind: 'reset'; setupNetwork: SetupNetworkResponse | null };
 

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import preact from '@preact/preset-vite';
+import tailwindcss from '@tailwindcss/vite';
 import { msw } from 'msw/vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { defineConfig, type Plugin } from 'vitest/config';
@@ -8,26 +9,6 @@ import { defineConfig, type Plugin } from 'vitest/config';
 const buildTarget = process.env.STREAMLINE_BUILD || 'device';
 const webflasherDir =
   process.env.STREAMLINE_WEBFLASHER_DIR || resolve(import.meta.dirname, '../webflasher');
-
-// The font and its license travel together in every self-contained console.
-const fontLicense = readFileSync(
-  resolve(import.meta.dirname, 'node_modules/@fontsource-variable/nunito-sans/LICENSE'),
-  'utf8',
-);
-const embeddedFontLicense: Plugin = {
-  name: 'embedded-font-license',
-  transformIndexHtml: {
-    order: 'post',
-    handler: () => [
-      {
-        tag: 'script',
-        attrs: { type: 'text/plain', id: 'font-license' },
-        children: fontLicense,
-        injectTo: 'body',
-      },
-    ],
-  },
-};
 
 // Vite never inlines `<link rel="icon">`, so each self-contained page carries the
 // icon as a data URL.
@@ -64,8 +45,11 @@ export default defineConfig({
   // MSW serves its worker script on the dev server, whose public dir is the
   // read-only WebFlasher mount. It emits the script only beside a bundle that
   // imports `virtual:msw`, which no console entry does.
-  plugins: [preact(), viteSingleFile(), msw(), embeddedFontLicense, inlineIcon],
+  plugins: [preact(), tailwindcss(), viteSingleFile(), msw(), inlineIcon],
   publicDir: webflasherDir,
+  // preact() resolves React to preact/compat; linen's Motion resolves to its
+  // stand-in, so only the animations its stylesheet runs remain.
+  resolve: { alias: [{ find: /^motion(\/react)?$/, replacement: 'linen/still' }] },
   // Replaced statically so production builds drop the mock branch entirely.
   define: {
     'import.meta.env.VITE_MOCK': JSON.stringify(process.env.VITE_MOCK ?? ''),

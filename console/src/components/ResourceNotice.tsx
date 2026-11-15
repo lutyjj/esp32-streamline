@@ -1,4 +1,4 @@
-import type { Resource } from '../lib/resource';
+import type { Resource } from '../shared/resource';
 import { Button } from './Button';
 import { Notice } from './Notice';
 

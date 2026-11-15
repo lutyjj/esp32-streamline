@@ -14,7 +14,7 @@ export default defineConfig({
         },
         mutator: {
           name: 'deviceFetch',
-          path: './src/lib/http.ts',
+          path: './src/device/lib/http.ts',
         },
       },
       target: './src/generated/api.ts',

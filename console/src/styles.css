@@ -1,13 +1,3 @@
 @import "./tokens.css";
 @import "./primitives.css";
 @import "./shell.css";
-
-/* One weight-variable Latin subset stays inside each offline HTML bundle. */
-@font-face {
-  font-family: "Nunito Sans Variable";
-  font-style: normal;
-  font-weight: 200 900;
-  font-display: swap;
-  src: url("@fontsource-variable/nunito-sans/files/nunito-sans-latin-wght-normal.woff2")
-    format("woff2");
-}

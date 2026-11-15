@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { playbackUrl } from '../src/bridge/playback';
-import { consoleAddress } from '../src/lib/consoleAddress';
+import { consoleAddress } from '../src/device/lib/consoleAddress';
 
 it('uses the advertised player address rather than authenticated ingress', () => {
   expect(

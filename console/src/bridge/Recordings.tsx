@@ -65,6 +65,7 @@ function RecordingWorkspace({ requestedSource }: { requestedSource: string }) {
   const [title, setTitle] = useState('');
   const [starting, setStarting] = useState(false);
   const [composing, setComposing] = useState(Boolean(requestedSource));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: setSource is recreated each render; the effect follows the requested source only.
   useEffect(() => {
     if (!requestedSource) return;
     setSource(requestedSource);

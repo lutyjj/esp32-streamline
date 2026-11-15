@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { describe, expect, it } from 'vitest';
 import { MeterRow } from '../src/components/Meter';
-import { meterPct } from '../src/lib/format';
+import { meterPct } from '../src/shared/format';
 
 describe('MeterRow', () => {
   it('exposes the level as an accessible meter value', () => {

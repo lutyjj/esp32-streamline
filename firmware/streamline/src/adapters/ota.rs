@@ -33,8 +33,9 @@ use crate::{
 /// needed.
 const REPO: &str = "lutyjj/esp32-streamline";
 /// TLS plus the HTTP client and SHA-256 hashing need a roomier stack than the
-/// default worker.
-const INSTALL_STACK_BYTES: usize = 10_240;
+/// default worker. Sized to keep about 3 KB free through an HTTPS download and
+/// signature check; the worker logs its low-water mark.
+const INSTALL_STACK_BYTES: usize = 12_288;
 const CHECK_STACK_BYTES: usize = 8_192;
 /// Guard against a malformed or hostile checksum listing exhausting the heap.
 const MAX_SUMS_BYTES: usize = 8_192;

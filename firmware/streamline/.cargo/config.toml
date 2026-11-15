@@ -11,8 +11,9 @@ build-std = ["std", "panic_abort"]
 # miniz_oxide, and rustc-demangle (~82 KB of flash) to symbolize Rust panics
 # on-device. Panic messages still print, and the ESP-IDF panic handler still
 # dumps the raw backtrace addresses, which the .elf shipped beside every
-# release image resolves off-device.
-build-std-features = []
+# release image resolves off-device. "optimize_for_size" selects std's smaller
+# algorithms, such as its sorts, over its faster ones.
+build-std-features = ["optimize_for_size"]
 
 [env]
 MCU = "esp32"

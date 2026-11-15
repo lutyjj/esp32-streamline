@@ -39,7 +39,9 @@ anyhow = "1"
 # utoipa 6 omits empty response descriptions, which the OpenAPI 3.1 document it
 # emits requires. Stay on 5.x until every response declares a description.
 utoipa = { version = "5.5.0", optional = true }
-unicode-normalization = "0.1.26"
+# ICU4X ships NFC data apart from the compatibility forms, which keeps the DNS-SD
+# name normalizer in identity.rs about 67 KB smaller than unicode-normalization.
+icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
 
 [features]
 api-spec = ["dep:utoipa"]

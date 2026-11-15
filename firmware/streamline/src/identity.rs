@@ -1,6 +1,6 @@
 //! Device labels for setup and local discovery.
 
-use unicode_normalization::UnicodeNormalization;
+use icu_normalizer::ComposingNormalizerBorrowed;
 
 /// Suffix used in the setup access point SSID.
 pub fn setup_suffix(mac: [u8; 6]) -> String {
@@ -26,8 +26,9 @@ pub fn local_hostname(hostname: &str) -> String {
 /// Strip control characters, keep a whole-character prefix, and use the
 /// product name when no visible name remains.
 pub fn mdns_instance_name(display_name: &str) -> String {
+    let nfc = ComposingNormalizerBorrowed::new_nfc();
     let mut instance = String::new();
-    for character in display_name.chars().filter(|c| !c.is_control()).nfc() {
+    for character in nfc.normalize_iter(display_name.chars().filter(|c| !c.is_control())) {
         if instance.len() + character.len_utf8() > 63 {
             break;
         }
@@ -76,7 +77,7 @@ mod tests {
 
     #[test]
     fn discovery_names_normalize_unicode_and_remove_control_characters() {
-        assert_eq!(mdns_instance_name("  Cafe\u{301}\0\n  "), "Café");
+        assert_eq!(mdns_instance_name("  Cafe\u{301}\0\n  "), "Caf\u{e9}");
         for name in ["", "   ", "\0\n\u{85}"] {
             assert_eq!(mdns_instance_name(name), "StreamLine");
         }

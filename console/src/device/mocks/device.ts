@@ -667,11 +667,19 @@ export class FakeDevice {
     return { ok: true };
   }
 
-  /** Play the install out over the next status polls, ending on the new image. */
+  /**
+   * Play the install out over the next status polls, ending on the new image.
+   * Like the firmware, an empty request installs the latest release, and a
+   * custom image needs its URL and digest together.
+   */
   private startUpdate(body: FormBody): JsonBodyType | Response {
-    if (!body.url || !body.sha256) return reject(400, 'url and sha256 are required');
+    if (Boolean(body.url) !== Boolean(body.sha256)) {
+      return reject(400, 'url and sha256 must be provided together');
+    }
     const ota = this.status.ota;
     const from = this.status.firmware_version;
+    const release = ota.latest_version && ota.latest_version !== from ? ota.latest_version : '';
+    const target = !body.url && release ? release : MOCK_UPDATED_VERSION;
     ota.busy = true;
     ota.bytes_total = 1500000;
     ota.bytes_written = 0;
@@ -690,7 +698,7 @@ export class FakeDevice {
         ota.message = 'Restarting into the new image';
       },
       () => {
-        this.status.firmware_version = MOCK_UPDATED_VERSION;
+        this.status.firmware_version = target;
         this.boot();
         ota.busy = false;
         ota.phase = 'idle';

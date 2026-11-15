@@ -13,7 +13,9 @@ import icon from '../../icon.svg';
 import { CredentialDialog } from '../../shared/CredentialDialog';
 import { hashNavigation, replacePath, usePathname } from '../../shared/navigation';
 import { verifyKey } from '../state/access';
+import { UPDATE_OPERATION } from '../state/connection';
 import { connection, restartSettled, status } from '../state/device';
+import { installSource, updateNews } from '../state/ota';
 import { AudioHome } from './audio/AudioHome';
 import { BridgeScreen } from './bridge/BridgeScreen';
 import { DeviceScreen } from './device/DeviceScreen';
@@ -64,7 +66,13 @@ function useRestartToasts() {
         const settled = restartSettled.value;
         if (!settled) return;
         restartSettled.value = null;
-        untracked(() => toast.show({ text: `Back online after ${settled.operation}.` }));
+        untracked(() => {
+          const news =
+            settled.operation === UPDATE_OPERATION
+              ? updateNews(settled, installSource.value)
+              : { text: `Back online after ${settled.operation}.`, failure: false };
+          toast.show({ text: news.text, sticky: news.failure });
+        });
       }),
     [toast],
   );

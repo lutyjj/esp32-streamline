@@ -10,6 +10,12 @@ import type { SetupNetworkResponse, StatusResponse } from '../lib/api';
 /** A restart still unanswered after this reads as overdue on every surface. */
 export const OVERDUE_MS = 60_000;
 
+/** What a restart into new firmware is called on every surface. */
+export const UPDATE_OPERATION = 'the firmware update';
+
+/** Update phases in which the device is writing or about to boot a new image. */
+const INSTALLING: readonly string[] = ['downloading', 'verifying', 'installed'];
+
 /**
  * Uptime counts whole seconds and a read takes time to answer, so a restart
  * shows only once the reported uptime falls this far below the expected one.
@@ -78,11 +84,28 @@ export function nextConnection(connection: Connection, event: ConnectionEvent): 
         connection.phase === 'overdue' ||
         connection.phase === 'handoff';
       if (!awaitsRestart || restartedSince(seen, event.status, event.at)) {
+        // A device that installed an update restarts into it next.
+        if (event.status.ota.phase === 'installed' && !awaitsRestart) {
+          return { phase: 'waiting', operation: UPDATE_OPERATION, since: event.at, seen: sighting };
+        }
+        return { phase: 'live', seen: sighting };
+      }
+      // An install still under way: the silence was not its restart.
+      if (
+        connection.phase !== 'handoff' &&
+        connection.operation === UPDATE_OPERATION &&
+        INSTALLING.includes(event.status.ota.phase) &&
+        event.status.ota.phase !== 'installed'
+      ) {
         return { phase: 'live', seen: sighting };
       }
       return overdueBy({ ...connection, seen: sighting }, event.at);
     }
     case 'unanswered':
+      // A device that stops answering mid-install may be restarting into it.
+      if (connection.phase === 'live' && INSTALLING.includes(connection.seen.status.ota.phase)) {
+        return { phase: 'waiting', operation: UPDATE_OPERATION, since: event.at, seen };
+      }
       if (connection.phase === 'opening' || connection.phase === 'live') {
         return { phase: 'lost', since: event.at, seen };
       }
@@ -97,8 +120,9 @@ function overdueBy(connection: Connection, at: number): Connection {
   return connection;
 }
 
-/** The restart a transition saw finish, or null. */
+/** The restart a transition saw finish, or null: a wait that ends without a new boot settles none. */
 export function settledRestart(previous: Connection, next: Connection): string | null {
   const waited = previous.phase === 'waiting' || previous.phase === 'overdue';
-  return waited && next.phase === 'live' ? previous.operation : null;
+  if (!waited || next.phase !== 'live') return null;
+  return restartedSince(previous.seen, next.seen.status, next.seen.at) ? previous.operation : null;
 }

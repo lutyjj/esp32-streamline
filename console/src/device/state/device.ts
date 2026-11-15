@@ -62,8 +62,15 @@ export const liveStatus = computed(() => {
   const now = connection.value;
   return now.phase === 'live' ? now.seen.status : null;
 });
+/** A restart the console saw finish, with the device's answers from either side of it. */
+export interface SettledRestart {
+  operation: string;
+  before: StatusResponse | null;
+  after: StatusResponse;
+}
+
 /** The latest restart the console saw finish; each one is a new object. */
-export const restartSettled = signal<{ operation: string } | null>(null);
+export const restartSettled = signal<SettledRestart | null>(null);
 /** Last /api/settings read; forms copy it into local edit state. */
 export const configResource = resource<SettingsResponse>('device settings', getSettings);
 export const config = configResource.data;
@@ -146,8 +153,12 @@ export function report(event: ConnectionEvent): void {
   const next = nextConnection(previous, event);
   connection.value = next;
   const operation = settledRestart(previous, next);
-  if (operation) {
-    restartSettled.value = { operation };
+  if (operation && next.phase === 'live') {
+    restartSettled.value = {
+      operation,
+      before: sightingOf(previous)?.status ?? null,
+      after: next.seen.status,
+    };
     loadDeviceSettings().catch(() => {});
   }
 }

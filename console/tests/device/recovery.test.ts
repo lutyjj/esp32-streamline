@@ -89,7 +89,10 @@ describe('a restart from recovery', () => {
 
     expect(connection.value.phase).toBe('live');
     expect(recovery.value?.kind).toBe('retrying');
-    expect(restartSettled.value).toEqual({ operation: 'the restart' });
+    expect(restartSettled.value).toMatchObject({
+      operation: 'the restart',
+      after: { mode: 'recovery' },
+    });
     // A finished restart re-reads the settings it applied.
     await vi.waitFor(() => expect(reads).toContain('/api/settings'));
   });

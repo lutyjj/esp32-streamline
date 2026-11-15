@@ -8,6 +8,7 @@ import {
   OVERDUE_MS,
   restartedSince,
   settledRestart,
+  UPDATE_OPERATION,
 } from '../../src/device/state/connection';
 
 /** A device that has been up for `uptime` seconds. */
@@ -84,6 +85,33 @@ describe('a restart', () => {
   it('settles nothing when live contact simply continues', () => {
     const live = run([answered(up(100), 0)]);
     expect(settledRestart(live, run([answered(up(101), 1500)], live))).toBeNull();
+  });
+});
+
+describe('an update', () => {
+  const installing = (uptime: number, phase: string) => up(uptime, { ota: { phase } });
+
+  it('waits for its restart once the device says it installed', () => {
+    const waiting = run([
+      answered(installing(100, 'downloading'), 0),
+      answered(installing(101, 'installed'), 1500),
+    ]);
+    expect(waiting).toMatchObject({ phase: 'waiting', operation: UPDATE_OPERATION, since: 1500 });
+    const booted = run([unanswered(3000), answered(installing(3, 'idle'), 9000)], waiting);
+    expect(booted.phase).toBe('live');
+    expect(settledRestart(waiting, booted)).toBe(UPDATE_OPERATION);
+  });
+
+  it('reads a failed read mid-install as its restart, not as lost contact', () => {
+    const waiting = run([answered(installing(100, 'downloading'), 0), unanswered(1500)]);
+    expect(waiting).toMatchObject({ phase: 'waiting', operation: UPDATE_OPERATION });
+  });
+
+  it('goes back to live when the same boot answers, still downloading, settling nothing', () => {
+    const waiting = run([answered(installing(100, 'downloading'), 0), unanswered(1500)]);
+    const resumed = run([answered(installing(103, 'downloading'), 3000)], waiting);
+    expect(resumed.phase).toBe('live');
+    expect(settledRestart(waiting, resumed)).toBeNull();
   });
 });
 

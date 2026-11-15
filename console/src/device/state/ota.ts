@@ -3,8 +3,11 @@
  * runs, custom-image checks, and how an install ended across its restart.
  */
 
+import { signal } from '@preact/signals';
+import { otaUpdate, type StatusResponse } from '../lib/api';
 import { restartingWrite } from '../lib/contract';
-import { contract, status } from './device';
+import { withAccess } from './access';
+import { contract, type SettledRestart, status } from './device';
 
 export const PHASE_LABELS: Record<string, string> = {
   idle: 'Idle',
@@ -16,12 +19,6 @@ export const PHASE_LABELS: Record<string, string> = {
   installed: 'Installed',
   failed: 'Failed',
 };
-
-/**
- * Phases where a loss of contact interrupts an install. Recovery observation
- * checks which firmware returns without presuming that installation succeeded.
- */
-export const OTA_INSTALLING_PHASES = ['downloading', 'verifying', 'installed'];
 
 export const UPDATE_BUSY_REASON = 'Available when the firmware update or check finishes.';
 
@@ -95,4 +92,51 @@ export function updateRecovery(from: string, expected: string, now: string): Upd
   if (now !== '' && now !== from) return 'applied';
   if (expected !== '' && expected !== from) return 'rolled-back';
   return 'inconclusive';
+}
+
+/**
+ * What the running install comes from, as this console started it. An
+ * install another client started counts as a release install.
+ */
+export const installSource = signal<OtaSource>('release');
+
+/**
+ * Start an install: the latest release, or a custom image pinned by its
+ * digest. Resolves false when the owner declines to unlock.
+ */
+export async function install(custom?: { url: string; sha256: string }): Promise<boolean> {
+  const started = await withAccess(() => otaUpdate(custom ?? {}));
+  if (started === null) return false;
+  installSource.value = custom ? 'custom' : 'release';
+  return true;
+}
+
+/** How far an install has come: its phase in words, and the share written when known. */
+export function installProgress(s: StatusResponse): { words: string; fraction: number | null } {
+  const { phase, bytes_written: written, bytes_total: total } = s.ota;
+  return {
+    words: prettyPhase(phase),
+    fraction: phase === 'downloading' && total > 0 ? Math.min(1, written / total) : null,
+  };
+}
+
+/** What an update's restart turned out to be, from the versions on either side of it. */
+export function updateNews(
+  settled: SettledRestart,
+  source: OtaSource,
+): { text: string; failure: boolean } {
+  const from = settled.before?.firmware_version ?? '';
+  const now = settled.after.firmware_version;
+  const expected = expectedVersion(source, settled.before?.ota.latest_version ?? '');
+  switch (updateRecovery(from, expected, now)) {
+    case 'applied':
+      return { text: `Updated to ${now}.`, failure: false };
+    case 'rolled-back':
+      return {
+        text: `The new firmware did not start, so the device went back to ${from}.`,
+        failure: true,
+      };
+    case 'inconclusive':
+      return { text: `Back online after the update, running ${now}.`, failure: false };
+  }
 }

@@ -53,8 +53,9 @@ other reads it is not open.
 Every line the firmware and ESP-IDF write once capture starts: Wi-Fi
 association and loss, the codec bring-up, TLS handshake failures, OTA progress
 and its verdict, and each warning any component raises, apart from the HTTP
-warnings below. Serial output is unchanged, so `make firmware-monitor` still
-shows the same lines.
+warnings and PCM connection errors below. The capture does not change serial
+output: `make firmware-monitor` shows the same lines, and the exceptions below
+are off at their source, so serial lacks them too.
 
 Wi-Fi disconnects include the SDK reason code and signal level. Connection
 failures distinguish association from address acquisition and include the
@@ -75,6 +76,12 @@ While the setup network runs, a client that joins it sends a steady stream of
 DNS lookups and captive-portal probes. The log keeps no line per lookup or
 redirect, so that traffic cannot push the setup lines out either; each client
 that joins still adds its join lines.
+
+A bridge that stays down or refuses the device adds a line only when the cause
+of the failures changes, however long it lasts. The
+[PCM sender](tcp-transport.md#runtime-boundaries) logs its first failure, each
+change of cause, and the recovery, and ESP-IDF's TLS components log nothing for
+the sender's connections.
 
 Allocation failures are recorded with the size requested, the caller, the free
 heap, and the largest free block, before any abort that follows them. On a

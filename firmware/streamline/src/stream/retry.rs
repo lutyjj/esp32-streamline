@@ -5,9 +5,7 @@ use backon::{BackoffBuilder, ExponentialBackoff, ExponentialBuilder};
 use std::time::Duration;
 
 /// The first retry waits about the queue's 256 ms retention, so one failure
-/// costs little audio. The cap matches the bridge's Sendspin reconnect cap and
-/// bounds ESP-IDF's own TLS error lines, two per failed handshake, to four a
-/// minute.
+/// costs little audio. The cap matches the bridge's Sendspin reconnect cap.
 const MIN_DELAY: Duration = Duration::from_millis(250);
 const MAX_DELAY: Duration = Duration::from_secs(30);
 const SCHEDULE: ExponentialBuilder = ExponentialBuilder::new()

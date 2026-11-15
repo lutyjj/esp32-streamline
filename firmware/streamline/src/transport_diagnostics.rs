@@ -26,20 +26,27 @@ pub mod tls_codes {
     /// generated bindings because only the ssl-layer headers are bound.
     pub const MBEDTLS_ERR_NET_RECV_FAILED: i32 = -0x004C;
     pub const MBEDTLS_ERR_NET_CONN_RESET: i32 = -0x0050;
+    /// Socket errors of a TCP connect the peer refused or reset.
+    pub const ECONNRESET: i32 = 104;
+    pub const ECONNREFUSED: i32 = 111;
 }
 
 /// Reduce a captured esp-tls error record to one [`TlsFailure`].
 ///
 /// `last_error` is the esp-tls layer's own error code; `captured_stack` is
-/// the mbedTLS return value as esp-tls stores it — negated — so it is flipped
-/// back before comparing against the `MBEDTLS_ERR_*` codes.
-pub fn classify_tls_failure(last_error: i32, captured_stack: i32) -> TlsFailure {
+/// the mbedTLS return value as esp-tls stores it (negated), so it is flipped
+/// back before comparing against the `MBEDTLS_ERR_*` codes. `socket_error` is
+/// the errno esp-tls recorded, or zero.
+pub fn classify_tls_failure(last_error: i32, captured_stack: i32, socket_error: i32) -> TlsFailure {
     use tls_codes::*;
     let detail = -captured_stack;
     match last_error {
-        ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME
-        | ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET
-        | ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST => TlsFailure::Unreachable,
+        // Only a peer that refuses the connect shows that nothing listens.
+        ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST
+            if matches!(socket_error, ECONNREFUSED | ECONNRESET) =>
+        {
+            TlsFailure::Unreachable
+        }
         ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT | ESP_ERR_ESP_TLS_SERVER_HANDSHAKE_TIMEOUT => {
             TlsFailure::Timeout
         }
@@ -57,6 +64,7 @@ pub fn classify_tls_failure(last_error: i32, captured_stack: i32) -> TlsFailure 
             _ => TlsFailure::Other {
                 code,
                 detail: captured_stack,
+                socket_error,
             },
         },
     }
@@ -65,7 +73,7 @@ pub fn classify_tls_failure(last_error: i32, captured_stack: i32) -> TlsFailure 
 /// Where a failed TLS connection attempt stopped, as observed by the client.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TlsFailure {
-    /// TCP connect failed: nothing accepts connections on the target port.
+    /// The peer refused the TCP connect: nothing listens on the target port.
     Unreachable,
     /// The connect or handshake ran out of time.
     Timeout,
@@ -74,8 +82,13 @@ pub enum TlsFailure {
     ClosedBeforeHandshake,
     /// The peer answered TLS and refused the offered credential.
     CredentialRejected,
-    /// An unclassified failure, carrying the raw esp-tls and detail codes.
-    Other { code: i32, detail: i32 },
+    /// An unclassified failure, carrying the raw esp-tls, detail and socket
+    /// error codes.
+    Other {
+        code: i32,
+        detail: i32,
+        socket_error: i32,
+    },
 }
 
 impl TlsFailure {
@@ -100,9 +113,22 @@ impl TlsFailure {
                  the device's pending credential in the bridge console, then \
                  retry"
             ),
-            Self::Other { code, detail } => format!(
-                "TLS handshake with {target} failed (esp-tls error {code}, \
+            // Zero means esp-tls recorded no socket error, not that there was none.
+            Self::Other {
+                code,
+                detail,
+                socket_error: 0,
+            } => format!(
+                "TLS connection to {target} failed (esp-tls error {code}, \
                  detail {detail})"
+            ),
+            Self::Other {
+                code,
+                detail,
+                socket_error,
+            } => format!(
+                "TLS connection to {target} failed (esp-tls error {code}, \
+                 detail {detail}, socket error {socket_error})"
             ),
         }
     }
@@ -136,10 +162,24 @@ mod tests {
         let message = TlsFailure::Other {
             code: 0x8004,
             detail: -0x7780,
+            socket_error: 118,
         }
         .describe(&target());
         assert!(message.contains("32772"), "{message}");
         assert!(message.contains("-30592"), "{message}");
+        assert!(message.contains("socket error 118"), "{message}");
+    }
+
+    #[test]
+    fn an_unrecorded_socket_error_is_left_out() {
+        let message = TlsFailure::Other {
+            code: 0x8004,
+            detail: 0,
+            socket_error: 0,
+        }
+        .describe(&target());
+        assert!(message.contains("32772"), "{message}");
+        assert!(!message.contains("socket error"), "{message}");
     }
 
     #[test]
@@ -147,29 +187,33 @@ mod tests {
         use tls_codes::*;
         let cases = [
             (
-                ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME,
-                TlsFailure::Unreachable,
-            ),
-            (
-                ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET,
+                ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST,
+                ECONNREFUSED,
                 TlsFailure::Unreachable,
             ),
             (
                 ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST,
+                ECONNRESET,
                 TlsFailure::Unreachable,
             ),
-            (ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT, TlsFailure::Timeout),
+            (ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT, 0, TlsFailure::Timeout),
             (
                 ESP_ERR_ESP_TLS_SERVER_HANDSHAKE_TIMEOUT,
+                0,
                 TlsFailure::Timeout,
             ),
             (
                 ESP_ERR_ESP_TLS_TCP_CLOSED_FIN,
+                0,
                 TlsFailure::ClosedBeforeHandshake,
             ),
         ];
-        for (code, expected) in cases {
-            assert_eq!(classify_tls_failure(code, 0), expected, "code {code}");
+        for (code, socket_error, expected) in cases {
+            assert_eq!(
+                classify_tls_failure(code, 0, socket_error),
+                expected,
+                "code {code}"
+            );
         }
     }
 
@@ -208,7 +252,7 @@ mod tests {
             // esp-tls stores the mbedTLS return negated; the classifier flips
             // it back.
             assert_eq!(
-                classify_tls_failure(0, -detail),
+                classify_tls_failure(0, -detail, 0),
                 expected,
                 "detail {detail}"
             );
@@ -216,18 +260,46 @@ mod tests {
     }
 
     #[test]
+    fn a_connect_the_bridge_did_not_refuse_does_not_blame_it() {
+        use tls_codes::*;
+        // No route, a local resource limit, or an error esp-tls did not record.
+        let cases = [
+            (ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST, 118),
+            (ESP_ERR_ESP_TLS_FAILED_CONNECT_TO_HOST, 0),
+            (ESP_ERR_ESP_TLS_CANNOT_CREATE_SOCKET, 0),
+            (ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME, 0),
+        ];
+        for (code, socket_error) in cases {
+            assert_eq!(
+                classify_tls_failure(code, 0, socket_error),
+                TlsFailure::Other {
+                    code,
+                    detail: 0,
+                    socket_error,
+                },
+                "code {code}, socket error {socket_error}"
+            );
+        }
+    }
+
+    #[test]
     fn unmapped_codes_fall_back_to_other_with_the_raw_capture() {
         assert_eq!(
-            classify_tls_failure(0x8005, 999),
+            classify_tls_failure(0x8005, 999, 0),
             TlsFailure::Other {
                 code: 0x8005,
                 detail: 999,
+                socket_error: 0,
             }
         );
         // A null or unreadable error record classifies as Other, not a panic.
         assert_eq!(
-            classify_tls_failure(0, 0),
-            TlsFailure::Other { code: 0, detail: 0 }
+            classify_tls_failure(0, 0, 0),
+            TlsFailure::Other {
+                code: 0,
+                detail: 0,
+                socket_error: 0,
+            }
         );
     }
 }

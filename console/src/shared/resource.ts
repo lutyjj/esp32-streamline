@@ -55,3 +55,20 @@ export function resource<T>(name: string, fetch: () => Promise<T>): Resource<T> 
 
   return { name, data, state, error, load };
 }
+
+/**
+ * Load until the resource is ready, waiting `pause` between at most
+ * `attempts` reads. For a source that can drop a read, such as a device that
+ * closes a connection while it serves others.
+ */
+export async function settle<T>(
+  resource: Resource<T>,
+  attempts: number,
+  pause: () => Promise<void>,
+): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    await resource.load();
+    if (resource.state.value !== 'error' || attempt >= attempts) return;
+    await pause();
+  }
+}

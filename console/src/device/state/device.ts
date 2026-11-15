@@ -4,7 +4,7 @@
  */
 
 import { computed, signal } from '@preact/signals';
-import { resource } from '../../shared/resource';
+import { resource, settle } from '../../shared/resource';
 import {
   type AudioProfileCatalog,
   getAudioProfiles,
@@ -212,9 +212,26 @@ export async function loadContract(): Promise<void> {
  * Each resource fails independently and retries from its own notice — a
  * failed settings read never hides the status the poll can still deliver.
  */
+/** Reads a dropped startup read gets before its resource reports the failure. */
+export const STARTUP_ATTEMPTS = 4;
+const STARTUP_PAUSE_MS = 1000;
+
+/**
+ * The first reads: status, then settings, profiles and the contract one at a
+ * time. The device keeps few connections and closes one when a browser opens
+ * more, so startup never asks for them all at once, and a dropped read is
+ * read again.
+ */
+export async function openConsole(
+  pause: () => Promise<void> = () => new Promise((done) => setTimeout(done, STARTUP_PAUSE_MS)),
+): Promise<void> {
+  await refresh();
+  for (const startup of [configResource, audioProfilesResource, contractResource]) {
+    await settle<unknown>(startup, STARTUP_ATTEMPTS, pause);
+  }
+}
+
 export function startPolling(): void {
-  void loadDeviceSettings();
-  void loadContract();
-  void refresh();
+  void openConsole();
   setInterval(refresh, POLL_MS);
 }

@@ -102,6 +102,35 @@ CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
 CONFIG_LWIP_IPV6=n
 # The esp_err_t name table trades 2 KB of flash for prettier error strings.
 CONFIG_ESP_ERR_TO_NAME_LOOKUP=n
+# A failed assertion still aborts, and the release ELF resolves its address in
+# the backtrace or core dump, so the image keeps no expression or file text.
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
+# The device is only a TLS client: of the bridge over TLS 1.3 PSK with
+# AES-128-GCM and an ECDHE share, and of HTTPS hosts whose certificates chain to
+# the bundle above on RSA, P-256 or P-384 keys. Trust anchors are DER, and the
+# image validates no CRL or CSR. Session tickets stay: without them mbedTLS
+# skips a TLS 1.3 NewSessionTicket mid-read and overflows ESP-IDF's dynamic RX
+# buffer with the record that follows.
+CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
+CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
+CONFIG_MBEDTLS_KEY_EXCHANGE_RSA=n
+CONFIG_MBEDTLS_CCM_C=n
+CONFIG_MBEDTLS_ECP_DP_SECP521R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP256K1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
+CONFIG_MBEDTLS_PEM_PARSE_C=n
+CONFIG_MBEDTLS_PEM_WRITE_C=n
+CONFIG_MBEDTLS_X509_CRL_PARSE_C=n
+CONFIG_MBEDTLS_X509_CSR_PARSE_C=n
+CONFIG_MBEDTLS_AES_FEWER_TABLES=y
+# The setup network is WPA2 or open, never SAE or OWE. SAE-PK networks also
+# admit plain SAE, and GMAC serves only WPA3 192-bit, an Enterprise mode.
+CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT=n
+CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_SOFTAP=n
+CONFIG_ESP_WIFI_ENABLE_SAE_PK=n
+CONFIG_ESP_WIFI_GMAC_SUPPORT=n
 
 # A panic writes an ELF core dump to the `coredump` partition. The admin-gated
 # API verifies its checksum before reporting or serving it.

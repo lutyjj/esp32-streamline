@@ -76,10 +76,10 @@ qemu-image:
 
 OTA_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-ota.bin
 FAILURE_IMAGE ?= $(REPO_ROOT)/dist/firmware/streamline-qemu-fail-management-ota.bin
-# Each test boots its own QEMU, which keeps about two host CPUs busy. Give each
-# worker that much: an oversubscribed host slows emulated flash writes past the
-# client's timeout.
-SMOKE_JOBS ?=
+# Parallel pytest-xdist workers. `auto` sizes them to the CPUs the container
+# may use, by the per-worker budget in smoke/conftest.py; empty runs one test
+# at a time.
+SMOKE_JOBS ?= auto
 API_CONTRACT := $(REPO_ROOT)/docs/openapi.json
 CONTRACT_MOUNT := -v "$(API_CONTRACT):/contract/openapi.json:ro" -e STREAMLINE_API_CONTRACT=/contract/openapi.json
 smoke-qemu: qemu-image

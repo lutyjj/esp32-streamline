@@ -49,6 +49,12 @@ ADMIN_KEY = "a" * 48
 WIFI_PASSWORD = "qemu-test-password"
 # QEMU connects to its monitor while it starts, before the guest runs.
 MONITOR_TIMEOUT = 30.0
+# Each emulated core is a QEMU thread, so one worker's emulator peaks at two
+# busy host CPUs and averages under one; its helper processes add a brief
+# burst at each boot. `-n auto` budgets the emulator's peak, which keeps an
+# emulated core's waits for a host CPU well short of the interrupt watchdog's
+# 300 ms.
+HOST_CPUS_PER_WORKER = 2
 # A forwarding rule's line in `info usernet`, read as QEMU's own tests do.
 _HOST_FORWARD = re.compile(r"TCP.HOST_FORWARD.*127\.0\.0\.1\s+(\d+)\s+10\.")
 
@@ -61,6 +67,11 @@ def _hardware_url() -> str | None:
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "emulated: requires the QEMU-emulated device")
+
+
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    """Size `-n auto` to the CPUs this process may use, `HOST_CPUS_PER_WORKER` each."""
+    return max(1, (os.process_cpu_count() or 1) // HOST_CPUS_PER_WORKER)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

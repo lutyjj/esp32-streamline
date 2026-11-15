@@ -200,9 +200,6 @@ jobs:
         with:
           name: qemu-firmware-images-${{ github.sha }}
           path: dist/firmware
-      # One test at a time: each emulator keeps about two vCPUs busy, so a
-      # second one overloads this four-vCPU runner and slows emulated flash
-      # writes.
       - run: make tools-smoke-qemu
       - name: Preserve failed QEMU state
         if: failure()

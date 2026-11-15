@@ -141,6 +141,18 @@ fn method(endpoint: Endpoint) -> Method {
     }
 }
 
+/// One route's handler. Boxed, every route registers through the same
+/// non-generic code, so the gate below and esp-idf-svc's handler wrappers are
+/// compiled once rather than once per route.
+type RouteHandler = Box<
+    dyn for<'request> Fn(
+            embedded_svc::http::server::Request<&mut EspHttpConnection<'request>>,
+            &Arc<ApiState>,
+        ) -> Result<()>
+        + Send
+        + 'static,
+>;
+
 /// Thin ESP-IDF binding that refuses to finish unless every declared API
 /// operation has exactly one registered handler, and enforces each
 /// declaration's authentication and restart policy before the handler runs —
@@ -173,6 +185,10 @@ impl<'a> ContractServer<'a> {
             + Send
             + 'static,
     {
+        self.register(endpoint, Box::new(handler))
+    }
+
+    fn register(&mut self, endpoint: Endpoint, handler: RouteHandler) -> Result<()> {
         let index = api::ENDPOINTS
             .iter()
             .position(|declared| *declared == endpoint)

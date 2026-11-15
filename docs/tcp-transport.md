@@ -110,9 +110,12 @@ has delivered for a second, so a bridge that accepts a connection and then
 closes it stays on the schedule. A pause or maintenance that arrives during a
 wait applies within 100 ms. The sender logs the first failure, each change of
 cause, and the restored connection with the failure count, not every attempt.
-In `tls-psk` mode ESP-IDF's TLS component also logs two lines per failed
-handshake, four a minute at the cap. `network_errors_total` counts every
-failed send.
+In `tls-psk` mode ESP-IDF's TLS components log nothing while the sender
+connects or holds its connection, including for a key verification that runs
+meanwhile, which reports its result to the caller. The sender's line names
+each failure from ESP-TLS's error record, with the raw codes when it cannot
+classify one. Update checks and installs pause the sender before they connect,
+so their TLS errors still log. `network_errors_total` counts every failed send.
 
 An established producer keeps its TCP connection during detected silence.
 The bridge's source idle timeout bounds the first packet and incomplete

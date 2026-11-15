@@ -79,7 +79,8 @@ pub struct TcpClient {
 
 enum Connection {
     Cleartext(TcpStream),
-    Tls(TlsConnection),
+    // Fields drop in order, so ESP-TLS stays quiet while the connection closes.
+    Tls(TlsConnection, QuietEspTls),
 }
 
 impl TcpClient {
@@ -167,9 +168,12 @@ impl PcmConnector for AdapterConnector {
                     .map_err(TcpSendError::io)?;
                 Ok(Connection::Cleartext(stream))
             }
-            TransportSecurity::TlsPsk(key) => TlsConnection::connect(socket, key.clone())
-                .map(Connection::Tls)
-                .map_err(TcpSendError::handshake),
+            TransportSecurity::TlsPsk(key) => {
+                let quiet = QuietEspTls::new();
+                TlsConnection::connect(socket, key.clone())
+                    .map(|stream| Connection::Tls(stream, quiet))
+                    .map_err(TcpSendError::handshake)
+            }
         }
     }
 }
@@ -178,7 +182,36 @@ impl PcmStream<TcpSendError> for Connection {
     fn send_all(&mut self, bytes: &[u8]) -> std::result::Result<(), TcpSendError> {
         match self {
             Self::Cleartext(stream) => stream.write_all(bytes).map_err(TcpSendError::io),
-            Self::Tls(stream) => stream.write_all(bytes).map_err(TcpSendError::io),
+            Self::Tls(stream, _) => stream.write_all(bytes).map_err(TcpSendError::io),
+        }
+    }
+}
+
+/// ESP-TLS and its mbedTLS port log every failed connect, handshake, read and
+/// write under these tags.
+const ESP_TLS_LOG_TAGS: [&CStr; 3] = [c"esp-tls", c"esp-tls-mbedtls", c"Dynamic Impl"];
+
+/// Turns ESP-TLS's own logging off while the sender opens or holds a
+/// connection. The sender names each failure from the ESP-TLS error record,
+/// and its failure run decides which attempts reach the log. Update checks
+/// pause the sender before they connect, so their ESP-TLS errors still log.
+struct QuietEspTls;
+
+impl QuietEspTls {
+    fn new() -> Self {
+        for tag in ESP_TLS_LOG_TAGS {
+            unsafe { sys::esp_log_level_set(tag.as_ptr(), sys::esp_log_level_t_ESP_LOG_NONE) };
+        }
+        Self
+    }
+}
+
+impl Drop for QuietEspTls {
+    fn drop(&mut self) {
+        // A null tag reads the default level, which these tags otherwise use.
+        let level = unsafe { sys::esp_log_level_get(std::ptr::null()) };
+        for tag in ESP_TLS_LOG_TAGS {
+            unsafe { sys::esp_log_level_set(tag.as_ptr(), level) };
         }
     }
 }
@@ -288,6 +321,8 @@ const _: () = {
     assert!(sys::MBEDTLS_ERR_SSL_INVALID_RECORD == codes::MBEDTLS_ERR_SSL_INVALID_RECORD);
     assert!(sys::MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE == codes::MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE);
     assert!(sys::MBEDTLS_ERR_SSL_TIMEOUT == codes::MBEDTLS_ERR_SSL_TIMEOUT);
+    assert!(sys::ECONNRESET as i32 == codes::ECONNRESET);
+    assert!(sys::ECONNREFUSED as i32 == codes::ECONNREFUSED);
 };
 
 /// Read the captured error of a failed connect through the public esp-tls
@@ -298,6 +333,7 @@ fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
     let mut last_error: i32 = 0;
     let mut captured_stack: i32 = 0;
     let mut certificate_flags: i32 = 0;
+    let mut socket_error: i32 = 0;
     if unsafe { sys::esp_tls_get_error_handle(handle, &mut error_handle) } == 0
         && !error_handle.is_null()
     {
@@ -308,8 +344,16 @@ fn classify_failure(handle: *mut sys::esp_tls_t) -> TlsFailure {
                 &mut certificate_flags,
             )
         };
+        // The errno sits outside the record the call above returns.
+        unsafe {
+            sys::esp_tls_get_and_clear_error_type(
+                error_handle,
+                sys::esp_tls_error_type_t_ESP_TLS_ERR_TYPE_SYSTEM,
+                &mut socket_error,
+            )
+        };
     }
-    crate::transport_diagnostics::classify_tls_failure(last_error, captured_stack)
+    crate::transport_diagnostics::classify_tls_failure(last_error, captured_stack, socket_error)
 }
 
 /// Apply the PCM socket options to the socket ESP-TLS opened.

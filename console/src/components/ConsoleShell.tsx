@@ -1,6 +1,7 @@
 import { type ComponentChildren, createContext } from 'preact';
 import { ConsoleNavigation, type Destination } from './ConsoleNavigation';
 import { ThemeSwitch } from './ThemeSwitch';
+import { Wordmark } from './Wordmark';
 
 export const RequestUnlock = createContext<(() => void) | undefined>(undefined);
 
@@ -33,7 +34,7 @@ export function ConsoleShell({
           Skip to content
         </button>
         <aside class="console-rail">
-          <div class="brand">StreamLine</div>
+          <Wordmark />
           <ConsoleNavigation items={items} current={current} />
           <div class="console-preferences">
             <ThemeSwitch />

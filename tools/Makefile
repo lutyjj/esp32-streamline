@@ -26,7 +26,7 @@ LOCK_RUN := $(CONTAINER) run --rm --user "$(shell id -u):$(shell id -g)" \
 INPUT_DIRS = $(sort $(dir $(abspath $(REF))) $(dir $(abspath $(CAP))))
 INPUT_MOUNTS = $(foreach d,$(INPUT_DIRS),-v "$(d):$(d):ro")
 
-.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze pcap size-report smoke-qemu smoke-device
+.PHONY: lock-image dev-image image qemu-image format lint lock lock-upgrade lock-check test analyze pcap size-report icons smoke-qemu smoke-device
 
 lock-image:
 	$(CONTAINER) build -f Dockerfile --target lock-tool -t $(LOCK_IMAGE) .
@@ -70,6 +70,13 @@ pcap: image
 
 size-report: image
 	$(CONTAINER) run --rm -v "$(REPO_ROOT):/repo:ro" $(IMAGE) streamline-size-report
+
+# The Home Assistant app's PNGs, from the icon's one drawing (docs/icon.md).
+# Run it after changing console/src/icon.svg and commit what it writes.
+icons: image
+	$(CONTAINER) run --rm --user "$(CONTAINER_HOST_USER)" \
+		-v "$(REPO_ROOT)/console/src/icon.svg:/icon.svg:ro" -v "$(REPO_ROOT)/ha-addon:/out" $(IMAGE) \
+		sh -c 'resvg -w 128 -h 128 /icon.svg /out/icon.png && resvg -w 250 -h 250 /icon.svg /out/logo.png'
 
 qemu-image:
 	$(CONTAINER) build -f Dockerfile --target qemu-runner -t $(QEMU_IMAGE) .

@@ -34,11 +34,11 @@ The PCM path is one-way. The control path is API-first: the embedded console cal
 | Component | Owns | Does not own |
 |---|---|---|
 | `firmware/streamline` | Board selection, codec and I2S capture, signal gating, device configuration, telemetry, HTTP API, TCP sender, OTA | Jitter buffering, audio encoding, playback |
-| `console` | Device and bridge consoles, WebFlasher UI, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
+| `console` | Device and bridge consoles, WebFlasher UI, the icon, browser-held credential custody, generated API clients | Device or bridge facts, validation authority, persistent runtime state |
 | `bridge` | PCM producer admission, per-source playout, loss concealment, HTTP WAV delivery, Sendspin publishing to Music Assistant, optional lossless recordings, bridge status | Device configuration, source detection, playback, multiroom sync, media-library management |
 | `ha-addon` | Home Assistant Supervisor metadata, private recording and transport-key storage mapping, and bridge process wiring | Bridge runtime behavior |
 | `webflasher` | Static installer manifest and release-image handoff | Firmware builds, device setup |
-| `tools` | Developer-only capture analysis, bounded serial capture, the firmware flash-size attribution report, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
+| `tools` | Developer-only capture analysis, bounded serial capture, the firmware flash-size attribution report, the Home Assistant app's icon renders, and the boot/API smoke harness for QEMU-emulated and USB-connected devices | Product runtime behavior |
 | `.github`, `flake.nix`, root and component Makefiles | Change selection, checks, the host development shell, release assembly, publishing | Component behavior |
 
 Each component except the static `webflasher` site builds from a public base
@@ -330,6 +330,7 @@ Use `node` only where an external platform defines that term. Use concrete board
 - [Bridge reference](bridge.md) owns bridge endpoints, source lifecycle, and tuning options.
 - [Lossless recordings](recordings.md) owns bridge recording behavior, storage, and API semantics.
 - [User journey](user-journey.md) owns visible setup, steady-state, and recovery promises.
+- [The icon](icon.md) describes the icon's drawing and owns its derived files.
 - [PCM protocol](pcm-protocol.md) and [TCP transport](tcp-transport.md) own the audio wire and runtime transport contracts.
 - [Audio profiles](audio-profiles.md), [OTA](ota.md), and [security](security.md) own their feature and risk contracts.
 - Component READMEs orient contributors to that component and link to the owning references instead of copying them.

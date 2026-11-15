@@ -34,6 +34,8 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
 - `make tools-pcap CAP=capture.pcap` runs Wireshark's TCP analysis in the
   tools container. See [network captures](../docs/diagnostics.md#network-captures)
   for capture placement and interpretation.
+- `make tools-icons` renders the Home Assistant app's PNG icons from the
+  [icon's one drawing](../docs/icon.md).
 - `streamline-capture`: bounded serial capture. Stdlib-only
   so `make firmware-capture` can run it with the system `python3`; the serial
   port is a host resource containers cannot reach.

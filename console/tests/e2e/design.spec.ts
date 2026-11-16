@@ -99,5 +99,17 @@ for (const width of [390, 800, 1280]) {
       await expect(page.getByText('Recording is off')).toBeVisible();
       await shoot(page, info, width, 'bridge-recording-off');
     });
+
+    test(`flasher at ${width}px in ${theme}`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height: 960 });
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+      await page.goto('/flasher.html');
+      await expect(page.getByRole('button', { name: 'Connect & install' })).toBeVisible();
+      await shoot(page, info, width, 'flasher');
+      await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, 'serial'));
+      await page.goto('/flasher.html');
+      await expect(page.getByText("This browser cannot reach the board's USB port.")).toBeVisible();
+      await shoot(page, info, width, 'flasher-unsupported');
+    });
   }
 }

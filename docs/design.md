@@ -422,7 +422,8 @@ console's and linen's own classes.
 
 | Choice | Reason |
 |---|---|
-| linen components on `preact/compat` | One design language for both consoles, with Preact's runtime size in the OTA image |
+| linen components on `preact/compat` | One design language for both consoles and the WebFlasher, with Preact's runtime size in the OTA image |
+| The WebFlasher as a linen page around esp-web-tools' install button | esp-web-tools reads the manifest and owns the port, the erase, the write and the log; the page fills only the button's documented slots, so its install dialog keeps esp-web-tools' own look |
 | `motion` resolved to `linen/still` | Every state stays; only movement between states goes, and the bundle drops the animation library |
 | System fonts | The embedded typeface was a third of the console's gzipped size |
 | linen pinned to a release tarball with its integrity | linen is not on a registry; each console upgrade is a deliberate change to that pin |

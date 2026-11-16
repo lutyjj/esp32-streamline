@@ -57,7 +57,8 @@ screen until it ends.
 
 The WebFlasher or documented serial installer writes a board that starts its
 setup network. The flasher log and serial monitor show its generated SSID and
-password. A pre-provisioned board can carry them on its label. Holding the first
+password. A pre-provisioned board can carry them on its label. The WebFlasher
+erases the whole board, which gives it a new password. Holding the first
 button at power-on opens the setup network for that boot when the password is lost.
 
 Join the setup network and open its captive console, or `http://192.168.71.1/`.

@@ -31,32 +31,6 @@ export function loadConsolePreferences(
   }
 }
 
-export function updateConsolePreference<Key extends keyof ConsolePreferences>(
-  key: Key,
-  value: ConsolePreferences[Key],
-  storage: PreferenceStorage | undefined = browserPreferenceStorage(),
-): ConsolePreferences {
-  const preferences = loadConsolePreferences(storage);
-  preferences[key] = value;
-  saveConsolePreferences(preferences, storage);
-  return preferences;
-}
-
-export function saveConsolePreferences(
-  preferences: ConsolePreferences,
-  storage: PreferenceStorage | undefined = browserPreferenceStorage(),
-): void {
-  if (!storage) return;
-  try {
-    storage.setItem(
-      CONSOLE_PREFERENCES_STORAGE_KEY,
-      JSON.stringify({ version: CONSOLE_PREFERENCES_SCHEMA_VERSION, ...preferences }),
-    );
-  } catch {
-    // The current page still applies a preference when browser storage is unavailable.
-  }
-}
-
 function browserPreferenceStorage(): PreferenceStorage | undefined {
   try {
     return window.localStorage;

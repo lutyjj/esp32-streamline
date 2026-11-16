@@ -58,7 +58,24 @@ export function recordingRoom(list: RecordingList, capabilities: RecordingCapabi
 
 const titleRule = StartRecordingRequest.entries.title;
 
-/** Why the contract refuses `value` as a title, or null; `limit` is the bridge's own. */
+/**
+ * Why the contract refuses `value` as a title, or null; `limit` is the
+ * bridge's own. The bridge collapses whitespace, so a blank title is none.
+ */
 export function titleProblem(value: string, limit: number): string | null {
-  return v.is(titleRule, value) ? null : `Name the recording, in at most ${limit} characters.`;
+  return v.is(titleRule, value.trim())
+    ? null
+    : `Name the recording, in at most ${limit} characters.`;
+}
+
+/**
+ * The source a new recording takes: the one chosen, or the first known while
+ * none is. A chosen source that stops streaming is gone, never replaced.
+ */
+export function recordingSource(
+  chosen: string,
+  available: readonly string[],
+): { source: string; gone: boolean } {
+  if (chosen === '') return { source: available[0] ?? '', gone: false };
+  return { source: chosen, gone: !available.includes(chosen) };
 }

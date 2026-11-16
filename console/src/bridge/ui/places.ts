@@ -19,5 +19,11 @@ export function placeOf(path: string): PlaceName | null {
 /** What an address names beneath its place: a source id, or a section of Settings. */
 export function itemOf(path: string): string | undefined {
   const item = path.split('/')[2];
-  return item ? decodeURIComponent(item) : undefined;
+  if (!item) return undefined;
+  try {
+    return decodeURIComponent(item);
+  } catch {
+    // A mangled address names nothing the bridge knows, which the place then says.
+    return item;
+  }
 }

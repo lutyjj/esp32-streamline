@@ -3,11 +3,11 @@ import { setTransport } from '../../src/bridge/lib/http';
 import { forgetBridgeToken, heldToken, holdBridgeToken } from '../../src/bridge/lib/token';
 import { unlockWithToken, withToken } from '../../src/bridge/state/access';
 import { makePairingToken, revealedPairing } from '../../src/bridge/state/pairing';
-import { recordingsQuery } from '../../src/bridge/state/queries';
+import { recordingsQuery, statusQuery } from '../../src/bridge/state/queries';
 import { answerCredential, credentialAsked } from '../../src/shared/credentialGate';
 import { ApiError } from '../../src/shared/http';
 import { queryClient } from '../../src/shared/queries';
-import { recordingList, SOURCE } from './fixtures';
+import { bridgeStatus, recordingList, SOURCE } from './fixtures';
 
 const TOKEN = 't'.repeat(16);
 
@@ -54,6 +54,22 @@ describe('bridge writes', () => {
 
     await expect(done).resolves.toBe('done');
     expect(heldToken.value).toBe(TOKEN);
+  });
+});
+
+describe('a bridge whose deployment sets no token', () => {
+  it('is never asked for one: the write goes and the bridge refuses it in its own words', async () => {
+    queryClient.setQueryData(statusQuery.queryKey, {
+      ...bridgeStatus(),
+      api_token_configured: false,
+    });
+    const write = vi.fn(async () => {
+      throw new ApiError(503, 'No bridge API token is set.');
+    });
+
+    await expect(withToken(write)).rejects.toThrow('No bridge API token is set.');
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(credentialAsked.value).toBe(false);
   });
 });
 

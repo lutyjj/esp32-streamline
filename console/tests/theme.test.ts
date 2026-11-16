@@ -4,7 +4,6 @@ import {
   CONSOLE_PREFERENCES_STORAGE_KEY,
   loadConsolePreferences,
   type PreferenceStorage,
-  updateConsolePreference,
 } from '../src/lib/preferences';
 import { initializeThemePreference } from '../src/state/theme';
 
@@ -32,15 +31,6 @@ describe('console preferences', () => {
     expect(loadConsolePreferences(storage)).toEqual({ theme: 'system' });
   });
 
-  it('writes the canonical versioned record through the supplied storage', () => {
-    const { storage, values } = memoryStorage();
-
-    expect(updateConsolePreference('theme', 'dark', storage)).toEqual({ theme: 'dark' });
-    expect(values.get(CONSOLE_PREFERENCES_STORAGE_KEY)).toBe(
-      JSON.stringify({ version: CONSOLE_PREFERENCES_SCHEMA_VERSION, theme: 'dark' }),
-    );
-  });
-
   it('initializes the persisted preference before rendering', () => {
     localStorage.setItem(
       CONSOLE_PREFERENCES_STORAGE_KEY,
@@ -62,6 +52,5 @@ describe('console preferences', () => {
     };
 
     expect(loadConsolePreferences(storage)).toEqual({ theme: 'system' });
-    expect(updateConsolePreference('theme', 'dark', storage)).toEqual({ theme: 'dark' });
   });
 });

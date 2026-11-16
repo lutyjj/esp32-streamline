@@ -7,6 +7,7 @@ import { queryClient } from '../../../shared/queries';
 import { ReadNotice } from '../../../shared/ReadNotice';
 import { whereToSet } from '../../lib/deployment';
 import { heldToken } from '../../lib/token';
+import { useReadOnly } from '../../state/access';
 import { capabilitiesQuery, recordingsQuery, statusQuery } from '../../state/queries';
 import { recordingRoom } from '../../state/recordings';
 import { ScreenTop } from '../ScreenTop';
@@ -21,6 +22,7 @@ export function RecordingsScreen() {
   const enabled = capabilities.data?.enabled === true;
   const list = useQuery({ ...recordingsQuery, enabled: unlocked && enabled }, queryClient);
   const status = useQuery(statusQuery, queryClient);
+  const readOnly = useReadOnly();
   return (
     <>
       <ScreenTop title="Recordings" />
@@ -32,6 +34,13 @@ export function RecordingsScreen() {
             <EmptyState
               title="Recording is off"
               description={`The bridge records a source as a lossless WAV file once its deployment gives it storage. Set ${whereToSet('recordings')}, then restart the bridge.`}
+            />
+          </Card>
+        ) : readOnly ? (
+          <Card>
+            <EmptyState
+              title="Recordings need the bridge API token"
+              description={`Set ${whereToSet('token')}, then restart the bridge.`}
             />
           </Card>
         ) : !unlocked ? (

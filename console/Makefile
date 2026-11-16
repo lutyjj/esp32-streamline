@@ -19,6 +19,7 @@ E2E_BRIDGE := streamline-e2e-bridge
 define bridge_up
 $(CONTAINER) network create $(1) >/dev/null 2>&1 || true; \
 $(CONTAINER) rm -f $(2) $(2)-source >/dev/null 2>&1 || true; \
+trap '$(CONTAINER) rm -f $(2) $(2)-source >/dev/null 2>&1' EXIT; \
 $(CONTAINER) run -d --rm --name $(2) --network $(1) --tmpfs /tmp \
 	-e STREAMLINE_API_TOKEN=$(BRIDGE_TOKEN) $(3) $(BRIDGE_IMAGE_TAG) \
 	--transport-state-file /tmp/transport.json --recordings-dir /tmp/recordings \
@@ -26,8 +27,7 @@ $(CONTAINER) run -d --rm --name $(2) --network $(1) --tmpfs /tmp \
 $(CONTAINER) run -d --rm --name $(2)-source --network $(1) \
 	-v "$(ROOT_DIR)/tools/src/streamline_tools/pcm_source.py:/pcm_source.py:ro" \
 	-v "$(ROOT_DIR)/docs/pcm-frame-vectors.json:/vectors.json:ro" \
-	--entrypoint python3 $(BRIDGE_IMAGE_TAG) -I /pcm_source.py /vectors.json $(2) >/dev/null; \
-trap '$(CONTAINER) rm -f $(2) $(2)-source >/dev/null 2>&1' EXIT
+	--entrypoint python3 $(BRIDGE_IMAGE_TAG) -I /pcm_source.py /vectors.json $(2) >/dev/null
 endef
 # Defaults to STREAMLINE_DEVICE from the root .env, else the setup-AP address.
 DEVICE ?= $(or $(call dotenv,STREAMLINE_DEVICE),192.168.71.1)

@@ -78,12 +78,22 @@ for (const width of [390, 800, 1280]) {
         const json = await (await route.fetch()).json();
         await route.fulfill({ json: { ...json, enabled: false } });
       });
-      for (const path of ['/bridge.html#/recordings', '/bridge.html#/settings/deployment']) {
+      for (const path of [
+        '/bridge.html#/recordings',
+        '/bridge.html#/settings/security',
+        `/bridge.html#/sources/${source}`,
+        '/bridge.html#/settings/deployment',
+      ]) {
         // A fresh page, so it reads the overridden answers rather than the ones it holds.
         await page.goto('about:blank');
         await page.goto(path);
         await expect(page.getByRole('button', { name: /^Read-only/ })).toBeVisible();
-        await shoot(page, info, width, `bridge-off${path.replaceAll(/[^a-z]/g, '-')}`);
+        await shoot(
+          page,
+          info,
+          width,
+          `bridge-off${path.replace(source, 'source').replaceAll(/[^a-z]/g, '-')}`,
+        );
       }
     });
   }

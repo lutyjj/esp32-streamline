@@ -262,8 +262,7 @@ class RecordingList(ContractModel):
 
 class StartRecordingRequest(ContractModel):
     source: SourceIdentity
-    # The bridge collapses whitespace, so a title needs a visible character.
-    title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS, pattern=r"\S")
+    title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS)
 
 
 class RecordingResult(ContractModel):

@@ -1328,7 +1328,6 @@
           "title": {
             "maxLength": 80,
             "minLength": 1,
-            "pattern": "\\S",
             "title": "Title",
             "type": "string"
           }

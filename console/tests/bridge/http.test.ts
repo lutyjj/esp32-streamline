@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bridgeAccepts, setTransport } from '../../src/bridge/lib/http';
 import { forgetBridgeToken, heldToken, holdBridgeToken } from '../../src/bridge/lib/token';
-import { getBridgeStatus, getRecordings, setTransportMode } from '../../src/generated/bridge';
+import {
+  downloadRecording,
+  getBridgeStatus,
+  getRecordings,
+  setTransportMode,
+} from '../../src/generated/bridge';
 import { ApiError } from '../../src/shared/http';
 import { bridgeStatus } from './fixtures';
 
@@ -37,6 +42,19 @@ describe('bridge requests', () => {
       `Bearer ${'t'.repeat(16)}`,
       `Bearer ${'t'.repeat(16)}`,
     ]);
+  });
+
+  it('carry the token on a gated read whose path names a parameter, and keep a recording as bytes', async () => {
+    answer(
+      () =>
+        new Response(new Uint8Array([82, 73, 70, 70]), {
+          headers: { 'Content-Type': 'audio/wav' },
+        }),
+    );
+    const file = await downloadRecording('side-a');
+
+    expect(sent[0]?.headers.get('Authorization')).toBe(`Bearer ${'t'.repeat(16)}`);
+    expect(file).toBeInstanceOf(Blob);
   });
 
   it('go to the bridge under the prefix the page is served at', async () => {

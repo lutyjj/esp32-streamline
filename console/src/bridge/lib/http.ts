@@ -27,6 +27,16 @@ function operationPath(url: string): string {
   return new URL(url, 'http://bridge.invalid/').pathname;
 }
 
+/** The contract's gated reads as patterns, each `{parameter}` one path segment. */
+const GATED_READS = [...TOKEN_READS].map(
+  (template) => new RegExp(`^${template.replaceAll(/\{[^}]+\}/g, '[^/]+')}$`),
+);
+
+function gated(url: string, options: RequestInit): boolean {
+  const path = operationPath(url);
+  return (options.method ?? 'GET') !== 'GET' || GATED_READS.some((read) => read.test(path));
+}
+
 function bridgeRequest(url: string, options: RequestInit, token: string): Request {
   const path = operationPath(url);
   const request = new Request(new URL(url, document.baseURI), {
@@ -41,13 +51,16 @@ function bridgeRequest(url: string, options: RequestInit, token: string): Reques
 
 /** Orval's mutator: every generated bridge operation goes through here. */
 export function bridgeFetch<T>(url: string, options: RequestInit): Promise<T> {
-  const gated = (options.method ?? 'GET') !== 'GET' || TOKEN_READS.has(operationPath(url));
-  const token = gated ? heldToken.value : '';
+  const token = gated(url, options) ? heldToken.value : '';
   return bounded('bridge', exchange<T>(bridgeRequest(url, options, token), token !== ''));
 }
 
 async function exchange<T>(request: Request, withToken: boolean): Promise<T> {
   const response = await transport(request);
+  // A recording stays bytes.
+  if (response.ok && response.headers.get('Content-Type') === 'audio/wav') {
+    return (await response.blob()) as T;
+  }
   const text = await response.text();
   const body = parseBody(text);
   if (!response.ok) {

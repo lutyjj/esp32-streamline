@@ -503,7 +503,10 @@ class RecordingApiTests(SourceTestCase):
         self.assertIn("unknown source", unknown.json()["error"]["message"])
         self.assertEqual(unknown.json()["error"]["field"], "source")
         self.assertEqual(blank.status_code, 400)
-        self.assertEqual(blank.json()["error"]["field"], "title")
+        self.assertEqual(
+            blank.json()["error"],
+            {"code": "invalid-title", "message": "Enter a recording title.", "field": "title"},
+        )
         self.assertEqual(oversized.status_code, 413)
         self.assertEqual(oversized.json()["error"]["code"], "request-too-large")
 

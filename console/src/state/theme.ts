@@ -1,10 +1,4 @@
-import { useState } from 'preact/hooks';
-import {
-  isThemePreference,
-  loadConsolePreferences,
-  type ThemePreference,
-  updateConsolePreference,
-} from '../lib/preferences';
+import { loadConsolePreferences, type ThemePreference } from '../lib/preferences';
 
 export function initializeThemePreference(
   root: HTMLElement = document.documentElement,
@@ -12,19 +6,6 @@ export function initializeThemePreference(
   const preference = loadConsolePreferences().theme;
   applyThemePreference(preference, root);
   return preference;
-}
-
-export function useThemePreference() {
-  const [preference, setPreference] = useState(() => loadConsolePreferences().theme);
-
-  function selectThemePreference(value: string): void {
-    if (!isThemePreference(value)) return;
-    updateConsolePreference('theme', value);
-    applyThemePreference(value);
-    setPreference(value);
-  }
-
-  return { preference, selectThemePreference };
 }
 
 function applyThemePreference(

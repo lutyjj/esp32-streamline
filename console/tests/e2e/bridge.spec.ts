@@ -113,6 +113,19 @@ test('a bridge without a token is read-only and names the option that sets one',
     page.getByText(/Set api_token in the Home Assistant app's configuration/),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: /^Bridge (locked|unlocked)/ })).toHaveCount(0);
+
+  // Nothing anywhere offers a change, or an unlock that could not succeed.
+  const id = await liveSource(page);
+  for (const path of ['#/settings/security', `#/sources/${id}`, '#/recordings']) {
+    await page.goto('about:blank');
+    await page.goto(`/bridge.html${path}`);
+    await expect(page.getByText(/needs? the bridge API token/).first()).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: /Unlock|Enroll|Require encryption|Remove|pairing token|Record this source/,
+      }),
+    ).toHaveCount(0);
+  }
 });
 
 test('a bridge that does not record names the option that turns recording on', async ({ page }) => {

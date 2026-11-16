@@ -29,9 +29,11 @@ import { whereToSet } from '../../lib/deployment';
 import { musicAssistantStep } from '../../lib/musicAssistant';
 import { playbackUrl } from '../../lib/playback';
 import { quality, receptionAdvice, sourceState } from '../../lib/reception';
+import { useReadOnly } from '../../state/access';
 import { makePairingToken, revealedPairing } from '../../state/pairing';
 import { capabilitiesQuery, statusQuery } from '../../state/queries';
 import { record, titleProblem } from '../../state/recordings';
+import { NeedsToken } from '../NeedsToken';
 import { ScreenTop } from '../ScreenTop';
 
 const TRAIL = [{ href: '/sources', label: 'Sources' }] as const;
@@ -142,6 +144,7 @@ function Listen({ id, known }: { id: string; known: BridgeStatus }) {
 
 function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
   const make = useMutation({ mutationFn: () => makePairingToken(id) }, queryClient);
+  const readOnly = useReadOnly();
   const published = known.sendspin.sources.find((source) => source.source === id);
   if (!known.sendspin.enabled || !published)
     return (
@@ -161,7 +164,7 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
   return (
     <Card>
       <CardHead title="Music Assistant" aside={<Status tone={step.tone}>{step.label}</Status>}>
-        {shown === null ? (
+        {readOnly ? null : shown === null ? (
           <Button
             variant={step.pairs ? 'primary' : 'default'}
             busy={make.isPending}
@@ -175,6 +178,7 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
       </CardHead>
       <CardBody className="grid gap-3">
         <Note>{step.detail}</Note>
+        {readOnly && <NeedsToken change="Pairing" />}
         {make.error && <WriteFailure failed="No pairing token was made." error={make.error} />}
         {shown && (
           <ShownOnce
@@ -194,6 +198,7 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
 
 function Record({ id }: { id: string }) {
   const capabilities = useQuery(capabilitiesQuery, queryClient);
+  const readOnly = useReadOnly();
   const [asking, setAsking] = useState(false);
   if (!capabilities.data) return null;
   if (!capabilities.data.enabled)
@@ -208,13 +213,14 @@ function Record({ id }: { id: string }) {
   return (
     <Card>
       <CardHead title="Record">
-        <Button onClick={() => setAsking(true)}>Record this source</Button>
+        {!readOnly && <Button onClick={() => setAsking(true)}>Record this source</Button>}
       </CardHead>
-      <CardBody>
+      <CardBody className="grid gap-3">
         <Note>
           A lossless WAV of what the bridge receives from this source, kept on the bridge until you
           delete it.
         </Note>
+        {readOnly && <NeedsToken change="Recording" />}
       </CardBody>
       {asking && (
         <RecordDialog
@@ -268,7 +274,7 @@ function RecordDialog({
         name="title"
         autoFocus
         value={title}
-        validate={(value) => titleProblem(String(value ?? '').trim(), limit)}
+        validate={(value) => titleProblem(String(value ?? ''), limit)}
         onChange={(event) => setTitle(event.currentTarget.value)}
       />
       {start.error && Object.keys(errors).length === 0 && (

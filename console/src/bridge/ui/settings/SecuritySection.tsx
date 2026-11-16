@@ -21,6 +21,7 @@ import { queryClient } from '../../../shared/queries';
 import { WriteConfirm } from '../../../shared/WriteConfirm';
 import { WriteFailure } from '../../../shared/WriteFailure';
 import { TRANSPORT_STATE_OPTION } from '../../lib/deployment';
+import { useReadOnly } from '../../state/access';
 import {
   enrollKey,
   keyIdProblem,
@@ -28,23 +29,25 @@ import {
   removeKey,
   setListenerMode,
 } from '../../state/security';
+import { NeedsToken } from '../NeedsToken';
 
 /** The listener mode every device meets, and the device credentials it accepts. */
 export function SecuritySection({ known }: { known: BridgeStatus }) {
+  const readOnly = useReadOnly();
   return (
     <div className="grid gap-4">
-      <Listener known={known} />
+      <Listener known={known} readOnly={readOnly} />
       {known.transport.configurable && (
         <>
-          <Credentials known={known} />
-          <Enroll enrolled={known.transport.key_ids} />
+          <Credentials known={known} readOnly={readOnly} />
+          {!readOnly && <Enroll enrolled={known.transport.key_ids} />}
         </>
       )}
     </div>
   );
 }
 
-function Listener({ known }: { known: BridgeStatus }) {
+function Listener({ known, readOnly }: { known: BridgeStatus; readOnly: boolean }) {
   const [asking, setAsking] = useState(false);
   const { mode, port, configurable, auth_successes, auth_failures } = known.transport;
   const encrypted = mode === 'tls-psk';
@@ -63,7 +66,7 @@ function Listener({ known }: { known: BridgeStatus }) {
             : `Devices send audio on port ${port} in the clear. Requiring encryption applies to every device at once.`
         }
       >
-        {configurable && (
+        {configurable && !readOnly && (
           <Button onClick={() => setAsking(true)}>
             {encrypted ? 'Return to cleartext' : 'Require encryption'}
           </Button>
@@ -71,10 +74,13 @@ function Listener({ known }: { known: BridgeStatus }) {
       </CardHead>
       <CardBody>
         {configurable ? (
-          <Facts>
-            <Fact name="Accepted handshakes">{auth_successes}</Fact>
-            <Fact name="Refused handshakes">{auth_failures}</Fact>
-          </Facts>
+          <div className="grid gap-3">
+            {readOnly && <NeedsToken change="Changing audio security" />}
+            <Facts>
+              <Fact name="Accepted handshakes">{auth_successes}</Fact>
+              <Fact name="Refused handshakes">{auth_failures}</Fact>
+            </Facts>
+          </div>
         ) : (
           <p className="text-sm text-text-secondary">
             Audio security needs a place to keep its state. Set {TRANSPORT_STATE_OPTION} for a
@@ -99,7 +105,7 @@ function Listener({ known }: { known: BridgeStatus }) {
   );
 }
 
-function Credentials({ known }: { known: BridgeStatus }) {
+function Credentials({ known, readOnly }: { known: BridgeStatus; readOnly: boolean }) {
   const [removing, setRemoving] = useState<string | null>(null);
   const ids = known.transport.key_ids;
   return (
@@ -127,9 +133,11 @@ function Credentials({ known }: { known: BridgeStatus }) {
                   : 'Not connected'
               }
             >
-              <Button variant="destructive" onClick={() => setRemoving(id)}>
-                Remove
-              </Button>
+              {!readOnly && (
+                <Button variant="destructive" onClick={() => setRemoving(id)}>
+                  Remove
+                </Button>
+              )}
             </SettingRow>
           ))}
         </div>

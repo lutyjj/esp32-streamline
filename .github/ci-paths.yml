@@ -64,6 +64,8 @@ console_e2e:
 tools:
   - *shared
   - 'tools/**'
+  # streamline-pcm-source's tests read the firmware's conformance frames.
+  - 'docs/pcm-frame-vectors.json'
 
 ha-addon:
   - *shared

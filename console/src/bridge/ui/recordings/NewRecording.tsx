@@ -1,12 +1,12 @@
 import { useMutation } from '@tanstack/preact-query';
 import { Button, Card, CardBody, CardHead, Form, Select, TextField } from 'linen';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { BridgeStatus } from '../../../generated/bridge';
 import { duration } from '../../../shared/format';
 import { fieldErrors } from '../../../shared/http';
 import { queryClient } from '../../../shared/queries';
 import { WriteFailure } from '../../../shared/WriteFailure';
-import { record, titleProblem } from '../../state/recordings';
+import { record, recordingSource, titleProblem } from '../../state/recordings';
 
 /** A new recording of a source the bridge knows, which no session holds. */
 export function NewRecording({
@@ -30,7 +30,12 @@ export function NewRecording({
   const [source, setSource] = useState('');
   const [title, setTitle] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const chosen = sources.includes(source) ? source : (sources[0] ?? '');
+  const { source: chosen, gone } = recordingSource(source, sources);
+  // A source that stopped streaming stays chosen and says so, rather than giving way to another.
+  const shown = useMemo(
+    () => (gone ? { ...errors, source: 'This source stopped streaming. Choose another.' } : errors),
+    [gone, errors],
+  );
   const start = useMutation(
     {
       mutationFn: () => record(chosen, title.trim()),
@@ -56,28 +61,32 @@ export function NewRecording({
             No source to record. A device appears under Sources while it streams to this bridge.
           </p>
         ) : (
-          <Form errors={errors} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
+          <Form errors={shown} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
             <Select
               label="Source"
               width={64}
               name="source"
               value={chosen}
               onValueChange={setSource}
-              choices={sources.map((id) => ({ value: id, label: id }))}
+              choices={(gone ? [...sources, chosen] : sources).map((id) => ({
+                value: id,
+                label: id,
+                disabled: gone && id === chosen,
+              }))}
             />
             <TextField
               label="Title"
               width={96}
               name="title"
               value={title}
-              validate={(value) => titleProblem(String(value ?? '').trim(), limit)}
+              validate={(value) => titleProblem(String(value ?? ''), limit)}
               onChange={(event) => setTitle(event.currentTarget.value)}
             />
             {start.error && Object.keys(errors).length === 0 && (
               <WriteFailure failed="The recording did not start." error={start.error} />
             )}
             <div className="flex justify-end">
-              <Button type="submit" variant="primary" disabled={title.trim() === ''}>
+              <Button type="submit" variant="primary" disabled={title.trim() === '' || gone}>
                 Start recording
               </Button>
             </div>

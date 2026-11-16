@@ -394,7 +394,9 @@ under half their raw size. Browsers and HTTP client libraries decompress transpa
 The console runs Orval before lint, test, and build. Orval generates types,
 operation-named Fetch functions, and the Valibot request rules a form checks
 before it writes. `console/scripts/contractFacts.ts` adds which writes can
-restart the device and which reads need the admin key. The hand-written
+restart the device and which reads need the admin key, and from the bridge
+contract which reads need the bridge API token; it fails when a bridge write
+is not gated, since the bridge console sends the token with every write. The hand-written
 `deviceFetch` adapter owns admin-key injection, error normalization, and the
 replaceable transport used by tests. TypeScript rejects an unknown operation,
 form field, or response shape. The console's API section gives the address of

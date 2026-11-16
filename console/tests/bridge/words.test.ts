@@ -3,8 +3,9 @@ import { whereToSet } from '../../src/bridge/lib/deployment';
 import { musicAssistantStep } from '../../src/bridge/lib/musicAssistant';
 import { playbackUrl } from '../../src/bridge/lib/playback';
 import { quality, receptionAdvice, sourceState } from '../../src/bridge/lib/reception';
-import { recordingRoom, titleProblem } from '../../src/bridge/state/recordings';
+import { recordingRoom, recordingSource, titleProblem } from '../../src/bridge/state/recordings';
 import { keyIdProblem, pskProblem } from '../../src/bridge/state/security';
+import { itemOf } from '../../src/bridge/ui/places';
 import { capabilities, published, recordingList, source } from './fixtures';
 
 describe('the playback address', () => {
@@ -84,9 +85,34 @@ describe('recording', () => {
   });
 });
 
+describe('the source a new recording takes', () => {
+  it('is the first known until one is chosen', () => {
+    expect(recordingSource('', ['192.0.2.10', '192.0.2.11'])).toEqual({
+      source: '192.0.2.10',
+      gone: false,
+    });
+  });
+
+  it('stays the chosen one when it stops streaming, never another', () => {
+    expect(recordingSource('192.0.2.11', ['192.0.2.10'])).toEqual({
+      source: '192.0.2.11',
+      gone: true,
+    });
+  });
+});
+
+describe('addresses', () => {
+  it('name a mangled source as it stands rather than failing', () => {
+    expect(itemOf('/sources/%E0')).toBe('%E0');
+    expect(itemOf('/sources/eli1-ab')).toBe('eli1-ab');
+  });
+});
+
 describe('the contract’s rules in the console’s words', () => {
-  it('want a visible title within the limit', () => {
+  it('want a visible title within the limit, counted in characters as the bridge counts them', () => {
     expect(titleProblem('Side A', 80)).toBeNull();
+    expect(titleProblem('🎵'.repeat(80), 80)).toBeNull();
+    expect(titleProblem('🎵'.repeat(81), 80)).toMatch(/at most 80/);
     expect(titleProblem('   ', 80)).toMatch(/at most 80/);
     expect(titleProblem('x'.repeat(81), 80)).toMatch(/at most 80/);
   });

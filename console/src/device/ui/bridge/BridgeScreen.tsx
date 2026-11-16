@@ -1,5 +1,4 @@
 import {
-  Button,
   buttonClass,
   Card,
   CardBody,
@@ -11,7 +10,8 @@ import {
   Notice,
   OptionCards,
 } from 'linen';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link, replacePath, usePathname } from '../../../shared/navigation';
 import { bridgeSourcesLink } from '../../lib/consoleAddress';
 import { audioActivity } from '../../state/activity';
 import { rememberedBridgeConsole } from '../../state/bridgeConsole';
@@ -19,12 +19,21 @@ import { delivery } from '../../state/delivery';
 import { config, configResource, liveStatus, status } from '../../state/device';
 import { episodeDrops, lossCalloutVisible } from '../../state/streamLoss';
 import { ActivityStatus } from '../activityWords';
+import { sectionOf } from '../places';
 import { ResourceNotice } from '../ResourceNotice';
 import { ScreenTop } from '../ScreenTop';
-import { TargetDialog } from './TargetDialog';
+import { TargetScreen } from './TargetScreen';
 
+/** The Bridge place: where the audio goes and how delivery holds, and the task that changes it. */
 export function BridgeScreen() {
-  const [connecting, setConnecting] = useState(false);
+  const task = sectionOf(usePathname());
+  useEffect(() => {
+    if (task !== undefined && task !== 'target') replacePath('/bridge');
+  }, [task]);
+  return task === 'target' ? <TargetScreen /> : <BridgeOverview />;
+}
+
+function BridgeOverview() {
   const known = status.value;
   const facts = known ? delivery(known, config.value) : null;
   return (
@@ -37,7 +46,9 @@ export function BridgeScreen() {
             <>
               <Card>
                 <CardHead title="Destination" description="Where the device sends its audio.">
-                  <Button onClick={() => setConnecting(true)}>Change bridge</Button>
+                  <Link href="/bridge/target" className={buttonClass()}>
+                    Change bridge
+                  </Link>
                 </CardHead>
                 <CardBody>
                   <Facts>
@@ -63,11 +74,10 @@ export function BridgeScreen() {
               <Delivery />
             </>
           ) : (
-            <NoBridge onConnect={() => setConnecting(true)} />
+            <NoBridge />
           )}
         </div>
       </Content>
-      {connecting && <TargetDialog open={connecting} onOpenChange={setConnecting} />}
     </>
   );
 }
@@ -158,7 +168,7 @@ const INSTALL: Record<Install, { label: string; description: string; steps: stri
   },
 };
 
-function NoBridge({ onConnect }: { onConnect: () => void }) {
+function NoBridge() {
   const [install, setInstall] = useState<Install | undefined>(undefined);
   return (
     <>
@@ -167,9 +177,9 @@ function NoBridge({ onConnect }: { onConnect: () => void }) {
           title="No bridge yet"
           description="Capture and levels work without one. A bridge turns the input into a stream your players can open."
         >
-          <Button variant="primary" onClick={onConnect}>
+          <Link href="/bridge/target" className={buttonClass('primary')}>
             Connect a bridge
-          </Button>
+          </Link>
         </EmptyState>
       </Card>
       <Card>

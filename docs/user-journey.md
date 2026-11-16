@@ -45,7 +45,8 @@ The device console's Device and Maintenance workspaces hold sections, and a
 guided task opens on a screen of its own beneath its workspace. The bridge
 console's Settings is a task index; each destination opens one focused task
 with an All settings link. URLs identify the workspace, section, or task,
-browser Back retraces navigation, and visited forms retain drafts. Phones use
+browser Back retraces navigation, and leaving a form with unsaved changes
+asks first. Phones use
 the same destinations and bottom primary navigation. A condition of the whole
 console, such as lost contact or a restart under way, stands above every
 screen until it ends.
@@ -75,15 +76,16 @@ device opens its setup network again, and its console names the cause.
 
 ## 2. Connect a bridge and player
 
-Capture and calibration work before a bridge exists. Audio offers Connect bridge
-when no destination is configured. The guide explains Home Assistant, Docker,
-or an existing installation, then saves the target. The Bridge workspace also provides
-the host and port form; both use the same API.
+Capture and calibration work before a bridge exists. Audio offers Connect a
+bridge when no destination is configured, and Bridge explains installing one
+with Home Assistant, Docker, or an existing installation. Connect a bridge
+opens on a screen of its own beneath Bridge, with the search, the host and
+port, and the bridge console address. Save writes a new host or port, and the
+device restarts to send there; a console address alone stays in this browser.
 
-When the guide asks for the bridge, the device searches its network for about
-three seconds and the guide lists the bridges that answer, up to eight, by
-name and address. The Bridge workspace runs the same search on request. Use fills the host and
-port and never saves them. A listed bridge is a hint, since any host on the
+Search the network has the device browse for about three seconds, and the
+screen lists the bridges that answer, up to eight, by name and address. Use
+fills the host and port and never saves them. A listed bridge is a hint, since any host on the
 network can advertise one, so the owner compares the address before saving.
 No answer, or a failed search, names the manual fallback: a bridge behind port
 mapping or a network that blocks multicast stays reachable by its typed
@@ -93,8 +95,8 @@ offers no bridge step: connect one once the device is on the home network.
 After saving, the device distinguishes restarting, quiet input, connecting, and
 sending. Only observed transmission supports Sending audio. Open the bridge
 to verify reception, then copy the playback URL from Listen into an HTTP WAV
-player. The guide accepts the owner’s bridge console address and links directly
-to Listen; it never infers an HTTP port from the audio target. An ingress-hosted
+player. Given the owner’s bridge console address, Bridge links directly to the
+device's source in Listen; it never infers an HTTP port from the audio target. An ingress-hosted
 bridge needs its player-accessible public URL configured separately. The console does not play audio. A connected player does not prove its
 speakers are audible.
 

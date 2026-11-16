@@ -1,13 +1,12 @@
 /**
  * Bridge discovery on demand: the device browses its network for about three
  * seconds (`GET /api/bridges`) and the console offers each bridge it found as
- * a stream target. Using one fills the target fields; only a save writes them.
+ * a stream target (`targetForm.ts` fills the form from one).
  */
 
 import { computed, signal } from '@preact/signals';
 import { errorMessage } from '../../shared/errors';
 import { type DiscoveredBridge, getBridges } from '../lib/api';
-import type { TargetEntry } from '../lib/target';
 import { status } from './device';
 
 export type Discovery =
@@ -54,43 +53,7 @@ async function search(): Promise<void> {
   }
 }
 
-/** Whether the target fields already name this bridge. */
-export function fillsTarget(bridge: DiscoveredBridge, host: string, port: string): boolean {
-  return host.trim() === bridge.host && Number(port) === bridge.port;
-}
-
 /** The bridge console address a bridge advertises, or '' when it advertises none. */
 export function bridgeConsoleAddress(bridge: DiscoveredBridge): string {
   return bridge.http_port ? `http://${bridge.host}:${bridge.http_port}/` : '';
-}
-
-/**
- * The console address Use fills in, or null to keep the field: the bridge's
- * own replaces an empty field or one an earlier Use filled (`filled`), never
- * an address the owner typed.
- */
-export function consoleAddressAfterUse(
-  current: string,
-  filled: string,
-  bridge: DiscoveredBridge,
-): string | null {
-  return current === '' || current === filled ? bridgeConsoleAddress(bridge) : null;
-}
-
-/** The target form: the entry, and the bridge console address beside it. */
-export interface TargetDraft {
-  entry: TargetEntry;
-  console: string;
-  /** The console address the last Use filled, so the next one may replace it. */
-  consoleFilled: string;
-}
-
-/** The form after Use: a found bridge fills the fields, and nothing is saved. */
-export function adoptFound(draft: TargetDraft, bridge: DiscoveredBridge): TargetDraft {
-  const filled = consoleAddressAfterUse(draft.console, draft.consoleFilled, bridge);
-  return {
-    entry: { host: bridge.host, port: String(bridge.port) },
-    console: filled ?? draft.console,
-    consoleFilled: filled ?? draft.consoleFilled,
-  };
 }

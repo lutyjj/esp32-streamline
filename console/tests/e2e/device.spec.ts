@@ -131,16 +131,25 @@ test('recovery changes Wi-Fi with the admin key and hands off', async ({ page })
 
 test('a found bridge fills the form, and only Save writes it and restarts', async ({ page }) => {
   await page.goto('/#/bridge');
-  await page.getByRole('button', { name: 'Change bridge' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Connect a bridge' });
-  await dialog.getByRole('button', { name: 'Search the network' }).click();
-  await dialog.getByRole('button', { name: 'Use' }).first().click();
-  const host = await dialog.getByLabel('Bridge address').inputValue();
-  expect(host).not.toBe('');
-  await expect(page.getByText(`${host}:`).first()).toBeVisible();
+  await page.getByRole('link', { name: 'Change bridge' }).click();
+  await expect(page).toHaveURL(/#\/bridge\/target$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Connect a bridge' })).toBeVisible();
 
-  await dialog.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Search the network' }).click();
+  const found = page.getByRole('listitem').filter({ hasText: '192.0.2.21:39000' });
+  await found.getByRole('button', { name: 'Use' }).click();
+  await expect(page.getByLabel('Bridge address')).toHaveValue('192.0.2.21');
+  await expect(found.getByRole('button', { name: 'Use' })).toBeDisabled();
+
+  // Use saved nothing: leaving asks first, and staying keeps the draft.
+  await page.getByRole('link', { name: 'Bridge', exact: true }).first().click();
+  const leave = page.getByRole('dialog', { name: 'Leave without saving?' });
+  await leave.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByLabel('Bridge address')).toHaveValue('192.0.2.21');
+
+  await page.getByRole('button', { name: 'Save' }).click();
   await answerKey(page, mockAdminKey);
+  await expect(page).toHaveURL(/#\/bridge$/);
   await expect(page.getByText('Back online after the bridge change.')).toBeVisible();
-  await expect(page.getByText(new RegExp(`^${host.replaceAll('.', '\\.')}:\\d+$`))).toBeVisible();
+  await expect(page.getByText(/^192\.0\.2\.21:39000$/)).toBeVisible();
 });

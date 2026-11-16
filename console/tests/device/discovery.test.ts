@@ -4,12 +4,9 @@ import { setTransport } from '../../src/device/lib/api';
 import { FakeDevice } from '../../src/device/mocks/device';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
-  adoptFound,
   bridgeConsoleAddress,
-  consoleAddressAfterUse,
   DISCOVERY_DEADLINE_MS,
   discovery,
-  fillsTarget,
   findBridges,
   searchOffered,
 } from '../../src/device/state/discovery';
@@ -92,45 +89,9 @@ describe('bridge discovery', () => {
     });
   });
 
-  it('matches a bridge to the target fields, ignoring surrounding spaces', () => {
-    expect(fillsTarget(BRIDGE, ' 192.0.2.20 ', '39000')).toBe(true);
-    expect(fillsTarget(BRIDGE, '192.0.2.20', '39001')).toBe(false);
-    expect(fillsTarget(BRIDGE, 'bridge.local', '39000')).toBe(false);
-  });
-
-  it('replaces a console address Use filled, never one the owner typed', () => {
-    const other = { ...BRIDGE, host: '192.0.2.21' };
-
-    expect(consoleAddressAfterUse('', '', BRIDGE)).toBe('http://192.0.2.20:8088/');
-    expect(
-      consoleAddressAfterUse('http://192.0.2.20:8088/', 'http://192.0.2.20:8088/', other),
-    ).toBe('http://192.0.2.21:8088/');
-    expect(consoleAddressAfterUse('https://ha.example/bridge', '', other)).toBeNull();
-    expect(consoleAddressAfterUse('http://192.0.2.20:8088/', '', other)).toBeNull();
-  });
-
   it('builds the console address only from an advertised HTTP port', () => {
     expect(bridgeConsoleAddress(BRIDGE)).toBe('http://192.0.2.20:8088/');
     expect(bridgeConsoleAddress({ ...BRIDGE, http_port: null })).toBe('');
-  });
-
-  it('fills the form from a found bridge and keeps a console address the owner typed', () => {
-    const typed = {
-      entry: { host: '', port: '39000' },
-      console: 'https://ha.example/bridge',
-      consoleFilled: '',
-    };
-    expect(adoptFound(typed, BRIDGE)).toEqual({
-      entry: { host: '192.0.2.20', port: '39000' },
-      console: 'https://ha.example/bridge',
-      consoleFilled: '',
-    });
-    const empty = { entry: { host: '', port: '' }, console: '', consoleFilled: '' };
-    const used = adoptFound(empty, BRIDGE);
-    expect(used.console).toBe('http://192.0.2.20:8088/');
-    expect(adoptFound(used, { ...BRIDGE, host: '192.0.2.21' }).console).toBe(
-      'http://192.0.2.21:8088/',
-    );
   });
 
   it('offers the search only on the home network', () => {

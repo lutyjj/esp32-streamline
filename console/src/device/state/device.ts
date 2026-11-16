@@ -9,6 +9,7 @@ import {
   type Connection,
   type ConnectionEvent,
   nextConnection,
+  restartedSince,
   settledRestart,
   sightingOf,
   untakenJoin,
@@ -136,7 +137,11 @@ export function report(event: ConnectionEvent): void {
       before: sightingOf(previous)?.status ?? null,
       after: next.seen.status,
     };
-    // The restart applied settings; read them as they are now.
+  }
+  // A new start may have applied settings, whether or not the console saw the
+  // write that caused it; read them as they are now.
+  const seen = sightingOf(previous);
+  if (seen && next.phase === 'live' && restartedSince(seen, next.seen.status)) {
     void queryClient.invalidateQueries();
   }
   const ssid = untakenJoin(previous, next);

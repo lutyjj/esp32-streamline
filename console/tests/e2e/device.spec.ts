@@ -295,7 +295,7 @@ test('the log and the crash dump open with the key', async ({ page }) => {
 
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download', exact: true }).click();
-  expect((await download).suggestedFilename()).toMatch(/^streamline-.+-coredump\.bin$/);
+  expect((await download).suggestedFilename()).toBe('streamline-coredump.bin');
   await page.getByRole('button', { name: 'Erase' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Erase' }).click();
   await expect(page.getByText('No crash dump is stored')).toBeVisible();

@@ -9,7 +9,6 @@ import {
   Facts,
   Gauge,
   Gauges,
-  type GaugeZone,
   LogView,
   SegmentedControl,
   SettingRow,
@@ -26,6 +25,7 @@ import { saveFile } from '../../../shared/saveFile';
 import { isUnlocked, useAuthEpoch } from '../../lib/adminKey';
 import { coredumpImage, coredumpQuery, eraseCoredump } from '../../state/coredump';
 import { liveStatus, status } from '../../state/device';
+import { headroomZones } from '../../state/health';
 import { FOLLOW_MS, logsQuery, logText } from '../../state/logs';
 import { queryClient } from '../../state/queries';
 import { writeFailure } from '../../state/writeFailure';
@@ -37,14 +37,6 @@ const CHECK_WORDS: Record<CheckStatus, { tone: StatusTone; word: string }> = {
   warn: { tone: 'warn', word: 'Warning' },
   fail: { tone: 'danger', word: 'Failed' },
 };
-
-/** Tight past four fifths in use, nearly out past nineteen twentieths. */
-function headroom(max: number): GaugeZone[] {
-  return [
-    { from: max * 0.8, to: max * 0.95, tone: 'warn' },
-    { from: max * 0.95, to: max, tone: 'danger' },
-  ];
-}
 
 /** What the device checked as it started, what it has left, and what it wrote down. */
 export function DiagnosticsSection() {
@@ -58,7 +50,7 @@ export function DiagnosticsSection() {
       {isUnlocked() ? (
         <>
           <LogCard />
-          <CoredumpCard version={known.firmware_version} />
+          <CoredumpCard />
         </>
       ) : (
         <Card>
@@ -113,7 +105,7 @@ function ResourcesCard() {
             label="Memory"
             value={heap.total_bytes - heap.free_bytes}
             max={heap.total_bytes}
-            zones={headroom(heap.total_bytes)}
+            zones={headroomZones(heap.total_bytes)}
             marks={[
               {
                 value: heap.total_bytes - heap.minimum_free_bytes,
@@ -127,7 +119,7 @@ function ResourcesCard() {
             label="Settings storage"
             value={nvs.used_entries}
             max={nvs.total_entries}
-            zones={headroom(nvs.total_entries)}
+            zones={headroomZones(nvs.total_entries)}
             format={(used) => `${used} of ${nvs.total_entries} entries`}
           />
         </Gauges>
@@ -189,7 +181,7 @@ function LogCard() {
   );
 }
 
-function CoredumpCard({ version }: { version: string }) {
+function CoredumpCard() {
   const toast = useToast();
   const [eraseAsked, setEraseAsked] = useState(false);
   const read = useQuery(coredumpQuery, queryClient);
@@ -197,7 +189,7 @@ function CoredumpCard({ version }: { version: string }) {
     {
       mutationFn: coredumpImage,
       onSuccess: (image) => {
-        if (image) saveFile(image, `streamline-${version}-coredump.bin`);
+        if (image) saveFile(image, 'streamline-coredump.bin');
       },
       onError: (error) => {
         const words = writeFailure(error, 'The crash dump did not download.');

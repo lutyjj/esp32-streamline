@@ -52,9 +52,22 @@ export function keyActions(status: TransportStatus) {
   };
 }
 
+/**
+ * Run a key write. A failed one reads the key state again behind the failure:
+ * an unanswered write may have moved it all the same.
+ */
+async function reconciled<T>(write: () => Promise<T>): Promise<T | null> {
+  try {
+    return await withAccess(write);
+  } catch (error) {
+    void readAgain(settingsQuery);
+    throw error;
+  }
+}
+
 /** A write that moves the key state, which the settings carry. */
 async function keyWrite(write: () => Promise<Ack>): Promise<Ack | null> {
-  const done = await withAccess(write);
+  const done = await reconciled(write);
   if (done) await readAgain(settingsQuery);
   return done;
 }
@@ -64,7 +77,7 @@ async function keyWrite(write: () => Promise<Ack>): Promise<Ack | null> {
  * cleartext for the next start. The device shows its PSK this once.
  */
 export async function makeKey(recovery = false): Promise<boolean> {
-  const key = await withAccess(() => (recovery ? recoverTransport() : stageTransportKey()));
+  const key = await reconciled(() => (recovery ? recoverTransport() : stageTransportKey()));
   if (!key) return false;
   revealed.value = { ...key, recovery };
   await readAgain(settingsQuery);

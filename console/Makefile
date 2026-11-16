@@ -70,9 +70,12 @@ lint: generate
 test: generate
 	$(CONTAINER_RUN) npx vitest run
 
+# Chromium drops its requests (ERR_NETWORK_CHANGED) when the new container's IPv6
+# address settles mid-test, so the test container runs on IPv4 alone.
 e2e: generate e2e-image bridge-image
 	@set -e; $(call bridge_up,$(E2E_NET),$(E2E_BRIDGE)); \
-	$(CONTAINER_BASE) --network $(E2E_NET) -e STREAMLINE_BRIDGE=$(E2E_BRIDGE):8088 \
+	$(CONTAINER_BASE) --network $(E2E_NET) --sysctl net.ipv6.conf.all.disable_ipv6=1 \
+		-e STREAMLINE_BRIDGE=$(E2E_BRIDGE):8088 \
 		-e STREAMLINE_API_TOKEN=$(BRIDGE_TOKEN) $(E2E_IMAGE) npx playwright test
 
 # The WebFlasher builds as its own pass: vite-plugin-singlefile inlines one entry per

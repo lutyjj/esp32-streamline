@@ -1,6 +1,12 @@
 import { Button, Card, CardHead, Content, CopyValue, SectionNav, SettingRow } from 'linen';
 import { useEffect, useState } from 'react';
-import { getFactoryResetUrl, getRestartUrl, restart } from '../../../generated/api';
+import {
+  getFactoryResetUrl,
+  getGetMetricsUrl,
+  getGetOpenapiUrl,
+  getRestartUrl,
+  restart,
+} from '../../../generated/api';
 import { replacePath, usePathname } from '../../../shared/navigation';
 import { withRestart } from '../../state/access';
 import { resetToSetup } from '../../state/handoff';
@@ -55,14 +61,14 @@ function Api() {
         title="Contract"
         description="OpenAPI 3.1, the document this console was built from."
       >
-        <CopyValue value={`${origin}/api/openapi.json`} label="Contract address" />
+        <CopyValue value={`${origin}${getGetOpenapiUrl()}`} label="Contract address" />
       </SettingRow>
       <SettingRow title="Metrics" description="Prometheus text, open to read.">
-        <CopyValue value={`${origin}/api/metrics`} label="Metrics address" />
+        <CopyValue value={`${origin}${getGetMetricsUrl()}`} label="Metrics address" />
       </SettingRow>
       <SettingRow title="A write from a terminal">
         <CopyValue
-          value={`curl --digest -u "admin:$STREAMLINE_ADMIN_KEY" -X POST ${origin}/api/restart`}
+          value={`curl --digest -u "admin:$STREAMLINE_ADMIN_KEY" -X POST ${origin}${getRestartUrl()}`}
           label="Restart command"
         />
       </SettingRow>

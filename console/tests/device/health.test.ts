@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
-import { blockingHealth } from '../../src/device/state/health';
+import { blockingHealth, headroomZones } from '../../src/device/state/health';
 import type { HealthReport } from '../../src/generated/api';
 import { answering } from './answering';
 
@@ -43,5 +43,14 @@ describe('blockingHealth', () => {
     // A commissioning device shows onboarding, not a fault banner.
     answering(deviceStatus({ mode: 'setup', health: blocking }));
     expect(blockingHealth.value).toBeNull();
+  });
+});
+
+describe('headroomZones', () => {
+  it('turns a resource tight past four fifths used and nearly out past 95%', () => {
+    expect(headroomZones(1000)).toEqual([
+      { from: 800, to: 950, tone: 'warn' },
+      { from: 950, to: 1000, tone: 'danger' },
+    ]);
   });
 });

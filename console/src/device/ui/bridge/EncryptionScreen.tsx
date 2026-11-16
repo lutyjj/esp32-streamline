@@ -73,9 +73,10 @@ export function EncryptionScreen() {
             ) : (
               <Guide transport={transport} target={target} />
             ))}
-          {transport && (transport.mode === 'tls-psk' || transport.pending_key_id) && (
-            <Advanced transport={transport} />
-          )}
+          {transport &&
+            (transport.mode === 'tls-psk' ||
+              transport.pending_key_id ||
+              transport.rollback_key_id) && <Advanced transport={transport} />}
         </div>
       </Content>
     </>
@@ -84,6 +85,7 @@ export function EncryptionScreen() {
 
 function Guide({ transport, target }: { transport: TransportStatus; target: string }) {
   const step = encryptionStep(transport);
+  const actions = keyActions(transport);
   // Replacing a credential leaves the bridge encrypted throughout.
   const replacing = transport.mode === 'tls-psk';
   const shown = revealed.value;
@@ -105,10 +107,17 @@ function Guide({ transport, target }: { transport: TransportStatus; target: stri
         <Steps label="Encryption" steps={STEPS} current={step} />
         {step === 'credential' && (
           <>
-            <p className="text-sm text-text-secondary">
-              The device makes a credential and shows it once. Audio keeps streaming in the clear
-              until the bridge requires encryption.
-            </p>
+            {actions.stage ? (
+              <p className="text-sm text-text-secondary">
+                The device makes a credential and shows it once. Audio keeps streaming in the clear
+                until the bridge requires encryption.
+              </p>
+            ) : (
+              <Notice
+                title="The device still keeps its previous credential."
+                description="It holds two at most, so retire that one under Advanced security first."
+              />
+            )}
             {make.error && (
               <WriteFailure failed="The device made no credential." error={make.error} />
             )}
@@ -183,7 +192,12 @@ function Guide({ transport, target }: { transport: TransportStatus; target: stri
             </Button>
           )}
           {step === 'credential' && (
-            <Button variant="primary" busy={make.isPending} onClick={() => make.mutate()}>
+            <Button
+              variant="primary"
+              busy={make.isPending}
+              disabled={!actions.stage}
+              onClick={() => make.mutate()}
+            >
               Make a credential
             </Button>
           )}
@@ -271,6 +285,7 @@ function Advanced({ transport }: { transport: TransportStatus }) {
   const replace = useMutation({ mutationFn: () => makeKey() }, queryClient);
   const actions = keyActions(transport);
   const encrypted = transport.mode === 'tls-psk';
+  const rollbackHeld = updateLock(getRollbackTransportKeyUrl());
   const closed = (open: boolean) => {
     if (!open) setAsked(null);
   };
@@ -295,21 +310,28 @@ function Advanced({ transport }: { transport: TransportStatus }) {
           </Button>
         </SettingRow>
       )}
-      {actions.rollBack && (
+      {replace.error && (
+        <CardBody className="pt-0">
+          <WriteFailure failed="The device made no credential." error={replace.error} />
+        </CardBody>
+      )}
+      {actions.retire && (
         <SettingRow
           title="Previous credential"
           description={
-            updateLock(getRollbackTransportKeyUrl()) ??
-            'Kept while the new one proves itself. Retire it on both sides once audio has survived restarts.'
+            encrypted
+              ? (rollbackHeld ??
+                'Kept while the new one proves itself. Retire it on both sides once audio has survived restarts.')
+              : 'Kept from encrypted audio. Retire it on both sides before making another.'
           }
         >
           <div className="flex flex-wrap gap-2">
-            <Button
-              disabled={updateLock(getRollbackTransportKeyUrl()) !== null}
-              onClick={() => setAsked('rollback')}
-            >
-              Go back to it
-            </Button>
+            {/* In the clear, going back only swaps the two keys. */}
+            {encrypted && (
+              <Button disabled={rollbackHeld !== null} onClick={() => setAsked('rollback')}>
+                Go back to it
+              </Button>
+            )}
             <Button onClick={() => setAsked('retire')}>Retire</Button>
           </div>
         </SettingRow>

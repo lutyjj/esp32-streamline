@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import icon from '../../icon.svg';
 import { CredentialDialog } from '../../shared/CredentialDialog';
 import { hashNavigation, replacePath, usePathname } from '../../shared/navigation';
-import { verifyKey } from '../state/access';
+import { unlockWithKey } from '../state/access';
 import { UPDATE_OPERATION } from '../state/connection';
 import { connection, joinUntaken, restartSettled, status } from '../state/device';
 import { untakenJoinNews } from '../state/join';
@@ -33,7 +33,7 @@ export function App() {
           username="admin"
           remember="Remember on this browser"
           rejected="The device did not accept this key. Check it and try again."
-          verify={verifyKey}
+          verify={unlockWithKey}
         />
       </ToastProvider>
     </LinenProvider>

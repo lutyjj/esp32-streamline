@@ -292,19 +292,20 @@ export class FakeDevice {
       }),
       this.write('/api/transport/keys/stage', null, () => this.stageKey()),
       this.write('/api/transport/keys/verify', null, () => {
-        if (!this.transport().pending_key_id) return reject(400, 'no staged credential');
+        if (!this.transport().pending_key_id) return reject(409, NO_PENDING_KEY);
         this.transport().pending_verified = true;
         return { ok: true };
       }),
       this.write('/api/transport/keys/activate', null, () => this.activateKey()),
       this.write('/api/transport/keys/discard', null, () => {
+        if (!this.transport().pending_key_id) return reject(409, NO_PENDING_KEY);
         this.transport().pending_key_id = null;
         this.transport().pending_verified = false;
         return { ok: true };
       }),
       this.write('/api/transport/keys/rollback', null, () => {
         const transport = this.transport();
-        if (!transport.rollback_key_id) return reject(400, 'no PCM transport rollback key exists');
+        if (!transport.rollback_key_id) return reject(409, 'no PCM transport rollback key exists');
         [transport.active_key_id, transport.rollback_key_id] = [
           transport.rollback_key_id,
           transport.active_key_id ?? null,
@@ -312,11 +313,19 @@ export class FakeDevice {
         return { ok: true, rebooting: true };
       }),
       this.write('/api/transport/keys/retire', null, () => {
+        if (!this.transport().rollback_key_id) {
+          return reject(409, 'no PCM transport rollback key exists');
+        }
         this.transport().rollback_key_id = null;
         return { ok: true };
       }),
+      // Like the firmware, recovery keeps only the active key and stages beside it.
       this.write('/api/transport/recover', null, () => {
-        this.transport().mode = 'cleartext';
+        Object.assign(this.transport(), {
+          mode: 'cleartext',
+          pending_key_id: null,
+          rollback_key_id: null,
+        });
         this.status.target.transport = 'tcp';
         return this.stageKey();
       }),
@@ -646,10 +655,15 @@ export class FakeDevice {
     return this.config.transport;
   }
 
-  private stageKey(): TransportKeyResponse {
+  /** The firmware keeps two slots, so a new key waits until no pending or previous key is held. */
+  private stageKey(): TransportKeyResponse | Response {
+    const transport = this.transport();
+    if (transport.pending_key_id) return reject(409, 'a pending PCM transport key already exists');
+    if (transport.rollback_key_id) {
+      return reject(409, 'retire the PCM transport rollback key before staging another key');
+    }
     this.keySerial += 1;
     const serial = this.keySerial.toString(16);
-    const transport = this.transport();
     transport.pending_key_id = `eli1-${serial.padStart(32, '0')}`;
     transport.pending_verified = false;
     return {
@@ -661,8 +675,9 @@ export class FakeDevice {
 
   private activateKey(): JsonBodyType | Response {
     const transport = this.transport();
-    if (!transport.pending_key_id || !transport.pending_verified) {
-      return reject(400, 'stage and verify a credential first');
+    if (!transport.pending_key_id) return reject(409, NO_PENDING_KEY);
+    if (!transport.pending_verified) {
+      return reject(409, 'pending PCM transport key has not been verified');
     }
     transport.rollback_key_id = transport.active_key_id ?? null;
     transport.active_key_id = transport.pending_key_id;
@@ -918,7 +933,6 @@ function formFields(rule: { entries: Record<string, unknown> }, form: FormData) 
   );
 }
 
-/** A refusal shaped like the device's: its reason, and the request field it names. */
 /** Bytes that open as an ELF file does, which is what a crash dump is. */
 function elfImage(size: number): ArrayBuffer {
   const image = new Uint8Array(size);
@@ -926,6 +940,10 @@ function elfImage(size: number): ArrayBuffer {
   return image.buffer;
 }
 
+/** The firmware's refusal of a key write that needs a staged key; key-state refusals are 409. */
+const NO_PENDING_KEY = 'no pending PCM transport key exists';
+
+/** A refusal shaped like the device's: its reason, and the request field it names. */
 function reject(status: number, message: string, field: string | null = null): Response {
   return HttpResponse.json({ error: message, field }, { status });
 }

@@ -188,9 +188,11 @@ cleartext on the bridge when abandoning that transition.
 Active encryption needs no routine intervention. Advanced security contains key
 replacement, rollback to and retirement of the previous key, lost-key recovery,
 and the switch back to cleartext, which follows the bridge's. A replacement waits
-until the previous key is retired or rolled back to. The generated secret is
-unavailable once the guide's page reloads, and the guide then says so and offers
-to discard it. [TCP transport](tcp-transport.md) owns the protocol and API sequence.
+until the previous key is retired or rolled back to. After the switch back to
+cleartext, the guide waits until a previous key is retired, which Advanced
+security offers. The generated secret is unavailable once the guide's page
+reloads, and the guide then says so and offers to discard it.
+[TCP transport](tcp-transport.md) owns the protocol and API sequence.
 
 ## 6. Maintain and recover
 

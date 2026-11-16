@@ -1,5 +1,5 @@
 import { getResponse } from 'msw';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
 import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
@@ -55,15 +55,25 @@ describe('where the key stands', () => {
 });
 
 describe('the key lifecycle', () => {
-  beforeEach(async () => {
-    const device = new FakeDevice('steady');
-    setTransport(async (request) => {
+  let device: FakeDevice;
+
+  /** The fake device's answer; `dropped` paths are applied but never answered. */
+  function answeredBy(dropped = '') {
+    return async (request: Request) => {
       const response = await getResponse(device.handlers, request, {
         baseUrl: window.location.origin,
       });
       if (!response) throw new Error(`No mock handler for ${request.url}`);
+      if (response.ok && dropped && request.url.endsWith(dropped)) {
+        throw new TypeError('Failed to fetch');
+      }
       return response;
-    });
+    };
+  }
+
+  beforeEach(async () => {
+    device = new FakeDevice('steady');
+    setTransport(answeredBy());
     unlockSettings(MOCK_ADMIN_KEY, false);
     queryClient.clear();
     revealed.value = null;
@@ -100,6 +110,23 @@ describe('the key lifecycle', () => {
     });
   });
 
+  it('reads the key state again when a credential is made but the answer is lost', async () => {
+    setTransport(answeredBy('/api/transport/keys/stage'));
+    await expect(makeKey()).rejects.toThrow(TypeError);
+    await vi.waitFor(() => expect(transport()?.pending_key_id).toMatch(/^eli1-/));
+  });
+
+  it('reads the key state again after a restart whose answer is lost', async () => {
+    await makeKey();
+    await verifyKey();
+    setTransport(answeredBy('/api/transport/keys/activate'));
+    await expect(activateKey()).rejects.toThrow(TypeError);
+    // The console saw no restart reported; the poll finds the device's new start.
+    for (let read = 0; read < 4; read += 1) await refresh();
+    await queryClient.query(settingsQuery);
+    expect(transport()).toMatchObject({ mode: 'tls-psk', pending_key_id: null });
+  });
+
   it('discards a staged credential with its reveal', async () => {
     await makeKey();
     await discardKey();
@@ -113,7 +140,8 @@ describe('the key lifecycle', () => {
     expect(transport()).toMatchObject({ mode: 'cleartext', pending_verified: false });
   });
 
-  it('retires the previous credential and returns to cleartext with a restart', async () => {
+  /** Turn encryption on, then replace its credential, which keeps the first as the previous one. */
+  async function rotated(): Promise<void> {
     for (let round = 0; round < 2; round += 1) {
       await makeKey();
       await verifyKey();
@@ -122,7 +150,28 @@ describe('the key lifecycle', () => {
     }
     await queryClient.query({ ...settingsQuery, staleTime: 0 });
     expect(transport()?.rollback_key_id).not.toBeNull();
+  }
 
+  it('makes no credential while the previous one is kept, even in the clear', async () => {
+    await rotated();
+    const now = transport();
+    if (!now) throw new Error('no settings');
+    await returnToCleartext(now);
+    await restarted();
+    await expect(makeKey()).rejects.toThrow('retire the PCM transport rollback key');
+
+    await retireKey();
+    await expect(makeKey()).resolves.toBe(true);
+  });
+
+  it('drops the previous credential when it replaces a lost one', async () => {
+    await rotated();
+    await makeKey(true);
+    expect(transport()).toMatchObject({ mode: 'cleartext', rollback_key_id: null });
+  });
+
+  it('retires the previous credential and returns to cleartext with a restart', async () => {
+    await rotated();
     await retireKey();
     expect(transport()?.rollback_key_id).toBeNull();
     const now = transport();

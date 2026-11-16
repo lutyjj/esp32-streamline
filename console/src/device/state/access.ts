@@ -39,8 +39,11 @@ export async function withAccess<T>(write: () => Promise<T>): Promise<T | null> 
   }
 }
 
-/** The credential dialog's check: the device accepts the key, or it does not. */
-export async function verifyKey(key: string, remember: boolean): Promise<'accepted' | 'rejected'> {
+/** The credential dialog's check: the console unlocks with a key the device accepts. */
+export async function unlockWithKey(
+  key: string,
+  remember: boolean,
+): Promise<'accepted' | 'rejected'> {
   if (!(await verifyAdminKey(key))) return 'rejected';
   unlockSettings(key, remember);
   return 'accepted';

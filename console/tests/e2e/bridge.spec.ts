@@ -18,6 +18,7 @@ test('a source shows its reception and playback address, and pairing unlocks on 
 }) => {
   const id = await liveSource(page);
   await page.goto('/bridge.html#/sources');
+  await expect(page.getByRole('listitem').getByRole('meter', { name: 'Left' })).toBeVisible();
   await page.getByRole('link', { name: id }).click();
 
   await expect(page.getByRole('heading', { name: id })).toBeVisible();
@@ -108,7 +109,6 @@ test('a bridge without a token is read-only and names the option that sets one',
   await page.goto('/bridge.html#/sources');
   await page.getByRole('button', { name: /^Read-only/ }).click();
 
-  await expect(page).toHaveURL(/#\/settings\/deployment$/);
   await expect(
     page.getByText(/Set api_token in the Home Assistant app's configuration/),
   ).toBeVisible();

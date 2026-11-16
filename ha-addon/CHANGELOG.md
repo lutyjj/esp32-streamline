@@ -1,6 +1,13 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.20.0](https://github.com/lutyjj/esp32-streamline/compare/v0.19.0...v0.20.0) (2026-11-16)
+
+
+### Features
+
+* **console:** adopt linen 0.7.0, with the theme under This browser on a phone ([#615](https://github.com/lutyjj/esp32-streamline/issues/615)) ([16d05fb](https://github.com/lutyjj/esp32-streamline/commit/16d05fbce5efa9439439484333163b9538b34ab3))
+
 ## [0.19.0](https://github.com/lutyjj/esp32-streamline/compare/v0.18.1...v0.19.0) (2026-11-16)
 
 

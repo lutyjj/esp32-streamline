@@ -4,7 +4,7 @@ import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
 import { setWifi } from '../../src/generated/api';
 
-// The fake device refuses the Wi-Fi writes the firmware refuses, by the same error.
+// The fake device refuses the Wi-Fi writes the firmware refuses, on the field it names.
 beforeEach(() => {
   const device = new FakeDevice('first-boot');
   setTransport(async (request) => {
@@ -23,9 +23,10 @@ afterEach(() => {
 it.each([
   [{ password: '' }, 'needs its password'],
   [{ password: 'correct horse', open_network: true }, 'has no password'],
-  [{ password: 'short' }, '8 to 63 bytes'],
-])('refuses %o with %s', async (credentials, error) => {
-  await expect(
-    setWifi({ ssid: 'Cafe', admin_key: MOCK_ADMIN_KEY, ...credentials }),
-  ).rejects.toThrow(error);
+  // The contract's rule refuses this one before the device's own checks.
+  [{ password: 'short' }, ''],
+])('refuses %o on the password field', async (credentials, error) => {
+  const refused = setWifi({ ssid: 'Cafe', admin_key: MOCK_ADMIN_KEY, ...credentials });
+  await expect(refused).rejects.toMatchObject({ field: 'password' });
+  await expect(refused).rejects.toThrow(error);
 });

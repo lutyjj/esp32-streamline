@@ -2,9 +2,9 @@
  * In-memory fake device behind the generated device API. Reads serve one
  * state model, writes persist into it, and the unlock check, transport-key
  * lifecycle, and OTA phases follow the machines the firmware implements.
- * Writes parse `application/x-www-form-urlencoded` bodies, the encoding the
- * contract declares for every device settings operation.
- * `tests/device/mockCoverage.test.ts` pins the handler set to `docs/openapi.json`.
+ * Writes decode their `application/x-www-form-urlencoded` bodies and check
+ * them against the contract's generated rules. The generated handlers answer
+ * every operation the fake does not keep state for.
  */
 
 import { type HttpHandler, HttpResponse, http, type JsonBodyType } from 'msw';
@@ -12,20 +12,25 @@ import * as v from 'valibot';
 import contract from '../../../../docs/openapi.json';
 import type {
   AudioProfileCatalog,
-  AutoUpdateScheduleRequest,
   BoardCatalogResponse,
   BootLog,
-  ButtonAction,
   DiscoveredBridge,
-  LedRole,
+  GetOpenapi200,
   LogsResponse,
   SettingsResponse,
   StatusResponse,
   TransportKeyResponse,
-  TransportMode,
 } from '../../generated/api';
-import { RESTARTING_WRITES } from '../../generated/facts';
-import { AudioProfileCatalog as catalogRule } from '../../generated/rules';
+import {
+  getGetBoardsMockHandler,
+  getGetCoredumpMockHandler,
+  getGetHealthMockHandler,
+  getGetMetricsMockHandler,
+  getGetOpenapiMockHandler,
+  getStreamLineDeviceAPIMock,
+} from '../../generated/api.msw';
+import { AUTHENTICATED_READS, RESTARTING_WRITES } from '../../generated/facts';
+import * as rules from '../../generated/rules';
 
 /** One captured line as the fake device holds it before rendering to text. */
 interface MockLogLine {
@@ -126,8 +131,8 @@ const CODEC_SILENT = {
   remedy: 'Check the board selection, then restart the device.',
 } as const;
 
-/** A parsed form body: every field arrives as a string. */
-type FormBody = Partial<Record<string, string>>;
+/** A request's generated rule: the fields it takes, and the values it accepts. */
+type RequestRule<T> = v.GenericSchema<unknown, T> & { entries: Record<string, unknown> };
 
 export class FakeDevice {
   readonly handlers: HttpHandler[];
@@ -178,157 +183,153 @@ export class FakeDevice {
   constructor(scenario: DeviceScenario = 'steady') {
     this.reset(scenario);
     this.handlers = [
-      this.read('/api/status', () => this.nextStatus()),
-      this.read('/api/settings', () => this.config),
-      this.read('/api/health', () => this.status.health),
-      this.read('/api/audio-profiles', () => this.profiles),
-      this.read('/api/boards', () => this.boards()),
+      this.gate(),
+      http.get('*/api/status', () => HttpResponse.json(this.nextStatus())),
+      http.get('*/api/settings', () => HttpResponse.json(this.config)),
+      http.get('*/api/audio-profiles', () => HttpResponse.json(this.profiles)),
       // Like the firmware, browse only from the home network.
-      http.get('/api/bridges', ({ request }) =>
-        !this.here(request)
-          ? HttpResponse.error()
-          : this.status.mode === 'provisioned'
-            ? HttpResponse.json({ bridges: this.bridges })
-            : reject(503, 'bridge discovery needs the home network'),
+      http.get('*/api/bridges', () =>
+        this.status.mode === 'provisioned'
+          ? HttpResponse.json({ bridges: this.bridges })
+          : reject(503, 'bridge discovery needs the home network'),
       ),
-      this.read('/api/openapi.json', () => contract),
-      this.readAuthorized('/api/logs', () => this.nextLogs()),
-      this.readAuthorized('/api/coredump', () => ({
+      http.get('*/api/logs', () => HttpResponse.json(this.nextLogs())),
+      http.get('*/api/coredump/image', () =>
+        this.coredump
+          ? new HttpResponse(this.coredump, {
+              headers: { 'Content-Type': 'application/octet-stream' },
+            })
+          : reject(404, 'no crash dump is stored'),
+      ),
+      getGetCoredumpMockHandler(() => ({
         present: this.coredump !== null,
         size_bytes: this.coredump?.byteLength ?? 0,
       })),
-      http.get('/api/coredump/image', ({ request }) => {
-        if (!this.here(request)) return HttpResponse.error();
-        const denied = this.deny(request);
-        if (denied) return denied;
-        if (!this.coredump) return reject(404, 'no crash dump is stored');
-        return new HttpResponse(this.coredump, {
-          headers: { 'Content-Type': 'application/octet-stream' },
-        });
-      }),
-      this.write('/api/coredump/erase', () => {
+      getGetHealthMockHandler(() => this.status.health),
+      getGetBoardsMockHandler(() => this.boards()),
+      getGetMetricsMockHandler(() => this.metricsText()),
+      getGetOpenapiMockHandler(contract as GetOpenapi200),
+      this.write('/api/coredump/erase', null, () => {
         this.coredump = null;
         return { ok: true };
       }),
-      http.get('/api/metrics', ({ request }) =>
-        this.here(request) ? new HttpResponse(this.metricsText()) : HttpResponse.error(),
-      ),
-      this.write('/api/unlock', () => ({ ok: true })),
-      this.write('/api/settings/wifi', (body) => this.join(body)),
-      this.write('/api/settings/target', (body) => {
+      this.write('/api/unlock', null, () => ({ ok: true })),
+      this.write('/api/settings/wifi', rules.WifiSettingsRequest, (body) => this.join(body)),
+      this.write('/api/settings/target', rules.TargetSettingsRequest, (body) => {
         this.config.target_host = body.target_host ?? '';
-        this.config.target_port = num(body.target_port) ?? this.config.target_port;
+        this.config.target_port = body.target_port ?? this.config.target_port;
         this.status.target.target_host = this.config.target_host;
         this.status.target.target_port = this.config.target_port;
         // Like the firmware: a boot applies the target, and setup mode keeps it
         // staged for commissioning instead of restarting.
         return this.status.mode === 'setup' ? { ok: true } : { ok: true, rebooting: true };
       }),
-      this.write('/api/settings/name', (body) => {
+      this.write('/api/settings/name', rules.NameSettingsRequest, (body) => {
         this.config.device_name = body.name ?? '';
         this.status.device_name = this.config.device_name;
         return { ok: true };
       }),
-      this.write('/api/settings/audio', (body) => {
-        const audio = {
-          input_line: num(body.input_line) ?? this.config.input_line,
-          input_gain: num(body.input_gain) ?? this.config.input_gain,
-          adc_attenuation_db: num(body.adc_attenuation_db) ?? this.config.adc_attenuation_db,
-        };
+      this.write('/api/settings/audio', rules.AudioSettingsRequest, (audio) => {
         Object.assign(this.config, audio);
         Object.assign(this.status.audio, audio);
         // Like the firmware: levels set by hand are no profile's.
         this.profiles.active_profile_id = null;
         return this.levelsApplied();
       }),
-      this.write('/api/settings/analog-passthrough', (body) => {
-        const enabled = body.enabled === 'true';
-        this.config.analog_passthrough_enabled = enabled;
-        this.status.analog_passthrough.enabled = enabled;
-        // Setup mode runs no codec, so the route waits for commissioning.
-        this.status.analog_passthrough.active = enabled && this.status.mode !== 'setup';
-        return { ok: true };
-      }),
-      this.write('/api/settings/led', (body) => {
+      this.write(
+        '/api/settings/analog-passthrough',
+        rules.AnalogPassthroughSettingsRequest,
+        ({ enabled }) => {
+          this.config.analog_passthrough_enabled = enabled;
+          this.status.analog_passthrough.enabled = enabled;
+          // Setup mode runs no codec, so the route waits for commissioning.
+          this.status.analog_passthrough.active = enabled && this.status.mode !== 'setup';
+          return { ok: true };
+        },
+      ),
+      this.write('/api/settings/led', rules.LedSettingsRequest, (body) => {
         const led = this.config.led_roles.find((role) => role.id === body.id);
         if (!led) return reject(400, 'This board has no such LED.', 'id');
-        led.role = (body.role ?? 'off') as LedRole;
+        led.role = body.role;
         return { ok: true };
       }),
-      this.write('/api/settings/button', (body) => {
+      this.write('/api/settings/button', rules.ButtonSettingsRequest, (body) => {
         const button = this.config.button_actions.find((entry) => entry.id === body.id);
         if (!button) return reject(400, 'This board has no such button.', 'id');
-        button.action = (body.action ?? 'none') as ButtonAction;
+        button.action = body.action;
         return { ok: true };
       }),
-      this.write('/api/stream', (body) => {
-        this.status.stream.enabled = body.enabled === 'true';
+      this.write('/api/stream', rules.StreamRequest, ({ enabled }) => {
+        this.status.stream.enabled = enabled;
         return { ok: true };
       }),
-      this.write('/api/settings/board', (body) => this.selectBoard(body)),
-      this.write('/api/settings/audio-profiles', (body) => this.replaceProfiles(body.catalog)),
-      this.write('/api/settings/audio-profile', (body) =>
+      this.write('/api/settings/board', rules.BoardSettingsRequest, (body) =>
+        this.selectBoard(body),
+      ),
+      this.write('/api/settings/audio-profiles', rules.AudioProfilesSettingsRequest, (body) =>
+        this.replaceProfiles(body.catalog),
+      ),
+      this.write('/api/settings/audio-profile', rules.ActiveAudioProfileRequest, (body) =>
         this.activateProfile(body.profile_id ?? ''),
       ),
-      this.write('/api/settings/admin-key', (body) => {
-        if (!body.admin_key) return reject(400, 'admin_key is required');
+      this.write('/api/settings/admin-key', rules.AdminKeySettingsRequest, (body) => {
         this.adminKey = body.admin_key;
         return { ok: true };
       }),
-      this.write('/api/settings/firmware', (body) => {
-        this.config.auto_update_schedule = (body.auto_update_schedule ??
-          'off') as AutoUpdateScheduleRequest;
+      this.write('/api/settings/firmware', rules.FirmwareSettingsRequest, (body) => {
+        this.config.auto_update_schedule = body.auto_update_schedule;
         return { ok: true };
       }),
-      this.write('/api/settings/transport', (body) => {
-        const mode = (body.mode ?? 'cleartext') as TransportMode;
+      this.write('/api/settings/transport', rules.TransportSettingsRequest, ({ mode }) => {
         this.transport().mode = mode;
         this.status.target.transport = mode === 'tls-psk' ? 'tls' : 'tcp';
         return { ok: true };
       }),
-      this.write('/api/transport/keys/stage', () => this.stageKey()),
-      this.write('/api/transport/keys/verify', () => {
+      this.write('/api/transport/keys/stage', null, () => this.stageKey()),
+      this.write('/api/transport/keys/verify', null, () => {
         if (!this.transport().pending_key_id) return reject(400, 'no staged credential');
         this.transport().pending_verified = true;
         return { ok: true };
       }),
-      this.write('/api/transport/keys/activate', () => this.activateKey()),
-      this.write('/api/transport/keys/discard', () => {
+      this.write('/api/transport/keys/activate', null, () => this.activateKey()),
+      this.write('/api/transport/keys/discard', null, () => {
         this.transport().pending_key_id = null;
         this.transport().pending_verified = false;
         return { ok: true };
       }),
-      this.write('/api/transport/keys/rollback', () => {
+      this.write('/api/transport/keys/rollback', null, () => {
         const transport = this.transport();
         if (!transport.rollback_key_id) return reject(400, 'no previous credential');
         transport.active_key_id = transport.rollback_key_id;
         transport.rollback_key_id = null;
         return { ok: true };
       }),
-      this.write('/api/transport/keys/retire', () => {
+      this.write('/api/transport/keys/retire', null, () => {
         this.transport().rollback_key_id = null;
         return { ok: true };
       }),
-      this.write('/api/transport/recover', () => {
+      this.write('/api/transport/recover', null, () => {
         this.transport().mode = 'cleartext';
         this.status.target.transport = 'tcp';
         return this.stageKey();
       }),
-      this.write('/api/ota/update', (body) => this.startUpdate(body)),
-      this.write('/api/ota/check', () => {
+      this.write('/api/ota/update', rules.OtaUpdateRequest, (body) => this.startUpdate(body)),
+      this.write('/api/ota/check', null, () => {
         this.status.ota.phase = 'up-to-date';
         this.status.ota.latest_version = this.status.firmware_version;
         this.status.ota.message = `v${this.status.firmware_version} is the latest release`;
         return { ok: true };
       }),
-      this.write('/api/ota/rollback', () => this.rollbackUpdate()),
-      this.write('/api/restart', () => ({ ok: true, rebooting: true })),
+      this.write('/api/ota/rollback', null, () => this.rollbackUpdate()),
+      this.write('/api/restart', null, () => ({ ok: true, rebooting: true })),
       // Reset erases the configuration but keeps the setup password: it is
       // device identity, and the response repeats the label credentials.
-      this.write('/api/factory-reset', () => {
+      this.write('/api/factory-reset', null, () => {
         this.reset('first-boot');
         return { rebooting: true, setup_network: this.setupNetwork };
       }),
+      // Any other operation answers as the contract's examples say.
+      ...getStreamLineDeviceAPIMock(),
     ];
   }
 
@@ -382,11 +383,24 @@ export class FakeDevice {
     };
   }
 
-  /** GET: reads are open on the device. */
-  private read(path: string, body: () => JsonBodyType): HttpHandler {
-    return http.get(path, ({ request }) =>
-      this.here(request) ? HttpResponse.json(body()) : HttpResponse.error(),
-    );
+  /**
+   * In front of every handler: a device away from this browser's network
+   * answers nothing, a request that needs the admin key gets the challenge
+   * without it, and a write that can restart the device waits for a busy
+   * update. A request that passes goes on to its operation's handler.
+   */
+  private gate(): HttpHandler {
+    return http.all('*/api/*', ({ request }) => {
+      if (!this.here(request)) return HttpResponse.error();
+      const path = new URL(request.url).pathname;
+      const denied =
+        request.method !== 'GET' || AUTHENTICATED_READS.has(path) ? this.deny(request) : null;
+      if (denied) return denied;
+      if (this.status.ota.busy && RESTARTING_WRITES.has(path)) {
+        return reject(409, 'a firmware update or check is in progress; retry after it finishes');
+      }
+      return undefined;
+    });
   }
 
   /**
@@ -408,19 +422,6 @@ export class FakeDevice {
   private leave(reads: number, onReturn: (() => void) | null = null): void {
     this.absentReads = reads;
     this.onReturn = onReturn;
-  }
-
-  /**
-   * GET behind the admin key, for a read that returns more than the device
-   * publishes openly. Same challenge the firmware gives a missing key.
-   */
-  private readAuthorized(path: string, body: () => JsonBodyType): HttpHandler {
-    return http.get(path, ({ request }) => {
-      if (!this.here(request)) return HttpResponse.error();
-      const denied = this.deny(request);
-      if (denied) return denied;
-      return HttpResponse.json(body());
-    });
   }
 
   /**
@@ -482,22 +483,27 @@ export class FakeDevice {
   }
 
   /**
-   * POST: writes require the admin key once the device has one, exactly as
-   * `deviceFetch` answers the challenge, and a restarting write waits for a
-   * busy update. The result may be an error `HttpResponse`.
+   * POST: the body decoded into the types its rule names and checked against
+   * it, as the firmware refuses a request that breaks the contract, then
+   * applied. The result may be an error `HttpResponse`.
    */
-  private write(path: string, apply: (body: FormBody) => JsonBodyType | Response): HttpHandler {
-    return http.post(path, async ({ request }) => {
-      if (!this.here(request)) return HttpResponse.error();
-      const denied = this.deny(request);
-      if (denied) return denied;
-      if (this.status.ota.busy && RESTARTING_WRITES.has(path)) {
-        return reject(409, 'a firmware update or check is in progress; retry after it finishes');
+  private write<T>(
+    path: string,
+    rule: RequestRule<T> | null,
+    apply: (body: T) => JsonBodyType | Response,
+  ): HttpHandler {
+    return http.post(`*${path}`, async ({ request }) => {
+      let body = undefined as T;
+      if (rule) {
+        const form = await request.formData().catch(() => new FormData());
+        const checked = v.safeParse(rule, formFields(rule, form));
+        if (!checked.success) {
+          const [issue] = checked.issues;
+          const field = issue.path?.[0]?.key;
+          return reject(400, issue.message, typeof field === 'string' ? field : null);
+        }
+        body = checked.output;
       }
-      const form = await request.formData().catch(() => null);
-      const body: FormBody = form
-        ? Object.fromEntries([...form.entries()].map(([key, value]) => [key, String(value)]))
-        : {};
       const result = apply(body);
       if (result instanceof Response) return result;
       if ((result as { rebooting?: boolean } | null)?.rebooting) this.boot();
@@ -557,12 +563,12 @@ export class FakeDevice {
    * cause. From the home network, only a new password for the same network
    * brings it back to this browser.
    */
-  private join(body: FormBody): JsonBodyType | Response {
-    const ssid = (body.ssid ?? '').trim();
+  private join(body: v.InferOutput<typeof rules.WifiSettingsRequest>): JsonBodyType | Response {
+    const ssid = body.ssid.trim();
     if (!ssid) return reject(400, 'A network name is required.', 'ssid');
     // Like the firmware: only `open_network` makes a network open, and a blank
     // password keeps a stored one, which a saved open network does not have.
-    const open = body.open_network === 'true';
+    const open = body.open_network;
     if (open && body.password) {
       return reject(400, 'An open network has no password.', 'password');
     }
@@ -574,13 +580,6 @@ export class FakeDevice {
         'password',
       );
     }
-    if (body.password && !wpa2Password(body.password)) {
-      return reject(
-        400,
-        'A Wi-Fi password is 8 to 63 bytes, or the 64-digit hexadecimal key, without NUL.',
-        'password',
-      );
-    }
     if (body.admin_key) this.adminKey = body.admin_key;
     const fromHome = this.status.mode === 'provisioned';
     const sameNetwork = ssid === this.config.ssid;
@@ -588,9 +587,9 @@ export class FakeDevice {
     this.config.ssid = ssid;
     this.config.open_network = open;
     // An absent target keeps the stored one; an empty host clears it.
-    if (body.target_host !== undefined) {
+    if (body.target_host !== undefined && body.target_host !== null) {
       this.config.target_host = body.target_host;
-      this.config.target_port = num(body.target_port) ?? this.config.target_port;
+      this.config.target_port = body.target_port ?? this.config.target_port;
       this.status.target.target_host = this.config.target_host;
       this.status.target.target_port = this.config.target_port;
     }
@@ -678,7 +677,9 @@ export class FakeDevice {
     };
   }
 
-  private selectBoard(body: FormBody): JsonBodyType | Response {
+  private selectBoard(
+    body: v.InferOutput<typeof rules.BoardSettingsRequest>,
+  ): JsonBodyType | Response {
     if (body.board_id && body.board_id !== this.status.capabilities.board_id) {
       return reject(400, `unknown board descriptor '${body.board_id}'`, 'board_id');
     }
@@ -704,7 +705,7 @@ export class FakeDevice {
     } catch {
       return reject(400, 'This is not a profile catalog: not valid JSON.', 'catalog');
     }
-    const checked = v.safeParse(catalogRule, parsed);
+    const checked = v.safeParse(rules.AudioProfileCatalog, parsed);
     if (!checked.success) {
       return reject(400, `This is not a profile catalog: ${checked.issues[0].message}.`, 'catalog');
     }
@@ -745,7 +746,7 @@ export class FakeDevice {
    * Like the firmware, an empty request installs the latest release, and a
    * custom image needs its URL and digest together.
    */
-  private startUpdate(body: FormBody): JsonBodyType | Response {
+  private startUpdate(body: v.InferOutput<typeof rules.OtaUpdateRequest>): JsonBodyType | Response {
     if (Boolean(body.url) !== Boolean(body.sha256)) {
       return reject(400, 'url and sha256 must be provided together');
     }
@@ -869,19 +870,25 @@ export class FakeDevice {
   }
 }
 
-/** A form field that should carry a number, or null when absent or malformed. */
-function num(value: string | undefined): number | null {
-  if (value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isNaN(parsed) ? null : parsed;
-}
-
-/** The firmware's WPA2 password shape: 8 to 63 bytes, or a 64-digit hex PSK, without NUL. */
-function wpa2Password(password: string): boolean {
-  const bytes = new TextEncoder().encode(password).length;
-  return (
-    !password.includes('\0') &&
-    ((bytes >= 8 && bytes <= 63) || (bytes === 64 && /^[0-9a-fA-F]{64}$/.test(password)))
+/**
+ * A form body's fields as the types `rule` names them: the generated client
+ * sends every value as text.
+ */
+function formFields(rule: { entries: Record<string, unknown> }, form: FormData) {
+  return Object.fromEntries(
+    [...form.entries()].map(([name, value]) => {
+      let schema = rule.entries[name] as { type?: string; wrapped?: unknown } | undefined;
+      while (schema && 'wrapped' in schema) schema = schema.wrapped as typeof schema;
+      const text = String(value);
+      return [
+        name,
+        schema?.type === 'number'
+          ? Number(text)
+          : schema?.type === 'boolean'
+            ? text === 'true'
+            : text,
+      ];
+    }),
   );
 }
 

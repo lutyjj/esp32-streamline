@@ -58,8 +58,10 @@ and `state` modules (`console/src/device/`, with what the consoles share in
 stay thin renderers over that state. A console behavior change ships with
 its test. To exercise a console without hardware, use `make console-dev-mock`
 or `make console-e2e`, which run the fake device in `console/src/device/mocks`
-beside a real bridge container, instead of a throwaway harness. A new device
-endpoint must gain its mock handler or the coverage test fails.
+beside a real bridge container, instead of a throwaway harness. Handlers
+Orval generates from the contract answer every device operation the fake
+keeps no state for, so a new endpoint whose answer depends on state needs a
+handler in the fake.
 
 ## Write meaningful unit tests
 

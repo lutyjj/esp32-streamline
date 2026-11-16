@@ -8,7 +8,11 @@ export default defineConfig({
     output: {
       client: 'fetch',
       mode: 'single',
+      // A handler for every operation, the base under the fake device.
+      mock: { generators: [{ type: 'msw', useExamples: true }] },
       override: {
+        // Orval types a binary response as a Blob but draws it as numbers.
+        operations: { get_coredump_image: { mock: { data: () => new Blob() } } },
         fetch: {
           includeHttpResponseReturnType: false,
         },

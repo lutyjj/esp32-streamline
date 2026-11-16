@@ -48,8 +48,10 @@ pub const WIFI_SSID_PATTERN: &str = r"^[^\u0000]*$";
 pub const WIFI_PASSWORD_PATTERN: &str =
     r"^(?:[\u0001-\u007F]{8,63}|[0-9A-Fa-f]{64}|[^\u0000]*[^\u0000-\u007F][^\u0000]*)?$";
 
-/// Whether a host character is a space as JSON Schema patterns read `\s`,
-/// which adds the byte-order mark to Unicode's white space.
+/// Whether a host character is a space: Unicode white space plus the
+/// byte-order mark, which JSON Schema's `\s` also matches. U+0085 is the one
+/// character only the device treats as a space, which leaves the schema the
+/// looser of the two.
 fn is_host_space(character: char) -> bool {
     character.is_whitespace() || character == '\u{FEFF}'
 }

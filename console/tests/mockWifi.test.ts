@@ -20,9 +20,9 @@ afterEach(() => {
 });
 
 it.each([
-  [{ password: '' }, 'MissingWifiPassword'],
-  [{ password: 'correct horse', open_network: true }, 'PasswordForOpenNetwork'],
-  [{ password: 'short' }, 'MalformedWifiPassword'],
+  [{ password: '' }, 'needs its password'],
+  [{ password: 'correct horse', open_network: true }, 'has no password'],
+  [{ password: 'short' }, '8 to 63 bytes'],
 ])('refuses %o with %s', async (credentials, error) => {
   await expect(
     setWifi({ ssid: 'Cafe', admin_key: MOCK_ADMIN_KEY, ...credentials }),

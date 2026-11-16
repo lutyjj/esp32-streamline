@@ -255,7 +255,7 @@ fn run(
     {
         Ok(pause) => pause,
         Err(error) => {
-            install_failed(progress, store, error);
+            note_outcome(store, error);
             return progress.fail(error.to_owned());
         }
     };
@@ -339,22 +339,24 @@ fn install_and_reboot(
 ) -> Result<Phase, String> {
     progress.set_phase(Phase::Downloading);
     // Written before the download so a crash mid-install still leaves evidence;
-    // overwritten by the final outcome below.
-    record_install(
-        store,
-        &InstallRecord::Started,
-        &format!("installing {what} (did not finish)"),
-    );
+    // overwritten by the final outcome below. The slot is the one
+    // `initiate_update` writes.
+    // SAFETY: a null start selects the slot after the running one.
+    let slot =
+        partition_label(unsafe { sys::esp_ota_get_next_update_partition(core::ptr::null()) });
+    record_install(store, &InstallRecord::Started(slot.clone()));
+    note_outcome(store, &format!("installing {what} (did not finish)"));
     if let Err(error) = install(url, sha256, progress) {
         let message = format!("install {what} failed: {error:#}");
-        install_failed(progress, store, &message);
+        record_install(store, &InstallRecord::Failed);
+        note_outcome(store, &message);
+        progress.set_last_result(InstallResult::Failed);
         return Err(message);
     }
 
     let message = format!("installed {what}; rebooting");
-    // SAFETY: completing the install selected the boot partition just read.
-    let written = partition_label(unsafe { sys::esp_ota_get_boot_partition() });
-    record_install(store, &InstallRecord::Written(written), &message);
+    record_install(store, &InstallRecord::Written(slot));
+    note_outcome(store, &message);
     progress.set_phase(Phase::Installed);
     progress.set_message(&message);
     log::info!("OTA {message}");
@@ -368,31 +370,34 @@ fn install_and_reboot(
     unsafe { esp_idf_svc::sys::esp_restart() }
 }
 
-/// Persist where an install stands, for the boot after it to read its
-/// outcome, and a note in words tagged with the version that ran the install.
+/// Persist where an install stands, so the boot after it reads its outcome.
+/// Best-effort: diagnostics must never fail an update.
+fn record_install(store: Option<&Mutex<ConfigStore>>, record: &InstallRecord) {
+    let Some(store) = store else { return };
+    match store.lock() {
+        Ok(guard) => {
+            if let Err(error) = guard.save_install_record(record) {
+                log::warn!("could not persist the install record: {error:#}");
+            }
+        }
+        Err(_) => log::warn!("could not persist the install record: store lock poisoned"),
+    }
+}
+
+/// Persist the install outcome in words, tagged with the version that ran
+/// the install, so `/api/status` can still explain it after the reboot.
 /// Best-effort: diagnostics must never fail an update. A check carries no
-/// store and records nothing.
-fn record_install(store: Option<&Mutex<ConfigStore>>, record: &InstallRecord, outcome: &str) {
+/// store and notes nothing.
+fn note_outcome(store: Option<&Mutex<ConfigStore>>, outcome: &str) {
     let Some(store) = store else { return };
     let note = format!("v{}: {outcome}", env!("CARGO_PKG_VERSION"));
     match store.lock() {
         Ok(guard) => {
-            if let Err(error) = guard
-                .save_install_record(record)
-                .and_then(|()| guard.save_last_ota(&note))
-            {
+            if let Err(error) = guard.save_last_ota(&note) {
                 log::warn!("could not persist OTA outcome: {error:#}");
             }
         }
         Err(_) => log::warn!("could not persist OTA outcome: store lock poisoned"),
-    }
-}
-
-/// Record an install that stopped before its restart, and report it now.
-fn install_failed(progress: &OtaProgress, store: Option<&Mutex<ConfigStore>>, message: &str) {
-    if store.is_some() {
-        record_install(store, &InstallRecord::Failed, message);
-        progress.set_last_result(InstallResult::Failed);
     }
 }
 

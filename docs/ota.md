@@ -49,8 +49,8 @@ the last install ended:
 
 | `last_result` | Meaning |
 |---|---|
-| `none` | No install has run since the last factory reset. |
-| `failed` | The install stopped before the device restarted into the new image: the download or the image was refused, or the device restarted during the install. |
+| `none` | No install has written a slot since the last factory reset. |
+| `failed` | An install began writing the inactive slot and stopped before the device restarted into it: the download or the image was refused, or the device restarted during the install. A run that stops earlier, such as a failed release check, reports its failure under `phase` and `message` and leaves `last_result` as it was. |
 | `installed` | The device runs the image the last install wrote. |
 | `rolled-back` | The device runs the other slot: the new image did not start, or a [manual rollback](#manual-rollback) returned to the previous one. |
 

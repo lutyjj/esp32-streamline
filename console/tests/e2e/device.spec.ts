@@ -268,3 +268,46 @@ test('the theme is chosen at the foot of the rail', async ({ page }) => {
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
+
+test('an update is checked, installed with its progress, and rolled back', async ({ page }) => {
+  await page.goto('/#/maintenance/updates');
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(page.getByText('Version 0.5.0-mock is available.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Install 0.5.0-mock' }).click();
+  await expect(page.getByRole('progressbar')).toBeVisible();
+  await expect(page.getByText('Waiting for the firmware update to finish.')).toBeVisible();
+  await expect(page.getByText('Updated to 0.5.0-mock.')).toBeVisible();
+  await expect(page.getByText('Finished')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Roll back' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Roll back' }).click();
+  await expect(page.getByText('Back online after the rollback.')).toBeVisible();
+  await expect(page.getByText('Went back to the previous image')).toBeVisible();
+});
+
+test('the log and the crash dump open with the key', async ({ page }) => {
+  await page.goto('/#/maintenance/diagnostics');
+  await page.getByRole('button', { name: 'Unlock to read' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(page.getByText('codec: ES8388 ready at 48000 Hz')).toBeVisible();
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download', exact: true }).click();
+  expect((await download).suggestedFilename()).toMatch(/^streamline-.+-coredump\.bin$/);
+  await page.getByRole('button', { name: 'Erase' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Erase' }).click();
+  await expect(page.getByText('No crash dump is stored')).toBeVisible();
+});
+
+test('a factory reset ends on the setup network it names', async ({ page }) => {
+  await page.goto('/#/maintenance/reset');
+  await page.getByRole('button', { name: 'Factory reset' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Factory reset' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'The device is ready to set up again' }),
+  ).toBeVisible();
+  await expect(page.getByText('http://192.168.71.1/')).toBeVisible();
+});

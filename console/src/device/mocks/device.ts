@@ -48,8 +48,11 @@ import { deviceConfig, deviceStatus, discoveredBridges, setupNetwork } from './f
  */
 export const MOCK_ADMIN_KEY = 'a'.repeat(48);
 
-/** The version a custom image, or an install with no newer release, lands on. */
+/** The newest release the fake knows, and the version a custom image lands on. */
 const MOCK_UPDATED_VERSION = '0.5.0-mock';
+
+/** A stored crash dump's size, as the diagnostics guide shows one. */
+const MOCK_COREDUMP_BYTES = 23_972;
 
 /** The realm the firmware names in every digest challenge. */
 const DIGEST_REALM = 'streamline';
@@ -314,12 +317,7 @@ export class FakeDevice {
         return this.stageKey();
       }),
       this.write('/api/ota/update', rules.OtaUpdateRequest, (body) => this.startUpdate(body)),
-      this.write('/api/ota/check', null, () => {
-        this.status.ota.phase = 'up-to-date';
-        this.status.ota.latest_version = this.status.firmware_version;
-        this.status.ota.message = `v${this.status.firmware_version} is the latest release`;
-        return { ok: true };
-      }),
+      this.write('/api/ota/check', null, () => this.checkForUpdate()),
       this.write('/api/ota/rollback', null, () => this.rollbackUpdate()),
       this.write('/api/restart', null, () => ({ ok: true, rebooting: true })),
       // Reset erases the configuration but keeps the setup password: it is
@@ -336,6 +334,8 @@ export class FakeDevice {
   private reset(scenario: DeviceScenario): void {
     // A factory reset keeps counting boots, as the firmware's boot id does.
     const boot = this.status ? this.status.system.boot : null;
+    // A device in use has panicked once; a reset erases the dump with the rest.
+    this.coredump = scenario === 'steady' ? elfImage(MOCK_COREDUMP_BYTES) : null;
     if (scenario === 'steady') {
       this.status = deviceStatus({ metrics: { playing: true } });
       this.config = deviceConfig();
@@ -788,6 +788,28 @@ export class FakeDevice {
     return { ok: true, started: true };
   }
 
+  /** Like the firmware, a check runs beside the poll and ends in its verdict. */
+  private checkForUpdate(): JsonBodyType {
+    const ota = this.status.ota;
+    ota.busy = true;
+    ota.phase = 'checking';
+    ota.message = 'checking for a newer release';
+    this.otaSteps = [
+      // One poll sees the check under way.
+      () => undefined,
+      () => {
+        const newer = this.status.firmware_version !== MOCK_UPDATED_VERSION;
+        ota.busy = false;
+        ota.latest_version = MOCK_UPDATED_VERSION;
+        ota.phase = newer ? 'update-available' : 'up-to-date';
+        ota.message = newer
+          ? `v${MOCK_UPDATED_VERSION} is available`
+          : `v${MOCK_UPDATED_VERSION} is the latest release`;
+      },
+    ];
+    return { ok: true, started: true };
+  }
+
   private rollbackUpdate(): JsonBodyType | Response {
     const ota = this.status.ota;
     if (!ota.rollback_available) return reject(400, 'no previous image to roll back to');
@@ -893,6 +915,13 @@ function formFields(rule: { entries: Record<string, unknown> }, form: FormData) 
 }
 
 /** A refusal shaped like the device's: its reason, and the request field it names. */
+/** Bytes that open as an ELF file does, which is what a crash dump is. */
+function elfImage(size: number): ArrayBuffer {
+  const image = new Uint8Array(size);
+  image.set([0x7f, 0x45, 0x4c, 0x46]);
+  return image.buffer;
+}
+
 function reject(status: number, message: string, field: string | null = null): Response {
   return HttpResponse.json({ error: message, field }, { status });
 }

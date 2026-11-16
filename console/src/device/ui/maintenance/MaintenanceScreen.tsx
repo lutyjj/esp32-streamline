@@ -1,14 +1,15 @@
 import { Button, Card, CardHead, Content, CopyValue, SectionNav, SettingRow } from 'linen';
 import { useEffect, useState } from 'react';
-import { restart } from '../../../generated/api';
-import { bytes, duration } from '../../../shared/format';
+import { getFactoryResetUrl, getRestartUrl, restart } from '../../../generated/api';
 import { replacePath, usePathname } from '../../../shared/navigation';
 import { withRestart } from '../../state/access';
-import { liveStatus, status } from '../../state/device';
+import { resetToSetup } from '../../state/handoff';
 import { updateLock } from '../../state/ota';
 import { sectionOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
 import { WriteConfirm } from '../WriteConfirm';
+import { DiagnosticsSection } from './DiagnosticsSection';
+import { UpdatesSection } from './UpdatesSection';
 
 const SECTIONS = [
   { href: '/maintenance/updates', label: 'Updates' },
@@ -29,75 +30,16 @@ export function MaintenanceScreen() {
       <SectionNav label="Maintenance" sections={SECTIONS} />
       <Content>
         {section === 'diagnostics' ? (
-          <Diagnostics />
+          <DiagnosticsSection />
         ) : section === 'api' ? (
           <Api />
         ) : section === 'reset' ? (
           <RestartAndReset />
         ) : (
-          <Updates />
+          <UpdatesSection />
         )}
       </Content>
     </>
-  );
-}
-
-function Updates() {
-  const known = status.value;
-  if (!known) return null;
-  return (
-    <Card>
-      <CardHead title="Firmware" />
-      <SettingRow title="Running">
-        <span className="font-mono text-sm">{known.firmware_version}</span>
-      </SettingRow>
-      {known.ota.latest_version && (
-        <SettingRow title="Latest release">
-          <span className="font-mono text-sm">{known.ota.latest_version}</span>
-        </SettingRow>
-      )}
-      {known.ota.rollback_available && (
-        <SettingRow title="Previous image">
-          <span className="font-mono text-sm">{known.ota.rollback_version}</span>
-        </SettingRow>
-      )}
-    </Card>
-  );
-}
-
-function Diagnostics() {
-  const live = liveStatus.value;
-  const known = status.value;
-  if (!known) return null;
-  return (
-    <div className="grid gap-4">
-      <Card>
-        <CardHead title="Startup health" />
-        {known.health.checks.map((check) => (
-          <SettingRow key={check.id} title={check.detail} description={check.remedy ?? undefined}>
-            <span className="text-sm">
-              {check.status === 'ok' ? 'OK' : check.status === 'warn' ? 'Warning' : 'Failed'}
-            </span>
-          </SettingRow>
-        ))}
-      </Card>
-      {live && (
-        <Card>
-          <CardHead title="Resources" />
-          <SettingRow title="Up for">
-            <span className="text-sm tabular-nums">{duration(live.system.uptime_seconds)}</span>
-          </SettingRow>
-          <SettingRow title="Free memory">
-            <span className="text-sm tabular-nums">
-              {bytes(live.system.heap.free_bytes)} of {bytes(live.system.heap.total_bytes)}
-            </span>
-          </SettingRow>
-          <SettingRow title="Last restart">
-            <span className="text-sm">{known.diagnostics.reset_reason}</span>
-          </SettingRow>
-        </Card>
-      )}
-    </div>
   );
 }
 
@@ -107,10 +49,16 @@ function Api() {
     <Card>
       <CardHead
         title="Machine interface"
-        description="Everything this console does is an HTTP call a script can make. Writes need the admin key as digest authentication."
+        description="Everything this console does is an HTTP call a script can make. Writes, the log and the crash dump need the admin key as digest authentication."
       />
-      <SettingRow title="Contract">
+      <SettingRow
+        title="Contract"
+        description="OpenAPI 3.1, the document this console was built from."
+      >
         <CopyValue value={`${origin}/api/openapi.json`} label="Contract address" />
+      </SettingRow>
+      <SettingRow title="Metrics" description="Prometheus text, open to read.">
+        <CopyValue value={`${origin}/api/metrics`} label="Metrics address" />
       </SettingRow>
       <SettingRow title="A write from a terminal">
         <CopyValue
@@ -123,27 +71,56 @@ function Api() {
 }
 
 function RestartAndReset() {
-  const [asking, setAsking] = useState(false);
-  const held = updateLock('/api/restart');
+  const [asked, setAsked] = useState<'restart' | 'reset' | null>(null);
+  const restartHeld = updateLock(getRestartUrl());
+  const resetHeld = updateLock(getFactoryResetUrl());
+  const closed = (open: boolean) => {
+    if (!open) setAsked(null);
+  };
   return (
     <Card>
-      <CardHead title="Restart" />
+      <CardHead title="Restart and reset" />
       <SettingRow
-        title="Restart the device"
-        description={held ?? 'Audio stops for a few seconds and resumes on its own.'}
+        title="Restart"
+        description={restartHeld ?? 'Audio stops for a few seconds and resumes on its own.'}
       >
-        <Button disabled={held !== null} onClick={() => setAsking(true)}>
+        <Button disabled={restartHeld !== null} onClick={() => setAsked('restart')}>
           Restart
         </Button>
       </SettingRow>
+      <SettingRow
+        title="Factory reset"
+        description={
+          resetHeld ??
+          'Erases every setting, the admin key and any crash dump, keeps the firmware, and opens the setup network.'
+        }
+      >
+        <Button
+          variant="destructive"
+          disabled={resetHeld !== null}
+          onClick={() => setAsked('reset')}
+        >
+          Factory reset
+        </Button>
+      </SettingRow>
       <WriteConfirm
-        open={asking}
-        onOpenChange={setAsking}
+        open={asked === 'restart'}
+        onOpenChange={closed}
         title="Restart the device?"
         description="Audio stops while it restarts, and the console reconnects once it answers."
         confirmLabel="Restart"
         failed="The device did not restart."
         write={() => withRestart('the restart', () => restart())}
+      />
+      <WriteConfirm
+        open={asked === 'reset'}
+        onOpenChange={closed}
+        title="Erase every setting?"
+        description="The device forgets its Wi-Fi, bridge, board, profiles, encryption keys and admin key, then opens its setup network to be set up again. Its firmware stays."
+        confirmLabel="Factory reset"
+        destructive
+        failed="The device kept its settings."
+        write={resetToSetup}
       />
     </Card>
   );

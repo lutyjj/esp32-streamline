@@ -204,9 +204,10 @@ A missing `coredump` partition makes these endpoints return `503`.
 
 ## In the console
 
-The **device log** under **Maintenance → Diagnostics** shows both boots, with a **Follow** switch
-that re-reads every few seconds and a copy button. The section needs the
-settings unlock, for the same reason the endpoint needs the key.
+**Maintenance → Diagnostics** shows the device log of this boot and the one
+before, with a **Follow** switch that reads it again every few seconds, and
+copies or saves it. It also downloads and erases the stored crash dump. Both
+need the admin key, for the same reason their endpoints do.
 
 ## When serial is still the answer
 

@@ -189,12 +189,19 @@ after dismissal. [TCP transport](tcp-transport.md) owns the protocol and API seq
 ## 6. Maintain and recover
 
 Maintenance → Updates owns scheduling, checks, installation, rollback, and developer
-installs. Updates narrate interruption and recovery. A failed install does not
-claim completion. [OTA](ota.md) owns verification and rollback behavior.
+installs. A check or an install shows its phase, and an install how much it has
+written. Updates narrate interruption and recovery, and the device's record names
+how the last install ended: finished, stopped before its restart, or gone back to
+the previous image. A failed install does not claim completion. Rolling back
+asks first and restarts. [OTA](ota.md) owns verification and rollback behavior.
 
-Maintenance → Diagnostics exposes health, the protected device log, and raw status.
-Maintenance → API exposes the machine interface. Maintenance → Restart & reset
-contains restart and confirmed factory reset.
+Maintenance → Diagnostics shows startup health, memory and storage headroom, and
+raw status. The device log and the crash dump need the admin key, as their
+endpoints do: the log follows on request, and the dump downloads for analysis or
+is erased after a confirmation. Maintenance → API gives the contract and metrics
+addresses and a sample write. Maintenance → Restart & reset contains restart and
+confirmed factory reset, which ends on the handoff screen with the setup network
+and password the device named.
 
 A provisioned device that cannot reach its saved Wi-Fi serves a recovery console
 on its setup network, not first-run commissioning. A banner names the network and

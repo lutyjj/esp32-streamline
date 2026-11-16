@@ -112,7 +112,7 @@ describe('reading the device log', () => {
     setTransport((request) => fetch(request));
   });
 
-  const read = () => queryClient.fetchQuery({ ...logsQuery, staleTime: 0 }).catch(() => undefined);
+  const read = () => queryClient.query({ ...logsQuery, staleTime: 0 }).catch(() => undefined);
   const held = () => queryClient.getQueryData(logsQuery.queryKey);
 
   it('merges each read into the running boot and keeps the previous one', async () => {

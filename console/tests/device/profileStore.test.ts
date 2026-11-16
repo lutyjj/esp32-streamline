@@ -30,7 +30,7 @@ beforeEach(async () => {
   });
   unlockSettings(MOCK_ADMIN_KEY, false);
   queryClient.clear();
-  await Promise.all([refresh(), queryClient.fetchQuery(audioProfilesQuery)]);
+  await Promise.all([refresh(), queryClient.query(audioProfilesQuery)]);
 });
 
 afterEach(() => {

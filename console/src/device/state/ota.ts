@@ -1,12 +1,25 @@
 /**
- * Firmware-update policy: phase words, which writes wait while an update
- * runs, and how an install ended across its restart.
+ * Firmware updates: the writes that check, install, roll back and schedule
+ * them, phase words, which writes wait while an update runs, and how an
+ * install ended across its restart.
  */
 
-import { otaUpdate, type StatusResponse } from '../../generated/api';
+import * as v from 'valibot';
+import {
+  type Ack,
+  type AutoUpdateScheduleRequest,
+  type InstallResult,
+  otaCheck,
+  otaRollback,
+  otaUpdate,
+  type StatusResponse,
+  setFirmware,
+} from '../../generated/api';
 import { RESTARTING_WRITES } from '../../generated/facts';
-import { withAccess } from './access';
+import { OtaUpdateRequest as installRule } from '../../generated/rules';
+import { withAccess, withRestart } from './access';
 import { type SettledRestart, status } from './device';
+import { readAgain, settingsQuery } from './queries';
 
 export const PHASE_LABELS: Record<string, string> = {
   idle: 'Idle',
@@ -41,6 +54,45 @@ export function prettyPhase(phase: string): string {
 export async function install(custom?: { url: string; sha256: string }): Promise<boolean> {
   return (await withAccess(() => otaUpdate(custom ?? {}))) !== null;
 }
+
+/** Ask the device whether a newer release exists; the status poll follows the check. */
+export async function checkForUpdate(): Promise<boolean> {
+  return (await withAccess(() => otaCheck())) !== null;
+}
+
+/** Restart into the previous image. */
+export function rollBack(): Promise<Ack | null> {
+  return withRestart('the rollback', () => otaRollback());
+}
+
+/** How often the device checks for a release by itself. */
+export async function scheduleUpdates(schedule: AutoUpdateScheduleRequest): Promise<Ack | null> {
+  const done = await withAccess(() => setFirmware({ auto_update_schedule: schedule }));
+  if (done) await readAgain(settingsQuery);
+  return done;
+}
+
+/** Why the contract refuses `value` as a custom image's address, or null. */
+export function imageUrlProblem(value: string): string | null {
+  return v.is(installRule.entries.url, value.trim())
+    ? null
+    : 'Give an http:// or https:// address without a user name or a # part.';
+}
+
+/** Why the contract refuses `value` as a custom image's digest, or null. */
+export function imageDigestProblem(value: string): string | null {
+  return v.is(installRule.entries.sha256, value.trim())
+    ? null
+    : 'A SHA-256 digest is 64 hexadecimal digits.';
+}
+
+/** How the last install ended, in words; null when none has written a slot. */
+export const INSTALL_RESULT_WORDS: Record<InstallResult, string | null> = {
+  none: null,
+  installed: 'Finished',
+  failed: 'Stopped before the restart',
+  'rolled-back': 'Went back to the previous image',
+};
 
 /** How far an install has come: its phase in words, and the share written when known. */
 export function installProgress(s: StatusResponse): { words: string; fraction: number | null } {

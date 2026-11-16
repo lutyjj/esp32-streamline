@@ -4,8 +4,8 @@
  */
 
 import {
-  type FetchQueryOptions,
   QueryClient,
+  type QueryExecuteOptions,
   type QueryKey,
   queryOptions,
 } from '@tanstack/preact-query';
@@ -54,7 +54,7 @@ export const boardsQuery = queryOptions({
  * error; the write stands either way.
  */
 export async function readAgain<T, K extends QueryKey>(
-  query: FetchQueryOptions<T, Error, T, K>,
+  query: QueryExecuteOptions<T, Error, T, T, K>,
 ): Promise<void> {
-  await queryClient.fetchQuery({ ...query, staleTime: 0 }).catch(() => undefined);
+  await queryClient.query({ ...query, staleTime: 0 }).catch(() => undefined);
 }

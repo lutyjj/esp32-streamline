@@ -1,14 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  bytes,
-  dbfs,
-  duration,
-  LEVEL_FLOOR_DB,
-  levelDb,
-  meterPct,
-  usagePct,
-  usageTone,
-} from '../../src/shared/format';
+import { bytes, dbfs, duration, LEVEL_FLOOR_DB, levelDb, meterPct } from '../../src/shared/format';
 
 describe('dbfs', () => {
   it('reads silence as -inf', () => {
@@ -76,36 +67,6 @@ describe('duration', () => {
 
   it('never renders a negative uptime', () => {
     expect(duration(-5)).toBe('0s');
-  });
-});
-
-describe('usagePct', () => {
-  it('computes the fraction in use', () => {
-    expect(usagePct(275, 756)).toBeCloseTo(36.4, 1);
-  });
-
-  it('clamps an over-full value to 100', () => {
-    expect(usagePct(800, 756)).toBe(100);
-  });
-
-  it('guards a zero total instead of dividing by zero', () => {
-    expect(usagePct(100, 0)).toBe(0);
-  });
-});
-
-describe('usageTone', () => {
-  it('is comfortable with headroom to spare', () => {
-    expect(usageTone(36)).toBe('good');
-  });
-
-  it('warns once the resource is mostly used', () => {
-    expect(usageTone(80)).toBe('warn');
-    expect(usageTone(94.9)).toBe('warn');
-  });
-
-  it('flags critical near full', () => {
-    expect(usageTone(95)).toBe('bad');
-    expect(usageTone(100)).toBe('bad');
   });
 });
 

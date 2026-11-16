@@ -124,6 +124,10 @@ async function exchange<T>(request: Request): Promise<T> {
   const response = key ? await authorizedExchange(request, key) : await transport(request);
   if (response.status === 401) lockSettings();
 
+  // A download, such as a crash dump, stays bytes.
+  if (response.ok && response.headers.get('Content-Type') === 'application/octet-stream') {
+    return (await response.blob()) as T;
+  }
   const text = await response.text();
   if (!response.ok) {
     const error = parseBody(text) as Partial<ErrorResponse> | string | undefined;

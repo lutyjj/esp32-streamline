@@ -13,6 +13,7 @@ import {
 import { useRef, useState } from 'react';
 import type { AudioProfile, AudioProfileCatalog, StatusResponse } from '../../../generated/api';
 import { fieldErrors } from '../../../shared/http';
+import { saveFile } from '../../../shared/saveFile';
 import { status } from '../../state/device';
 import {
   deleteProfile,
@@ -138,14 +139,11 @@ function MoveProfiles({
   onImport: (text: string, file: string) => void;
 }) {
   const picker = useRef<HTMLInputElement>(null);
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([exportProfiles()], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `streamline-profiles-${board}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
+  const download = () =>
+    saveFile(
+      new Blob([exportProfiles()], { type: 'application/json' }),
+      `streamline-profiles-${board}.json`,
+    );
   return (
     <Card>
       <CardHead

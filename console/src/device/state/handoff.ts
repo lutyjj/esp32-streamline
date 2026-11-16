@@ -4,7 +4,8 @@
  * the console's last word is where to go next and how to know it worked.
  */
 
-import type { SetupNetworkResponse, StatusResponse } from '../../generated/api';
+import { factoryReset, type SetupNetworkResponse, type StatusResponse } from '../../generated/api';
+import { withAccess } from './access';
 import type { Handoff } from './connection';
 import { report } from './device';
 
@@ -27,6 +28,17 @@ export function beginResetHandoff(setupNetwork?: SetupNetworkResponse): void {
     handoff: { kind: 'reset', setupNetwork: setupNetwork ?? null },
     at: Date.now(),
   });
+}
+
+/**
+ * Erase every setting. The device answers with its setup network before it
+ * leaves for it, and the console hands off there. Resolves false when the
+ * owner declines to unlock.
+ */
+export async function resetToSetup(): Promise<boolean> {
+  const answer = await withAccess(() => factoryReset());
+  if (answer) beginResetHandoff(answer.setup_network);
+  return answer !== null;
 }
 
 /** The console's address on the home network, as the device last reported it. */

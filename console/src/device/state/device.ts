@@ -197,8 +197,8 @@ export async function startPolling(): Promise<() => void> {
   await refresh();
   const poll = setInterval(refresh, POLL_MS);
   await Promise.all([
-    queryClient.prefetchQuery(settingsQuery),
-    queryClient.prefetchQuery(audioProfilesQuery),
+    queryClient.query(settingsQuery).catch(() => undefined),
+    queryClient.query(audioProfilesQuery).catch(() => undefined),
   ]);
   return () => clearInterval(poll);
 }

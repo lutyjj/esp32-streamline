@@ -33,7 +33,7 @@ beforeEach(async () => {
   });
   unlockSettings(MOCK_ADMIN_KEY, true);
   queryClient.clear();
-  await Promise.all([refresh(), queryClient.fetchQuery(settingsQuery)]);
+  await Promise.all([refresh(), queryClient.query(settingsQuery)]);
 });
 
 afterEach(() => {

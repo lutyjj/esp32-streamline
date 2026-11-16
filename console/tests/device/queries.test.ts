@@ -20,7 +20,7 @@ describe('device reads', () => {
       );
     });
 
-    await expect(queryClient.fetchQuery(settingsQuery)).rejects.toThrow(
+    await expect(queryClient.query(settingsQuery)).rejects.toThrow(
       'the device did not answer in time',
     );
     expect(sent).toHaveBeenCalledTimes(1);
@@ -34,7 +34,7 @@ describe('device reads', () => {
       return Response.json({ ssid: 'home' });
     });
 
-    await expect(queryClient.fetchQuery(settingsQuery)).resolves.toMatchObject({ ssid: 'home' });
+    await expect(queryClient.query(settingsQuery)).resolves.toMatchObject({ ssid: 'home' });
     expect(reads).toBe(2);
   });
 });

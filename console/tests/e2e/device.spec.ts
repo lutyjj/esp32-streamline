@@ -125,3 +125,19 @@ test('recovery changes Wi-Fi with the admin key and hands off', async ({ page })
   await answerKey(page, mockAdminKey);
   await expect(page.getByRole('heading', { level: 1, name: 'Joining home' })).toBeVisible();
 });
+
+test('a found bridge fills the form, and only Save writes it and restarts', async ({ page }) => {
+  await page.goto('/#/bridge');
+  await page.getByRole('button', { name: 'Change bridge' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect a bridge' });
+  await dialog.getByRole('button', { name: 'Search the network' }).click();
+  await dialog.getByRole('button', { name: 'Use' }).first().click();
+  const host = await dialog.getByLabel('Bridge address').inputValue();
+  expect(host).not.toBe('');
+  await expect(page.getByText(`${host}:`).first()).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(page.getByText('Back online after the bridge change.')).toBeVisible();
+  await expect(page.getByText(new RegExp(`^${host.replaceAll('.', '\\.')}:\\d+$`))).toBeVisible();
+});

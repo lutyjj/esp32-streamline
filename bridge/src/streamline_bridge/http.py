@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.security import APIKeyQuery, HTTPAuthorizationCredentials, HTTPBearer
 from starlette.background import BackgroundTask
 
+from streamline_bridge.api_examples import BRIDGE_STATUS, RECORDING_LIST
 from streamline_bridge.api_models import (
     BridgeStatus,
     DeleteRecordingResult,
@@ -38,7 +39,7 @@ from streamline_bridge.api_models import (
 )
 from streamline_bridge.http_ingress import HttpIngressGuard
 from streamline_bridge.protocol import DEFAULT_FORMAT, PcmFormat
-from streamline_bridge.recording import RecordingError
+from streamline_bridge.recording import RecordingError, recording_capabilities
 from streamline_bridge.recording_http import RecordingHttpService
 from streamline_bridge.source_identity import TRANSPORT_KEY_ID_PATTERN_TEXT
 from streamline_bridge.sources import SourceLease, SourceRegistry, SourceSelectionError
@@ -76,10 +77,18 @@ def error_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
 
 
 class BridgeApi(FastAPI):
-    """Publish the adapter's 400 validation envelope in generated OpenAPI."""
+    """Publish the adapter's 400 validation envelope and the example payloads in generated OpenAPI."""
 
     def openapi(self) -> dict[str, Any]:
         schema = super().openapi()
+        # FastAPI drops null values while it encodes the document, so the examples join it afterwards.
+        examples = {
+            "BridgeStatus": BRIDGE_STATUS,
+            "RecordingCapabilities": recording_capabilities(True),
+            "RecordingList": RECORDING_LIST,
+        }
+        for name, example in examples.items():
+            schema["components"]["schemas"][name]["examples"] = [example]
         for path in schema.get("paths", {}).values():
             for operation in path.values():
                 responses = operation.get("responses")
@@ -132,9 +141,11 @@ def collect_http_batch(client_queue: queue.Queue[bytes | None]) -> list[bytes] |
     return chunks
 
 
-def error_response(status: int, code: str, message: str, headers: Mapping[str, str] | None = None) -> JSONResponse:
+def error_response(
+    status: int, code: str, message: str, headers: Mapping[str, str] | None = None, field: str | None = None
+) -> JSONResponse:
     return JSONResponse(
-        ErrorResponse(error=ErrorDetail(code=code, message=message)).model_dump(),
+        ErrorResponse(error=ErrorDetail(code=code, message=message, field=field)).model_dump(),
         status_code=status,
         headers=headers,
     )
@@ -155,7 +166,8 @@ def recording_error(exc: RecordingError) -> JSONResponse:
         "storage-unavailable": 507,
     }.get(exc.code, 500)
     headers = {"WWW-Authenticate": 'Bearer realm="StreamLine bridge"'} if status == 401 else None
-    return error_response(status, exc.code, exc.message, headers)
+    field = {"invalid-title": "title", "invalid-source": "source"}.get(exc.code)
+    return error_response(status, exc.code, exc.message, headers, field)
 
 
 def stream_wav_body(lease: SourceLease[AudioPipeline], remote_addr: str, path: str) -> Generator[bytes]:
@@ -210,8 +222,13 @@ def make_app(
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
-        message = exc.errors()[0].get("msg", "Request does not match the API contract.")
-        return error_response(400, "invalid-request", str(message))
+        first = exc.errors()[0]
+        location = first.get("loc", ())
+        # ("body", "title") or ("path", "key_id") names a field; a malformed body names none.
+        field = str(location[1]) if len(location) == 2 and location[0] in ("body", "path") else None
+        return error_response(
+            400, "invalid-request", str(first.get("msg", "Request does not match the API contract.")), field=field
+        )
 
     def valid_bearer(credentials: HTTPAuthorizationCredentials | None) -> bool:
         return (

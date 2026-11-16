@@ -115,6 +115,9 @@ open JSON contract once per second and renders the values as a live meter.
 
 The bridge owns [its OpenAPI artifact](bridge-openapi.json). Console checks use
 that artifact to generate a typed client; do not edit generated client files.
+Its `BridgeStatus`, `RecordingCapabilities`, and `RecordingList` examples are
+the canonical payloads console test fixtures derive from. A refusal names the
+request field it concerns in `error.field` when there is one.
 
 ## Tuning options
 

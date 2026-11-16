@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from fastapi.testclient import TestClient
 
+from streamline_bridge import api_models
 from streamline_bridge.http import make_app, stream_wav_body, wav_header
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT
@@ -91,6 +92,15 @@ class HttpContractTests(SourceTestCase):
             response.json()["sources"]["192.0.2.10"]["levels"],
             {"peak_left": 10000, "peak_right": 32768, "rms_left": 10000, "rms_right": 23170},
         )
+
+    def test_every_published_example_satisfies_its_model(self) -> None:
+        schemas = self.client.get("/api/openapi.json").json()["components"]["schemas"]
+        published = {name: schema["examples"] for name, schema in schemas.items() if "examples" in schema}
+
+        self.assertEqual(set(published), {"BridgeStatus", "RecordingCapabilities", "RecordingList"})
+        for name, examples in published.items():
+            with self.subTest(schema=name):
+                getattr(api_models, name).model_validate(examples[0])
 
     def test_openapi_is_generated_from_runtime_routes_and_auth(self) -> None:
         document = self.client.get("/api/openapi.json").json()
@@ -485,9 +495,19 @@ class RecordingApiTests(SourceTestCase):
             content=json.dumps({"source": "192.0.2.10", "title": "x" * 5000}),
         )
 
+        blank = self.client.post(
+            "/api/recordings",
+            headers=self.headers,
+            json={"source": "192.0.2.10", "title": "   "},
+        )
+
         self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.json()["error"]["field"], "source")
         self.assertEqual(unknown.status_code, 400)
         self.assertIn("unknown source", unknown.json()["error"]["message"])
+        self.assertEqual(unknown.json()["error"]["field"], "source")
+        self.assertEqual(blank.status_code, 400)
+        self.assertEqual(blank.json()["error"]["field"], "title")
         self.assertEqual(oversized.status_code, 413)
         self.assertEqual(oversized.json()["error"]["code"], "request-too-large")
 

@@ -106,7 +106,8 @@ one-use ticket.
 
 The service returns named states: `waiting-for-audio`, `recording`,
 `finalizing`, `complete`, `interrupted`, and `empty`. Errors use a stable code
-and a message that names the next action.
+and a message that names the next action, plus the request field they refuse
+when there is one.
 
 ## Deployment and security
 

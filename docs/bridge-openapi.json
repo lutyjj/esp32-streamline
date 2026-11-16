@@ -3,6 +3,122 @@
     "schemas": {
       "BridgeStatus": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "api_token_configured": true,
+            "bridge_version": "1.2.3",
+            "public_url": "http://192.0.2.20:8088",
+            "sendspin": {
+              "enabled": true,
+              "server_url": "ws://192.0.2.20:8927/sendspin",
+              "sources": [
+                {
+                  "client_id": "q3Vx0p8YtW2nR5sL1cJ7aKf9eH4mB6zD0uG2iO8yT1E",
+                  "connection": "connected",
+                  "input_enabled": false,
+                  "name": "StreamLine 192.0.2.10",
+                  "paired": false,
+                  "signal": "present",
+                  "source": "192.0.2.10",
+                  "streaming": false
+                }
+              ]
+            },
+            "sources": {
+              "192.0.2.10": {
+                "applied_buffer_packets": 188,
+                "buffer_expansion_packets": 0,
+                "buffer_ready_at": 1767225601.0,
+                "buffer_reduction_packets": 0,
+                "buffered_packets": 188,
+                "bytes": 11520000,
+                "client_buffer_chunks": 2048,
+                "client_queue_drops": 0,
+                "client_streams": [
+                  {
+                    "batches_sent": 5600,
+                    "bytes_sent": 11300000,
+                    "chunks_sent": 11035,
+                    "connected_at": 1767225602.0,
+                    "id": 1,
+                    "last_write_at": 1767225660.0,
+                    "path": "/streamline.wav",
+                    "queue_depth": 2,
+                    "queue_drops": 0,
+                    "remote_addr": "192.0.2.30"
+                  }
+                ],
+                "clients": 1,
+                "duplicate": 0,
+                "frames": 2880000,
+                "highest_seq": 11249,
+                "last_packet_at": 1767225660.0,
+                "last_playout_at": 1767225660.0,
+                "last_seq": 11249,
+                "late": 0,
+                "levels": {
+                  "peak_left": 16384,
+                  "peak_right": 15000,
+                  "rms_left": 4096,
+                  "rms_right": 3800
+                },
+                "lifecycle": {
+                  "admission": "open",
+                  "dynamic": true,
+                  "eviction_idle_seconds": 300.0,
+                  "http_clients": 1,
+                  "idle_seconds": 0.0,
+                  "peer_ip": "192.0.2.10",
+                  "recording_sessions": 0,
+                  "sendspin_streams": 0,
+                  "state": "connected",
+                  "transport": "cleartext"
+                },
+                "max_buffered_packets": 750,
+                "max_outage_silence_packets": 938,
+                "max_playout_buffer_packets": 563,
+                "min_playout_buffer_packets": 188,
+                "missing_packets": 0,
+                "overflows": 0,
+                "packet_frames": 256,
+                "packets": 11250,
+                "played_frames": 2831872,
+                "playout_buffer_packets": 188,
+                "playout_seq": 11062,
+                "quality": {
+                  "audio_packets": 11250,
+                  "disconnects": 0,
+                  "late_packets": 0,
+                  "missing_packets": 0,
+                  "observed_seconds": 60,
+                  "silence_packets": 0,
+                  "underruns": 0,
+                  "window_seconds": 60
+                },
+                "rate": 48000,
+                "reordered": 0,
+                "signal": "present",
+                "silence_packets": 0,
+                "slow_clients": 0,
+                "started_at": 1767225600.0,
+                "tcp_connections": 1,
+                "tcp_disconnects": 0,
+                "tcp_errors": 0,
+                "underruns": 0,
+                "uptime_seconds": 60.0
+              }
+            },
+            "transport": {
+              "auth_failures": 0,
+              "auth_successes": 0,
+              "configurable": true,
+              "contract_version": 1,
+              "key_ids": [],
+              "mode": "cleartext",
+              "port": 39000
+            }
+          }
+        ],
         "properties": {
           "api_token_configured": {
             "title": "Api Token Configured",
@@ -155,6 +271,18 @@
             "title": "Code",
             "type": "string"
           },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The request field the bridge refused, when it names one.",
+            "title": "Field"
+          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -290,6 +418,26 @@
       },
       "RecordingCapabilities": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "enabled": true,
+            "format": {
+              "bits_per_sample": 16,
+              "bytes_per_second": 192000,
+              "channels": 2,
+              "codec": "pcm_s16le",
+              "container": "wav",
+              "sample_rate": 48000
+            },
+            "limits": {
+              "max_duration_seconds": 14400,
+              "max_gap_seconds": 300,
+              "max_title_chars": 80,
+              "min_free_bytes": 268435456,
+              "queue_chunks": 1024
+            }
+          }
+        ],
         "properties": {
           "enabled": {
             "title": "Enabled",
@@ -396,6 +544,49 @@
       },
       "RecordingList": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "active": [
+              {
+                "audio_started_at": "2026-01-01T12:05:04Z",
+                "bytes": 11520000,
+                "created_at": "2026-01-01T12:05:00Z",
+                "duplicate_packets": 0,
+                "duration_seconds": 60.0,
+                "error": null,
+                "file_name": null,
+                "finished_at": null,
+                "frames": 2880000,
+                "gap_packets": 0,
+                "id": "20260101-120500-side-b",
+                "source": "192.0.2.10",
+                "state": "recording",
+                "title": "Side B"
+              }
+            ],
+            "saved": [
+              {
+                "audio_started_at": "2026-01-01T12:00:03Z",
+                "bytes": 46080044,
+                "created_at": "2026-01-01T12:00:00Z",
+                "duplicate_packets": 0,
+                "duration_seconds": 240.0,
+                "error": null,
+                "file_name": "20260101-120000-side-a.wav",
+                "finished_at": "2026-01-01T12:04:03Z",
+                "frames": 11520000,
+                "gap_packets": 0,
+                "id": "20260101-120000-side-a",
+                "source": "192.0.2.10",
+                "state": "complete",
+                "title": "Side A"
+              }
+            ],
+            "storage": {
+              "free_bytes": 34359738368
+            }
+          }
+        ],
         "properties": {
           "active": {
             "items": {
@@ -1137,6 +1328,7 @@
           "title": {
             "maxLength": 80,
             "minLength": 1,
+            "pattern": "\\S",
             "title": "Title",
             "type": "string"
           }

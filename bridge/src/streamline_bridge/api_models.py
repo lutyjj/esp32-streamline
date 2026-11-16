@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, WithJsonSchema
 
+from streamline_bridge.recording.model import MAX_TITLE_CHARS
 from streamline_bridge.source_identity import RECOVERY_SOURCE_ID, TRANSPORT_KEY_ID_PATTERN_TEXT, parse_source_identity
 
 
@@ -42,6 +43,7 @@ class ContractModel(BaseModel):
 class ErrorDetail(ContractModel):
     code: str
     message: str
+    field: str | None = Field(default=None, description="The request field the bridge refused, when it names one.")
 
 
 class ErrorResponse(ContractModel):
@@ -260,7 +262,8 @@ class RecordingList(ContractModel):
 
 class StartRecordingRequest(ContractModel):
     source: SourceIdentity
-    title: str = Field(min_length=1, max_length=80)
+    # The bridge collapses whitespace, so a title needs a visible character.
+    title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS, pattern=r"\S")
 
 
 class RecordingResult(ContractModel):

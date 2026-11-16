@@ -200,7 +200,7 @@ check: it validates the image against the `sha256` the caller supplies from
   option sets a progress deadline for header reads, body reads, and response
   writes, so a stalled client releases its connection slot instead of
   holding it open.
-- The recording page uses a per-response Content Security Policy nonce. It has
+- The bridge console uses a per-response Content Security Policy nonce. It has
   no cross-origin permissions, cookies, third-party scripts, or persistent
   token storage. The bearer header keeps cross-origin form and image requests
   from authorizing an operation.

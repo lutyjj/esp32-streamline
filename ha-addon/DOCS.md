@@ -65,10 +65,10 @@ validates immediately.
 ## Encrypt a device
 
 1. Generate the one-time bridge credential under **Bridge → Encryption** in the device console and copy it.
-2. Open **Open Web UI**, unlock with `api_token`, and add the one-time key id
-   and PSK under **Device credentials**. Audio keeps streaming.
-3. In the Web UI's **Settings → Audio security** task, switch on encrypted mode.
-   Cleartext stops immediately.
+2. Open **Open Web UI**, go to **Settings → Audio security**, and enroll the
+   one-time credential ID and key, unlocking with `api_token` when asked.
+   Audio keeps streaming.
+3. On the same page, require encryption. Cleartext stops immediately.
 4. Verify and activate encryption from the device console. Audio resumes over
    TLS.
 
@@ -82,7 +82,7 @@ them together.
 In the app configuration, turn on `recordings_enabled` (it requires
 `api_token`). Restart the app, open **Open Web UI** (or the StreamLine
 sidebar entry), and unlock with the token. Choose the device source, name the
-recording, start it, then play the source.
+recording under **Recordings**, start it, then play the source.
 
 The app serves this page through Home Assistant ingress, so it opens on the
 same host and port as Home Assistant and works behind a reverse proxy. Port
@@ -97,7 +97,7 @@ The app stores WAV files in its private working directory. They survive
 app restarts and updates, but Home Assistant backups exclude them to avoid
 putting multi-gigabyte captures in routine backups. Restoring or uninstalling
 the app removes these files. Download every completed WAV you want to keep,
-then delete the bridge copy from the recording page.
+then delete the bridge copy under **Recordings**.
 
 ## Restrict sources
 
@@ -113,8 +113,8 @@ defines every app tuning option, its default, and its validation rule.
 
 Set `public_url` to the bridge's HTTP address reachable by your players, for
 example `http://192.0.2.20:8088`, then restart the app. Use the published HTTP
-port, not the PCM input port or Home Assistant ingress address. Listen uses
-this address for playback links while management stays within ingress.
+port, not the PCM input port or Home Assistant ingress address. **Sources**
+uses this address for playback links while management stays within ingress.
 
 ## Security
 

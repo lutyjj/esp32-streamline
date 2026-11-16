@@ -17,8 +17,13 @@
   },
   "include": [
     "scripts",
+    "src/bridge/lib",
+    "src/bridge/state",
+    "src/bridge/ui",
+    "src/bridge/main.tsx",
     "src/device",
     "src/shared",
+    "tests/bridge",
     "tests/device",
     "tests/shared",
     "tests/e2e",

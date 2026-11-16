@@ -49,16 +49,35 @@ export default defineConfig({
     output: {
       client: 'fetch',
       mode: 'single',
+      // Relative to the page, so a console served under a path prefix, as
+      // Home Assistant's ingress serves it, reaches its own bridge.
+      baseUrl: '.',
       override: {
         fetch: {
           includeHttpResponseReturnType: false,
         },
         mutator: {
           name: 'bridgeFetch',
-          path: './src/bridge/http.ts',
+          path: './src/bridge/lib/http.ts',
         },
       },
       target: './src/generated/bridge.ts',
+    },
+  },
+  bridgeRules: {
+    input: {
+      target: '../docs/bridge-openapi.json',
+    },
+    output: {
+      client: 'valibot',
+      mode: 'single',
+      override: {
+        valibot: {
+          generate: { param: true, query: false, header: false, body: false, response: false },
+          generateReusableSchemas: true,
+        },
+      },
+      target: './src/generated/bridgeRules.ts',
     },
   },
 });

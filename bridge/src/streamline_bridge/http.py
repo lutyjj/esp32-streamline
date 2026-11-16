@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hmac
 import queue
-import re
 import secrets
 import struct
 from importlib.resources import files
@@ -56,7 +55,6 @@ HTTP_MAX_JSON_BODY_BYTES = 4096
 DEFAULT_MAX_HTTP_CONNECTIONS = 32
 DEFAULT_HTTP_REQUEST_TIMEOUT_SECONDS = 10.0
 CONSOLE_PAGE = files("streamline_bridge").joinpath("console.html").read_bytes()
-INGRESS_BASE_PATTERN = re.compile(r"(?:/[A-Za-z0-9._~-]+)*")
 RECORDING_ID_PATTERN = r"^[a-zA-Z0-9-]+$"
 TRANSPORT_KEY_ID_PATTERN = TRANSPORT_KEY_ID_PATTERN_TEXT
 RecordingId = Annotated[str, Path(pattern=RECORDING_ID_PATTERN)]
@@ -550,12 +548,11 @@ def make_app(
         except RecordingError as exc:
             return recording_error(exc)
 
-    def console_response(request: Request) -> HTMLResponse:
-        raw_base = request.headers.get("X-Ingress-Path", "")
-        ingress_base = raw_base if INGRESS_BASE_PATTERN.fullmatch(raw_base) else ""
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def console() -> HTMLResponse:
+        # The console requests everything relative to itself, so a path prefix in front works.
         nonce = secrets.token_urlsafe(18)
-        body = CONSOLE_PAGE.replace(b"__INGRESS_BASE__", ingress_base.encode())
-        body = body.replace(b"<script", f'<script nonce="{nonce}"'.encode())
+        body = CONSOLE_PAGE.replace(b"<script", f'<script nonce="{nonce}"'.encode())
         body = body.replace(b"<style", f'<style nonce="{nonce}"'.encode())
         return HTMLResponse(
             body,
@@ -571,14 +568,5 @@ def make_app(
                 ),
             },
         )
-
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def root_console(request: Request) -> HTMLResponse:
-        return console_response(request)
-
-    @app.get("/recordings", response_class=HTMLResponse, include_in_schema=False)
-    @app.get("/recordings/", response_class=HTMLResponse, include_in_schema=False)
-    def recordings_console(request: Request) -> HTMLResponse:
-        return console_response(request)
 
     return app

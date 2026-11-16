@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import preact from '@preact/preset-vite';
 import tailwindcss from '@tailwindcss/vite';
 import { msw } from 'msw/vite';
+import type { ProxyOptions } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { defineConfig, type Plugin } from 'vitest/config';
 
@@ -28,13 +29,21 @@ const inlineIcon: Plugin = {
 // intercepts them), so `/api` can proxy to the real bridge for the bridge
 // page, along with the bridge's root-level routes.
 const bridge = process.env.STREAMLINE_BRIDGE;
-const proxy = bridge
-  ? Object.fromEntries(
-      ['/api', '/status', '/health', '/streamline.wav'].map((path) => [
-        path,
-        { target: `http://${bridge}` },
-      ]),
-    )
+const proxy: Record<string, ProxyOptions> = bridge
+  ? {
+      ...Object.fromEntries(
+        ['/api', '/status', '/health', '/streamline.wav'].map((path) => [
+          path,
+          { target: `http://${bridge}` },
+        ]),
+      ),
+      // The bridge's own page behind a path prefix, which the proxy strips as
+      // Home Assistant's ingress does (tests/e2e/bridge.spec.ts).
+      '/ingress/': {
+        target: `http://${bridge}`,
+        rewrite: (path: string) => path.slice('/ingress'.length),
+      },
+    }
   : { '/api': { target: `http://${process.env.STREAMLINE_DEVICE || '192.168.71.1'}` } };
 
 // Tests compile every dependency from its module build, so each one that

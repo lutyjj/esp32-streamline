@@ -4,11 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="ingress-base" content="__INGRESS_BASE__" />
     <title>StreamLine bridge</title>
+    <script>
+      // The theme this browser chose, before the first paint (src/shared/theme.ts).
+      try {
+        const theme = localStorage.getItem('streamline:theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/bridge.tsx"></script>
+    <script type="module" src="/src/bridge/main.tsx"></script>
   </body>
 </html>

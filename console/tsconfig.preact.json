@@ -2,8 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": { "jsxImportSource": "preact" },
   "include": [
-    "src/bridge",
-    "src/bridge.tsx",
+    "src/bridge/*",
     "src/components",
     "src/flasher.tsx",
     "src/esp-web-tools.d.ts",
@@ -11,5 +10,6 @@
     "src/state",
     "tests/*.test.ts",
     "tests/*.test.tsx"
-  ]
+  ],
+  "exclude": ["src/bridge/main.tsx"]
 }

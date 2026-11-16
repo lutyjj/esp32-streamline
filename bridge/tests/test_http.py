@@ -197,15 +197,11 @@ class HttpContractTests(SourceTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["public_url"], "http://192.0.2.20:8099")
 
-    def test_console_routes_inject_ingress_base_and_csp_nonce(self) -> None:
+    def test_console_is_served_at_the_root_under_a_nonce_policy(self) -> None:
         root = self.client.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/abc-1_2"})
-        alias = self.client.get("/recordings")
-        spoofed = self.client.get("/", headers={"X-Ingress-Path": "<script>bad</script>"})
 
-        self.assertIn("Bridge console", root.text)
-        self.assertIn('content="/api/hassio_ingress/abc-1_2"', root.text)
-        self.assertIn("StreamLine bridge", alias.text)
-        self.assertIn('content=""', spoofed.text)
+        self.assertIn("StreamLine bridge", root.text)
+        self.assertEqual(self.client.get("/recordings").status_code, 404)
         csp = root.headers["Content-Security-Policy"]
         self.assertNotIn("unsafe-inline", csp)
         self.assertIn("font-src data:;", csp)

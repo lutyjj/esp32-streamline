@@ -20,7 +20,7 @@ locks all of those controls together.
 | `/status` | Bridge version, per-source playout/client statistics, latest PCM levels, and lifecycle state. |
 | `/health` | `200 OK` with `ok` while the required PCM listener is ready; `503` after a listener failure. |
 | `/api/openapi.json` | OpenAPI 3.1 contract generated from the running bridge routes and Pydantic models. |
-| `/` and `/recordings` | Bridge console with live sources and optional recordings. The Home Assistant app serves it through ingress. |
+| `/` | Bridge console: sources, recordings, and settings at hash addresses such as `/#/recordings`. It requests everything relative to its own page, so the Home Assistant app serves it through ingress. |
 | `/api/recordings/*` | Recording capabilities and authenticated file/session operations. |
 | `/api/transport` | Listener state, enrolled key ids, and authentication counters; never PSKs. |
 | `/api/sendspin` | Music Assistant publishing state of every source; never pairing secrets. |
@@ -197,8 +197,8 @@ connects.
 
 Pairing uses Music Assistant's token method:
 
-1. Open the bridge console's **Settings → Music Assistant** and create a
-   pairing token for the source, or call
+1. Open the source under the bridge console's **Sources** and make a
+   pairing token, or call
    `POST /api/sendspin/sources/<source>/pairing-token` with the bridge API
    token.
 2. In Music Assistant, run the setup of the device named `StreamLine
@@ -239,9 +239,9 @@ Recording is disabled unless the deployment supplies writable storage. Set
 `--recordings-dir` (or `STREAMLINE_RECORDINGS_DIR`) and the bridge API token
 for a standalone bridge. For Compose, set the directory to `/recordings`; its
 named volume owns the files. Home Assistant users enable recordings in the
-app configuration. Open `http://<bridge-host>:8088/` (or `/recordings`) to
-record, download, or delete files. Home Assistant opens the same console
-through the app's ingress Web UI.
+app configuration. Open `http://<bridge-host>:8088/#/recordings` to record,
+download, or delete files. Home Assistant opens the same console through the
+app's ingress Web UI.
 
 [Lossless recordings](recordings.md) defines the user flow, API, resource
 limits, timeline reconstruction, and storage lifecycle.
@@ -254,9 +254,9 @@ external players can reach. Home Assistant exposes the same setting as
 do not include credentials, a query, or a fragment. Restart the bridge after
 changing deployment options.
 
-`GET /status` reports this address as `public_url`. The console keeps its
-management requests on the ingress path, but builds playback links from the
-advertised address. Without an advertised address, a directly opened bridge
-uses its HTTP origin; an ingress console asks for configuration and does not
-copy an authenticated ingress link. The address must expose the WAV route to
-the player without the browser's Home Assistant session.
+`GET /status` reports this address as `public_url`. The console makes its
+requests relative to its own page, so they stay on the ingress path, but builds
+playback links from the advertised address. Without one, a console served at
+the bridge's root uses its HTTP origin; a console under a path prefix, such as
+ingress, asks for the address and offers no link. The address must expose the
+WAV route to the player without the browser's Home Assistant session.

@@ -425,6 +425,7 @@ console's and linen's own classes.
 | System fonts | The embedded typeface was a third of the console's gzipped size |
 | linen pinned to a release tarball with its integrity | linen is not on a registry; each console upgrade is a deliberate change to that pin |
 | Reads and writes on `@tanstack/preact-query`, beside a hand-written status poll | A read whose connection dropped is read again, and a write's change is read back, with no machinery of the console's own; the poll and the connection story it feeds stay the console's |
+| Bridge console requests relative to its own page | A path prefix in front of the bridge, as Home Assistant's ingress puts one, keeps working without the bridge rewriting the page |
 | Two request lanes in the transport | The device's server keeps four sockets and closes the least recently used when another arrives; the console holds at most two, status reads in one lane and every other request in the other, so the poll never waits behind the console's own queue |
 
 `make firmware-artifacts` measures the embedded console against the OTA slot

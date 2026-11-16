@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { LevelSample } from '../../src/device/lib/calibration';
-import { type CalibrationDevice, CalibrationGuide } from '../../src/device/state/calibration';
+import {
+  type CalibrationDevice,
+  CalibrationGuide,
+  calibrationStep,
+  calibrationUnderway,
+} from '../../src/device/state/calibration';
 
 const ENTRY = { input_line: 1, input_gain: 24, adc_attenuation_db: 6 };
 
@@ -110,5 +115,22 @@ describe('the calibration guide', () => {
     source.failWrites = false;
     await calibration.close();
     expect(calibration.state.value).toEqual({ phase: 'closed', restored: true });
+  });
+});
+
+describe('where the guide stands', () => {
+  it('places each phase in its step, and none while it closes', () => {
+    expect(calibrationStep({ phase: 'quiet-refused', reason: '' })).toBe('quiet');
+    expect(calibrationStep({ phase: 'listening', attenuation: 9 })).toBe('loud');
+    expect(calibrationStep({ phase: 'done', attenuation: 12, peakDb: '-3.0' })).toBe('done');
+    expect(calibrationStep({ phase: 'restoring' })).toBeNull();
+  });
+
+  it('asks before leaving only once a measurement has begun and until it is done', () => {
+    expect(calibrationUnderway({ phase: 'pause-source' })).toBe(false);
+    expect(calibrationUnderway({ phase: 'measuring-quiet', progress: 0.5 })).toBe(true);
+    expect(calibrationUnderway({ phase: 'loud-refused', floor: 10, reason: '' })).toBe(true);
+    expect(calibrationUnderway({ phase: 'done', attenuation: 12, peakDb: '-3.0' })).toBe(false);
+    expect(calibrationUnderway({ phase: 'closed', restored: true })).toBe(false);
   });
 });

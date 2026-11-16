@@ -1,14 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import type { StatusResponse } from '../../src/device/lib/api';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
+import { type StatusResponse, setTransport } from '../../src/device/lib/api';
 import { edited, followed, seeded, unsaved } from '../../src/device/lib/follow';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
+import { connection, status } from '../../src/device/state/device';
 import {
   discardLevels,
   editLevel,
   levelsDraft,
   levelsUnsaved,
-  profileCaptureBlock,
+  saveLevels,
 } from '../../src/device/state/levels';
+import { answering } from './answering';
 
 function withAudio(audio: Partial<StatusResponse['audio']>): StatusResponse {
   const status = deviceStatus();
@@ -47,11 +50,45 @@ describe('the levels draft', () => {
     expect(levelsUnsaved(draft)).toBe(true);
   });
 
-  it('holds profiles back until the draft is saved or discarded', () => {
+  it('puts every level back to what the device holds on discard', () => {
     const draft = editLevel(levelsDraft(withAudio({ input_gain: 20 })), 'input_gain', 24);
-    expect(profileCaptureBlock(draft)).toContain('Save or discard');
     const discarded = discardLevels(draft);
     expect(discarded.input_gain.value).toBe(20);
-    expect(profileCaptureBlock(discarded)).toBeNull();
+    expect(levelsUnsaved(discarded)).toBe(false);
+  });
+});
+
+describe('saving the levels', () => {
+  let device: StatusResponse;
+
+  beforeEach(() => {
+    device = withAudio({ input_gain: 20 });
+    answering(device);
+    unlockSettings('a'.repeat(48), false);
+  });
+
+  afterEach(() => {
+    forgetAdminKey();
+    setTransport((request) => fetch(request));
+  });
+
+  it('reads the saved levels back, so the draft holds nothing unsaved', async () => {
+    setTransport(async (request) => {
+      if (request.method === 'GET') return Response.json(device);
+      device = withAudio({ input_gain: 24 });
+      return Response.json({ ok: true });
+    });
+    const draft = editLevel(levelsDraft(device), 'input_gain', 24);
+
+    await expect(saveLevels(draft)).resolves.toBe(true);
+
+    expect(status.value?.audio.input_gain).toBe(24);
+    expect(levelsUnsaved(levelsDraft(status.value ?? device, draft))).toBe(false);
+  });
+
+  it('follows the restart a device without a running codec needs to apply them', async () => {
+    setTransport(async () => Response.json({ ok: true, rebooting: true }));
+    await saveLevels(editLevel(levelsDraft(device), 'input_gain', 24));
+    expect(connection.value).toMatchObject({ phase: 'waiting', operation: 'the level change' });
   });
 });

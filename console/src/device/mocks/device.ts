@@ -130,6 +130,11 @@ export class FakeDevice {
   set inputPlaying(playing: boolean) {
     this.status.metrics.playing = playing;
   }
+
+  /** Whether the codec started; a device without it applies new levels at its next start. */
+  set codecRunning(running: boolean) {
+    this.status.health.status = running ? 'ok' : 'blocking';
+  }
   private status!: StatusResponse;
   private config!: SettingsResponse;
   private profiles!: AudioProfileCatalog;
@@ -221,7 +226,7 @@ export class FakeDevice {
         };
         Object.assign(this.config, audio);
         Object.assign(this.status.audio, audio);
-        return { ok: true };
+        return this.levelsApplied();
       }),
       this.write('/api/settings/analog-passthrough', (body) => {
         const enabled = body.enabled === 'true';
@@ -673,10 +678,17 @@ export class FakeDevice {
     this.profiles.active_profile_id = profileId || null;
     const profile = this.profiles.profiles.find((entry) => entry.id === profileId);
     if (profile) Object.assign(this.status.audio, profile.audio);
-    // Like the firmware: without a running codec the levels apply at the next start.
+    return this.levelsApplied();
+  }
+
+  /**
+   * Like the firmware: a running codec takes new levels at once, the setup
+   * network keeps them for commissioning, and any other device restarts.
+   */
+  private levelsApplied(): JsonBodyType {
     const codecRuns =
       this.status.mode === 'provisioned' && this.status.health.status !== 'blocking';
-    return codecRuns ? { ok: true } : { ok: true, rebooting: true };
+    return codecRuns || this.status.mode === 'setup' ? { ok: true } : { ok: true, rebooting: true };
   }
 
   /**

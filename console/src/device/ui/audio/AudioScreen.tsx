@@ -1,4 +1,3 @@
-import { computed } from '@preact/signals';
 import {
   Button,
   buttonClass,
@@ -8,18 +7,14 @@ import {
   CellSelect,
   Content,
   EmptyState,
-  Gauge,
-  Gauges,
-  type GaugeZone,
   Notice,
   SettingRow,
   SettingToggle,
   useToast,
 } from 'linen';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { errorMessage } from '../../../shared/errors';
-import { LEVEL_FLOOR_DB, levelDb } from '../../../shared/format';
-import { Link } from '../../../shared/navigation';
+import { Link, replacePath, usePathname } from '../../../shared/navigation';
 import {
   getSetAudioProfileUrl,
   setActiveAudioProfile,
@@ -34,15 +29,39 @@ import {
   liveStatus,
   loadAudioProfiles,
   passthroughLocked,
-  peakHold,
   status,
 } from '../../state/device';
 import { blockingHealth } from '../../state/health';
 import { updateLock } from '../../state/ota';
 import { ACTIVITY, ActivityStatus } from '../activityWords';
+import { sectionOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
+import { CalibrateScreen } from './CalibrateScreen';
+import { InputMeter } from './InputMeter';
+import { LevelsScreen } from './LevelsScreen';
+import { levelsWords } from './levelsWords';
+import { ProfilesScreen } from './ProfilesScreen';
 
-export function AudioHome() {
+const TASKS = ['levels', 'calibrate', 'profiles'] as const;
+type Task = (typeof TASKS)[number];
+
+/** The Audio place: the input and the stream at a glance, and the tasks that tune them. */
+export function AudioScreen() {
+  const section = sectionOf(usePathname());
+  const task = TASKS.find((entry) => entry === section);
+  useEffect(() => {
+    if (section !== undefined && task === undefined) replacePath('/audio');
+  }, [section, task]);
+  return task ? <AudioTask task={task} /> : <AudioHome />;
+}
+
+function AudioTask({ task }: { task: Task }) {
+  if (task === 'levels') return <LevelsScreen />;
+  if (task === 'calibrate') return <CalibrateScreen />;
+  return <ProfilesScreen />;
+}
+
+function AudioHome() {
   const activity = audioActivity.value;
   return (
     <>
@@ -57,81 +76,31 @@ export function AudioHome() {
   );
 }
 
-/** Each channel's latest peak and its held peak, in dBFS, followed without rendering the card. */
-const LEFT = {
-  peak: computed(() => levelDb(liveStatus.value?.metrics.peak_abs_left ?? 0)),
-  held: computed(() => levelDb(peakHold.value.left)),
-};
-const RIGHT = {
-  peak: computed(() => levelDb(liveStatus.value?.metrics.peak_abs_right ?? 0)),
-  held: computed(() => levelDb(peakHold.value.right)),
-};
-const CLIP_AT = computed(() => levelDb(liveStatus.value?.metrics.clip_threshold_abs ?? 32768));
-
-/** Hot near the top of the scale, and clipping in its last decibel. */
-const ZONES: readonly GaugeZone[] = [
-  { from: LEVEL_FLOOR_DB, to: -6, tone: 'accent' },
-  { from: -6, to: -1, tone: 'warn' },
-  { from: -1, to: 0, tone: 'danger' },
-];
-
-function dbText(value: number): string {
-  return value <= LEVEL_FLOOR_DB ? 'silent' : `${value.toFixed(1)} dB`;
-}
-
 function InputCard() {
-  const live = liveStatus.value;
   const known = status.value;
-  const lines = known?.capabilities.input_lines ?? [];
-  const audio = known?.audio;
-  const line = lines.find((entry) => entry.line === audio?.input_line)?.label;
   return (
     <Card>
       <CardHead
         title="Input"
-        description={
-          audio
-            ? `${line ?? `Line ${audio.input_line}`} · gain ${audio.input_gain} · attenuation ${audio.adc_attenuation_db} dB`
-            : undefined
-        }
-      />
+        description={known ? levelsWords(known.audio, known.capabilities.input_lines) : undefined}
+      >
+        <Link href="/audio/levels" className={buttonClass()}>
+          Adjust input
+        </Link>
+      </CardHead>
       <CardBody>
-        {live ? (
-          <Gauges label="Input level">
-            <Gauge
-              label="Left"
-              value={LEFT.peak}
-              min={LEVEL_FLOOR_DB}
-              max={0}
-              zones={ZONES}
-              marks={[
-                { value: LEFT.held, kind: 'held', label: 'Recent peak' },
-                { value: CLIP_AT, kind: 'set', label: 'Clipping' },
-              ]}
-              format={dbText}
-            />
-            <Gauge
-              label="Right"
-              value={RIGHT.peak}
-              min={LEVEL_FLOOR_DB}
-              max={0}
-              zones={ZONES}
-              marks={[
-                { value: RIGHT.held, kind: 'held', label: 'Recent peak' },
-                { value: CLIP_AT, kind: 'set', label: 'Clipping' },
-              ]}
-              format={dbText}
-            />
-          </Gauges>
-        ) : (
-          <p className="text-sm text-text-secondary">Live levels return when the device answers.</p>
-        )}
+        <InputMeter />
         {clipCalloutVisible.value && (
           <Notice
             className="mt-4"
             tone="warn"
             title="The input clipped since its levels were set."
-            description="Turn the source down or raise the attenuation until the loudest part stays under the clipping mark."
+            description="Turn the source down, or let calibration find the attenuation that keeps the loudest part under the clipping mark."
+            action={
+              <Link href="/audio/calibrate" className={buttonClass()}>
+                Calibrate
+              </Link>
+            }
           />
         )}
       </CardBody>
@@ -147,7 +116,8 @@ function ProfileRow() {
   const [switching, setSwitching] = useState(false);
   // Switching can restart the device, which waits while an update runs.
   const held = updateLock(getSetAudioProfileUrl());
-  if (!catalog || catalog.profiles.length === 0) return null;
+  if (!catalog) return null;
+  const saved = catalog.profiles.length > 0;
   const choose = async (profileId: string) => {
     setSwitching(true);
     try {
@@ -166,16 +136,31 @@ function ProfileRow() {
   return (
     <SettingRow
       title="Profile"
-      description={held ?? 'Applies a saved input, gain and attenuation at once.'}
+      description={
+        held ??
+        (saved
+          ? 'Applies a saved input, gain and attenuation at once.'
+          : 'None saved yet. A profile keeps the applied levels under a name.')
+      }
     >
-      <CellSelect
-        aria-label="Profile"
-        placeholder="Custom levels"
-        choices={catalog.profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
-        value={catalog.active_profile_id ?? ''}
-        disabled={switching || held !== null}
-        onValueChange={(next) => void choose(next)}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        {saved && (
+          <CellSelect
+            aria-label="Profile"
+            placeholder="Custom levels"
+            choices={catalog.profiles.map((profile) => ({
+              value: profile.id,
+              label: profile.name,
+            }))}
+            value={catalog.active_profile_id ?? ''}
+            disabled={switching || held !== null}
+            onValueChange={(next) => void choose(next)}
+          />
+        )}
+        <Link href="/audio/profiles" className={buttonClass()}>
+          Manage profiles
+        </Link>
+      </div>
     </SettingRow>
   );
 }

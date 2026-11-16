@@ -7,7 +7,8 @@
 
 import { type AudioSettings, type StatusResponse, setAudio } from '../lib/api';
 import { discarded, edited, type Followed, followed, seeded, unsaved } from '../lib/follow';
-import { withAccess } from './access';
+import { withRestart } from './access';
+import { readBack } from './device';
 
 export type Level = keyof AudioSettings;
 
@@ -45,8 +46,10 @@ export function discardLevels(draft: LevelsDraft): LevelsDraft {
 }
 
 /**
- * Save the draft's values. Resolves false when the owner declines to unlock;
- * the draft then stays as it is, and the next read shows the saved values.
+ * Save the draft's values, and read them back so the draft follows what the
+ * device applied. A device with no running codec restarts to apply them,
+ * which the console follows as the level change. Resolves false when the
+ * owner declines to unlock; the draft then stays as it is.
  */
 export async function saveLevels(draft: LevelsDraft): Promise<boolean> {
   const audio: AudioSettings = {
@@ -54,12 +57,8 @@ export async function saveLevels(draft: LevelsDraft): Promise<boolean> {
     input_gain: draft.input_gain.value,
     adc_attenuation_db: draft.adc_attenuation_db.value,
   };
-  return (await withAccess(() => setAudio(audio))) !== null;
-}
-
-/** Why a profile cannot be saved from the levels right now, or null. */
-export function profileCaptureBlock(draft: LevelsDraft): string | null {
-  return levelsUnsaved(draft)
-    ? 'Save or discard the level changes first: a profile keeps the applied levels.'
-    : null;
+  const ack = await withRestart('the level change', () => setAudio(audio));
+  if (ack === null) return false;
+  if (!ack.rebooting) await readBack();
+  return true;
 }

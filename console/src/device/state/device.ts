@@ -167,19 +167,31 @@ export function report(event: ConnectionEvent): void {
   }
 }
 
-let refreshing = false;
+let polling: Promise<void> | null = null;
 
-/** One status poll; safe to call on an interval, overlaps are skipped. */
-export async function refresh(): Promise<void> {
-  if (refreshing) return;
-  refreshing = true;
+/** One status poll; safe to call on an interval, a caller during a running poll shares it. */
+export function refresh(): Promise<void> {
+  polling ??= poll().finally(() => {
+    polling = null;
+  });
+  return polling;
+}
+
+/**
+ * A status read sent after this call, for a write that must see its own
+ * effect: a poll already on its way may carry the device as it was before.
+ */
+export async function readBack(): Promise<void> {
+  await polling;
+  await refresh();
+}
+
+async function poll(): Promise<void> {
   try {
     const answer = await getStatus({ signal: AbortSignal.timeout(STATUS_TIMEOUT_MS) });
     report({ type: 'answered', status: answer, at: Date.now() });
   } catch {
     report({ type: 'unanswered', at: Date.now() });
-  } finally {
-    refreshing = false;
   }
 }
 

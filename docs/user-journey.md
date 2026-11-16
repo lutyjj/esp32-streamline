@@ -112,17 +112,19 @@ signal.
 ## 3. Set input levels
 
 Audio places saved profiles beside the live meter. Adjust input opens a focused
-editor with its own live meter, Save, and Discard changes. Fields remain locked
-while saving. Changes apply when saved; the meter describes applied settings
-while a draft is edited. A clipping warning
-offers calibration. The guide asks the owner to pause the source and play loud
-material. Cancellation restores entry levels and reports restoration failures;
-completion applies the measured result.
+editor beneath Audio with its own live meter, Save, and Discard changes. Fields
+remain locked while saving. Changes apply when saved; the meter describes
+applied settings while a draft is edited, and a device without a running codec
+restarts to apply them. A clipping warning offers calibration, and so does the
+editor. The guide shows its steps and progress while it asks the owner to pause
+the source, then play loud material. Cancelling, or leaving once the guard has
+asked, restores the entry attenuation and reports a restoration failure;
+completion keeps the measured result.
 
-Profiles capture applied settings, not unsaved fields. Saving or replacing a
-profile requires saving or deliberately discarding the displayed draft first.
-Selection is separate from profile management. Importing profiles does not apply
-them, and incompatible profiles fail with a reason.
+Profiles opens beneath Audio and keeps applied settings, never unsaved fields:
+leaving the editor with changes asks first. Choosing a profile stays on Audio,
+apart from managing them. Importing a profile file replaces the saved profiles
+without applying any, and incompatible profiles fail with a reason.
 
 Boards that support analog passthrough expose an immediate switch. It names the
 physical output and fixed line-level route. Input gain, attenuation, calibration,

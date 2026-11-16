@@ -153,3 +153,59 @@ test('a found bridge fills the form, and only Save writes it and restarts', asyn
   await expect(page.getByText('Back online after the bridge change.')).toBeVisible();
   await expect(page.getByText(/^192\.0\.2\.21:39000$/)).toBeVisible();
 });
+
+test('adjusting the input holds a draft until Save, and leaving it asks first', async ({
+  page,
+}) => {
+  await page.goto('/#/audio');
+  await page.getByRole('link', { name: 'Adjust input' }).click();
+  await expect(page).toHaveURL(/#\/audio\/levels$/);
+  await page.getByLabel('Gain').fill('12');
+
+  await page.getByRole('link', { name: 'Audio', exact: true }).first().click();
+  await page
+    .getByRole('dialog', { name: 'Leave without saving?' })
+    .getByRole('button', { name: 'Cancel' })
+    .click();
+  await expect(page.getByLabel('Gain')).toHaveValue('12');
+
+  await page.getByRole('button', { name: 'Save' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(page.getByText('Input levels saved.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await page.getByRole('link', { name: 'Audio', exact: true }).first().click();
+  await expect(page).toHaveURL(/#\/audio$/);
+  await expect(page.getByText(/gain 12 ·/)).toBeVisible();
+});
+
+test('a profile keeps the applied levels and is chosen on Audio', async ({ page }) => {
+  await page.goto('/#/audio');
+  await page.getByRole('link', { name: 'Manage profiles' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Profiles' })).toBeVisible();
+  await page.getByRole('button', { name: 'Save applied levels' }).click();
+  const naming = page.getByRole('dialog', { name: 'Save the applied levels' });
+  await naming.getByLabel('Name').fill('Loud room');
+  await naming.getByRole('button', { name: 'Save' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(naming).toBeHidden();
+  await expect(page.getByRole('listitem').filter({ hasText: 'Loud room' })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Audio', exact: true }).first().click();
+  await expect(page.getByRole('combobox', { name: 'Profile' })).toBeVisible();
+});
+
+test('calibration names playback heard while it measures the quiet, and cancels to Audio', async ({
+  page,
+}) => {
+  await page.goto('/#/audio/levels');
+  await page.getByRole('link', { name: 'Calibrate' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Calibrate' })).toBeVisible();
+  await page.getByRole('button', { name: 'Measure the quiet' }).click();
+  await expect(page.getByRole('progressbar')).toBeVisible();
+  // The fake device's input always plays.
+  await expect(page.getByText('That sounds like playback', { exact: false })).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL(/#\/audio$/);
+});

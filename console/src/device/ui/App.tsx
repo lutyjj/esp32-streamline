@@ -8,7 +8,7 @@ import { verifyKey } from '../state/access';
 import { UPDATE_OPERATION } from '../state/connection';
 import { connection, restartSettled, status } from '../state/device';
 import { installSource, updateNews } from '../state/ota';
-import { AudioHome } from './audio/AudioHome';
+import { AudioScreen } from './audio/AudioScreen';
 import { BridgeScreen } from './bridge/BridgeScreen';
 import { DeviceConditions } from './DeviceConditions';
 import { DeviceScreen } from './device/DeviceScreen';
@@ -104,7 +104,7 @@ function DeviceShell({ name }: { name: string | undefined }) {
       ) : place === 'maintenance' ? (
         <MaintenanceScreen />
       ) : (
-        <AudioHome />
+        <AudioScreen />
       )}
     </Shell>
   );

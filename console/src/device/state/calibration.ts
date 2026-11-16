@@ -28,6 +28,39 @@ export type Calibration =
   /** `restored` says whether closing wrote the entry attenuation back. */
   | { phase: 'closed'; restored: boolean };
 
+/** The guide's steps, in order. */
+export const CALIBRATION_STEPS = [
+  { id: 'quiet', label: 'Measure the quiet' },
+  { id: 'loud', label: 'Find the level' },
+  { id: 'done', label: 'Done' },
+] as const;
+
+export type CalibrationStep = (typeof CALIBRATION_STEPS)[number]['id'];
+
+/** The step a phase belongs to, or null while the guide closes. */
+export function calibrationStep(state: Calibration): CalibrationStep | null {
+  switch (state.phase) {
+    case 'pause-source':
+    case 'measuring-quiet':
+    case 'quiet-refused':
+      return 'quiet';
+    case 'play-loud':
+    case 'listening':
+    case 'loud-refused':
+      return 'loud';
+    case 'done':
+      return 'done';
+    default:
+      return null;
+  }
+}
+
+/** Whether leaving now would lose the owner's work: from the first measurement until done. */
+export function calibrationUnderway(state: Calibration): boolean {
+  const step = calibrationStep(state);
+  return step !== null && step !== 'done' && state.phase !== 'pause-source';
+}
+
 /** The device as the guide reads and writes it. */
 export interface CalibrationDevice {
   sample(signal: AbortSignal): Promise<LevelSample>;

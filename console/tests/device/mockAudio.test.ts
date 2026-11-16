@@ -1,7 +1,14 @@
 import { getResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
-import { getStatus, setStream, setTarget, setTransport } from '../../src/device/lib/api';
+import {
+  getStatus,
+  setActiveAudioProfile,
+  setAudio,
+  setStream,
+  setTarget,
+  setTransport,
+} from '../../src/device/lib/api';
 import { type DeviceScenario, FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
 
 describe('mock audio transport', () => {
@@ -61,5 +68,22 @@ describe('mock audio transport', () => {
     await expect(getStatus()).rejects.toThrow();
     const untargeted = await getStatus();
     expect((await getStatus()).metrics.packets_total).toBe(untargeted.metrics.packets_total);
+  });
+
+  it('applies levels at once while the codec runs, and restarts to apply them when it does not', async () => {
+    reach('steady');
+    const audio = { input_line: 2, input_gain: 12, adc_attenuation_db: 6 };
+    await expect(setAudio(audio)).resolves.toEqual({ ok: true });
+    expect((await getStatus()).audio.input_gain).toBe(12);
+
+    device.codecRunning = false;
+    await expect(setAudio({ ...audio, input_gain: 16 })).resolves.toEqual({
+      ok: true,
+      rebooting: true,
+    });
+
+    reach('steady');
+    device.codecRunning = false;
+    await expect(setActiveAudioProfile('')).resolves.toEqual({ ok: true, rebooting: true });
   });
 });

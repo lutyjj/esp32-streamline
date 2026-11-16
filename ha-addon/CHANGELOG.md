@@ -1,6 +1,33 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.19.0](https://github.com/lutyjj/esp32-streamline/compare/v0.18.1...v0.19.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **console:** put the flasher on linen and delete the old console UI ([#610](https://github.com/lutyjj/esp32-streamline/issues/610))
+* **console:** rebuild the bridge console on linen ([#609](https://github.com/lutyjj/esp32-streamline/issues/609))
+* **console:** rebuild the device console on linen ([#608](https://github.com/lutyjj/esp32-streamline/issues/608))
+
+### Features
+
+* **console:** adopt linen 0.6.0 ([#611](https://github.com/lutyjj/esp32-streamline/issues/611)) ([b08b7f3](https://github.com/lutyjj/esp32-streamline/commit/b08b7f32921e1cf2244b48aa7077ef5fd4ef28ab))
+* **console:** give StreamLine its icon ([4d34689](https://github.com/lutyjj/esp32-streamline/commit/4d3468915ed6aedc315a312802e15e6882e05fa8))
+* **console:** put the flasher on linen and delete the old console UI ([#610](https://github.com/lutyjj/esp32-streamline/issues/610)) ([d74bf20](https://github.com/lutyjj/esp32-streamline/commit/d74bf208383be687618970be6ec1bd935b12adca))
+* **console:** rebuild the bridge console on linen ([#609](https://github.com/lutyjj/esp32-streamline/issues/609)) ([790838b](https://github.com/lutyjj/esp32-streamline/commit/790838b2830c4dacd055a0308630e269abe06a04))
+* **console:** rebuild the device console on linen ([#608](https://github.com/lutyjj/esp32-streamline/issues/608)) ([07fa4a2](https://github.com/lutyjj/esp32-streamline/commit/07fa4a2b7c9d8f00eeca40450a0f5d1709a7ec20))
+* **firmware:** report the boot id and how the last update ended ([a6e9148](https://github.com/lutyjj/esp32-streamline/commit/a6e9148f79e96557fcd49fc1ef9581ea13969de7))
+* **firmware:** report the running OTA slot ([#607](https://github.com/lutyjj/esp32-streamline/issues/607)) ([569c515](https://github.com/lutyjj/esp32-streamline/commit/569c51567399a0a5d999996a84eab36ea1ee8e89))
+* **firmware:** state input rules in the contract and name refused fields ([9dadfcf](https://github.com/lutyjj/esp32-streamline/commit/9dadfcf08d4bf4c4dde4a8269d2c8f68a8696986))
+
+
+### Bug Fixes
+
+* declare GPL-3.0-or-later everywhere, matching LICENSE ([2a8e3c6](https://github.com/lutyjj/esp32-streamline/commit/2a8e3c6dc65403cf05092b735feb5bee0102af1f))
+* **firmware:** keep the contract and the install outcome exact ([e7c3ac3](https://github.com/lutyjj/esp32-streamline/commit/e7c3ac345fd329fc004320d925ab054c5e9d3ef1))
+* **firmware:** name refused fields only for the request that carries them ([44ef36d](https://github.com/lutyjj/esp32-streamline/commit/44ef36da29c5ea4ffe05746ad2f6a667301abd2c))
+
 ## [0.18.1](https://github.com/lutyjj/esp32-streamline/compare/v0.18.0...v0.18.1) (2026-11-15)
 
 

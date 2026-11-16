@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/preact-query';
-import { Button, Card, CardHead, Count, EmptyState, SettingRow, useToast } from 'linen';
+import { Button, Card, CardHead, Count, Nothing, SettingRow, useToast } from 'linen';
 import { useState } from 'react';
 import type { RecordingSnapshot } from '../../../generated/bridge';
 import { bytes, duration } from '../../../shared/format';
@@ -45,10 +45,9 @@ export function Library({ saved }: { saved: readonly RecordingSnapshot[] }) {
         description="The bridge is a working area, not a library: download what you keep."
       />
       {saved.length === 0 ? (
-        <EmptyState
-          title="No saved recordings yet"
-          description="A recording appears here once it is stopped and saved."
-        />
+        <Nothing>
+          No saved recordings yet. A recording appears here once it is stopped and saved.
+        </Nothing>
       ) : (
         // biome-ignore lint/a11y/useSemanticElements: SettingRow is a div with the listitem role, which a <ul> may not hold.
         <div role="list" aria-label="Saved recordings">

@@ -4,6 +4,7 @@ import { replacePath, usePathname } from '../../../shared/navigation';
 import { sectionOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
 import { AccessSection } from './AccessSection';
+import { BrowserSection } from './BrowserSection';
 import { HardwareSection } from './HardwareSection';
 import { WifiSection } from './WifiSection';
 
@@ -11,6 +12,7 @@ const SECTIONS = [
   { href: '/device/wifi', label: 'Wi-Fi' },
   { href: '/device/hardware', label: 'Hardware' },
   { href: '/device/access', label: 'Access' },
+  { href: '/device/browser', label: 'This browser' },
 ] as const;
 
 export function DeviceScreen() {
@@ -28,6 +30,8 @@ export function DeviceScreen() {
           <HardwareSection />
         ) : section === 'access' ? (
           <AccessSection />
+        ) : section === 'browser' ? (
+          <BrowserSection />
         ) : (
           <WifiSection />
         )}

@@ -37,12 +37,10 @@ function Sources({ known }: { known: BridgeStatus }) {
   const sources = Object.entries(known.sources).sort(([a], [b]) => a.localeCompare(b));
   if (sources.length === 0)
     return (
-      <Card>
-        <EmptyState
-          title="No device is sending audio yet"
-          description={`A device appears here once it streams to this bridge on port ${known.transport.port}, even while its input is quiet. Set the bridge as its target in the device console, with streaming on.`}
-        />
-      </Card>
+      <EmptyState
+        title="No device is sending audio yet"
+        description={`A device appears here once it streams to this bridge on port ${known.transport.port}, even while its input is quiet. Set the bridge as its target in the device console, with streaming on.`}
+      />
     );
   const published = new Map(known.sendspin.sources.map((source) => [source.source, source]));
   return (

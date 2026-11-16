@@ -41,15 +41,17 @@ owns installation commands.
 | Device | Maintenance | Updates, diagnostics, the machine interface, restart and reset |
 | Bridge | Sources | Follow each source's reception, copy its playback address, pair it with Music Assistant, and record it |
 | Bridge | Recordings | Capture a source and retrieve saved WAV files |
-| Bridge | Settings | Configure audio security and see what the deployment sets |
+| Bridge | Settings | Configure audio security, see what the deployment sets, and what this browser keeps |
 
 The device console's Device and Maintenance workspaces and the bridge
 console's Settings hold sections, and a guided task opens on a screen of its
 own beneath its workspace, as one source does beneath Sources. URLs identify
 the workspace, section, task, or source, and browser Back retraces
-navigation. Phones use the same destinations and bottom primary navigation.
-The theme choice stands at the foot of each console's navigation, and this
-browser keeps it. A condition of the whole
+navigation. Phones use the same destinations and bottom primary navigation,
+which holds the destinations alone. The theme choice stands at the foot of
+each console's navigation on a desk, and under This browser on every width:
+Device → This browser on the device console, Settings → This browser on the
+bridge console. This browser keeps it. A condition of the whole
 console, such as lost contact or a restart under way, stands above every
 screen until it ends.
 
@@ -156,8 +158,8 @@ according to firmware policy.
 Device → Access replaces the admin key. The console makes a new key and shows
 it once; Save waits until the owner confirms it is kept outside the console,
 and this browser stays unlocked on it. Until then the old key stays in use,
-and leaving asks first. Access also says whether this browser keeps the key
-and forgets it on request.
+and leaving asks first. Device → This browser says whether this browser keeps
+the key and forgets it on request.
 
 Bridge Sources shows known sources, levels, connection state, playback addresses,
 and reception details. Recordings separates capture from the file library.

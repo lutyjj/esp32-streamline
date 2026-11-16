@@ -31,7 +31,7 @@ function BridgeAccess() {
   if (!status.data.api_token_configured)
     return (
       <ExplainedStatus
-        description={`Nothing here can change without an API token. Set ${whereToSet('token')}, then restart the bridge.`}
+        description={`The bridge takes no change without an API token. Set ${whereToSet('token')}, then restart the bridge.`}
       >
         Read-only
       </ExplainedStatus>

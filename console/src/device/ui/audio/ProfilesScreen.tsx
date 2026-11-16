@@ -5,7 +5,7 @@ import {
   CardBody,
   CardHead,
   Content,
-  EmptyState,
+  Nothing,
   PromptDialog,
   SettingRow,
   useToast,
@@ -79,15 +79,13 @@ function Profiles({ catalog, known }: { catalog: AudioProfileCatalog; known: Sta
           title="Saved profiles"
           description={`Saving keeps the applied levels: ${applied}.`}
         >
-          {catalog.profiles.length > 0 && saveLevels}
+          {saveLevels}
         </CardHead>
         {catalog.profiles.length === 0 ? (
-          <EmptyState
-            title="No profiles yet"
-            description="A profile keeps an input, gain and attenuation under a name, to switch back to them on Audio."
-          >
-            {saveLevels}
-          </EmptyState>
+          <Nothing>
+            No profiles yet. A profile keeps an input, gain and attenuation under a name, to switch
+            back to them on Audio.
+          </Nothing>
         ) : (
           // biome-ignore lint/a11y/useSemanticElements: SettingRow is a div with the listitem role, which a <ul> may not hold.
           <div role="list" aria-label="Saved profiles">

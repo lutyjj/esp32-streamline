@@ -302,15 +302,17 @@ def test_an_open_network_commissions_only_by_explicit_choice_and_persists(
     setup_boot = boot_device(until=("setup console started", CONSOLE_READY))
     _expect_api_up(setup_boot)
     # Without the choice a blank password keeps a stored one, which a fresh device lacks.
-    for fields, error in [
-        ({"ssid": "qemu-open-lab", "admin_key": ADMIN_KEY}, b"MissingWifiPassword"),
+    for fields, reason in [
+        ({"ssid": "qemu-open-lab", "admin_key": ADMIN_KEY}, "needs its password"),
         (
             {"ssid": "qemu-open-lab", "password": WIFI_PASSWORD, "open_network": "true", "admin_key": ADMIN_KEY},
-            b"PasswordForOpenNetwork",
+            "has no password",
         ),
     ]:
         code, body = setup_boot.api.post_form("/api/settings/wifi", fields)
-        assert code == 400 and error in body, f"{sorted(fields)} was answered with HTTP {code}: {body[:200]!r}"
+        assert code == 400, f"{sorted(fields)} was answered with HTTP {code}: {body[:200]!r}"
+        refusal = json.loads(body)
+        assert refusal["field"] == "password" and reason in refusal["error"], refusal
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
         {"ssid": "qemu-open-lab", "open_network": "true", "admin_key": ADMIN_KEY},
@@ -330,7 +332,7 @@ def test_an_open_network_commissions_only_by_explicit_choice_and_persists(
     assert (settings["ssid"], settings["open_network"]) == ("qemu-open-lab", True)
     # Leaving an open network for a protected one needs its password.
     code, body = provisioned.api.post_form("/api/settings/wifi", {"ssid": "qemu-smoke-lab"})
-    assert code == 400 and b"MissingWifiPassword" in body, (
+    assert code == 400 and json.loads(body)["field"] == "password", (
         f"a protected network without a password was answered with HTTP {code}: {body[:200]!r}"
     )
 
@@ -671,6 +673,10 @@ def test_ota_install_boots_from_the_other_slot(
     boot_device: Callable[..., EmulatedDevice],
     served_ota_image: ServedOtaImage,
 ) -> None:
+    code, body = provisioned_device.api.fetch("/api/status")
+    assert code == 200
+    before = json.loads(body)
+    assert before["ota"]["last_result"] == "none", before["ota"]
     code, body = provisioned_device.api.post_form(
         "/api/ota/update",
         {"url": served_ota_image.download_url, "sha256": served_ota_image.sha256},
@@ -695,6 +701,8 @@ def test_ota_install_boots_from_the_other_slot(
     assert _mode(updated) == "provisioned"
     status = _assert_ota_url_private(updated)
     assert "installed custom image" in status["diagnostics"]["last_ota"]
+    assert status["ota"]["last_result"] == "installed", status["ota"]
+    assert status["system"]["boot"] != before["system"]["boot"], "a restart kept its boot id"
 
     code, body = updated.api.post_form("/api/restart", {})
     assert code == 200, f"restart returned HTTP {code}: {body[:200]!r}"
@@ -767,9 +775,11 @@ def test_failed_management_startup_reboots_and_rolls_back_with_diagnostics(
     _expect_api_up(recovered)
     code, body = recovered.api.fetch("/api/status")
     assert code == 200
-    diagnostic = json.loads(body)["diagnostics"]["last_ota"]
+    status = json.loads(body)
+    diagnostic = status["diagnostics"]["last_ota"]
     assert "management startup failed" in diagnostic
     assert "returned HTTP 404" in diagnostic
+    assert status["ota"]["last_result"] == "rolled-back", status["ota"]
 
 
 def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(
@@ -787,6 +797,7 @@ def test_ota_rejects_a_mismatched_checksum_and_keeps_the_running_slot(
 
     ota = _wait_for_ota_phase(provisioned_device, "failed", timeout=180)
     assert "checksum" in ota["message"].lower(), f"failed for the wrong reason: {ota['message']!r}"
+    assert ota["last_result"] == "failed", ota
 
     # A rejected install never switches slots, so the device stays on the image
     # it booted, still serving its API rather than rebooting into a bad slot.
@@ -865,6 +876,7 @@ def test_ota_interruption_persists_only_a_redacted_recovery_note(
     _expect_api_up(rebooted)
     status = _assert_ota_url_private(rebooted)
     assert "installing custom image (did not finish)" in status["diagnostics"]["last_ota"]
+    assert status["ota"]["last_result"] == "failed", status["ota"]
 
 
 def test_an_active_update_refuses_restarts_before_they_change_anything(

@@ -724,6 +724,41 @@ mod spec {
             schemas["NameSettingsRequest"]["properties"]["name"]["maxLength"],
             crate::config::MAX_DEVICE_NAME_CHARS
         );
+        let wifi = &schemas["WifiSettingsRequest"]["properties"];
+        assert_eq!(wifi["ssid"]["maxLength"], crate::config::MAX_SSID_BYTES);
+        assert_eq!(wifi["ssid"]["pattern"], crate::config::WIFI_SSID_PATTERN);
+        assert_eq!(
+            wifi["password"]["pattern"],
+            crate::config::WIFI_PASSWORD_PATTERN
+        );
+        assert_eq!(
+            wifi["target_host"]["pattern"],
+            crate::config::TARGET_HOST_PATTERN
+        );
+        assert_eq!(
+            schemas["TargetSettingsRequest"]["properties"]["target_host"]["pattern"],
+            crate::config::TARGET_HOST_PATTERN
+        );
+        // Every field a refusal can name is a field some write request carries.
+        let request_fields: std::collections::BTreeSet<&str> = schemas
+            .as_object()
+            .expect("schemas")
+            .iter()
+            .filter(|(name, _)| name.ends_with("Request"))
+            .filter_map(|(_, schema)| schema["properties"].as_object())
+            .flat_map(|properties| properties.keys().map(String::as_str))
+            .collect();
+        for field in crate::mutation::field::ALL {
+            assert!(
+                request_fields.contains(field),
+                "refused field {field} is in no request"
+            );
+        }
+        for request in ["WifiSettingsRequest", "TargetSettingsRequest"] {
+            let port = &schemas[request]["properties"]["target_port"];
+            assert_eq!(port["minimum"], crate::config::MIN_PORT, "{request}");
+            assert_eq!(port["maximum"], u16::MAX, "{request}");
+        }
         assert_eq!(
             schemas["BoardSettingsRequest"]["properties"]["descriptor"]["maxLength"],
             crate::board::MAX_DESCRIPTOR_BYTES

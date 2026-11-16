@@ -2,6 +2,11 @@
 //!
 //! Form-encoded or JSON bodies validated at the boundary. The route table that
 //! references them and the response types live beside this module in `super`.
+//!
+//! JSON Schema counts characters, and the device counts some lengths in UTF-8
+//! bytes. There the schema states the character bound the byte rule implies
+//! and a pattern exact for ASCII, so no keyword refuses a value the device
+//! accepts, and the device's refusal names the field for the rest.
 
 use serde::{Deserialize, Serialize};
 
@@ -10,12 +15,22 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct WifiSettingsRequest {
     /// Wi-Fi network name: 1 to 32 UTF-8 bytes, without NUL.
-    #[cfg_attr(feature = "api-spec", schema(min_length = 1))]
+    #[cfg_attr(
+        feature = "api-spec",
+        schema(min_length = 1, max_length = 32, pattern = r"^[^\u0000]*$")
+    )]
     pub ssid: String,
     /// WPA2 password: 8 to 63 bytes or a 64-digit hexadecimal PSK, without NUL.
     /// Empty keeps the stored password, so a protected network that has none
     /// stored needs one. Must be empty when `open_network` is true.
     #[serde(default)]
+    #[cfg_attr(
+        feature = "api-spec",
+        schema(
+            max_length = 64,
+            pattern = r"^(?:[\u0001-\u007F]{8,63}|[0-9A-Fa-f]{64}|[^\u0000]*[^\u0000-\u007F][^\u0000]*)?$"
+        )
+    )]
     pub password: String,
     /// Join `ssid` as an open network, without a password. The device then
     /// joins only an open network by that name.
@@ -23,9 +38,9 @@ pub struct WifiSettingsRequest {
     #[cfg_attr(feature = "api-spec", schema(default = false))]
     pub open_network: bool,
     /// Optional bridge host set during first commissioning.
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/]*$"))]
+    #[cfg_attr(feature = "api-spec", schema(pattern = r"^\s*[^:/\s]*\s*$"))]
     pub target_host: Option<String>,
-    #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
+    #[cfg_attr(feature = "api-spec", schema(minimum = 1, maximum = 65535))]
     pub target_port: Option<u16>,
     /// Generated 48-character lowercase-hex admin key. Empty preserves the
     /// stored key.
@@ -38,11 +53,12 @@ pub struct WifiSettingsRequest {
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TargetSettingsRequest {
-    /// Hostname or IP without a scheme, port, or path. Empty clears the target.
+    /// Hostname or IP without a scheme, port, path, or spaces. Empty clears
+    /// the target.
     #[serde(default)]
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/]*$"))]
+    #[cfg_attr(feature = "api-spec", schema(pattern = r"^\s*[^:/\s]*\s*$"))]
     pub target_host: String,
-    #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
+    #[cfg_attr(feature = "api-spec", schema(minimum = 1, maximum = 65535))]
     pub target_port: Option<u16>,
 }
 

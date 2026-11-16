@@ -162,6 +162,8 @@ no bridge can answer, and when mDNS did not start.
 
 `make firmware-openapi` generates `docs/openapi.json`. Console checks generate TypeScript types from that artifact. The device serves the same artifact at `GET /api/openapi.json`.
 
+Request schemas carry the device's rules for each field, so a client checks a write before it sends one; rules that join two fields, such as an open network taking no password, stay with the device. JSON Schema counts characters, while the device counts the Wi-Fi name and password in UTF-8 bytes. For those two fields the schema states the character limit the byte limit implies and a pattern that is exact for ASCII, so no keyword refuses a value the device accepts. A refused write answers `400` with `error`, the reason a person reads, and `field`, the request field the device names. `field` is `null` when the device names none, as for a body it cannot decode, which the schema already rules out.
+
 ```mermaid
 flowchart LR
   rust["Rust API declarations and DTOs"] --> spec["docs/openapi.json"]
@@ -211,7 +213,7 @@ The standalone container and Home Assistant app run the same `streamline-bridge`
 |---|---|---|
 | Wi-Fi, target, transport mode and keys, audio, admin key, board selection, audio profile catalog | Firmware state core and NVS adapter | Across reboots; one commit marker selects complete checksummed snapshots; factory reset commits an empty snapshot without a fallback |
 | Stream counters and level state | Firmware runtime | One boot |
-| OTA progress | Firmware OTA worker | One boot; final diagnostic note persists in NVS |
+| OTA progress | Firmware OTA worker | One boot; the install record behind `ota.last_result` and the diagnostic note persist in NVS until the next install or a factory reset |
 | Bridge source pipelines and client queues | Bridge process | One bridge process |
 | Active recording sessions | Bridge recording service | Until stop, a resource limit, or bridge shutdown |
 | Sendspin client identities and pairings | Bridge Sendspin state directory | Across bridge restarts; one private directory per source id |

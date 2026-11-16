@@ -23,6 +23,7 @@ use crate::{
     stream::{pause_transport, StreamStatus},
     update::{
         self,
+        outcome::{InstallRecord, InstallResult},
         progress::{OtaProgress, Phase},
         CustomImage, ImageSink, ImageSource, InstallProgress,
     },
@@ -113,6 +114,29 @@ pub fn rollback_target() -> Option<String> {
     } else {
         Some(String::new())
     }
+}
+
+/// How the install before this boot ended, from the record it left and the
+/// slot this boot runs from.
+pub fn last_install_result(store: &Mutex<ConfigStore>) -> InstallResult {
+    let record = match store.lock() {
+        Ok(store) => store.install_record(),
+        Err(_) => None,
+    };
+    // SAFETY: the running partition is static for the life of the image.
+    let running = partition_label(unsafe { sys::esp_ota_get_running_partition() });
+    record.map_or(InstallResult::None, |record| record.result(&running))
+}
+
+/// The label of `partition`, such as `ota_1`; empty for a null pointer.
+fn partition_label(partition: *const sys::esp_partition_t) -> String {
+    if partition.is_null() {
+        return String::new();
+    }
+    // SAFETY: a partition table entry's label is a NUL-terminated array.
+    unsafe { std::ffi::CStr::from_ptr((*partition).label.as_ptr()) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Point the next boot at the inactive slot, returning to the previous firmware.
@@ -315,15 +339,23 @@ fn install_and_reboot(
 ) -> Result<Phase, String> {
     progress.set_phase(Phase::Downloading);
     // Written before the download so a crash mid-install still leaves evidence;
-    // overwritten by the final outcome below.
+    // overwritten by the final outcome below. The slot is the one
+    // `initiate_update` writes.
+    // SAFETY: a null start selects the slot after the running one.
+    let slot =
+        partition_label(unsafe { sys::esp_ota_get_next_update_partition(core::ptr::null()) });
+    record_install(store, &InstallRecord::Started(slot.clone()));
     note_outcome(store, &format!("installing {what} (did not finish)"));
     if let Err(error) = install(url, sha256, progress) {
         let message = format!("install {what} failed: {error:#}");
+        record_install(store, &InstallRecord::Failed);
         note_outcome(store, &message);
+        progress.set_last_result(InstallResult::Failed);
         return Err(message);
     }
 
     let message = format!("installed {what}; rebooting");
+    record_install(store, &InstallRecord::Written(slot));
     note_outcome(store, &message);
     progress.set_phase(Phase::Installed);
     progress.set_message(&message);
@@ -338,10 +370,24 @@ fn install_and_reboot(
     unsafe { esp_idf_svc::sys::esp_restart() }
 }
 
-/// Persist the install outcome, tagged with the version that ran the install,
-/// so `/api/status` can still explain what happened after the reboot — and
-/// after a rollback, when the running version contradicts the note.
+/// Persist where an install stands, so the boot after it reads its outcome.
 /// Best-effort: diagnostics must never fail an update.
+fn record_install(store: Option<&Mutex<ConfigStore>>, record: &InstallRecord) {
+    let Some(store) = store else { return };
+    match store.lock() {
+        Ok(guard) => {
+            if let Err(error) = guard.save_install_record(record) {
+                log::warn!("could not persist the install record: {error:#}");
+            }
+        }
+        Err(_) => log::warn!("could not persist the install record: store lock poisoned"),
+    }
+}
+
+/// Persist the install outcome in words, tagged with the version that ran
+/// the install, so `/api/status` can still explain it after the reboot.
+/// Best-effort: diagnostics must never fail an update. A check carries no
+/// store and notes nothing.
 fn note_outcome(store: Option<&Mutex<ConfigStore>>, outcome: &str) {
     let Some(store) = store else { return };
     let note = format!("v{}: {outcome}", env!("CARGO_PKG_VERSION"));

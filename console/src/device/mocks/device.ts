@@ -256,13 +256,13 @@ export class FakeDevice {
       }),
       this.write('/api/settings/led', (body) => {
         const led = this.config.led_roles.find((role) => role.id === body.id);
-        if (!led) return reject(400, `unknown LED "${body.id}"`);
+        if (!led) return reject(400, 'This board has no such LED.', 'id');
         led.role = (body.role ?? 'off') as LedRole;
         return { ok: true };
       }),
       this.write('/api/settings/button', (body) => {
         const button = this.config.button_actions.find((entry) => entry.id === body.id);
-        if (!button) return reject(400, `unknown button "${body.id}"`);
+        if (!button) return reject(400, 'This board has no such button.', 'id');
         button.action = (body.action ?? 'none') as ButtonAction;
         return { ok: true };
       }),
@@ -553,19 +553,27 @@ export class FakeDevice {
    */
   private join(body: FormBody): JsonBodyType | Response {
     const ssid = (body.ssid ?? '').trim();
-    if (!ssid) return reject(400, 'ssid must not be empty');
+    if (!ssid) return reject(400, 'A network name is required.', 'ssid');
     // Like the firmware: only `open_network` makes a network open, and a blank
     // password keeps a stored one, which a saved open network does not have.
     const open = body.open_network === 'true';
     if (open && body.password) {
-      return reject(400, 'invalid configuration: PasswordForOpenNetwork');
+      return reject(400, 'An open network has no password.', 'password');
     }
     const storedPassword = this.config.ssid !== '' && !this.config.open_network;
     if (!open && !body.password && !storedPassword) {
-      return reject(400, 'invalid configuration: MissingWifiPassword');
+      return reject(
+        400,
+        'A protected network needs its password; the device stores none.',
+        'password',
+      );
     }
     if (body.password && !wpa2Password(body.password)) {
-      return reject(400, 'invalid configuration: MalformedWifiPassword');
+      return reject(
+        400,
+        'A Wi-Fi password is 8 to 63 bytes, or the 64-digit hexadecimal key, without NUL.',
+        'password',
+      );
     }
     if (body.admin_key) this.adminKey = body.admin_key;
     const fromHome = this.status.mode === 'provisioned';
@@ -666,13 +674,13 @@ export class FakeDevice {
 
   private selectBoard(body: FormBody): JsonBodyType | Response {
     if (body.board_id && body.board_id !== this.status.capabilities.board_id) {
-      return reject(400, `unknown board "${body.board_id}"`);
+      return reject(400, `unknown board descriptor '${body.board_id}'`, 'board_id');
     }
     if (body.descriptor) {
       try {
         JSON.parse(body.descriptor);
       } catch {
-        return reject(400, 'descriptor is not valid JSON');
+        return reject(400, 'invalid board descriptor: not valid JSON', 'descriptor');
       }
     }
     return { ok: true, rebooting: true };
@@ -683,7 +691,7 @@ export class FakeDevice {
     try {
       parsed = JSON.parse(catalog ?? '') as AudioProfileCatalog;
     } catch {
-      return reject(400, 'catalog is not valid JSON');
+      return reject(400, 'This is not a profile catalog: not valid JSON.', 'catalog');
     }
     this.profiles = { ...parsed, board_id: this.status.capabilities.board_id };
     return { ok: true };
@@ -691,7 +699,7 @@ export class FakeDevice {
 
   private activateProfile(profileId: string): JsonBodyType | Response {
     if (profileId && !this.profiles.profiles.some((profile) => profile.id === profileId)) {
-      return reject(400, `unknown profile "${profileId}"`);
+      return reject(400, 'No profile has that id.', 'profile_id');
     }
     this.profiles.active_profile_id = profileId || null;
     const profile = this.profiles.profiles.find((entry) => entry.id === profileId);
@@ -850,6 +858,7 @@ function wpa2Password(password: string): boolean {
   );
 }
 
-function reject(status: number, message: string): Response {
-  return HttpResponse.json({ error: message }, { status });
+/** A refusal shaped like the device's: its reason, and the request field it names. */
+function reject(status: number, message: string, field: string | null = null): Response {
+  return HttpResponse.json({ error: message, field }, { status });
 }

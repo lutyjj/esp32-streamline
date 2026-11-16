@@ -50,23 +50,28 @@ pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
 
     // Replacing definitions never activates a profile as a side effect.
     server.handler(api::SET_AUDIO_PROFILES, move |mut request, state| {
-        let result = (|| -> Result<(), MutationError> {
-            let form: api::AudioProfilesSettingsRequest = form(&mut request)?;
-            let mut catalog: AudioProfileCatalog =
-                serde_json::from_str(&form.catalog).map_err(|error| {
-                    MutationError::InvalidInput(format!("invalid audio profile catalog: {error}"))
+        let result =
+            (|| -> Result<(), MutationError> {
+                let form: api::AudioProfilesSettingsRequest = form(&mut request)?;
+                let mut catalog: AudioProfileCatalog = serde_json::from_str(&form.catalog)
+                    .map_err(|error| MutationError::InvalidField {
+                        field: crate::mutation::field::CATALOG,
+                        message: format!("This is not a profile catalog: {error}."),
+                    })?;
+                catalog.active_profile_id = None;
+                catalog.validate(state.board.as_ref()).map_err(|error| {
+                    MutationError::InvalidField {
+                        field: crate::mutation::field::CATALOG,
+                        message: error.to_string(),
+                    }
                 })?;
-            catalog.active_profile_id = None;
-            catalog.validate(state.board.as_ref()).map_err(|error| {
-                MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
-            })?;
-            let previous_active = state.lock_audio_profiles().active_profile_id.clone();
-            catalog.active_profile_id = previous_active
-                .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));
-            let current_audio = state.lock_config().audio;
-            catalog.reconcile_active_audio(current_audio);
-            save_audio_profiles(state, catalog)
-        })();
+                let previous_active = state.lock_audio_profiles().active_profile_id.clone();
+                catalog.active_profile_id = previous_active
+                    .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));
+                let current_audio = state.lock_config().audio;
+                catalog.reconcile_active_audio(current_audio);
+                save_audio_profiles(state, catalog)
+            })();
         match result {
             Ok(()) => json_response(request, 200, &api::Ack::ok()),
             Err(error) => mutation_error(request, error),
@@ -79,7 +84,10 @@ pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
             let form: api::ActiveAudioProfileRequest = form(&mut request)?;
             let mut catalog = state.lock_audio_profiles().clone();
             let audio = catalog.activate(Some(&form.profile_id)).map_err(|error| {
-                MutationError::InvalidInput(format!("invalid active audio profile: {error:?}"))
+                MutationError::InvalidField {
+                    field: crate::mutation::field::PROFILE_ID,
+                    message: error.to_string(),
+                }
             })?;
             if let Some(audio) = audio {
                 let current = state.lock_config().clone();
@@ -105,9 +113,9 @@ pub(in crate::adapters) fn set_audio(
     audio: AudioSettings,
 ) -> Result<bool, MutationError> {
     let current = state.lock_config().clone();
-    let audio = audio.validate(state.board.as_ref()).map_err(|error| {
-        MutationError::InvalidInput(format!("invalid audio settings: {error:?}"))
-    })?;
+    let audio = audio
+        .validate(state.board.as_ref())
+        .map_err(MutationError::from)?;
     let mut catalog = state.lock_audio_profiles().clone();
     catalog.active_profile_id = None;
     change_audio(state, RuntimeConfig { audio, ..current }, catalog)

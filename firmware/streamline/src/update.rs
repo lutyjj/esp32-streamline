@@ -11,11 +11,12 @@ use std::time::Duration;
 
 mod check;
 pub use check::check_release;
+pub mod outcome;
 pub mod progress;
 
 use sha2::{Digest, Sha256};
 
-use crate::{config::AutoUpdateSchedule, hex};
+use crate::{config::AutoUpdateSchedule, hex, mutation::MutationError};
 
 /// The application image published for over-the-air updates. Its filename
 /// carries the release version, so one `SHA256SUMS` entry yields everything the
@@ -176,24 +177,32 @@ impl std::fmt::Debug for CustomImage {
 ///
 /// Both absent (or blank) selects the latest-release flow (`Ok(None)`); both
 /// present selects a pinned custom image. One without the other is an error,
-/// as is a non-HTTP URL or a malformed digest.
+/// as is a non-HTTP URL or a malformed digest, which names its field.
 pub fn custom_image_from_form(
     url: Option<&str>,
     sha256: Option<&str>,
-) -> Result<Option<CustomImage>, String> {
+) -> Result<Option<CustomImage>, MutationError> {
     let url = url.map(str::trim).filter(|value| !value.is_empty());
     let sha256 = sha256.map(str::trim).filter(|value| !value.is_empty());
     match (url, sha256) {
         (None, None) => Ok(None),
         (Some(url), Some(sha256)) => custom_image(url, sha256).map(Some),
-        _ => Err("url and sha256 must be provided together".to_owned()),
+        _ => Err(MutationError::InvalidInput(
+            "url and sha256 must be provided together".to_owned(),
+        )),
     }
 }
 
-fn custom_image(url: &str, sha256: &str) -> Result<CustomImage, String> {
-    validate_custom_image_url(url)?;
+fn custom_image(url: &str, sha256: &str) -> Result<CustomImage, MutationError> {
+    validate_custom_image_url(url).map_err(|message| MutationError::InvalidField {
+        field: crate::mutation::field::URL,
+        message,
+    })?;
     if !is_sha256_hex(sha256) {
-        return Err("sha256 must be 64 hex characters".to_owned());
+        return Err(MutationError::InvalidField {
+            field: crate::mutation::field::SHA256,
+            message: "sha256 must be 64 hex characters".to_owned(),
+        });
     }
     Ok(CustomImage {
         url: url.to_owned(),
@@ -534,8 +543,9 @@ mod tests {
         ] {
             let error = custom_image_from_form(Some(url), Some(HELLO_SHA256))
                 .expect_err("unsafe URL shape is rejected");
-            assert!(!error.contains("secret"));
-            assert!(!error.contains("private-fragment"));
+            assert_eq!(error.field(), Some("url"));
+            assert!(!error.message().contains("secret"));
+            assert!(!error.message().contains("private-fragment"));
         }
     }
 
@@ -546,9 +556,9 @@ mod tests {
             &HELLO_SHA256[..63],
             &format!("{}x", &HELLO_SHA256[..63]),
         ] {
-            assert!(
-                custom_image_from_form(Some("http://bench.local/a.bin"), Some(digest)).is_err()
-            );
+            let error = custom_image_from_form(Some("http://bench.local/a.bin"), Some(digest))
+                .expect_err("malformed digest is rejected");
+            assert_eq!(error.field(), Some("sha256"));
         }
     }
 

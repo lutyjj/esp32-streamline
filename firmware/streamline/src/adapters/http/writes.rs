@@ -7,11 +7,8 @@
 //! of staging.
 
 use crate::{
-    config::{ConfigError, RuntimeConfig},
-    mode::ConfigWrite,
-    mutation::MutationError,
-    profiles::{AudioProfileCatalog, AudioProfileError},
-    recovery,
+    config::RuntimeConfig, mode::ConfigWrite, mutation::MutationError,
+    profiles::AudioProfileCatalog, recovery,
 };
 
 use super::ApiState;
@@ -28,7 +25,7 @@ pub(super) fn update_configuration<T>(
         ConfigWrite::Persist => persist_configuration(state, next)?,
         ConfigWrite::Stage => {
             next.validate_staged(state.board.as_ref())
-                .map_err(invalid_configuration)?;
+                .map_err(MutationError::from)?;
             *state.lock_config() = next;
         }
     }
@@ -62,7 +59,7 @@ pub(super) fn validate_configuration(
 ) -> Result<(), MutationError> {
     config
         .validate(state.board.as_ref())
-        .map_err(invalid_configuration)
+        .map_err(MutationError::from)
 }
 
 /// The profile catalog is its own durable record, bound to the board rather
@@ -71,9 +68,11 @@ pub(super) fn save_audio_profiles(
     state: &ApiState,
     catalog: AudioProfileCatalog,
 ) -> Result<(), MutationError> {
+    // A catalog from a request is checked, and its refusal named, before it
+    // gets here; this check guards the stored one, which no request field holds.
     catalog
         .validate(state.board.as_ref())
-        .map_err(invalid_catalog)?;
+        .map_err(|error| MutationError::InvalidInput(error.to_string()))?;
     state
         .lock_store()
         .save_audio_profiles(&catalog, state.board.as_ref())
@@ -91,19 +90,20 @@ pub(super) fn write_configuration_and_profiles(
     catalog: AudioProfileCatalog,
 ) -> Result<(), MutationError> {
     let board = state.board.as_ref();
-    catalog.validate(board).map_err(invalid_catalog)?;
+    // The catalog here is the stored one, so its refusal names no request field.
+    catalog
+        .validate(board)
+        .map_err(|error| MutationError::InvalidInput(error.to_string()))?;
     match state.mode.config_write() {
         ConfigWrite::Persist => {
-            config.validate(board).map_err(invalid_configuration)?;
+            config.validate(board).map_err(MutationError::from)?;
             state
                 .lock_store()
                 .save_configuration_and_profiles(&config, &catalog, board)
                 .map_err(persistence)?;
         }
         ConfigWrite::Stage => {
-            config
-                .validate_staged(board)
-                .map_err(invalid_configuration)?;
+            config.validate_staged(board).map_err(MutationError::from)?;
             state
                 .lock_store()
                 .save_audio_profiles(&catalog, board)
@@ -113,14 +113,6 @@ pub(super) fn write_configuration_and_profiles(
     *state.lock_config() = config;
     *state.lock_audio_profiles() = catalog;
     Ok(())
-}
-
-pub(super) fn invalid_configuration(error: ConfigError) -> MutationError {
-    MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
-}
-
-fn invalid_catalog(error: AudioProfileError) -> MutationError {
-    MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
 }
 
 fn persistence(error: anyhow::Error) -> MutationError {

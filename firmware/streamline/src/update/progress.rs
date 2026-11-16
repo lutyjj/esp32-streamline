@@ -1,5 +1,6 @@
 //! OTA worker reservation and observable progress.
 
+use super::outcome::InstallResult;
 use crate::mutation::MutationError;
 use serde::Serialize;
 use std::sync::{
@@ -70,6 +71,7 @@ pub struct OtaProgress {
 struct Detail {
     latest_version: String,
     message: String,
+    last_result: InstallResult,
 }
 
 #[derive(Serialize)]
@@ -80,20 +82,29 @@ pub struct OtaSnapshot {
     pub latest_version: String,
     pub message: String,
     pub busy: bool,
+    pub last_result: InstallResult,
 }
 
 impl Default for OtaProgress {
     fn default() -> Self {
-        Self {
-            phase: AtomicU8::new(Phase::Idle as u8),
-            written: AtomicU32::new(0),
-            total: AtomicU32::new(0),
-            detail: Mutex::new(Detail::default()),
-        }
+        Self::new(InstallResult::None)
     }
 }
 
 impl OtaProgress {
+    /// Progress for a boot that found `last_result` from the install before it.
+    pub fn new(last_result: InstallResult) -> Self {
+        Self {
+            phase: AtomicU8::new(Phase::Idle as u8),
+            written: AtomicU32::new(0),
+            total: AtomicU32::new(0),
+            detail: Mutex::new(Detail {
+                last_result,
+                ..Detail::default()
+            }),
+        }
+    }
+
     pub fn start(
         &self,
         start: impl FnOnce() -> Result<(), MutationError>,
@@ -119,6 +130,7 @@ impl OtaProgress {
             latest_version: detail.latest_version.clone(),
             message: detail.message.clone(),
             busy: phase.is_busy(),
+            last_result: detail.last_result,
         }
     }
 
@@ -180,6 +192,15 @@ impl OtaProgress {
             .lock()
             .expect("ota detail lock poisoned")
             .message = message.to_owned();
+    }
+
+    /// Report how an install in this boot ended; one that succeeds restarts
+    /// first, and the next boot reads its record instead.
+    pub fn set_last_result(&self, result: InstallResult) {
+        self.detail
+            .lock()
+            .expect("ota detail lock poisoned")
+            .last_result = result;
     }
 
     pub fn fail(&self, message: String) {

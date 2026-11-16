@@ -47,7 +47,11 @@ impl Ack {
 #[derive(Debug, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct ErrorResponse<'a> {
+    /// Why the device refused the request.
     pub error: &'a str,
+    /// The request field the device refuses, named as the request names it;
+    /// null when the device names none, as for a body it cannot decode.
+    pub field: Option<&'a str>,
 }
 
 /// Bridges one network browse found, in the order the console lists them.
@@ -335,6 +339,9 @@ pub struct DiagnosticsStatus<'a> {
 #[derive(Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct SystemStatus {
+    /// Identifies this run of the firmware, as `current.boot` in `/api/logs`.
+    /// A restart changes it, so a client compares it to prove one.
+    pub boot: u32,
     pub uptime_seconds: u64,
     pub task_count: u32,
     pub heap: HeapStatus,
@@ -438,6 +445,8 @@ pub struct OtaStatus<'a> {
     pub signed_updates: bool,
     /// SHA-256 of signature block 0's public key; empty if unreadable.
     pub signing_key_sha256: &'a str,
+    /// How the last install ended.
+    pub last_result: crate::update::outcome::InstallResult,
 }
 
 #[derive(Serialize)]

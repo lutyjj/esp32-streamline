@@ -30,7 +30,7 @@ there is none to report. Both carry:
 
 | Field | Meaning |
 |---|---|
-| `boot` | Identifies the run of the firmware the lines came from. Sequence numbers only mean anything within one boot, so a poller compares this to tell more lines from a restart that began counting again. |
+| `boot` | Identifies the run of the firmware the lines came from. Sequence numbers only mean anything within one boot, so a poller compares this to tell more lines from a restart that began counting again. `/api/status` reports the running boot as `system.boot`, without the admin key, so any client proves a restart by a changed value. |
 | `text` | The held lines, oldest first, separated by newlines. A log is text and the device stores it as text, so it is served that way. |
 | `first_sequence` | Position of the first line in `text` within the boot, counted from zero; each following line is one higher. A poller names the lines it already read from this. |
 | `dropped` | Lines that boot produced and the buffer has already discarded. Non-zero means `text` starts later than the boot did. |

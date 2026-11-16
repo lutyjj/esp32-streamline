@@ -128,6 +128,17 @@ def test_status_reports_a_valid_mode(device_api: DeviceApi) -> None:
     status = json.loads(body)
     assert status["mode"] in _MODES, f"unknown mode {status['mode']!r}"
     assert isinstance(status["firmware_version"], str) and status["firmware_version"]
+    assert isinstance(status["system"]["boot"], int)
+    assert status["ota"]["last_result"] in {"none", "failed", "installed", "rolled-back"}, status["ota"]
+
+
+def test_status_names_the_boot_its_log_comes_from(authed_device_api: DeviceApi) -> None:
+    code, body = authed_device_api.fetch("/api/status")
+    assert code == 200
+    boot = json.loads(body)["system"]["boot"]
+    code, body = authed_device_api.fetch("/api/logs")
+    assert code == 200
+    assert json.loads(body)["current"]["boot"] == boot
 
 
 def test_bridge_discovery_runs_only_on_the_home_network(device_api: DeviceApi) -> None:
@@ -352,19 +363,17 @@ def test_invalid_wifi_credentials_leave_configuration_intact(authed_device_api: 
     code, body = authed_device_api.fetch("/api/settings")
     assert code == 200
     before = json.loads(body)
-    for fields in [
-        {"ssid": "x" * 33, "password": "test-password"},
-        {"ssid": "é" * 17, "password": "test-password"},
-        {"ssid": "test-network", "password": "x" * 65},
-        {"ssid": "test-network", "password": "short"},
-        {"ssid": "test-network", "password": "abc\0defgh"},
+    for fields, refused in [
+        ({"ssid": "x" * 33, "password": "test-password"}, "ssid"),
+        ({"ssid": "é" * 17, "password": "test-password"}, "ssid"),
+        ({"ssid": "test-network", "password": "x" * 65}, "password"),
+        ({"ssid": "test-network", "password": "short"}, "password"),
+        ({"ssid": "test-network", "password": "abc\0defgh"}, "password"),
+        ({"ssid": "test-network", "password": "test-password", "open_network": "true"}, "password"),
+        ({"ssid": "test-network", "password": "test-password", "target_host": "my bridge"}, "target_host"),
     ]:
-        code, _ = authed_device_api.post_form("/api/settings/wifi", fields)
-        assert code == 400
-    code, body = authed_device_api.post_form(
-        "/api/settings/wifi", {"ssid": "test-network", "password": "test-password", "open_network": "true"}
-    )
-    assert code == 400 and b"PasswordForOpenNetwork" in body, body[:200]
+        code, body = authed_device_api.post_form("/api/settings/wifi", fields)
+        assert code == 400 and json.loads(body)["field"] == refused, (fields, body[:200])
     code, body = authed_device_api.fetch("/api/settings")
     assert code == 200
     assert json.loads(body) == before

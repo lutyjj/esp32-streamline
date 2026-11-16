@@ -44,7 +44,19 @@ for idle audio and respecting the disabled schedule.
    key. Only then does the installer select the new boot slot and restart.
    A failure resumes streaming and reports its cause.
 
-`GET /api/status` reports progress under `ota`. `GET /api/settings` reports
+`GET /api/status` reports progress under `ota`, and `ota.last_result` says how
+the last install ended:
+
+| `last_result` | Meaning |
+|---|---|
+| `none` | No install has written a slot since the last factory reset. |
+| `failed` | An install began downloading into the inactive slot and stopped before the device restarted into it: the download or the image was refused, or the device restarted during the install. A run that stops earlier, such as a failed release check, reports its failure under `phase` and `message` and leaves `last_result` as it was. |
+| `installed` | The device runs the image the last install wrote. |
+| `rolled-back` | The device runs the other slot: the new image did not start, or a [manual rollback](#manual-rollback) returned to the previous one. |
+
+The device records which slot an install wrote and compares it with the slot it
+boots from, so the result holds when the new image has the same version.
+`GET /api/settings` reports
 `auto_update_schedule`; `POST /api/settings/firmware` sets `disabled`, `daily`,
 or `weekly` without a reboot.
 
@@ -178,9 +190,9 @@ See [the user journey](user-journey.md).
 ## Post-mortem diagnostics
 
 `/api/status` reports persistent `diagnostics.last_ota` and
-`diagnostics.last_fallback`, plus this boot's `reset_reason`. The OTA note names
-the firmware version that wrote it, so a rollback can be identified when the
-running version differs. The console exposes these diagnostics; the
+`diagnostics.last_fallback`, plus this boot's `reset_reason`. The OTA note
+explains `ota.last_result` in words and names the firmware version that wrote
+it. The console exposes these diagnostics; the
 [diagnostics reference](diagnostics.md) covers logs and crash dumps.
 
 ## Firmware signing

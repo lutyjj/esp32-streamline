@@ -1,5 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": { "jsxImportSource": "preact" },
-  "include": ["src/lib", "src/state", "tests/*.test.ts", "tests/*.test.tsx"]
-}

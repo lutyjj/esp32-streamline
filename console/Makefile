@@ -72,7 +72,6 @@ format: generate
 lint: generate
 	$(CONTAINER_RUN) npx biome check .
 	$(CONTAINER_RUN) npx tsc -p tsconfig.json
-	$(CONTAINER_RUN) npx tsc -p tsconfig.preact.json
 
 test: generate
 	$(CONTAINER_RUN) npx vitest run

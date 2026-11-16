@@ -170,6 +170,13 @@ def _mode(device: EmulatedDevice) -> str:
     return mode
 
 
+def _ota(device: EmulatedDevice) -> dict[str, Any]:
+    code, body = device.api.fetch("/api/status")
+    assert code == 200, f"GET /api/status returned HTTP {code}"
+    ota: dict[str, Any] = json.loads(body)["ota"]
+    return ota
+
+
 def _led_role(device: EmulatedDevice, led_id: str) -> str:
     code, body = device.api.fetch("/api/settings")
     assert code == 200, f"GET /api/settings returned HTTP {code}"
@@ -668,7 +675,7 @@ def served_ota_image() -> Iterator[ServedOtaImage]:
         server.shutdown()
 
 
-def test_ota_install_boots_from_the_other_slot(
+def test_ota_install_and_rollback_each_boot_the_other_slot(
     provisioned_device: EmulatedDevice,
     boot_device: Callable[..., EmulatedDevice],
     served_ota_image: ServedOtaImage,
@@ -703,6 +710,7 @@ def test_ota_install_boots_from_the_other_slot(
     assert "installed custom image" in status["diagnostics"]["last_ota"]
     assert status["ota"]["last_result"] == "installed", status["ota"]
     assert status["system"]["boot"] != before["system"]["boot"], "a restart kept its boot id"
+    assert status["ota"]["running_slot"] == "ota_1" != before["ota"]["running_slot"], status["ota"]
 
     code, body = updated.api.post_form("/api/restart", {})
     assert code == 200, f"restart returned HTTP {code}: {body[:200]!r}"
@@ -713,6 +721,20 @@ def test_ota_install_boots_from_the_other_slot(
         until=(f"Loaded app from partition at offset {_OTA_1_OFFSET}", CONSOLE_READY),
     )
     _expect_api_up(confirmed)
+    assert _ota(confirmed)["running_slot"] == "ota_1", "a restart changed the slot"
+
+    code, body = confirmed.api.post_form("/api/ota/rollback", {})
+    assert code == 200, f"rollback returned HTTP {code}: {body[:200]!r}"
+    wait_for_restart(confirmed.dut, 60)
+    rolled_back = boot_device(
+        flash=confirmed.flash,
+        admin_key=ADMIN_KEY,
+        until=("Loaded app from partition at offset 0x20000", CONSOLE_READY),
+    )
+    _expect_api_up(rolled_back)
+    ota = _ota(rolled_back)
+    assert ota["running_slot"] == before["ota"]["running_slot"], ota
+    assert ota["last_result"] == "rolled-back", ota
 
 
 def test_commissioning_an_updated_setup_device_keeps_the_new_slot(

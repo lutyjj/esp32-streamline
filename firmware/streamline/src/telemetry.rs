@@ -151,6 +151,7 @@ pub struct OtaTelemetry {
     pub signed_updates: bool,
     pub signing_key_sha256: String,
     pub last_result: crate::update::outcome::InstallResult,
+    pub running_slot: String,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]

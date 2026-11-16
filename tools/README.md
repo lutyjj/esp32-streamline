@@ -39,6 +39,10 @@ standard verbs (`format`, `lint`, `image`) plus run targets.
 - `streamline-capture`: bounded serial capture. Stdlib-only
   so `make firmware-capture` can run it with the system `python3`; the serial
   port is a host resource containers cannot reach.
+- `streamline-pcm-source`: streams the firmware's conformance frames
+  (`docs/pcm-frame-vectors.json`) to a bridge in real time and reconnects
+  when the bridge drops it. Stdlib-only, so the console journeys run it in
+  the bridge image as the source their bridge receives.
 - `streamline-smoke`: serial boot sanity for the USB-connected board:
   `make tools-smoke-device` resets it and verifies the boot transcript
   through Wi-Fi mode resolution on the host `python3`, then runs the device

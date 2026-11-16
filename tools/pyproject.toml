@@ -24,6 +24,7 @@ dependencies = [
 [project.scripts]
 streamline-analyze = "streamline_tools.analysis.report:main"
 streamline-capture = "streamline_tools.serial_capture:main"
+streamline-pcm-source = "streamline_tools.pcm_source:main"
 streamline-size-report = "streamline_tools.size.report:main"
 streamline-smoke = "streamline_tools.smoke:main"
 

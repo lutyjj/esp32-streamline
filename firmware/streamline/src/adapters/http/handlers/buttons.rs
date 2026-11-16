@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::{api, mutation::MutationError};
+use crate::{api, config::ConfigError, mutation::MutationError};
 
 use super::super::{
     requests::form,
@@ -18,10 +18,7 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
         let result = (|| -> Result<(), MutationError> {
             let form: api::ButtonSettingsRequest = form(&mut request)?;
             if !state.board.has_button(&form.id) {
-                return Err(MutationError::InvalidInput(format!(
-                    "unknown button id '{}'",
-                    form.id
-                )));
+                return Err(ConfigError::UnknownButton.into());
             }
             update_configuration(state, |next| {
                 next.button_actions.insert(form.id, form.action);

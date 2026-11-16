@@ -9,12 +9,22 @@
 
 use core::fmt;
 
-use crate::transport::{TransportError, VerifyPendingError};
+use crate::{
+    board::BoardUpdateError,
+    config::ConfigError,
+    transport::{TransportError, VerifyPendingError},
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MutationError {
     /// Well-formed request, unacceptable values (HTTP 400).
     InvalidInput(String),
+    /// One request field holds a value the device refuses (HTTP 400), named
+    /// as the request names it so a client can show the reason beside it.
+    InvalidField {
+        field: &'static str,
+        message: String,
+    },
     /// The device's current state forbids this change right now (HTTP 409).
     Conflict(String),
     /// The capability is absent in this mode or on this hardware (HTTP 503).
@@ -28,7 +38,7 @@ pub enum MutationError {
 impl MutationError {
     pub fn status(&self) -> u16 {
         match self {
-            Self::InvalidInput(_) => 400,
+            Self::InvalidInput(_) | Self::InvalidField { .. } => 400,
             Self::Conflict(_) => 409,
             Self::Unavailable(_) => 503,
             Self::Persistence(_) | Self::Internal(_) => 500,
@@ -38,10 +48,19 @@ impl MutationError {
     pub fn message(&self) -> &str {
         match self {
             Self::InvalidInput(message)
+            | Self::InvalidField { message, .. }
             | Self::Conflict(message)
             | Self::Unavailable(message)
             | Self::Persistence(message)
             | Self::Internal(message) => message,
+        }
+    }
+
+    /// The request field the device refuses, when one is at fault.
+    pub fn field(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidField { field, .. } => Some(field),
+            _ => None,
         }
     }
 }
@@ -75,6 +94,45 @@ impl From<TransportError> for MutationError {
     }
 }
 
+impl From<ConfigError> for MutationError {
+    fn from(error: ConfigError) -> Self {
+        let message = error.to_string();
+        let field = match error {
+            ConfigError::MissingSsid | ConfigError::MalformedSsid => "ssid",
+            ConfigError::MalformedWifiPassword
+            | ConfigError::MissingWifiPassword
+            | ConfigError::PasswordForOpenNetwork => "password",
+            ConfigError::MalformedTargetHost => "target_host",
+            ConfigError::InvalidTargetPort => "target_port",
+            ConfigError::InvalidInputLine => "input_line",
+            ConfigError::InvalidInputGain => "input_gain",
+            ConfigError::InvalidAdcAttenuation => "adc_attenuation_db",
+            ConfigError::UnsupportedAnalogPassthrough => "enabled",
+            ConfigError::UnknownLed | ConfigError::UnknownButton => "id",
+            ConfigError::MalformedAdminKey => "admin_key",
+            ConfigError::DeviceNameTooLong => "name",
+            ConfigError::InvalidTransport(_) => return Self::InvalidInput(message),
+        };
+        Self::InvalidField { field, message }
+    }
+}
+
+impl From<BoardUpdateError> for MutationError {
+    fn from(error: BoardUpdateError) -> Self {
+        let message = error.to_string();
+        let field = match error {
+            BoardUpdateError::UnknownBoard(_) => "board_id",
+            BoardUpdateError::DescriptorTooLarge { .. }
+            | BoardUpdateError::InvalidDescriptor(_)
+            | BoardUpdateError::BuiltInId(_) => "descriptor",
+            BoardUpdateError::ConflictingSelection | BoardUpdateError::MissingSelection => {
+                return Self::InvalidInput(message)
+            }
+        };
+        Self::InvalidField { field, message }
+    }
+}
+
 impl From<VerifyPendingError> for MutationError {
     fn from(error: VerifyPendingError) -> Self {
         let message = error.to_string();
@@ -92,7 +150,10 @@ impl From<VerifyPendingError> for MutationError {
 #[cfg(test)]
 mod tests {
     use super::MutationError;
-    use crate::transport::{TransportError, VerifyPendingError};
+    use crate::{
+        config::ConfigError,
+        transport::{TransportError, VerifyPendingError},
+    };
 
     #[test]
     fn transport_key_state_conflicts_answer_409_not_400() {
@@ -138,6 +199,25 @@ mod tests {
             MutationError::from(VerifyPendingError::Rejected("bad key".to_owned())).status(),
             400
         );
+    }
+
+    #[test]
+    fn a_refused_setting_names_the_request_field_that_carries_it() {
+        let error = MutationError::from(ConfigError::MalformedWifiPassword);
+        assert_eq!(error.status(), 400);
+        assert_eq!(error.field(), Some("password"));
+        assert_eq!(
+            error.message(),
+            ConfigError::MalformedWifiPassword.to_string()
+        );
+        assert_eq!(
+            MutationError::from(ConfigError::DeviceNameTooLong).field(),
+            Some("name")
+        );
+        let transport = MutationError::from(ConfigError::InvalidTransport(
+            TransportError::InvalidKeyState,
+        ));
+        assert_eq!((transport.status(), transport.field()), (400, None));
     }
 
     #[test]

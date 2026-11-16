@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::{api, mutation::MutationError};
+use crate::{api, config::ConfigError, mutation::MutationError};
 
 use super::super::{
     requests::form,
@@ -18,10 +18,7 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
         let result = (|| -> Result<(), MutationError> {
             let form: api::LedSettingsRequest = form(&mut request)?;
             if !state.board.has_led(&form.id) {
-                return Err(MutationError::InvalidInput(format!(
-                    "unknown LED id '{}'",
-                    form.id
-                )));
+                return Err(ConfigError::UnknownLed.into());
             }
             update_configuration(state, |next| {
                 next.led_roles.insert(form.id, form.role);

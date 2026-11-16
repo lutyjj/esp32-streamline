@@ -7,7 +7,7 @@
 //! of staging.
 
 use crate::{
-    config::{ConfigError, RuntimeConfig},
+    config::RuntimeConfig,
     mode::ConfigWrite,
     mutation::MutationError,
     profiles::{AudioProfileCatalog, AudioProfileError},
@@ -28,7 +28,7 @@ pub(super) fn update_configuration<T>(
         ConfigWrite::Persist => persist_configuration(state, next)?,
         ConfigWrite::Stage => {
             next.validate_staged(state.board.as_ref())
-                .map_err(invalid_configuration)?;
+                .map_err(MutationError::from)?;
             *state.lock_config() = next;
         }
     }
@@ -62,7 +62,7 @@ pub(super) fn validate_configuration(
 ) -> Result<(), MutationError> {
     config
         .validate(state.board.as_ref())
-        .map_err(invalid_configuration)
+        .map_err(MutationError::from)
 }
 
 /// The profile catalog is its own durable record, bound to the board rather
@@ -94,16 +94,14 @@ pub(super) fn write_configuration_and_profiles(
     catalog.validate(board).map_err(invalid_catalog)?;
     match state.mode.config_write() {
         ConfigWrite::Persist => {
-            config.validate(board).map_err(invalid_configuration)?;
+            config.validate(board).map_err(MutationError::from)?;
             state
                 .lock_store()
                 .save_configuration_and_profiles(&config, &catalog, board)
                 .map_err(persistence)?;
         }
         ConfigWrite::Stage => {
-            config
-                .validate_staged(board)
-                .map_err(invalid_configuration)?;
+            config.validate_staged(board).map_err(MutationError::from)?;
             state
                 .lock_store()
                 .save_audio_profiles(&catalog, board)
@@ -115,12 +113,12 @@ pub(super) fn write_configuration_and_profiles(
     Ok(())
 }
 
-pub(super) fn invalid_configuration(error: ConfigError) -> MutationError {
-    MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
-}
-
-fn invalid_catalog(error: AudioProfileError) -> MutationError {
-    MutationError::InvalidInput(format!("invalid audio profile catalog: {error:?}"))
+/// A catalog the device refuses, named as the profiles write names it.
+pub(super) fn invalid_catalog(error: AudioProfileError) -> MutationError {
+    MutationError::InvalidField {
+        field: "catalog",
+        message: error.to_string(),
+    }
 }
 
 fn persistence(error: anyhow::Error) -> MutationError {

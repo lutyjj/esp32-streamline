@@ -40,7 +40,7 @@ pub(super) fn register_write(server: &mut ContractServer<'_>) -> Result<()> {
                 form.board_id.as_deref(),
                 form.descriptor.as_deref(),
             )
-            .map_err(|error| MutationError::InvalidInput(error.to_string()))?;
+            .map_err(MutationError::from)?;
             let selected = update.board();
             let next = state
                 .lock_config()
@@ -52,9 +52,7 @@ pub(super) fn register_write(server: &mut ContractServer<'_>) -> Result<()> {
             // configuration rides along only where one is already durable.
             let persisted = match state.mode.config_write() {
                 ConfigWrite::Persist => {
-                    next.validate(selected).map_err(|error| {
-                        MutationError::InvalidInput(format!("invalid configuration: {error:?}"))
-                    })?;
+                    next.validate(selected).map_err(MutationError::from)?;
                     Some(&next)
                 }
                 ConfigWrite::Stage => None,

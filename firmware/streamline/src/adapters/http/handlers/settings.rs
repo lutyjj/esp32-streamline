@@ -7,9 +7,7 @@ use crate::{api, boot_health, config::AutoUpdateSchedule, mutation::MutationErro
 use super::super::{
     requests::form,
     responses::{json_response, mutation_error, reboot_response, restart_to_apply},
-    writes::{
-        invalid_configuration, persist_configuration, update_configuration, validate_configuration,
-    },
+    writes::{persist_configuration, update_configuration, validate_configuration},
     ApiState, ContractServer,
 };
 
@@ -46,7 +44,7 @@ pub(super) fn register_network_writes(server: &mut ContractServer<'_>) -> Result
                         form.target_port,
                     )
                 })
-                .map_err(invalid_configuration)?;
+                .map_err(MutationError::from)?;
             // Validate and confirm before saving, so a rejected write changes nothing.
             validate_configuration(state, &next)?;
             boot_health::confirm_before_commissioning(

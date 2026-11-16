@@ -18,8 +18,9 @@ owns installation commands.
   check runs, and says so beside it.
 - Failures explain the next action. Guided tasks offer cancellation or recovery.
 - Generated admin and audio keys have deliberate one-time reveals and copy actions.
-- Locked settings remain readable and offer contextual unlocking. Both consoles
-  use one credential-dialog pattern. Device admin keys and bridge API tokens are
+- Locked settings remain readable. A change that needs the device's admin key
+  asks for it when it is made and then completes; both consoles use one
+  credential-dialog pattern. Device admin keys and bridge API tokens are
   separate. [Security](security.md) defines protected reads and writes.
 - Visiting another workspace or settings category preserves edited fields for
   the page session. Reloading is not draft persistence.
@@ -30,16 +31,22 @@ owns installation commands.
 
 | Console | Workspace | Task |
 |---|---|---|
-| Device | Audio | Check the input and switch saved profiles; open tuning when needed |
-| Device | Settings | Connect a player or Wi-Fi, then manage security, hardware, and maintenance |
+| Device | Audio | Check the input, what the audio is doing, and saved profiles; open tuning when needed |
+| Device | Bridge | Connect a bridge and follow delivery to it; set up encrypted audio |
+| Device | Device | Wi-Fi, hardware, and what this browser keeps |
+| Device | Maintenance | Updates, diagnostics, the machine interface, restart and reset |
 | Bridge | Listen | Observe sources and copy playback addresses |
 | Bridge | Recordings | Capture a source and retrieve saved WAV files |
 | Bridge | Settings | Configure audio security, pair sources with Music Assistant, and understand deployment access |
 
-Settings is a task index. Each destination opens one focused task with an
-All settings link. URLs identify the task, browser Back retraces navigation,
-and visited forms retain drafts. Phones use the same destinations and bottom
-primary navigation.
+The device console's Device and Maintenance workspaces hold sections, and a
+guided task opens on a screen of its own beneath its workspace. The bridge
+console's Settings is a task index; each destination opens one focused task
+with an All settings link. URLs identify the workspace, section, or task,
+browser Back retraces navigation, and visited forms retain drafts. Phones use
+the same destinations and bottom primary navigation. A condition of the whole
+console, such as lost contact or a restart under way, stands above every
+screen until it ends.
 
 ## 1. Install and make first contact
 

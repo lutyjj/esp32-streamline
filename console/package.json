@@ -8,7 +8,7 @@
     "@noble/hashes": "^2.4.0",
     "@preact/signals": "^2.11.4",
     "esp-web-tools": "10.4.0",
-    "linen": "file:vendor/linen-e163b83.tgz",
+    "linen": "https://github.com/lutyjj/linen/releases/download/v0.4.0/linen-0.4.0.tgz",
     "lucide-react": "^1.73.0",
     "preact": "^11.1.1"
   },

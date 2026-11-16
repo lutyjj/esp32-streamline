@@ -1,24 +1,24 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LinenProvider, ToastProvider, UnsavedChangesGuard } from 'linen';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { deviceContract, deviceStatus } from '../../src/device/mocks/fixtures';
-import { audioProfiles, contract } from '../../src/device/state/device';
+import { deviceConfig, deviceContract, deviceStatus } from '../../src/device/mocks/fixtures';
+import { audioProfiles, config, contract } from '../../src/device/state/device';
 import { UPDATE_BUSY_REASON } from '../../src/device/state/ota';
 import { AudioScreen } from '../../src/device/ui/audio/AudioScreen';
+import { BridgeScreen } from '../../src/device/ui/bridge/BridgeScreen';
+import { DeviceScreen } from '../../src/device/ui/device/DeviceScreen';
 import { replacePath } from '../../src/shared/navigation';
 import { answering } from './answering';
 
 // An action that can restart the device waits while a firmware update runs,
 // and says so beside it (docs/user-journey.md, shared promises).
 
-function mount(path: string) {
+function mount(path: string, page = <AudioScreen />) {
   replacePath(path);
   render(
     <LinenProvider>
       <ToastProvider>
-        <UnsavedChangesGuard>
-          <AudioScreen />
-        </UnsavedChangesGuard>
+        <UnsavedChangesGuard>{page}</UnsavedChangesGuard>
       </ToastProvider>
     </LinenProvider>,
   );
@@ -39,6 +39,7 @@ describe('during a firmware update', () => {
         },
       ],
     };
+    config.value = deviceConfig();
     answering(deviceStatus({ ota: { busy: true, phase: 'checking' } }));
   });
 
@@ -46,6 +47,7 @@ describe('during a firmware update', () => {
     cleanup();
     contract.value = null;
     audioProfiles.value = null;
+    config.value = null;
     answering(null);
     replacePath('/');
   });
@@ -63,6 +65,20 @@ describe('during a firmware update', () => {
       'disabled',
       false,
     );
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true);
+    expect(screen.getByText(UPDATE_BUSY_REASON)).toBeDefined();
+  });
+
+  it('holds Join on another network and says why', () => {
+    mount('/device/wifi', <DeviceScreen />);
+    fireEvent.input(screen.getByLabelText('Network name'), { target: { value: 'Cafe guest' } });
+    expect(screen.getByRole('button', { name: 'Join network' })).toHaveProperty('disabled', true);
+    expect(screen.getByText(UPDATE_BUSY_REASON)).toBeDefined();
+  });
+
+  it('holds saving a new bridge and says why', () => {
+    mount('/bridge/target', <BridgeScreen />);
+    fireEvent.input(screen.getByLabelText('Bridge address'), { target: { value: '192.0.2.21' } });
     expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true);
     expect(screen.getByText(UPDATE_BUSY_REASON)).toBeDefined();
   });

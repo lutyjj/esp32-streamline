@@ -6,14 +6,12 @@ import {
   CardHead,
   Content,
   Form,
-  Notice,
   NumberField,
   Select,
   useToast,
   useUnsavedChanges,
 } from 'linen';
 import { useEffect, useState } from 'react';
-import { errorMessage } from '../../../shared/errors';
 import { Link } from '../../../shared/navigation';
 import { getSetAudioUrl, type StatusResponse } from '../../lib/api';
 import { status } from '../../state/device';
@@ -27,6 +25,7 @@ import {
 } from '../../state/levels';
 import { updateLock } from '../../state/ota';
 import { ScreenTop } from '../ScreenTop';
+import { WriteFailure } from '../WriteFailure';
 import { InputMeter } from './InputMeter';
 
 const TRAIL = [{ href: '/audio', label: 'Audio' }];
@@ -46,7 +45,7 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
   const toast = useToast();
   const [draft, setDraft] = useState(() => levelsDraft(known));
   const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState('');
+  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
   // Untouched fields follow the device, so a button's gain step shows here too.
   useEffect(() => setDraft((current) => levelsDraft(known, current)), [known]);
   const unsaved = levelsUnsaved(draft);
@@ -59,12 +58,12 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
   };
 
   const save = async () => {
-    setFailure('');
+    setFailure(null);
     setSaving(true);
     try {
       if (await saveLevels(draft)) toast.show({ text: 'Input levels saved.' });
     } catch (error) {
-      setFailure(errorMessage(error));
+      setFailure({ error });
     } finally {
       setSaving(false);
     }
@@ -129,12 +128,11 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
               disabled={saving}
               onValueChange={edit('adc_attenuation_db')}
             />
-            {failure !== '' && (
-              <Notice
+            {failure && (
+              <WriteFailure
                 className="mt-3"
-                tone="danger"
-                title="The device did not save the levels."
-                description={failure}
+                failed="The device did not save the levels."
+                error={failure.error}
               />
             )}
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">

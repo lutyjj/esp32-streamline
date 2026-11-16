@@ -11,7 +11,6 @@ import {
   useUnsavedChanges,
 } from 'linen';
 import { useState } from 'react';
-import { errorMessage } from '../../../shared/errors';
 import { navigate } from '../../../shared/navigation';
 import { type DiscoveredBridge, getSetTargetUrl } from '../../lib/api';
 import { targetProblems } from '../../lib/target';
@@ -28,6 +27,7 @@ import {
   type TargetDraft,
 } from '../../state/targetForm';
 import { ScreenTop } from '../ScreenTop';
+import { WriteFailure } from '../WriteFailure';
 
 const TRAIL = [{ href: '/bridge', label: 'Bridge' }];
 
@@ -51,7 +51,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
   const [draft, setDraft] = useState<TargetDraft>(saved);
   const [tried, setTried] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState('');
+  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
   const changes = draftChanges(draft, saved);
   const unsaved = changes.target || changes.console;
   // A new target restarts the device, which waits while an update runs.
@@ -63,13 +63,13 @@ function TargetForm({ target }: { target: SavedTarget }) {
 
   const save = async () => {
     setTried(true);
-    setFailure('');
+    setFailure(null);
     if (problems.length > 0) return;
     setSaving(true);
     try {
       if (await saveTarget(draft, saved)) navigate('/bridge');
     } catch (error) {
-      setFailure(errorMessage(error));
+      setFailure({ error });
     } finally {
       setSaving(false);
     }
@@ -130,12 +130,11 @@ function TargetForm({ target }: { target: SavedTarget }) {
               readOnly={saving}
               onChange={(event) => setDraft({ ...draft, console: event.currentTarget.value })}
             />
-            {failure !== '' && (
-              <Notice
+            {failure && (
+              <WriteFailure
                 className="mt-3"
-                tone="danger"
-                title="The device did not save the bridge."
-                description={failure}
+                failed="The device did not save the bridge."
+                error={failure.error}
               />
             )}
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">

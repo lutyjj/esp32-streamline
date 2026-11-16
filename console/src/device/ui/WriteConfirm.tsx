@@ -1,6 +1,6 @@
-import { ConfirmDialog, Notice } from 'linen';
+import { ConfirmDialog } from 'linen';
 import { useState } from 'react';
-import { errorMessage } from '../../shared/errors';
+import { WriteFailure } from './WriteFailure';
 
 interface WriteConfirmProps {
   open: boolean;
@@ -9,7 +9,7 @@ interface WriteConfirmProps {
   description: string;
   confirmLabel: string;
   destructive?: boolean;
-  /** What the failure says did not happen, such as "The device did not restart." */
+  /** What a refusal means, such as "The device did not restart." */
   failed: string;
   /** The confirmed write. It settles once the device has answered, or the unlock was declined. */
   write: () => Promise<unknown>;
@@ -21,25 +21,25 @@ interface WriteConfirmProps {
  * in view for another try or a way out.
  */
 export function WriteConfirm({ onOpenChange, failed, write, ...dialog }: WriteConfirmProps) {
-  const [failure, setFailure] = useState('');
+  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
   return (
     <ConfirmDialog
       {...dialog}
       onOpenChange={(open) => {
-        setFailure('');
+        setFailure(null);
         onOpenChange(open);
       }}
       onConfirm={async () => {
-        setFailure('');
+        setFailure(null);
         try {
           await write();
           onOpenChange(false);
         } catch (error) {
-          setFailure(errorMessage(error));
+          setFailure({ error });
         }
       }}
     >
-      {failure !== '' && <Notice tone="danger" title={failed} description={failure} />}
+      {failure && <WriteFailure failed={failed} error={failure.error} />}
     </ConfirmDialog>
   );
 }

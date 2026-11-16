@@ -19,6 +19,7 @@ import {
   CALIBRATION_STEPS,
   type Calibration,
   CalibrationGuide,
+  calibrationHeld,
   calibrationStep,
   calibrationUnderway,
   deviceCalibration,
@@ -33,10 +34,17 @@ const TRAIL = [{ href: '/audio', label: 'Audio' }];
 /** Calibrate: measure the quiet, then find the attenuation loud material needs. */
 export function CalibrateScreen() {
   const known = status.value;
+  const held = calibrationHeld.value;
   return (
     <>
       <ScreenTop title="Calibrate" trail={TRAIL} />
-      <Content>{known && <Guide known={known} />}</Content>
+      <Content>
+        {held ? (
+          <Notice tone="warn" title="Calibration cannot run now." description={held} />
+        ) : (
+          known && <Guide known={known} />
+        )}
+      </Content>
     </>
   );
 }

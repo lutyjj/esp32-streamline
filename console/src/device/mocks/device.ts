@@ -118,6 +118,20 @@ const RESTART_READS = 2;
 
 type JoinFailure = NonNullable<StatusResponse['wifi']['join_failure']>;
 
+/** The codec check of a board whose codec answered, and of one whose did not. */
+const CODEC_RUNS = {
+  status: 'ok',
+  severity: 'ok',
+  detail: 'The audio codec answered.',
+  remedy: null,
+} as const;
+const CODEC_SILENT = {
+  status: 'fail',
+  severity: 'blocking',
+  detail: 'The audio codec did not answer.',
+  remedy: 'Check the board selection, then restart the device.',
+} as const;
+
 /** A parsed form body: every field arrives as a string. */
 type FormBody = Partial<Record<string, string>>;
 
@@ -133,6 +147,10 @@ export class FakeDevice {
 
   /** Whether the codec started; a device without it applies new levels at its next start. */
   set codecRunning(running: boolean) {
+    const codec = this.status.health.checks.find((check) => check.id === 'codec');
+    if (codec) {
+      Object.assign(codec, running ? CODEC_RUNS : CODEC_SILENT);
+    }
     this.status.health.status = running ? 'ok' : 'blocking';
   }
   private status!: StatusResponse;

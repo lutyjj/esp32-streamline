@@ -116,7 +116,8 @@ editor beneath Audio with its own live meter, Save, and Discard changes. Fields
 remain locked while saving. Changes apply when saved; the meter describes
 applied settings while a draft is edited, and a device without a running codec
 restarts to apply them. A clipping warning offers calibration, and so does the
-editor. The guide shows its steps and progress while it asks the owner to pause
+editor. Calibration listens to the running input, so it waits, and says why,
+while the device is off the home network or its codec did not start. The guide shows its steps and progress while it asks the owner to pause
 the source, then play loud material. Cancelling, or leaving once the guard has
 asked, restores the entry attenuation and reports a restoration failure;
 completion keeps the measured result.

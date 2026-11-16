@@ -6,10 +6,12 @@
  * from, and says so when it cannot.
  */
 
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import { errorMessage } from '../../shared/errors';
 import { type AudioSettings, getStatus, setAudio } from '../lib/api';
 import { CAL_ATTEN_STEP, CalibrationEngine, type LevelSample } from '../lib/calibration';
+import { report, status } from './device';
+import { blockingHealth } from './health';
 
 export type Calibration =
   /** Asks the owner to pause the source. */
@@ -61,6 +63,22 @@ export function calibrationUnderway(state: Calibration): boolean {
   return step !== null && step !== 'done' && state.phase !== 'pause-source';
 }
 
+/**
+ * Why the guide cannot run now, or null. It listens to the running input,
+ * and a device without one would restart to apply each attenuation it tries.
+ */
+export const calibrationHeld = computed<string | null>(() => {
+  const known = status.value;
+  if (!known) return null;
+  if (known.mode !== 'provisioned') {
+    return 'Calibration listens to the input, which runs once the device is back on your Wi-Fi.';
+  }
+  if (blockingHealth.value) {
+    return 'Calibration listens to the input, which did not start this time. The notice on Audio says why.';
+  }
+  return null;
+});
+
 /** The device as the guide reads and writes it. */
 export interface CalibrationDevice {
   sample(signal: AbortSignal): Promise<LevelSample>;
@@ -80,7 +98,12 @@ export function deviceCalibration(entry: AudioSettings): CalibrationDevice {
       };
     },
     async setAttenuation(attenuation, signal) {
-      await setAudio({ ...entry, adc_attenuation_db: attenuation }, { signal });
+      const ack = await setAudio({ ...entry, adc_attenuation_db: attenuation }, { signal });
+      // A device whose input stopped restarts to apply it; the guide cannot go on.
+      if (ack.rebooting) {
+        report({ type: 'restarting', operation: 'the calibration', at: Date.now() });
+        throw new Error('the device restarts to apply it, so calibration stops');
+      }
     },
   };
 }

@@ -1,11 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
+import { setTransport } from '../../src/device/lib/api';
 import type { LevelSample } from '../../src/device/lib/calibration';
+import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
   type CalibrationDevice,
   CalibrationGuide,
+  calibrationHeld,
   calibrationStep,
   calibrationUnderway,
+  deviceCalibration,
 } from '../../src/device/state/calibration';
+import { connection } from '../../src/device/state/device';
+import { answering } from './answering';
 
 const ENTRY = { input_line: 1, input_gain: 24, adc_attenuation_db: 6 };
 
@@ -132,5 +139,35 @@ describe('where the guide stands', () => {
     expect(calibrationUnderway({ phase: 'loud-refused', floor: 10, reason: '' })).toBe(true);
     expect(calibrationUnderway({ phase: 'done', attenuation: 12, peakDb: '-3.0' })).toBe(false);
     expect(calibrationUnderway({ phase: 'closed', restored: true })).toBe(false);
+  });
+});
+
+describe('a device the guide cannot calibrate', () => {
+  afterEach(() => {
+    forgetAdminKey();
+    setTransport((request) => fetch(request));
+    answering(null);
+  });
+
+  it('holds the guide until the input runs on the home network', () => {
+    answering(deviceStatus({ mode: 'recovery' }));
+    expect(calibrationHeld.value).toContain('back on your Wi-Fi');
+    const silent = deviceStatus();
+    silent.health.checks[0] = { ...silent.health.checks[0], severity: 'blocking', status: 'fail' };
+    answering(silent);
+    expect(calibrationHeld.value).toContain('did not start');
+    answering(deviceStatus());
+    expect(calibrationHeld.value).toBeNull();
+  });
+
+  it('stops, and says the device restarts, when a write would restart it', async () => {
+    answering(deviceStatus());
+    unlockSettings('a'.repeat(48), false);
+    setTransport(async () => Response.json({ ok: true, rebooting: true }));
+    const entry = { input_line: 2, input_gain: 0, adc_attenuation_db: 9 };
+    await expect(
+      deviceCalibration(entry).setAttenuation(12, AbortSignal.timeout(1000)),
+    ).rejects.toThrow('calibration stops');
+    expect(connection.value).toMatchObject({ phase: 'waiting', operation: 'the calibration' });
   });
 });

@@ -9,7 +9,7 @@ import { sourceState } from '../../lib/reception';
 import { statusQuery } from '../../state/queries';
 import { itemOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
-import { SourceScreen } from './SourceScreen';
+import { ReceivedLevel, SourceScreen } from './SourceScreen';
 
 /** Every source the bridge knows, or one of them (`#/sources/<id>`). */
 export function SourcesScreen() {
@@ -71,7 +71,11 @@ function Sources({ known }: { known: BridgeStatus }) {
                 .filter(Boolean)
                 .join(' · ')}
             >
-              <Status tone={state.tone}>{state.label}</Status>
+              {source.lifecycle.state === 'connected' ? (
+                <ReceivedLevel source={source} compact className="w-24" />
+              ) : (
+                <Status tone={state.tone}>{state.label}</Status>
+              )}
             </SettingRow>
           );
         })}

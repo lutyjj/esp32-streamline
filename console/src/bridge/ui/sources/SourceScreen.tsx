@@ -84,6 +84,33 @@ export function SourceScreen({ id }: { id: string }) {
   );
 }
 
+/** A source's peak on each channel; `compact` for a row of a list. */
+export function ReceivedLevel({
+  source,
+  compact,
+  className,
+}: {
+  source: SourceSnapshot;
+  compact?: boolean;
+  className?: string;
+}) {
+  return (
+    <Gauges label="Received level" compact={compact} className={className}>
+      {(['left', 'right'] as const).map((side) => (
+        <Gauge
+          key={side}
+          label={side === 'left' ? 'Left' : 'Right'}
+          value={levelDb(source.levels[`peak_${side}`])}
+          min={LEVEL_FLOOR_DB}
+          max={0}
+          zones={LEVEL_ZONES}
+          format={levelText}
+        />
+      ))}
+    </Gauges>
+  );
+}
+
 function Reception({ source, live }: { source: SourceSnapshot; live: boolean }) {
   const reached = quality(source);
   const encrypted = source.lifecycle.transport === 'tls-psk';
@@ -92,19 +119,7 @@ function Reception({ source, live }: { source: SourceSnapshot; live: boolean }) 
       <CardHead title="Reception" description={receptionAdvice(source)} />
       <CardBody className="grid gap-4">
         {live ? (
-          <Gauges label="Received level">
-            {(['left', 'right'] as const).map((side) => (
-              <Gauge
-                key={side}
-                label={side === 'left' ? 'Left' : 'Right'}
-                value={levelDb(source.levels[`peak_${side}`])}
-                min={LEVEL_FLOOR_DB}
-                max={0}
-                zones={LEVEL_ZONES}
-                format={levelText}
-              />
-            ))}
-          </Gauges>
+          <ReceivedLevel source={source} />
         ) : (
           <p className="text-sm text-text-secondary">Live levels return when the bridge answers.</p>
         )}

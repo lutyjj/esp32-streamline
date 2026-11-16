@@ -174,8 +174,8 @@ deployment without recording storage names the option that adds it.
 [Recordings](recordings.md) owns storage, gaps, limits, and interrupted files.
 
 A bridge without an API token names the deployment option to configure. It never
-directs the owner to an unavailable unlock action: its access chip reads
-Read-only and opens Settings → Deployment, which names the option.
+directs the owner to an unavailable unlock action: its top bar reads Read-only,
+which names the option under a resting pointer or at a press.
 
 ## 5. Enable encrypted audio
 

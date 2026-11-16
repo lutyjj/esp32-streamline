@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { deviceStatus, setupNetwork } from '../../src/device/mocks/fixtures';
 import { connection } from '../../src/device/state/device';
-import { beginResetHandoff, handoffStory, SETUP_ADDRESS } from '../../src/device/state/handoff';
+import { beginResetHandoff, handoffStory } from '../../src/device/state/handoff';
+import { SETUP_ADDRESS } from '../../src/shared/setupNetwork';
 
 describe('handoffStory', () => {
   it('sends a joined browser to the home address and says how a failed join shows', () => {

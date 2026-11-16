@@ -1,13 +1,5 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "jsxImportSource": "preact" },
-  "include": [
-    "src/components",
-    "src/flasher.tsx",
-    "src/esp-web-tools.d.ts",
-    "src/lib",
-    "src/state",
-    "tests/*.test.ts",
-    "tests/*.test.tsx"
-  ]
+  "include": ["src/lib", "src/state", "tests/*.test.ts", "tests/*.test.tsx"]
 }

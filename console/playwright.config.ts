@@ -2,8 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Journey specs: the device console against its fake backend (src/device/mocks),
 // the bridge console against the real bridge that `make console-e2e` starts
-// beside this run. The config starts its own mock-mode vite server, which
-// proxies bridge routes to STREAMLINE_BRIDGE.
+// beside this run, and the flasher beside the site's manifest. The config starts
+// its own mock-mode vite server, which proxies bridge routes to STREAMLINE_BRIDGE.
 export default defineConfig({
   testDir: 'tests/e2e',
   outputDir: 'test-results',

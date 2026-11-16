@@ -5,12 +5,10 @@
  */
 
 import { factoryReset, type SetupNetworkResponse, type StatusResponse } from '../../generated/api';
+import { SETUP_ADDRESS } from '../../shared/setupNetwork';
 import { withAccess } from './access';
 import type { Handoff } from './connection';
 import { report } from './device';
-
-/** The setup network's address, the same on every device. */
-export const SETUP_ADDRESS = 'http://192.168.71.1/';
 
 export interface HandoffStory {
   title: string;

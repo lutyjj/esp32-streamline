@@ -15,9 +15,9 @@ import {
 import { useState } from 'react';
 import { errorMessage } from '../../../shared/errors';
 import { fieldErrors } from '../../../shared/http';
+import { queryClient } from '../../../shared/queries';
 import { WIFI_FIELDS, type WifiEntry } from '../../lib/wifi';
 import { joinNetwork, keyUnconfirmed } from '../../state/join';
-import { queryClient } from '../../state/queries';
 import { setupKey } from '../../state/setupKey';
 import { deviceConditions } from '../DeviceConditions';
 import { WifiFields } from '../wifi/WifiFields';

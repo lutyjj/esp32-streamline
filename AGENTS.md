@@ -53,12 +53,14 @@ driver from the core. `update::install_verified` and its adapter in
 `adapters/ota.rs` are the pattern to copy.
 
 The console follows the same rule: behavior lives in each console's `lib`
-and `state` modules (`console/src/device/`, with what the consoles share in
-`console/src/shared/`) and is tested with vitest on the host; components
+and `state` modules (`console/src/device/` and `console/src/bridge/`, with
+what the consoles share in `console/src/shared/`) and is tested with vitest
+on the host; components
 stay thin renderers over that state. A console behavior change ships with
 its test. To exercise a console without hardware, use `make console-dev-mock`
 or `make console-e2e`, which run the fake device in `console/src/device/mocks`
-beside a real bridge container, instead of a throwaway harness. Handlers
+beside a real bridge container that `streamline-pcm-source` feeds, instead of
+a throwaway harness. Handlers
 Orval generates from the contract answer every device operation the fake
 keeps no state for, so a new endpoint whose answer depends on state needs a
 handler in the fake.

@@ -12,8 +12,9 @@ import {
   levelsUnsaved,
   saveLevels,
 } from '../../src/device/state/levels';
-import { audioProfilesQuery, queryClient } from '../../src/device/state/queries';
+import { audioProfilesQuery } from '../../src/device/state/queries';
 import type { StatusResponse } from '../../src/generated/api';
+import { queryClient } from '../../src/shared/queries';
 import { answering } from './answering';
 
 function withAudio(audio: Partial<StatusResponse['audio']>): StatusResponse {

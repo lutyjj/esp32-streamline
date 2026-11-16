@@ -16,11 +16,12 @@ import { type DiscoveredBridge, getSetTargetUrl } from '../../../generated/api';
 import { errorMessage } from '../../../shared/errors';
 import { fieldErrors } from '../../../shared/http';
 import { navigate } from '../../../shared/navigation';
+import { queryClient } from '../../../shared/queries';
+import { WriteFailure } from '../../../shared/WriteFailure';
 import { consoleAddressProblem } from '../../lib/consoleAddress';
 import { status } from '../../state/device';
 import { findBridges, searchOffered } from '../../state/discovery';
 import { updateLock } from '../../state/ota';
-import { queryClient } from '../../state/queries';
 import {
   adoptFound,
   draftChanges,
@@ -34,7 +35,6 @@ import {
   type TargetDraft,
 } from '../../state/targetForm';
 import { ScreenTop } from '../ScreenTop';
-import { WriteFailure } from '../WriteFailure';
 
 const TRAIL = [{ href: '/bridge', label: 'Bridge' }];
 

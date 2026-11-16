@@ -3,15 +3,16 @@ import { Button, Card, CardBody, CardHead, Fact, Facts, Form, useUnsavedChanges 
 import { useRef, useState } from 'react';
 import { getSetWifiUrl, type SettingsResponse } from '../../../generated/api';
 import { fieldErrors } from '../../../shared/http';
+import { queryClient } from '../../../shared/queries';
+import { ReadNotice } from '../../../shared/ReadNotice';
+import { WriteConfirm } from '../../../shared/WriteConfirm';
 import { storesWifiPassword, WIFI_FIELDS, type WifiEntry } from '../../lib/wifi';
 import { withAccess } from '../../state/access';
 import { status } from '../../state/device';
 import { homeAddress } from '../../state/handoff';
 import { joinNetwork } from '../../state/join';
 import { updateLock } from '../../state/ota';
-import { queryClient, settingsQuery } from '../../state/queries';
-import { ReadNotice } from '../ReadNotice';
-import { WriteConfirm } from '../WriteConfirm';
+import { settingsQuery } from '../../state/queries';
 import { WifiFields } from '../wifi/WifiFields';
 
 /** The network the device joins, and a change of it, which ends in a handoff like first contact. */

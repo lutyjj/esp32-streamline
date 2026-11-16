@@ -10,7 +10,7 @@
 
 import { queryOptions } from '@tanstack/preact-query';
 import { type BootLog, getLogs } from '../../generated/api';
-import { queryClient } from './queries';
+import { queryClient } from '../../shared/queries';
 
 /** One line, numbered within its boot. */
 export interface LogLine {

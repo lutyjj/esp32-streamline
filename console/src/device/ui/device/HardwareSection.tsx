@@ -23,17 +23,18 @@ import {
   setBoard,
 } from '../../../generated/api';
 import { fieldErrors } from '../../../shared/http';
+import { queryClient } from '../../../shared/queries';
+import { ReadNotice } from '../../../shared/ReadNotice';
+import { WriteConfirm } from '../../../shared/WriteConfirm';
+import { WriteFailure } from '../../../shared/WriteFailure';
+import { writeFailure } from '../../../shared/writeFailure';
 import { BUTTON_ACTIONS, type ButtonRow, buttonRows, DESTRUCTIVE_ACTION } from '../../lib/buttons';
 import { LED_ROLES, type LedRow, ledRows } from '../../lib/leds';
 import { withRestart } from '../../state/access';
 import { status } from '../../state/device';
 import { assignButton, assignLed, nameProblem, renameDevice } from '../../state/hardware';
 import { updateLock } from '../../state/ota';
-import { boardsQuery, queryClient, settingsQuery } from '../../state/queries';
-import { writeFailure } from '../../state/writeFailure';
-import { ReadNotice } from '../ReadNotice';
-import { WriteConfirm } from '../WriteConfirm';
-import { WriteFailure } from '../WriteFailure';
+import { boardsQuery, settingsQuery } from '../../state/queries';
 
 const BUTTON_CHOICES = Object.entries(BUTTON_ACTIONS).map(([value, { label }]) => ({
   value,
@@ -208,7 +209,7 @@ function ButtonsCard({ rows }: { rows: ButtonRow[] }) {
       mutationFn: ({ id, action }: { id: string; action: ButtonAction }) =>
         assignButton(id, action),
       onError: (error) => {
-        const words = writeFailure(error, 'The button kept its action.');
+        const words = writeFailure(error, 'The button kept its action.', 'device');
         toast.show({ text: `${words.title} ${words.description}`, sticky: true });
       },
     },
@@ -266,7 +267,7 @@ function LightsCard({ rows }: { rows: LedRow[] }) {
     {
       mutationFn: ({ id, role }: { id: string; role: LedRole }) => assignLed(id, role),
       onError: (error) => {
-        const words = writeFailure(error, 'The light kept its role.');
+        const words = writeFailure(error, 'The light kept its role.', 'device');
         toast.show({ text: `${words.title} ${words.description}`, sticky: true });
       },
     },

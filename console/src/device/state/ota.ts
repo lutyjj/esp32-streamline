@@ -17,9 +17,10 @@ import {
 } from '../../generated/api';
 import { RESTARTING_WRITES } from '../../generated/facts';
 import { OtaUpdateRequest as installRule } from '../../generated/rules';
+import { readAgain } from '../../shared/queries';
 import { withAccess, withRestart } from './access';
 import { type SettledRestart, status } from './device';
-import { readAgain, settingsQuery } from './queries';
+import { settingsQuery } from './queries';
 
 export const PHASE_LABELS: Record<string, string> = {
   idle: 'Idle',

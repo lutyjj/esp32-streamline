@@ -1,3 +1,5 @@
+import type { GaugeZone } from 'linen';
+
 /** Absolute sample value (0..32768) as dBFS text; silence reads as -inf. */
 export function dbfs(abs: number): string {
   if (!abs) return '-inf';
@@ -13,11 +15,16 @@ export function levelDb(abs: number): number {
   return Math.max(LEVEL_FLOOR_DB, Math.min(0, 20 * Math.log10(abs / 32768)));
 }
 
-/** Absolute sample value as a 0-100% meter position on a -60..0 dBFS scale. */
-export function meterPct(abs: number): number {
-  if (!abs) return 0;
-  const db = 20 * Math.log10(abs / 32768);
-  return Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+/** A level gauge's tones: hot near the top of the scale, and clipping in its last decibel. */
+export const LEVEL_ZONES: readonly GaugeZone[] = [
+  { from: LEVEL_FLOOR_DB, to: -6, tone: 'accent' },
+  { from: -6, to: -1, tone: 'warn' },
+  { from: -1, to: 0, tone: 'danger' },
+];
+
+/** A level in dBFS as a gauge reads it out. */
+export function levelText(value: number): string {
+  return value <= LEVEL_FLOOR_DB ? 'silent' : `${value.toFixed(1)} dB`;
 }
 
 /** Byte count as a compact 1024-based string: `512 B`, `124 KB`, `1.9 MB`. */

@@ -1,6 +1,6 @@
 import type { ErrorResponse } from '../../generated/api';
 import { AUTHENTICATED_READS } from '../../generated/facts';
-import { ApiError, type FetchLike } from '../../shared/http';
+import { ApiError, bounded, type FetchLike } from '../../shared/http';
 import { isUnlocked, lockSettings, storedAdminKey } from './adminKey';
 import { DigestSession, parseChallenge } from './digest';
 
@@ -26,24 +26,6 @@ function deviceRequest(url: string, options: RequestInit = {}): Request {
     signal: options.signal ?? AbortSignal.timeout(ANSWER_WITHIN_MS),
     credentials: 'omit',
   });
-}
-
-/** A request the device left unanswered past its bound; it may have reached the device all the same. */
-export class UnansweredError extends Error {
-  constructor() {
-    super('the device did not answer in time');
-    this.name = 'UnansweredError';
-  }
-}
-
-/** An exchange the device left unanswered past its bound fails in words a person can act on. */
-async function bounded<T>(work: Promise<T>): Promise<T> {
-  try {
-    return await work;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'TimeoutError') throw new UnansweredError();
-    throw error;
-  }
 }
 
 /** The accepted challenge writes reuse; dropped when the device stops accepting it. */
@@ -113,7 +95,10 @@ async function authorizedExchange(request: Request, key: string): Promise<Respon
 
 export function deviceFetch<T>(url: string, options: RequestInit): Promise<T> {
   // The request, and with it its bound, starts when its lane is free.
-  return bounded(laneOf(url)(() => exchange<T>(deviceRequest(url, options))));
+  return bounded(
+    'device',
+    laneOf(url)(() => exchange<T>(deviceRequest(url, options))),
+  );
 }
 
 async function exchange<T>(request: Request): Promise<T> {
@@ -158,7 +143,10 @@ function parseBody(text: string): unknown {
 
 /** Ask the device whether it accepts `key`; this intentionally bypasses stored auth state. */
 export function verifyAdminKey(key: string): Promise<boolean> {
-  return bounded(lanes.other(() => checkKey(key)));
+  return bounded(
+    'device',
+    lanes.other(() => checkKey(key)),
+  );
 }
 
 async function checkKey(key: string): Promise<boolean> {

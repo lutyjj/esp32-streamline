@@ -13,7 +13,11 @@ import {
 import { useRef, useState } from 'react';
 import type { AudioProfile, AudioProfileCatalog, StatusResponse } from '../../../generated/api';
 import { fieldErrors } from '../../../shared/http';
+import { queryClient } from '../../../shared/queries';
+import { ReadNotice } from '../../../shared/ReadNotice';
 import { saveFile } from '../../../shared/saveFile';
+import { WriteConfirm } from '../../../shared/WriteConfirm';
+import { writeFailure } from '../../../shared/writeFailure';
 import { status } from '../../state/device';
 import {
   deleteProfile,
@@ -23,11 +27,8 @@ import {
   replaceProfile,
   saveProfile,
 } from '../../state/profiles';
-import { audioProfilesQuery, queryClient } from '../../state/queries';
-import { writeFailure } from '../../state/writeFailure';
-import { ReadNotice } from '../ReadNotice';
+import { audioProfilesQuery } from '../../state/queries';
 import { ScreenTop } from '../ScreenTop';
-import { WriteConfirm } from '../WriteConfirm';
 import { levelsWords } from './levelsWords';
 
 const TRAIL = [{ href: '/audio', label: 'Audio' }];
@@ -198,7 +199,7 @@ function Questions({
       setRefusal(refused ?? '');
       if (refused) return;
       onDone();
-      const words = writeFailure(error, 'The profiles did not change.');
+      const words = writeFailure(error, 'The profiles did not change.', 'device');
       toast.show({ text: `${words.title} ${words.description}`, sticky: true });
     }
   };

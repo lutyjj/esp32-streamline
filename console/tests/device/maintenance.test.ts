@@ -12,7 +12,8 @@ import {
   imageUrlProblem,
   scheduleUpdates,
 } from '../../src/device/state/ota';
-import { queryClient, settingsQuery } from '../../src/device/state/queries';
+import { settingsQuery } from '../../src/device/state/queries';
+import { queryClient } from '../../src/shared/queries';
 import { answering } from './answering';
 
 beforeEach(async () => {

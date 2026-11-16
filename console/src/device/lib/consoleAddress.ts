@@ -16,7 +16,7 @@ function bridgeLink(address: string, route: string): string | undefined {
   }
 }
 
-/** Listen, or one source in it. */
+/** Sources, or one source in it. */
 export function bridgeSourcesLink(address: string, source?: string): string | undefined {
   return bridgeLink(
     address,

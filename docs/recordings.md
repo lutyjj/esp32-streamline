@@ -11,7 +11,7 @@ record a whole disc or create one file per track.
 
 ## Surface boundary
 
-`/recordings` is a focused bridge page, not a second device console. Each
+The bridge console's **Recordings** (`/#/recordings`) is a focused bridge page, not a second device console. Each
 device console manages capture hardware, audio settings, Wi-Fi, and its PCM
 target. The bridge page manages sessions and files owned by one bridge.
 
@@ -26,8 +26,9 @@ directly.
 
 1. The operator enables recordings in the bridge deployment, which requires
    the bridge API token ([bridge reference](bridge.md)).
-2. The operator opens `/recordings`, unlocks the console with that token,
-   chooses a known source, and names the recording.
+2. The operator opens **Recordings** in the bridge console, or **Record this
+   source** on a source under **Sources**, unlocks with that token, and names
+   the recording.
 3. **Start recording** puts the session in `waiting-for-audio`. The operator
    starts the source after the bridge is ready.
 4. The first PCM packet starts the file. The page shows elapsed audio, file
@@ -106,7 +107,8 @@ one-use ticket.
 
 The service returns named states: `waiting-for-audio`, `recording`,
 `finalizing`, `complete`, `interrupted`, and `empty`. Errors use a stable code
-and a message that names the next action.
+and a message that names the next action, plus the request field they refuse
+when there is one.
 
 ## Deployment and security
 

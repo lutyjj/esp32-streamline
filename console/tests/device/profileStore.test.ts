@@ -13,8 +13,9 @@ import {
   saveProfile,
   switchProfile,
 } from '../../src/device/state/profiles';
-import { audioProfilesQuery, queryClient } from '../../src/device/state/queries';
+import { audioProfilesQuery } from '../../src/device/state/queries';
 import { setAudio } from '../../src/generated/api';
+import { queryClient } from '../../src/shared/queries';
 import { answering } from './answering';
 
 let device: FakeDevice;

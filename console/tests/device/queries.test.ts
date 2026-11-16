@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setTransport } from '../../src/device/lib/http';
-import { queryClient, settingsQuery } from '../../src/device/state/queries';
+import { settingsQuery } from '../../src/device/state/queries';
+import { queryClient } from '../../src/shared/queries';
 
 afterEach(() => {
   vi.restoreAllMocks();

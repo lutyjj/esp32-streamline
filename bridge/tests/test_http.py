@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from fastapi.testclient import TestClient
 
+from streamline_bridge import api_models
 from streamline_bridge.http import make_app, stream_wav_body, wav_header
 from streamline_bridge.pipeline import AudioPipeline
 from streamline_bridge.protocol import DEFAULT_FORMAT
@@ -91,6 +92,15 @@ class HttpContractTests(SourceTestCase):
             response.json()["sources"]["192.0.2.10"]["levels"],
             {"peak_left": 10000, "peak_right": 32768, "rms_left": 10000, "rms_right": 23170},
         )
+
+    def test_every_published_example_satisfies_its_model(self) -> None:
+        schemas = self.client.get("/api/openapi.json").json()["components"]["schemas"]
+        published = {name: schema["examples"] for name, schema in schemas.items() if "examples" in schema}
+
+        self.assertEqual(set(published), {"BridgeStatus", "RecordingCapabilities", "RecordingList"})
+        for name, examples in published.items():
+            with self.subTest(schema=name):
+                getattr(api_models, name).model_validate(examples[0])
 
     def test_openapi_is_generated_from_runtime_routes_and_auth(self) -> None:
         document = self.client.get("/api/openapi.json").json()
@@ -187,15 +197,11 @@ class HttpContractTests(SourceTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["public_url"], "http://192.0.2.20:8099")
 
-    def test_console_routes_inject_ingress_base_and_csp_nonce(self) -> None:
+    def test_console_is_served_at_the_root_under_a_nonce_policy(self) -> None:
         root = self.client.get("/", headers={"X-Ingress-Path": "/api/hassio_ingress/abc-1_2"})
-        alias = self.client.get("/recordings")
-        spoofed = self.client.get("/", headers={"X-Ingress-Path": "<script>bad</script>"})
 
-        self.assertIn("Bridge console", root.text)
-        self.assertIn('content="/api/hassio_ingress/abc-1_2"', root.text)
-        self.assertIn("StreamLine bridge", alias.text)
-        self.assertIn('content=""', spoofed.text)
+        self.assertIn("StreamLine bridge", root.text)
+        self.assertEqual(self.client.get("/recordings").status_code, 404)
         csp = root.headers["Content-Security-Policy"]
         self.assertNotIn("unsafe-inline", csp)
         self.assertIn("font-src data:;", csp)
@@ -485,9 +491,22 @@ class RecordingApiTests(SourceTestCase):
             content=json.dumps({"source": "192.0.2.10", "title": "x" * 5000}),
         )
 
+        blank = self.client.post(
+            "/api/recordings",
+            headers=self.headers,
+            json={"source": "192.0.2.10", "title": "   "},
+        )
+
         self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.json()["error"]["field"], "source")
         self.assertEqual(unknown.status_code, 400)
         self.assertIn("unknown source", unknown.json()["error"]["message"])
+        self.assertEqual(unknown.json()["error"]["field"], "source")
+        self.assertEqual(blank.status_code, 400)
+        self.assertEqual(
+            blank.json()["error"],
+            {"code": "invalid-title", "message": "Enter a recording title.", "field": "title"},
+        )
         self.assertEqual(oversized.status_code, 413)
         self.assertEqual(oversized.json()["error"]["code"], "request-too-large")
 

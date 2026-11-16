@@ -17,7 +17,8 @@ import {
   nameProblem,
   renameDevice,
 } from '../../src/device/state/hardware';
-import { queryClient, settingsQuery } from '../../src/device/state/queries';
+import { settingsQuery } from '../../src/device/state/queries';
+import { queryClient } from '../../src/shared/queries';
 import { answering } from './answering';
 
 let device: FakeDevice;

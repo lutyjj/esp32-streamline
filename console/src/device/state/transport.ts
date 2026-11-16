@@ -18,8 +18,9 @@ import {
   type TransportStatus,
   verifyTransportKey,
 } from '../../generated/api';
+import { readAgain } from '../../shared/queries';
 import { withAccess, withRestart } from './access';
-import { readAgain, settingsQuery } from './queries';
+import { settingsQuery } from './queries';
 
 /** A credential the device made, shown once; `recovery` when it replaced a lost one. */
 export interface RevealedKey extends TransportKeyResponse {

@@ -12,15 +12,22 @@ DEV_BRIDGE := streamline-dev-bridge
 E2E_NET := streamline-console-e2e
 E2E_BRIDGE := streamline-e2e-bridge
 
-# $(call bridge_up,<network>,<container>[,<extra flags>]) starts a fresh bridge and
-# arms the caller's exit trap.
+# $(call bridge_up,<network>,<container>[,<extra flags>]) starts a fresh bridge, a
+# source streaming the firmware's conformance frames into it, and arms the caller's
+# exit trap. No Sendspin server answers, so Music Assistant publishing stays
+# connecting while pairing tokens still work.
 define bridge_up
 $(CONTAINER) network create $(1) >/dev/null 2>&1 || true; \
-$(CONTAINER) rm -f $(2) >/dev/null 2>&1 || true; \
+$(CONTAINER) rm -f $(2) $(2)-source >/dev/null 2>&1 || true; \
+trap '$(CONTAINER) rm -f $(2) $(2)-source >/dev/null 2>&1' EXIT; \
 $(CONTAINER) run -d --rm --name $(2) --network $(1) --tmpfs /tmp \
 	-e STREAMLINE_API_TOKEN=$(BRIDGE_TOKEN) $(3) $(BRIDGE_IMAGE_TAG) \
-	--transport-state-file /tmp/transport.json --recordings-dir /tmp/recordings >/dev/null; \
-trap '$(CONTAINER) rm -f $(2) >/dev/null 2>&1' EXIT
+	--transport-state-file /tmp/transport.json --recordings-dir /tmp/recordings \
+	--sendspin-server-url ws://127.0.0.1:9/sendspin --sendspin-state-dir /tmp/sendspin >/dev/null; \
+$(CONTAINER) run -d --rm --name $(2)-source --network $(1) \
+	-v "$(ROOT_DIR)/tools/src/streamline_tools/pcm_source.py:/pcm_source.py:ro" \
+	-v "$(ROOT_DIR)/docs/pcm-frame-vectors.json:/vectors.json:ro" \
+	--entrypoint python3 $(BRIDGE_IMAGE_TAG) -I /pcm_source.py /vectors.json $(2) >/dev/null
 endef
 # Defaults to STREAMLINE_DEVICE from the root .env, else the setup-AP address.
 DEVICE ?= $(or $(call dotenv,STREAMLINE_DEVICE),192.168.71.1)

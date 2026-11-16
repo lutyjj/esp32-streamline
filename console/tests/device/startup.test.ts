@@ -5,7 +5,8 @@ import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice } from '../../src/device/mocks/device';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { report, startPolling } from '../../src/device/state/device';
-import { audioProfilesQuery, queryClient, settingsQuery } from '../../src/device/state/queries';
+import { audioProfilesQuery, settingsQuery } from '../../src/device/state/queries';
+import { queryClient } from '../../src/shared/queries';
 import { answering } from './answering';
 
 /**

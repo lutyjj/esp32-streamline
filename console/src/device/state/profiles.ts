@@ -11,6 +11,7 @@ import {
   setAudioProfile,
   setAudioProfiles,
 } from '../../generated/api';
+import { queryClient, readAgain } from '../../shared/queries';
 import {
   addProfile,
   exportAudioProfileCatalog,
@@ -19,7 +20,7 @@ import {
 } from '../lib/profiles';
 import { withAccess, withRestart } from './access';
 import { status } from './device';
-import { audioProfilesQuery, queryClient, readAgain } from './queries';
+import { audioProfilesQuery } from './queries';
 
 /** What the catalog work needs from the device; throws while a part has not loaded. */
 function loaded() {

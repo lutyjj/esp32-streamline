@@ -12,6 +12,8 @@ import {
   useUnsavedChanges,
 } from 'linen';
 import { useState } from 'react';
+import { queryClient } from '../../../shared/queries';
+import { WriteFailure } from '../../../shared/WriteFailure';
 import {
   forgetAdminKey,
   generateAdminKey,
@@ -20,8 +22,6 @@ import {
   useAuthEpoch,
 } from '../../lib/adminKey';
 import { changeAdminKey } from '../../state/access';
-import { queryClient } from '../../state/queries';
-import { WriteFailure } from '../WriteFailure';
 
 /** The device's admin key, and what this browser keeps of it. */
 export function AccessSection() {

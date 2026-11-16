@@ -12,7 +12,9 @@ owns installation commands.
   live indicators with an unavailable state.
   Last-known configuration cannot establish current audio delivery.
 - Any other request the device leaves unanswered for ten seconds fails, and
-  the screen that sent it says so. Nothing waits on a silent device.
+  the screen that sent it says so. Nothing waits on a silent device. The
+  bridge console gives up on a status read after five seconds and on any
+  other request after thirty, past the bridge's own longest wait.
 - Every wait names its operation and completion evidence. A timer never proves
   a network join, successful reboot, or audible playback. A restart still
   offline after a minute reads as overdue on every surface that narrated it.
@@ -37,17 +39,17 @@ owns installation commands.
 | Device | Bridge | Connect a bridge and follow delivery to it; set up encrypted audio |
 | Device | Device | Wi-Fi, the name and hardware, the admin key, and what this browser keeps |
 | Device | Maintenance | Updates, diagnostics, the machine interface, restart and reset |
-| Bridge | Listen | Observe sources and copy playback addresses |
+| Bridge | Sources | Follow each source's reception, copy its playback address, pair it with Music Assistant, and record it |
 | Bridge | Recordings | Capture a source and retrieve saved WAV files |
-| Bridge | Settings | Configure audio security, pair sources with Music Assistant, and understand deployment access |
+| Bridge | Settings | Configure audio security and see what the deployment sets |
 
-The device console's Device and Maintenance workspaces hold sections, and a
-guided task opens on a screen of its own beneath its workspace. The bridge
-console's Settings is a task index; each destination opens one focused task
-with an All settings link. URLs identify the workspace, section, or task, and
-browser Back retraces navigation. Phones use
-the same destinations and bottom primary navigation. The theme choice stands
-at the foot of the device console's navigation, and this browser keeps it. A condition of the whole
+The device console's Device and Maintenance workspaces and the bridge
+console's Settings hold sections, and a guided task opens on a screen of its
+own beneath its workspace, as one source does beneath Sources. URLs identify
+the workspace, section, task, or source, and browser Back retraces
+navigation. Phones use the same destinations and bottom primary navigation.
+The theme choice stands at the foot of each console's navigation, and this
+browser keeps it. A condition of the whole
 console, such as lost contact or a restart under way, stands above every
 screen until it ends.
 
@@ -99,14 +101,14 @@ the address form without the search.
 
 After saving, the device distinguishes restarting, quiet input, connecting, and
 sending. Only observed transmission supports Sending audio. Open the bridge
-to verify reception, then copy the playback URL from Listen into an HTTP WAV
-player. Given the owner’s bridge console address, Bridge links directly to the
-device's source in Listen; it never infers an HTTP port from the audio target. An ingress-hosted
+to verify reception, then copy the playback URL from the source in Sources
+into an HTTP WAV player. Given the owner’s bridge console address, Bridge links
+directly to the device's source in Sources; it never infers an HTTP port from the audio target. An ingress-hosted
 bridge needs its player-accessible public URL configured separately. The console does not play audio. A connected player does not prove its
 speakers are audible.
 
 A bridge configured with a Sendspin server offers every source to Music
-Assistant. Bridge Settings → Music Assistant shows each source's next step:
+Assistant. Each source in the bridge's Sources shows its next step there:
 connecting, needs pairing, input off, ready, or playing. Pairing reveals a
 token once in the bridge console and pastes it into the source's setup in
 Music Assistant; the token is a secret, so locking the bridge console clears
@@ -156,19 +158,23 @@ and this browser stays unlocked on it. Until then the old key stays in use,
 and leaving asks first. Access also says whether this browser keeps the key
 and forgets it on request.
 
-Bridge Listen shows known sources, levels, connection state, playback addresses,
+Bridge Sources shows known sources, levels, connection state, playback addresses,
 and reception details. Recordings separates capture from the file library.
-Record this audio carries the selected source through unlocking; a missing
-source never silently becomes a different input. Storage headroom stays visible
+Record this source, on a source's screen, carries that source through
+unlocking; a missing source never silently becomes a different input. Storage headroom stays visible
 during capture. A source appears when its device connects with streaming enabled,
 including during quiet input. Start recording
 before the desired passage, observe its state, then stop and save. The active
 session replaces the new-recording form; another recording is an explicit action.
-Finalized files offer download and confirmed deletion. [Recordings](recordings.md)
-owns storage, gaps, limits, and interrupted files.
+Finalized files offer download and confirmed deletion. Listing sessions and
+files needs the bridge API token, as its API does, so a locked Recordings asks
+for it instead of showing them: the one bridge read the token gates. A
+deployment without recording storage names the option that adds it.
+[Recordings](recordings.md) owns storage, gaps, limits, and interrupted files.
 
 A bridge without an API token names the deployment option to configure. It never
-directs the owner to an unavailable unlock action.
+directs the owner to an unavailable unlock action: its access chip reads
+Read-only and opens Settings → Deployment, which names the option.
 
 ## 5. Enable encrypted audio
 

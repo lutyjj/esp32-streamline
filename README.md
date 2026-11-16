@@ -90,7 +90,7 @@ Host networking lets devices [discover the bridge](docs/bridge.md#discovery) dur
 3. Enter your Wi-Fi and **save the admin key** it generates. The device shows it once, every later settings change needs it, and losing it means a reflash.
 4. After the reboot, open `http://streamline-xxxx.local/` (or the device's IP if your network drops mDNS), pick the bridge under **Bridge**, and set levels under **Audio**.
 
-The stream is then live at `http://<bridge-host>:8088/streamline.wav`. To play it in Music Assistant, create a pairing token in the bridge console's **Settings → Music Assistant** and paste it into the source's setup there; [Music Assistant live inputs](docs/bridge.md#music-assistant-live-inputs) covers the rest.
+The stream is then live at `http://<bridge-host>:8088/streamline.wav`. To play it in Music Assistant, open the source under **Sources** in the bridge console, make a pairing token there, and paste it into the source's setup there; [Music Assistant live inputs](docs/bridge.md#music-assistant-live-inputs) covers the rest.
 
 Updates install daily once the audio goes idle, and **Maintenance → Updates** changes that. See [OTA updates](docs/ota.md).
 

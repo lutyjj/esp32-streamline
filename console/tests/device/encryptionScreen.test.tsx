@@ -5,9 +5,11 @@ import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
 import { setTransport } from '../../src/device/lib/http';
 import { MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
 import { deviceConfig, deviceStatus, transportStatus } from '../../src/device/mocks/fixtures';
-import { queryClient, settingsQuery } from '../../src/device/state/queries';
+import { settingsQuery } from '../../src/device/state/queries';
 import { EncryptionScreen } from '../../src/device/ui/bridge/EncryptionScreen';
 import type { TransportStatus } from '../../src/generated/api';
+import { queryClient } from '../../src/shared/queries';
+import { PeerContext } from '../../src/shared/writeFailure';
 import { answering } from './answering';
 
 // Every key state the device can hold leaves a way forward on the screen
@@ -19,9 +21,11 @@ function mount(transport: Partial<TransportStatus>) {
   queryClient.setQueryData(settingsQuery.queryKey, settings);
   render(
     <LinenProvider>
-      <ToastProvider>
-        <EncryptionScreen />
-      </ToastProvider>
+      <PeerContext.Provider value="device">
+        <ToastProvider>
+          <EncryptionScreen />
+        </ToastProvider>
+      </PeerContext.Provider>
     </LinenProvider>,
   );
 }

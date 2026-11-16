@@ -277,7 +277,7 @@ The device always runs the embedded console and API. A bridge runs separately in
 
 HTTP clients read `/streamline.wav`; `/status` exposes per-source bridge state;
 `/health` is the bridge readiness probe for its required PCM listener. A deployment with writable
-recording storage also serves `/recordings` and its authenticated API. A
+recording storage also serves the authenticated recordings API. A
 deployment with a Sendspin server URL dials Music Assistant from the bridge.
 Music Assistant, Snapcast, Icecast, editors, and media libraries remain
 downstream systems.

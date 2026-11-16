@@ -49,18 +49,23 @@ console:
   - 'docs/openapi.json'
 
 # The e2e journeys drive the device console against its contract-derived
-# mock and the bridge console against the real bridge, so the console, the
-# device contract, and the bridge all retrigger them.
+# mock and the bridge console against the real bridge fed by the PCM source,
+# so the console, the device contract, the bridge and that source all
+# retrigger them.
 console_e2e:
   - *shared
   - 'console/**'
   - 'bridge/**'
   - 'docs/openapi.json'
   - 'docs/bridge-openapi.json'
+  - 'docs/pcm-frame-vectors.json'
+  - 'tools/src/streamline_tools/pcm_source.py'
 
 tools:
   - *shared
   - 'tools/**'
+  # streamline-pcm-source's tests read the firmware's conformance frames.
+  - 'docs/pcm-frame-vectors.json'
 
 ha-addon:
   - *shared

@@ -8,12 +8,12 @@ import {
   restart,
 } from '../../../generated/api';
 import { replacePath, usePathname } from '../../../shared/navigation';
+import { WriteConfirm } from '../../../shared/WriteConfirm';
 import { withRestart } from '../../state/access';
 import { resetToSetup } from '../../state/handoff';
 import { updateLock } from '../../state/ota';
 import { sectionOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
-import { WriteConfirm } from '../WriteConfirm';
 import { DiagnosticsSection } from './DiagnosticsSection';
 import { UpdatesSection } from './UpdatesSection';
 

@@ -34,7 +34,7 @@ The official preset is the Ai-Thinker ESP32 Audio Kit v2.2 with its ES8388 codec
 
 ### 1. Flash the board
 
-Open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/) in Chrome or Edge on a computer, or Firefox 151 or newer, connect the board over USB, and click **Connect & install**. From a terminal, download `streamline-X.Y.Z-full.bin` from [Releases](https://github.com/lutyjj/esp32-streamline/releases) and flash it with [esptool](https://docs.espressif.com/projects/esptool/):
+Open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/) in Chrome, Edge, or Firefox 151 or newer on a computer, connect the board over USB, and click **Connect & install**. From a terminal, download `streamline-X.Y.Z-full.bin` from [Releases](https://github.com/lutyjj/esp32-streamline/releases) and flash it with [esptool](https://docs.espressif.com/projects/esptool/):
 
 ```sh
 esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 streamline-X.Y.Z-full.bin

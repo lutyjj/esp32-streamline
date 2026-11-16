@@ -66,7 +66,7 @@ function Install() {
         <Facts>
           <Fact name="Board">ESP32 audio board, 4 MB of flash, chip revision 3.0 or later</Fact>
           <Fact name="Cable">USB, one that carries data</Fact>
-          <Fact name="Browser">Chrome or Edge on a computer, or Firefox 151 or later</Fact>
+          <Fact name="Browser">Chrome, Edge, or Firefox 151 or later, on a computer</Fact>
           <Fact name="Serial driver">CP210x or CH340, if no port appears</Fact>
         </Facts>
         <esp-web-install-button manifest="./manifest.json" className="block">
@@ -117,8 +117,8 @@ function SetUp() {
           <li>
             In the installer, choose Next, then Logs &amp; Console, then Reset Device. As the board
             starts, it prints its setup network,{' '}
-            <span className="font-mono">esp32-streamline-…</span>, and its password. A board that
-            came with a label carries both on it.
+            <span className="font-mono">esp32-streamline-…</span>, and its new password: the install
+            replaces any password on the board's label.
           </li>
           <li>
             Join that network from a phone or computer. Its console opens by itself, or at{' '}

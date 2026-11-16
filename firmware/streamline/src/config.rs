@@ -36,6 +36,24 @@ pub fn is_canonical_admin_key(secret: &str) -> bool {
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+/// The bridge host pattern the contract states: a name or address without a
+/// scheme, port, path, or inner spaces. The device trims the edges.
+pub const TARGET_HOST_PATTERN: &str = r"^\s*[^:/\s]*\s*$";
+/// A Wi-Fi network name without NUL; its byte limit rides `maxLength` as the
+/// character limit it implies.
+pub const WIFI_SSID_PATTERN: &str = r"^[^\u0000]*$";
+/// A WPA2 password as the contract states it: empty, 8 to 63 ASCII characters
+/// other than NUL, 64 hexadecimal digits, or any value with a character beyond
+/// ASCII, which the device measures in bytes.
+pub const WIFI_PASSWORD_PATTERN: &str =
+    r"^(?:[\u0001-\u007F]{8,63}|[0-9A-Fa-f]{64}|[^\u0000]*[^\u0000-\u007F][^\u0000]*)?$";
+
+/// Whether a host character is a space as JSON Schema patterns read `\s`,
+/// which adds the byte-order mark to Unicode's white space.
+fn is_host_space(character: char) -> bool {
+    character.is_whitespace() || character == '\u{FEFF}'
+}
+
 /// Whether a WPA2 password is one the station can use: an 8 to 63 byte
 /// passphrase or the 64-digit hexadecimal key itself, without NUL.
 pub fn is_valid_wifi_password(password: &str) -> bool {
@@ -143,7 +161,7 @@ impl<'a> NetworkSettings<'a> {
     pub fn validate_target(self) -> Result<Self, ConfigError> {
         if self
             .target_host
-            .contains(|character: char| matches!(character, ':' | '/') || character.is_whitespace())
+            .contains(|character: char| matches!(character, ':' | '/') || is_host_space(character))
         {
             return Err(ConfigError::MalformedTargetHost);
         }
@@ -262,7 +280,7 @@ pub struct RuntimeConfig {
 impl RuntimeConfig {
     /// Apply a bridge endpoint edit and invalidate verification tied to another endpoint.
     pub fn update_target(&mut self, host: Option<String>, port: Option<u16>) {
-        let host = host.map(|value| value.trim().to_owned());
+        let host = host.map(|value| value.trim_matches(is_host_space).to_owned());
         if host
             .as_ref()
             .is_some_and(|value| value != &self.target_host)
@@ -517,6 +535,80 @@ mod tests {
             analog_passthrough_enabled: false,
             led_roles: BTreeMap::new(),
             button_actions: BTreeMap::new(),
+        }
+    }
+
+    /// The contract's Wi-Fi and host patterns admit every value the device
+    /// accepts, and agree with it on every ASCII value. Hosts go through the
+    /// edit a write applies, which trims their edges.
+    #[test]
+    fn contract_patterns_never_refuse_what_the_device_accepts() {
+        use super::{
+            is_valid_wifi_password, MAX_SSID_BYTES, TARGET_HOST_PATTERN, WIFI_PASSWORD_PATTERN,
+            WIFI_SSID_PATTERN,
+        };
+
+        let pattern = |source| regex::Regex::new(source).expect("valid pattern");
+        let password = pattern(WIFI_PASSWORD_PATTERN);
+        let long = "x".repeat(63);
+        let too_long = "x".repeat(64);
+        let hex = "aB3".repeat(21) + "f";
+        let wide = "é".repeat(31);
+        let too_wide = "é".repeat(32);
+        for candidate in [
+            "seven77",
+            "eight888",
+            &long,
+            &too_long,
+            &hex,
+            "pässwö",
+            &wide,
+            &too_wide,
+            "nul\0inside",
+        ] {
+            let accepted = is_valid_wifi_password(candidate);
+            let matched = password.is_match(candidate);
+            if candidate.is_ascii() {
+                assert_eq!(matched, accepted, "{candidate:?}");
+            } else {
+                assert!(matched || !accepted, "{candidate:?}");
+            }
+        }
+        assert!(
+            password.is_match(""),
+            "an empty password keeps the stored one"
+        );
+
+        let ssid = pattern(WIFI_SSID_PATTERN);
+        for candidate in ["home", "café 5G", &"s".repeat(MAX_SSID_BYTES), "a\0b"] {
+            let settings = NetworkSettings {
+                ssid: candidate,
+                target_host: "",
+                target_port: 1,
+            };
+            let fits = ssid.is_match(candidate) && candidate.chars().count() <= MAX_SSID_BYTES;
+            assert!(fits || settings.validate().is_err(), "{candidate:?}");
+        }
+
+        // The Rust engine reads `\s` as Unicode white space, which leaves out
+        // the byte-order mark that JSON Schema's `\s` includes, so the probe
+        // adds it.
+        let host = pattern(&TARGET_HOST_PATTERN.replace(r"\s", r"[\s\u{FEFF}]"));
+        for candidate in [
+            "bridge.local",
+            "192.0.2.20",
+            "",
+            "  bridge.local  ",
+            "my bridge",
+            "a\u{FEFF}b",
+            "\u{FEFF}bridge.local",
+            "host:39000",
+            "http://x",
+        ] {
+            let mut config = sample_runtime_config();
+            config.update_target(Some(candidate.to_owned()), None);
+            let accepted = config.network().validate_target().is_ok();
+            assert_eq!(host.is_match(candidate), accepted, "{candidate:?}");
         }
     }
 

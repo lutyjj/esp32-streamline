@@ -55,7 +55,7 @@ pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
                 let form: api::AudioProfilesSettingsRequest = form(&mut request)?;
                 let mut catalog: AudioProfileCatalog = serde_json::from_str(&form.catalog)
                     .map_err(|error| MutationError::InvalidField {
-                        field: "catalog",
+                        field: crate::mutation::field::CATALOG,
                         message: format!("This is not a profile catalog: {error}."),
                     })?;
                 catalog.active_profile_id = None;
@@ -82,7 +82,7 @@ pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
             let mut catalog = state.lock_audio_profiles().clone();
             let audio = catalog.activate(Some(&form.profile_id)).map_err(|error| {
                 MutationError::InvalidField {
-                    field: "profile_id",
+                    field: crate::mutation::field::PROFILE_ID,
                     message: error.to_string(),
                 }
             })?;

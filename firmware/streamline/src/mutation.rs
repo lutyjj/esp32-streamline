@@ -15,6 +15,48 @@ use crate::{
     transport::{TransportError, VerifyPendingError},
 };
 
+/// The request fields a refusal can name, as the write requests name them.
+/// The contract generation checks that each belongs to some request.
+pub mod field {
+    pub const SSID: &str = "ssid";
+    pub const PASSWORD: &str = "password";
+    pub const TARGET_HOST: &str = "target_host";
+    pub const TARGET_PORT: &str = "target_port";
+    pub const INPUT_LINE: &str = "input_line";
+    pub const INPUT_GAIN: &str = "input_gain";
+    pub const ADC_ATTENUATION_DB: &str = "adc_attenuation_db";
+    pub const ENABLED: &str = "enabled";
+    pub const ID: &str = "id";
+    pub const ADMIN_KEY: &str = "admin_key";
+    pub const NAME: &str = "name";
+    pub const BOARD_ID: &str = "board_id";
+    pub const DESCRIPTOR: &str = "descriptor";
+    pub const CATALOG: &str = "catalog";
+    pub const PROFILE_ID: &str = "profile_id";
+    pub const URL: &str = "url";
+    pub const SHA256: &str = "sha256";
+
+    pub const ALL: &[&str] = &[
+        SSID,
+        PASSWORD,
+        TARGET_HOST,
+        TARGET_PORT,
+        INPUT_LINE,
+        INPUT_GAIN,
+        ADC_ATTENUATION_DB,
+        ENABLED,
+        ID,
+        ADMIN_KEY,
+        NAME,
+        BOARD_ID,
+        DESCRIPTOR,
+        CATALOG,
+        PROFILE_ID,
+        URL,
+        SHA256,
+    ];
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MutationError {
     /// Well-formed request, unacceptable values (HTTP 400).
@@ -98,19 +140,19 @@ impl From<ConfigError> for MutationError {
     fn from(error: ConfigError) -> Self {
         let message = error.to_string();
         let field = match error {
-            ConfigError::MissingSsid | ConfigError::MalformedSsid => "ssid",
+            ConfigError::MissingSsid | ConfigError::MalformedSsid => field::SSID,
             ConfigError::MalformedWifiPassword
             | ConfigError::MissingWifiPassword
-            | ConfigError::PasswordForOpenNetwork => "password",
-            ConfigError::MalformedTargetHost => "target_host",
-            ConfigError::InvalidTargetPort => "target_port",
-            ConfigError::InvalidInputLine => "input_line",
-            ConfigError::InvalidInputGain => "input_gain",
-            ConfigError::InvalidAdcAttenuation => "adc_attenuation_db",
-            ConfigError::UnsupportedAnalogPassthrough => "enabled",
-            ConfigError::UnknownLed | ConfigError::UnknownButton => "id",
-            ConfigError::MalformedAdminKey => "admin_key",
-            ConfigError::DeviceNameTooLong => "name",
+            | ConfigError::PasswordForOpenNetwork => field::PASSWORD,
+            ConfigError::MalformedTargetHost => field::TARGET_HOST,
+            ConfigError::InvalidTargetPort => field::TARGET_PORT,
+            ConfigError::InvalidInputLine => field::INPUT_LINE,
+            ConfigError::InvalidInputGain => field::INPUT_GAIN,
+            ConfigError::InvalidAdcAttenuation => field::ADC_ATTENUATION_DB,
+            ConfigError::UnsupportedAnalogPassthrough => field::ENABLED,
+            ConfigError::UnknownLed | ConfigError::UnknownButton => field::ID,
+            ConfigError::MalformedAdminKey => field::ADMIN_KEY,
+            ConfigError::DeviceNameTooLong => field::NAME,
             ConfigError::InvalidTransport(_) => return Self::InvalidInput(message),
         };
         Self::InvalidField { field, message }
@@ -121,10 +163,10 @@ impl From<BoardUpdateError> for MutationError {
     fn from(error: BoardUpdateError) -> Self {
         let message = error.to_string();
         let field = match error {
-            BoardUpdateError::UnknownBoard(_) => "board_id",
+            BoardUpdateError::UnknownBoard(_) => field::BOARD_ID,
             BoardUpdateError::DescriptorTooLarge { .. }
             | BoardUpdateError::InvalidDescriptor(_)
-            | BoardUpdateError::BuiltInId(_) => "descriptor",
+            | BoardUpdateError::BuiltInId(_) => field::DESCRIPTOR,
             BoardUpdateError::ConflictingSelection | BoardUpdateError::MissingSelection => {
                 return Self::InvalidInput(message)
             }

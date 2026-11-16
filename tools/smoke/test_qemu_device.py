@@ -302,15 +302,17 @@ def test_an_open_network_commissions_only_by_explicit_choice_and_persists(
     setup_boot = boot_device(until=("setup console started", CONSOLE_READY))
     _expect_api_up(setup_boot)
     # Without the choice a blank password keeps a stored one, which a fresh device lacks.
-    for fields, error in [
-        ({"ssid": "qemu-open-lab", "admin_key": ADMIN_KEY}, b"MissingWifiPassword"),
+    for fields, reason in [
+        ({"ssid": "qemu-open-lab", "admin_key": ADMIN_KEY}, "needs its password"),
         (
             {"ssid": "qemu-open-lab", "password": WIFI_PASSWORD, "open_network": "true", "admin_key": ADMIN_KEY},
-            b"PasswordForOpenNetwork",
+            "has no password",
         ),
     ]:
         code, body = setup_boot.api.post_form("/api/settings/wifi", fields)
-        assert code == 400 and error in body, f"{sorted(fields)} was answered with HTTP {code}: {body[:200]!r}"
+        assert code == 400, f"{sorted(fields)} was answered with HTTP {code}: {body[:200]!r}"
+        refusal = json.loads(body)
+        assert refusal["field"] == "password" and reason in refusal["error"], refusal
     code, body = setup_boot.api.post_form(
         "/api/settings/wifi",
         {"ssid": "qemu-open-lab", "open_network": "true", "admin_key": ADMIN_KEY},
@@ -330,7 +332,7 @@ def test_an_open_network_commissions_only_by_explicit_choice_and_persists(
     assert (settings["ssid"], settings["open_network"]) == ("qemu-open-lab", True)
     # Leaving an open network for a protected one needs its password.
     code, body = provisioned.api.post_form("/api/settings/wifi", {"ssid": "qemu-smoke-lab"})
-    assert code == 400 and b"MissingWifiPassword" in body, (
+    assert code == 400 and json.loads(body)["field"] == "password", (
         f"a protected network without a password was answered with HTTP {code}: {body[:200]!r}"
     )
 

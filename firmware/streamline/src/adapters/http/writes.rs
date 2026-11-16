@@ -91,7 +91,10 @@ pub(super) fn write_configuration_and_profiles(
     catalog: AudioProfileCatalog,
 ) -> Result<(), MutationError> {
     let board = state.board.as_ref();
-    catalog.validate(board).map_err(invalid_catalog)?;
+    // The catalog here is the stored one, so its refusal names no request field.
+    catalog
+        .validate(board)
+        .map_err(|error| MutationError::InvalidInput(error.to_string()))?;
     match state.mode.config_write() {
         ConfigWrite::Persist => {
             config.validate(board).map_err(MutationError::from)?;
@@ -116,7 +119,7 @@ pub(super) fn write_configuration_and_profiles(
 /// A catalog the device refuses, named as the profiles write names it.
 pub(super) fn invalid_catalog(error: AudioProfileError) -> MutationError {
     MutationError::InvalidField {
-        field: "catalog",
+        field: crate::mutation::field::CATALOG,
         message: error.to_string(),
     }
 }

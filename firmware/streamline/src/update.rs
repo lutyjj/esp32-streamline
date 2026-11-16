@@ -195,12 +195,12 @@ pub fn custom_image_from_form(
 
 fn custom_image(url: &str, sha256: &str) -> Result<CustomImage, MutationError> {
     validate_custom_image_url(url).map_err(|message| MutationError::InvalidField {
-        field: "url",
+        field: crate::mutation::field::URL,
         message,
     })?;
     if !is_sha256_hex(sha256) {
         return Err(MutationError::InvalidField {
-            field: "sha256",
+            field: crate::mutation::field::SHA256,
             message: "sha256 must be 64 hex characters".to_owned(),
         });
     }

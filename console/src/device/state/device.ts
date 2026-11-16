@@ -22,6 +22,7 @@ import {
   nextConnection,
   settledRestart,
   sightingOf,
+  untakenJoin,
 } from './connection';
 
 export const POLL_MS = 1500;
@@ -71,6 +72,9 @@ export interface SettledRestart {
 
 /** The latest restart the console saw finish; each one is a new object. */
 export const restartSettled = signal<SettledRestart | null>(null);
+
+/** A network the device was asked to join and never did, while its news waits to be told. */
+export const joinUntaken = signal<{ ssid: string; still: string } | null>(null);
 /** Last /api/settings read; forms copy it into local edit state. */
 export const configResource = resource<SettingsResponse>('device settings', getSettings);
 export const config = configResource.data;
@@ -164,6 +168,10 @@ export function report(event: ConnectionEvent): void {
     };
     // The restart applied settings; read them as they are now.
     void readDeviceSettings();
+  }
+  const ssid = untakenJoin(previous, next);
+  if (ssid !== null && next.phase === 'live') {
+    joinUntaken.value = { ssid, still: next.seen.status.wifi.ssid };
   }
 }
 

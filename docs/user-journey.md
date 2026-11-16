@@ -70,6 +70,9 @@ the owner confirms the key is saved outside this console. Device → Wi-Fi asks
 for the key before it saves, so there the owner already holds it.
 
 A transport disconnect during joining is an unconfirmed handoff, not success.
+Saving Wi-Fi always restarts the device, so when the same start still answers
+fifteen seconds later, the save never reached it: the console returns and says
+the device stayed on its network.
 Reconnect to home Wi-Fi, open the advertised device address, and enter the saved
 key there. Reaching that console verifies the join. Should the join fail, the
 device opens its setup network again, and its console names the cause.

@@ -13,6 +13,13 @@ export const OVERDUE_MS = 60_000;
 /** What a restart into new firmware is called on every surface. */
 export const UPDATE_OPERATION = 'the firmware update';
 
+/**
+ * How long the old boot may go on answering after a Wi-Fi save whose answer
+ * was lost. Saving Wi-Fi always restarts the device, so past this the save
+ * never reached it.
+ */
+export const JOIN_GRACE_MS = 15_000;
+
 /** Update phases in which the device is writing or about to boot a new image. */
 const INSTALLING: readonly string[] = ['downloading', 'verifying', 'installed'];
 
@@ -83,7 +90,11 @@ export function nextConnection(connection: Connection, event: ConnectionEvent): 
         connection.phase === 'waiting' ||
         connection.phase === 'overdue' ||
         connection.phase === 'handoff';
-      if (!awaitsRestart || restartedSince(seen, event.status, event.at)) {
+      if (
+        !awaitsRestart ||
+        restartedSince(seen, event.status, event.at) ||
+        joinNotTaken(connection, event.at)
+      ) {
         // A device that installed an update restarts into it next.
         if (event.status.ota.phase === 'installed' && !awaitsRestart) {
           return { phase: 'waiting', operation: UPDATE_OPERATION, since: event.at, seen: sighting };
@@ -111,6 +122,27 @@ export function nextConnection(connection: Connection, event: ConnectionEvent): 
       }
       return overdueBy(connection, event.at);
   }
+}
+
+/** An unconfirmed join the same boot still answers well after: the save never reached it. */
+function joinNotTaken(connection: Connection, at: number): boolean {
+  return (
+    connection.phase === 'handoff' &&
+    connection.handoff.kind === 'join' &&
+    !connection.handoff.confirmed &&
+    at - connection.since >= JOIN_GRACE_MS
+  );
+}
+
+/** The network a transition shows the device never joined, or null. */
+export function untakenJoin(previous: Connection, next: Connection): string | null {
+  if (previous.phase !== 'handoff' || previous.handoff.kind !== 'join' || next.phase !== 'live') {
+    return null;
+  }
+  return joinNotTaken(previous, next.seen.at) &&
+    !restartedSince(previous.seen, next.seen.status, next.seen.at)
+    ? previous.handoff.ssid
+    : null;
 }
 
 function overdueBy(connection: Connection, at: number): Connection {

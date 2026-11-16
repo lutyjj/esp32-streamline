@@ -4,11 +4,13 @@ import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
   type Connection,
   type ConnectionEvent,
+  JOIN_GRACE_MS,
   nextConnection,
   OVERDUE_MS,
   restartedSince,
   settledRestart,
   UPDATE_OPERATION,
+  untakenJoin,
 } from '../../src/device/state/connection';
 
 /** A device that has been up for `uptime` seconds. */
@@ -148,5 +150,32 @@ describe('restartedSince', () => {
     expect(restartedSince(seen, up(100), 1000)).toBe(false);
     expect(restartedSince(seen, up(99), 1000)).toBe(false);
     expect(restartedSince(seen, up(98), 1000)).toBe(true);
+  });
+});
+
+describe('a Wi-Fi change whose answer was lost', () => {
+  const join = (at: number): ConnectionEvent => ({
+    type: 'handoff',
+    handoff: { kind: 'join', ssid: 'home', confirmed: false },
+    at,
+  });
+
+  it('waits out the old boot, then returns when it still answers: the save never reached it', () => {
+    const before = run([answered(up(100), 0), join(1_000)]);
+    const soon = run([answered(up(105), 5_000)], before);
+    expect(soon.phase).toBe('handoff');
+    const after = run(
+      [answered(up(100 + 1 + JOIN_GRACE_MS / 1000), 1_000 + JOIN_GRACE_MS)],
+      before,
+    );
+    expect(after.phase).toBe('live');
+    expect(untakenJoin(before, after)).toBe('home');
+  });
+
+  it('ends at the new boot as before, which did join', () => {
+    const before = run([answered(up(100), 0), join(1_000)]);
+    const after = run([answered(up(3), 30_000)], before);
+    expect(after.phase).toBe('live');
+    expect(untakenJoin(before, after)).toBeNull();
   });
 });

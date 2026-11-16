@@ -4,10 +4,10 @@ import {
   Card,
   CardBody,
   CardHead,
-  EmptyState,
   Fact,
   Facts,
   Form,
+  Nothing,
   SettingRow,
   Status,
   TextField,
@@ -115,14 +115,11 @@ function Credentials({ known, readOnly }: { known: BridgeStatus; readOnly: boole
         description="Each lets one device send encrypted audio, and names its source while it does."
       />
       {ids.length === 0 ? (
-        <EmptyState
-          title="No credential enrolled"
-          description={
-            readOnly
-              ? 'A device makes its credential in its own console, under Bridge, Encryption.'
-              : 'A device makes its credential in its own console, under Bridge, Encryption, and shows it once to enroll here.'
-          }
-        />
+        <Nothing>
+          {readOnly
+            ? 'No credential enrolled. A device makes its credential in its own console, under Bridge, Encryption.'
+            : 'No credential enrolled. A device makes its credential in its own console, under Bridge, Encryption, and shows it once to enroll here.'}
+        </Nothing>
       ) : (
         // biome-ignore lint/a11y/useSemanticElements: SettingRow is a div with the listitem role, which a <ul> may not hold.
         <div role="list" aria-label="Device credentials">

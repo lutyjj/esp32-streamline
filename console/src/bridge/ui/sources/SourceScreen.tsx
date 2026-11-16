@@ -48,16 +48,14 @@ export function SourceScreen({ id }: { id: string }) {
         <ScreenTop title={id} trail={TRAIL} />
         <Content>
           {status.data ? (
-            <Card>
-              <EmptyState
-                title="This source is not on the bridge now"
-                description="A source appears while its device streams here, and the bridge forgets one that stays away for a while."
-              >
-                <Link className={buttonClass()} href="/sources">
-                  All sources
-                </Link>
-              </EmptyState>
-            </Card>
+            <EmptyState
+              title="This source is not on the bridge now"
+              description="A source appears while its device streams here, and the bridge forgets one that stays away for a while."
+            >
+              <Link className={buttonClass()} href="/sources">
+                All sources
+              </Link>
+            </EmptyState>
           ) : (
             <ReadNotice read={status} name="bridge status" />
           )}

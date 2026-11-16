@@ -202,16 +202,14 @@ function NoBridge() {
   const [install, setInstall] = useState<Install | undefined>(undefined);
   return (
     <>
-      <Card>
-        <EmptyState
-          title="No bridge yet"
-          description="Capture and levels work without one. A bridge turns the input into a stream your players can open."
-        >
-          <Link href="/bridge/target" className={buttonClass('primary')}>
-            Connect a bridge
-          </Link>
-        </EmptyState>
-      </Card>
+      <EmptyState
+        title="No bridge yet"
+        description="Capture and levels work without one. A bridge turns the input into a stream your players can open."
+      >
+        <Link href="/bridge/target" className={buttonClass('primary')}>
+          Connect a bridge
+        </Link>
+      </EmptyState>
       <Card>
         <CardHead title="Install a bridge" description="Where the bridge will run." />
         <CardBody>

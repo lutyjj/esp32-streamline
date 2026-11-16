@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/preact-query';
-import { Button, Card, CardHead, Content, EmptyState } from 'linen';
+import { Button, Content, EmptyState } from 'linen';
 import { useState } from 'react';
 import type { BridgeStatus, RecordingCapabilities, RecordingList } from '../../../generated/bridge';
 import { requestCredential } from '../../../shared/credentialGate';
@@ -30,29 +30,22 @@ export function RecordingsScreen() {
         {!capabilities.data ? (
           <ReadNotice read={capabilities} name="recording settings" />
         ) : !enabled ? (
-          <Card>
-            <EmptyState
-              title="Recording is off"
-              description={`The bridge records a source as a lossless WAV file once its deployment gives it storage. Set ${whereToSet('recordings')}, then restart the bridge.`}
-            />
-          </Card>
+          <EmptyState
+            title="Recording is off"
+            description={`The bridge records a source as a lossless WAV file once its deployment gives it storage. Set ${whereToSet('recordings')}, then restart the bridge.`}
+          />
         ) : readOnly ? (
-          <Card>
-            <EmptyState
-              title="Recordings need the bridge API token"
-              description={`Set ${whereToSet('token')}, then restart the bridge.`}
-            />
-          </Card>
+          <EmptyState
+            title="Recordings need the bridge API token"
+            description={`Set ${whereToSet('token')}, then restart the bridge.`}
+          />
         ) : !unlocked ? (
-          <Card>
-            <CardHead title="Recordings" />
-            <EmptyState
-              title="Seeing recordings needs the bridge API token"
-              description="The bridge lists sessions and files only to whoever holds it."
-            >
-              <Button onClick={() => void requestCredential()}>Unlock to see recordings</Button>
-            </EmptyState>
-          </Card>
+          <EmptyState
+            title="Seeing recordings needs the bridge API token"
+            description="The bridge lists sessions and files only to whoever holds it."
+          >
+            <Button onClick={() => void requestCredential()}>Unlock to see recordings</Button>
+          </EmptyState>
         ) : list.data ? (
           <Recordings list={list.data} capabilities={capabilities.data} known={status.data} />
         ) : (

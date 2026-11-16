@@ -7,7 +7,6 @@ import {
   CardHead,
   CellSelect,
   Content,
-  EmptyState,
   Notice,
   SettingRow,
   SettingToggle,
@@ -207,12 +206,11 @@ function StreamCard({ activity }: { activity: AudioActivity }) {
   if (activity === 'no-bridge') {
     return (
       <Card>
-        <CardHead title="Stream" />
-        <EmptyState title="No bridge yet" description={ACTIVITY['no-bridge'].meaning}>
+        <CardHead title="Stream" description={ACTIVITY['no-bridge'].meaning}>
           <Link href="/bridge" className={buttonClass('primary')}>
             Connect a bridge
           </Link>
-        </EmptyState>
+        </CardHead>
       </Card>
     );
   }

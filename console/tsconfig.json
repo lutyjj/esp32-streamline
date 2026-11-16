@@ -6,14 +6,24 @@
     "resolveJsonModule": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "jsxImportSource": "preact",
+    "jsxImportSource": "react",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noEmit": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "types": ["vite/client"]
+    "types": ["vite/client", "node"]
   },
-  "include": ["src", "tests", "vite.config.ts", "playwright.config.ts"]
+  "include": [
+    "scripts",
+    "src/device",
+    "src/shared",
+    "tests/device",
+    "tests/shared",
+    "tests/e2e",
+    "tests/setup.ts",
+    "vite.config.ts",
+    "playwright.config.ts"
+  ]
 }

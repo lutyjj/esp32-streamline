@@ -52,13 +52,16 @@ trait it owns and implement that trait in the adapter — never call a concrete
 driver from the core. `update::install_verified` and its adapter in
 `adapters/ota.rs` are the pattern to copy.
 
-The console follows the same rule: behavior lives in `console/src/lib` and
-`console/src/state` and is tested with vitest on the host; components stay
-thin renderers over that state. A console behavior change ships with its
-test. To exercise a console without hardware, use `make console-dev-mock`
-or `make console-e2e` — the fake device in `console/src/mocks` beside a
-real bridge container — instead of a throwaway harness; a new device
-endpoint must gain its mock handler or the coverage test fails.
+The console follows the same rule: behavior lives in each console's `lib`
+and `state` modules (`console/src/device/`, with what the consoles share in
+`console/src/shared/`) and is tested with vitest on the host; components
+stay thin renderers over that state. A console behavior change ships with
+its test. To exercise a console without hardware, use `make console-dev-mock`
+or `make console-e2e`, which run the fake device in `console/src/device/mocks`
+beside a real bridge container, instead of a throwaway harness. Handlers
+Orval generates from the contract answer every device operation the fake
+keeps no state for, so a new endpoint whose answer depends on state needs a
+handler in the fake.
 
 ## Write meaningful unit tests
 
@@ -179,7 +182,7 @@ on a device, because nothing in QEMU reproduces a megabyte of real TLS records
 landing on a fragmented heap.
 
 Install a hardware proof over the custom OTA path: the console's developer
-install under System → Firmware, or `POST /api/ota/update` with `url` and
+install under Maintenance → Updates, or `POST /api/ota/update` with `url` and
 `sha256`. Serial flashing is for repartitioning, bootloader work, and
 recovery. Your device's address and admin key live in the gitignored root
 `.env` (see `.env.example`).

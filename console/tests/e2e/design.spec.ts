@@ -1,14 +1,43 @@
 import { expect, test } from '@playwright/test';
 
+const DEVICE_SCREENS = [
+  '/#/audio',
+  '/#/bridge',
+  '/#/device/wifi',
+  '/#/device/hardware',
+  '/#/device/access',
+  '/#/maintenance/updates',
+  '/#/maintenance/diagnostics',
+  '/#/maintenance/api',
+  '/#/maintenance/reset',
+];
+
 for (const width of [390, 800, 1280]) {
   for (const theme of ['light', 'dark'] as const) {
-    test(`console workspaces at ${width}px in ${theme}`, async ({ page }, info) => {
+    test(`device console screens at ${width}px in ${theme}`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height: 960 });
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+      for (const path of DEVICE_SCREENS) {
+        await page.goto(path);
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: /^Settings (locked|unlocked)/ }),
+        ).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width,
+        );
+        await page.screenshot({
+          path: info.outputPath(`device${path.replaceAll(/[^a-z]/g, '-')}.png`),
+          fullPage: true,
+        });
+      }
+    });
+
+    test(`bridge console workspaces at ${width}px in ${theme}`, async ({ page }, info) => {
       test.setTimeout(120_000);
       await page.setViewportSize({ width, height: 960 });
       await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
       for (const path of [
-        '/#/audio',
-        '/#/settings',
         '/bridge.html#/sources',
         '/bridge.html#/recordings',
         '/bridge.html#/settings',
@@ -19,17 +48,12 @@ for (const width of [390, 800, 1280]) {
         const lock = page.getByRole('button', { name: /^Locked/ });
         if (await lock.isVisible()) {
           await lock.click();
-          const isBridge = path.includes('bridge');
           await page
-            .getByPlaceholder(isBridge ? 'bridge API token' : 'admin key')
-            .fill(isBridge ? (process.env.STREAMLINE_API_TOKEN ?? '') : 'a'.repeat(48));
+            .getByPlaceholder('bridge API token')
+            .fill(process.env.STREAMLINE_API_TOKEN ?? '');
           await page.getByRole('button', { name: 'Unlock', exact: true }).click();
         }
         await expect(page.getByRole('button', { name: /^Unlocked/ })).toBeVisible();
-        if (path.endsWith('audio')) {
-          await page.getByRole('button', { name: 'Adjust input', exact: true }).click();
-          await page.getByRole('button', { name: 'Manage profiles', exact: true }).click();
-        }
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
           width,
         );
@@ -56,9 +80,7 @@ for (const width of [390, 800, 1280]) {
             await page.evaluate(() => document.documentElement.scrollWidth),
           ).toBeLessThanOrEqual(width);
           await page.screenshot({
-            path: info.outputPath(
-              `${path.includes('bridge') ? 'bridge' : 'device'}-${destination.split('/').at(-1)}-expanded.png`,
-            ),
+            path: info.outputPath(`bridge-${destination.split('/').at(-1)}-expanded.png`),
             fullPage: true,
           });
         }

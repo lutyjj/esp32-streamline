@@ -7,6 +7,7 @@ import { sectionFromHash, useRouteHash } from '../src/state/route';
 it('keeps a draft while switching sections through addressable settings tasks', async () => {
   window.location.hash = '#/settings/name';
   const host = document.createElement('div');
+  // biome-ignore lint/correctness/noComponentHookFactories: the harness is this test's routed page.
   function RoutedSettings() {
     const hash = useRouteHash();
     return (

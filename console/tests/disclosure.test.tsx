@@ -29,6 +29,7 @@ describe('Disclosure', () => {
 
   it('follows the parent in controlled mode and reports toggles', () => {
     const opens: boolean[] = [];
+    // biome-ignore lint/correctness/noComponentHookFactories: the harness records this test's toggles.
     function Harness() {
       const [open, setOpen] = useState(false);
       return (

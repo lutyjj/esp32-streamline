@@ -3,7 +3,7 @@ import { Disclosure } from '../components/Disclosure';
 import { Kv } from '../components/Kv';
 import { MeterRow } from '../components/Meter';
 import type { SourceSnapshot } from '../generated/bridge';
-import { dbfs } from '../lib/format';
+import { dbfs } from '../shared/format';
 import { formatBytes, formatDuration } from './format';
 import { bridgeBase } from './http';
 import { playbackUrl } from './playback';

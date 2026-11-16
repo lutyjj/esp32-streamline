@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
-import { copyText } from '../lib/custody';
-import { errorMessage } from '../lib/errors';
+import { copyText } from '../shared/custody';
+import { errorMessage } from '../shared/errors';
 import { toast } from '../state/toasts';
 import { Button, type ButtonKind } from './Button';
 

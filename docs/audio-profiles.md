@@ -42,10 +42,10 @@ imports, out-of-range settings, and names longer than 32 characters.
 The Rust types in `firmware/streamline/src/profiles.rs` own this contract.
 NVS and HTTP JSON are storage and transport representations of those validated
 types. The model declares profile count, id pattern, id length, and name length
-as schema constraints, so they ride `docs/openapi.json`
-and the console reads them from the device-served contract. Import validation
-checks those limits, the catalog schema version the device reports, and the live
-board capabilities for immediate feedback; the device validates every write.
+as schema constraints in `docs/openapi.json`, and the console generates its id
+rule from them when it builds. The device validates every catalog it receives,
+an imported file included, against those limits, the schema version, and the
+board's capabilities, and its refusal names `catalog` with the reason.
 
 Profiles and applied audio settings share one failure-atomic configuration
 snapshot. The [storage contract](architecture.md#state-ownership) bounds the

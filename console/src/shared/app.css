@@ -1,0 +1,10 @@
+/* What every console's stylesheet starts from. Each console's own entry
+ * adds its sources, so one console's classes never reach another's page. */
+@import "tailwindcss" source(none);
+@import "linen/linen.css";
+@source ".";
+
+/* The icon's disc: the paper and the ink take its hue. */
+:root {
+  --hue: 285;
+}

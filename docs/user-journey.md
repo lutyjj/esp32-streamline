@@ -11,6 +11,8 @@ owns installation commands.
 - Failed status reads, including reads unanswered after five seconds, replace
   live indicators with an unavailable state.
   Last-known configuration cannot establish current audio delivery.
+- Any other request the device leaves unanswered for ten seconds fails, and
+  the screen that sent it says so. Nothing waits on a silent device.
 - Every wait names its operation and completion evidence. A timer never proves
   a network join, successful reboot, or audible playback. A restart still
   offline after a minute reads as overdue on every surface that narrated it.
@@ -18,11 +20,12 @@ owns installation commands.
   check runs, and says so beside it.
 - Failures explain the next action. Guided tasks offer cancellation or recovery.
 - Generated admin and audio keys have deliberate one-time reveals and copy actions.
-- Locked settings remain readable and offer contextual unlocking. Both consoles
-  use one credential-dialog pattern. Device admin keys and bridge API tokens are
+- Locked settings remain readable. A change that needs the device's admin key
+  asks for it when it is made and then completes; both consoles use one
+  credential-dialog pattern. Device admin keys and bridge API tokens are
   separate. [Security](security.md) defines protected reads and writes.
-- Visiting another workspace or settings category preserves edited fields for
-  the page session. Reloading is not draft persistence.
+- Leaving a screen that holds unsaved changes, by a link, Back or a reload,
+  asks first and names what is lost. Only saving keeps a change.
 - Switches represent applied boolean settings. Encryption uses explicit task
   actions because it coordinates two systems and may interrupt audio.
 
@@ -30,16 +33,23 @@ owns installation commands.
 
 | Console | Workspace | Task |
 |---|---|---|
-| Device | Audio | Check the input and switch saved profiles; open tuning when needed |
-| Device | Settings | Connect a player or Wi-Fi, then manage security, hardware, and maintenance |
+| Device | Audio | Check the input, what the audio is doing, and saved profiles; open tuning when needed |
+| Device | Bridge | Connect a bridge and follow delivery to it; set up encrypted audio |
+| Device | Device | Wi-Fi, the name and hardware, the admin key, and what this browser keeps |
+| Device | Maintenance | Updates, diagnostics, the machine interface, restart and reset |
 | Bridge | Listen | Observe sources and copy playback addresses |
 | Bridge | Recordings | Capture a source and retrieve saved WAV files |
 | Bridge | Settings | Configure audio security, pair sources with Music Assistant, and understand deployment access |
 
-Settings is a task index. Each destination opens one focused task with an
-All settings link. URLs identify the task, browser Back retraces navigation,
-and visited forms retain drafts. Phones use the same destinations and bottom
-primary navigation.
+The device console's Device and Maintenance workspaces hold sections, and a
+guided task opens on a screen of its own beneath its workspace. The bridge
+console's Settings is a task index; each destination opens one focused task
+with an All settings link. URLs identify the workspace, section, or task, and
+browser Back retraces navigation. Phones use
+the same destinations and bottom primary navigation. The theme choice stands
+at the foot of the device console's navigation, and this browser keeps it. A condition of the whole
+console, such as lost contact or a restart under way, stands above every
+screen until it ends.
 
 ## 1. Install and make first contact
 
@@ -49,42 +59,49 @@ password. A pre-provisioned board can carry them on its label. Holding the first
 button at power-on opens the setup network for that boot when the password is lost.
 
 Join the setup network and open its captive console, or `http://192.168.71.1/`.
-An unconfigured device opens onboarding. Choose Wi-Fi, preserve the generated
-admin key, then submit the network change. A network without a password needs
+An unconfigured device's console is onboarding alone. Choose Wi-Fi, preserve
+the generated admin key, then join the network; Join waits until the owner
+confirms the key is kept outside the console. A network without a password needs
 the explicit open-network choice, which names what an open network exposes; a
 blank password alone does not save. Back retains entered values.
 
 The setup address and home-network hostname are different browser origins.
 Remembering a key at one address does not transfer it to another. Before joining,
-the owner confirms the key is saved outside this console. Settings → Wi-Fi keeps the same safeguard.
+the owner confirms the key is saved outside this console. Device → Wi-Fi asks
+for the key before it saves, so there the owner already holds it.
 
 A transport disconnect during joining is an unconfirmed handoff, not success.
+Saving Wi-Fi always restarts the device, so when the same start still answers
+fifteen seconds later, the save never reached it: the console returns and says
+the device stayed on its network.
 Reconnect to home Wi-Fi, open the advertised device address, and enter the saved
-key there. Reaching that console verifies the join. Closing onboarding exposes
-Settings → Wi-Fi without hiding the custody requirement.
+key there. Reaching that console verifies the join. Should the join fail, the
+device opens its setup network again, and its console names the cause.
 
 ## 2. Connect a bridge and player
 
-Capture and calibration work before a bridge exists. Audio offers Connect bridge
-when no destination is configured. The guide explains Home Assistant, Docker,
-or an existing installation, then saves the target. Settings → Connect a player also provides
-the host and port form; both use the same API.
+Capture and calibration work before a bridge exists. Audio offers Connect a
+bridge when no destination is configured, and Bridge explains installing one
+with Home Assistant, Docker, or an existing installation. Connect a bridge
+opens on a screen of its own beneath Bridge, with the search, the host and
+port, and the bridge console address. Save writes a new host or port, and the
+device restarts to send there; a console address alone stays in this browser.
 
-When the guide asks for the bridge, the device searches its network for about
-three seconds and the guide lists the bridges that answer, up to eight, by
-name and address. Settings → Connect a player runs the same search on request. Use fills the host and
-port and never saves them. A listed bridge is a hint, since any host on the
+Search the network has the device browse for about three seconds, and the
+screen lists the bridges that answer, up to eight, by name and address. Use
+fills the host and port and never saves them. A listed bridge is a hint, since any host on the
 network can advertise one, so the owner compares the address before saving.
 No answer, or a failed search, names the manual fallback: a bridge behind port
 mapping or a network that blocks multicast stays reachable by its typed
-address. The device searches only from the home network, so the setup network
-offers the form alone.
+address. The device searches only from the home network. First contact offers
+no bridge step, and a device in recovery, back on its setup network, offers
+the address form without the search.
 
 After saving, the device distinguishes restarting, quiet input, connecting, and
 sending. Only observed transmission supports Sending audio. Open the bridge
 to verify reception, then copy the playback URL from Listen into an HTTP WAV
-player. The guide accepts the owner’s bridge console address and links directly
-to Listen; it never infers an HTTP port from the audio target. An ingress-hosted
+player. Given the owner’s bridge console address, Bridge links directly to the
+device's source in Listen; it never infers an HTTP port from the audio target. An ingress-hosted
 bridge needs its player-accessible public URL configured separately. The console does not play audio. A connected player does not prove its
 speakers are audible.
 
@@ -100,18 +117,20 @@ signal.
 ## 3. Set input levels
 
 Audio places saved profiles beside the live meter. Adjust input opens a focused
-editor with its own live meter, Save, and Discard changes. Fields remain locked
-while saving. Changes apply when saved, except on an unconfigured device, where
-they wait without a restart and apply once it starts on the home network;
-the meter describes applied settings while a draft is edited. A clipping warning
-offers calibration. The guide asks the owner to pause the source and play loud
-material. Cancellation restores entry levels and reports restoration failures;
-completion applies the measured result.
+editor beneath Audio with its own live meter, Save, and Discard changes. Fields
+remain locked while saving. Changes apply when saved; the meter describes
+applied settings while a draft is edited, and a device without a running codec
+restarts to apply them. A clipping warning offers calibration, and so does the
+editor. Calibration listens to the running input, so it waits, and says why,
+while the device is off the home network or its codec did not start. The guide shows its steps and progress while it asks the owner to pause
+the source, then play loud material. Cancelling, or leaving once the guard has
+asked, restores the entry attenuation and reports a restoration failure;
+completion keeps the measured result.
 
-Profiles capture applied settings, not unsaved fields. Saving or replacing a
-profile requires saving or deliberately discarding the displayed draft first.
-Selection is separate from profile management. Importing profiles does not apply
-them, and incompatible profiles fail with a reason.
+Profiles opens beneath Audio and keeps applied settings, never unsaved fields:
+leaving the editor with changes asks first. Choosing a profile stays on Audio,
+apart from managing them. Importing a profile file replaces the saved profiles
+without applying any, and incompatible profiles fail with a reason.
 
 Boards that support analog passthrough expose an immediate switch. It names the
 physical output and fixed line-level route. Input gain, attenuation, calibration,
@@ -124,9 +143,18 @@ attempts, and transmission. Resume reverses a pause. External button or API
 changes update fields the user has not edited. The console never guesses which
 physical source a waveform represents.
 
-Settings → Device assigns advertised buttons and LEDs. Destructive button
-assignments carry a warning. A console pause is not a persistent shutdown;
-restarting resumes streaming according to firmware policy.
+Device → Hardware names the device, shows its board, and assigns advertised
+buttons and LEDs. A button or LED change applies at once. Assigning factory
+reset to a button asks first, and its row keeps saying what one press does.
+Choosing another built-in board or loading a board file restarts the device.
+A console pause is not a persistent shutdown; restarting resumes streaming
+according to firmware policy.
+
+Device → Access replaces the admin key. The console makes a new key and shows
+it once; Save waits until the owner confirms it is kept outside the console,
+and this browser stays unlocked on it. Until then the old key stays in use,
+and leaving asks first. Access also says whether this browser keeps the key
+and forgets it on request.
 
 Bridge Listen shows known sources, levels, connection state, playback addresses,
 and reception details. Recordings separates capture from the file library.
@@ -144,9 +172,12 @@ directs the owner to an unavailable unlock action.
 
 ## 5. Enable encrypted audio
 
-Settings → Encrypted audio offers Set up encryption or Resume setup. Generate
-and preserve a credential, enroll it under bridge Settings → Audio security,
-require encryption there, verify from the device, then activate and restart.
+Bridge offers Set up encryption, Resume setup, or Manage, each leading to
+Bridge → Encryption beneath it. Its guide shows three steps and resumes where
+the device's key stands: make a credential, which the device shows once; enroll
+it under bridge Settings → Audio security and require encryption there, then
+verify from the device; turn it on, which restarts the device. Given the bridge
+console's address, the guide links to Audio security.
 
 The bridge mode affects every connected device. Switching the bridge before device
 activation pauses cleartext audio. Failed verification does not activate the
@@ -155,25 +186,41 @@ credential does not restore the bridge mode. Recovery explicitly requires restor
 cleartext on the bridge when abandoning that transition.
 
 Active encryption needs no routine intervention. Advanced security contains key
-replacement, rollback, and lost-key recovery. The generated secret is unavailable
-after dismissal. [TCP transport](tcp-transport.md) owns the protocol and API sequence.
+replacement, rollback to and retirement of the previous key, lost-key recovery,
+and the switch back to cleartext, which follows the bridge's. A replacement waits
+until the previous key is retired or rolled back to. After the switch back to
+cleartext, the guide waits until a previous key is retired, which Advanced
+security offers. The generated secret is unavailable once the guide's page
+reloads, and the guide then says so and offers to discard it.
+[TCP transport](tcp-transport.md) owns the protocol and API sequence.
 
 ## 6. Maintain and recover
 
-Settings → Updates owns scheduling, checks, installation, rollback, and developer
-installs. Updates narrate interruption and recovery. A failed install does not
-claim completion. [OTA](ota.md) owns verification and rollback behavior.
+Maintenance → Updates owns scheduling, checks, installation, rollback, and developer
+installs. A check or an install shows its phase, and an install how much it has
+written. Updates narrate interruption and recovery, and the device's record names
+how the last install ended: finished, stopped before its restart, or gone back to
+the previous image. A failed install does not claim completion. Rolling back
+asks first and restarts. A page left open while the device boots another image,
+after an install or a rollback, reloads that image's console onto Maintenance →
+Updates once the device answers. An unsaved draft holds the reload until its
+owner leaves it, and a banner offers it meanwhile. [OTA](ota.md) owns
+verification and rollback behavior.
 
-Settings → Troubleshooting exposes health, the protected device log, and raw status.
-Settings → Developer API exposes the machine interface. Settings → Restart & reset
-contains restart and confirmed factory reset.
+Maintenance → Diagnostics shows startup health, memory and storage headroom, and
+raw status. The device log and the crash dump need the admin key, as their
+endpoints do: the log follows on request, and the dump downloads for analysis or
+is erased after a confirmation. Maintenance → API gives the contract and metrics
+addresses and a sample write. Maintenance → Restart & reset contains restart and
+confirmed factory reset, which ends on the handoff screen with the setup network
+and password the device named.
 
 A provisioned device that cannot reach its saved Wi-Fi serves a recovery console
 on its setup network, not first-run commissioning. A banner names the network and
 what the latest join attempt found: no such network in range, a rejected
 password, or security the saved settings cannot use, such as a network that
 added or removed its password. The device retries every minute and rejoins on its own; Change Wi-Fi
-opens Settings → Wi-Fi for a renamed network or a new password. Unlock requires
+opens Device → Wi-Fi for a renamed network or a new password. Unlock requires
 the admin key. A blank password field keeps the stored password; a saved open
 network has none to keep, so switching it to a protected one needs the password. Changing
 Wi-Fi leaves audio, target, profiles, identity, board, and update schedule intact

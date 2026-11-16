@@ -391,12 +391,14 @@ artifact at `GET /api/openapi.json`. The firmware stores this artifact and the
 embedded console gzipped and serves both with `Content-Encoding: gzip`,
 under half their raw size. Browsers and HTTP client libraries decompress transparently; raw `curl` needs `--compressed`.
 
-The console runs Orval before lint, test, and build. Orval generates types and
-operation-named Fetch functions from the contract. The hand-written
+The console runs Orval before lint, test, and build. Orval generates types,
+operation-named Fetch functions, and the Valibot request rules a form checks
+before it writes. `console/scripts/contractFacts.ts` adds which writes can
+restart the device and which reads need the admin key. The hand-written
 `deviceFetch` adapter owns admin-key injection, error normalization, and the
 replaceable transport used by tests. TypeScript rejects an unknown operation,
-form field, or response shape. The console's API tab renders the served contract,
-so integrations and the UI inspect the same document.
+form field, or response shape. The console's API section gives the address of
+the served contract, so a script reads the document the console was built from.
 
 Endpoint paths use nouns for state and verbs for actions. Every write requires
 the admin key ([security.md](security.md)). Reads are open where they return
@@ -405,6 +407,28 @@ exceptions, because they return whatever the firmware logged or held in memory
 when it crashed. Responses carry
 `rebooting: true` when a change restarts the device, so clients react to the
 response instead of assuming.
+
+## Console UI
+
+The consoles build on [linen](https://github.com/lutyjj/linen), a component
+library written for React, and run it on Preact through `preact/compat`. The
+device console is one file the firmware serves from flash, so the build
+resolves linen's motion layer to its stand-in, `linen/still`, keeping only
+the animations its stylesheet runs, and uses the system fonts rather than
+embedding a typeface. Tailwind CSS 4 generates the stylesheet from the
+console's and linen's own classes.
+
+| Choice | Reason |
+|---|---|
+| linen components on `preact/compat` | One design language for both consoles, with Preact's runtime size in the OTA image |
+| `motion` resolved to `linen/still` | Every state stays; only movement between states goes, and the bundle drops the animation library |
+| System fonts | The embedded typeface was a third of the console's gzipped size |
+| linen pinned to a release tarball with its integrity | linen is not on a registry; each console upgrade is a deliberate change to that pin |
+| Reads and writes on `@tanstack/preact-query`, beside a hand-written status poll | A read whose connection dropped is read again, and a write's change is read back, with no machinery of the console's own; the poll and the connection story it feeds stay the console's |
+| Two request lanes in the transport | The device's server keeps four sockets and closes the least recently used when another arrives; the console holds at most two, status reads in one lane and every other request in the other, so the poll never waits behind the console's own queue |
+
+`make firmware-artifacts` measures the embedded console against the OTA slot
+through `ota-size-check`.
 
 ## QEMU Image Variant
 

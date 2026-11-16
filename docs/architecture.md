@@ -160,7 +160,7 @@ no bridge can answer, and when mDNS did not start.
 
 `firmware/streamline/src/api.rs` owns device routes, methods, authentication metadata, request and response DTOs, and OpenAPI annotations. The ESP-IDF HTTP adapter registers those declarations and binds them to runtime operations.
 
-`make firmware-openapi` generates `docs/openapi.json`. Console checks generate TypeScript types from that artifact. The device serves the same artifact at `GET /api/openapi.json`.
+`make firmware-openapi` generates `docs/openapi.json`. The console generates its types, client, and request rules from that artifact when it builds, so it never reads the contract from the device. The device serves the same artifact at `GET /api/openapi.json`.
 
 Request schemas carry the device's rules for each field, so a client checks a write before it sends one; rules that join two fields, such as an open network taking no password, stay with the device. JSON Schema counts characters, while the device counts the Wi-Fi name and password in UTF-8 bytes. For those two fields the schema states the character limit the byte limit implies and a pattern that is exact for ASCII, so no keyword refuses a value the device accepts. A refused write answers `400` with `error`, the reason a person reads, and `field`, the request field the device names. `field` is `null` when the device names none, as for a body it cannot decode, which the schema already rules out.
 
@@ -168,7 +168,7 @@ Request schemas carry the device's rules for each field, so a client checks a wr
 flowchart LR
   rust["Rust API declarations and DTOs"] --> spec["docs/openapi.json"]
   rust --> server["ESP-IDF handler registration"]
-  spec --> types["Generated console types"]
+  spec --> types["Generated console types and rules"]
   types --> ui["Console API client"]
   spec --> device["GET /api/openapi.json"]
 ```

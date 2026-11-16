@@ -6,7 +6,7 @@ const { copyText, toast } = vi.hoisted(() => ({
   copyText: vi.fn(() => Promise.resolve()),
   toast: vi.fn(),
 }));
-vi.mock('../src/lib/custody', () => ({ copyText }));
+vi.mock('../src/shared/custody', () => ({ copyText }));
 vi.mock('../src/state/toasts', () => ({ toast }));
 
 import { CopyButton } from '../src/components/CopyButton';

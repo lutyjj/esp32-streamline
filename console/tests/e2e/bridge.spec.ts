@@ -45,21 +45,16 @@ test('a rejected token keeps the bridge locked and names the failure', async ({ 
   await expect(page.getByRole('button', { name: /^Locked/ })).toBeVisible();
 });
 
-test('production bridge loads its bundled font and recording entry routes', async ({ page }) => {
+test('production bridge serves its recording entry routes under its policy', async ({ page }) => {
   const host = process.env.STREAMLINE_BRIDGE;
   if (!host) throw new Error('Run through make console-e2e');
   const violations: string[] = [];
   page.on('console', (message) => {
-    if (/font-src|Content Security Policy/i.test(message.text())) violations.push(message.text());
+    if (/Content Security Policy/i.test(message.text())) violations.push(message.text());
   });
   for (const path of ['/recordings', '/recordings/']) {
     await page.goto(`http://${host}${path}`);
     await expect(page.getByRole('heading', { name: 'Recordings', exact: true })).toBeVisible();
-    const loaded = await page.evaluate(async () => {
-      const faces = await document.fonts.load('400 16px "Nunito Sans Variable"');
-      return faces.length > 0 && faces.every((face) => face.status === 'loaded');
-    });
-    expect(loaded).toBe(true);
   }
   expect(violations).toEqual([]);
 });

@@ -1,5 +1,5 @@
-import { sessionStore } from '../lib/custody';
-import { ApiError, type FetchLike } from '../lib/http';
+import { sessionStore } from '../shared/custody';
+import { ApiError, type FetchLike } from '../shared/http';
 
 const TOKEN_KEY = 'streamline.bridgeToken';
 

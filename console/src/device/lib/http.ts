@@ -28,14 +28,20 @@ function deviceRequest(url: string, options: RequestInit = {}): Request {
   });
 }
 
+/** A request the device left unanswered past its bound; it may have reached the device all the same. */
+export class UnansweredError extends Error {
+  constructor() {
+    super('the device did not answer in time');
+    this.name = 'UnansweredError';
+  }
+}
+
 /** An exchange the device left unanswered past its bound fails in words a person can act on. */
 async function bounded<T>(work: Promise<T>): Promise<T> {
   try {
     return await work;
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'TimeoutError') {
-      throw new Error('the device did not answer in time');
-    }
+    if (error instanceof DOMException && error.name === 'TimeoutError') throw new UnansweredError();
     throw error;
   }
 }

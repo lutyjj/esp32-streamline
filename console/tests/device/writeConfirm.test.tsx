@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LinenProvider } from 'linen';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { UnansweredError } from '../../src/device/lib/http';
 import { WriteConfirm } from '../../src/device/ui/WriteConfirm';
 import { ApiError } from '../../src/shared/http';
 
@@ -45,7 +46,7 @@ describe('a confirmed write', () => {
 
   it('says a write left unanswered may have happened, rather than that it did not', async () => {
     mount(async () => {
-      throw new Error('the device did not answer in time');
+      throw new UnansweredError();
     });
     expect(await screen.findByText('The device did not answer.')).toBeDefined();
     expect(screen.queryByText('The device did not restart.')).toBeNull();

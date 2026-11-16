@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import type { Connection } from '../../src/device/state/connection';
-import { deviceNotice, OVERDUE_TEXT } from '../../src/device/state/notice';
+import { deviceNotice, OVERDUE_DESCRIPTION } from '../../src/device/state/notice';
+
+const said = (notice: ReturnType<typeof deviceNotice>) =>
+  notice ? `${notice.title} ${notice.description ?? ''}` : '';
 
 const home = { status: deviceStatus(), at: 0 };
 const recovering = {
@@ -33,7 +36,7 @@ describe('deviceNotice', () => {
       seen: home,
     });
     expect(notice).toMatchObject({ tone: 'progress' });
-    expect(notice?.text).toContain('Restarting to apply the board');
+    expect(said(notice)).toContain('Restarting to apply the board');
   });
 
   it('marks lost contact as a failure and an overdue restart as a fallback warning', () => {
@@ -45,13 +48,18 @@ describe('deviceNotice', () => {
       since: 0,
       seen: home,
     });
-    expect(overdue).toEqual({ tone: 'attention', text: OVERDUE_TEXT });
+    expect(overdue).toEqual({
+      tone: 'attention',
+      title: 'Still restarting after a minute.',
+      description: OVERDUE_DESCRIPTION,
+      since: 0,
+    });
   });
 
   it('names the cause and offers Change Wi-Fi in recovery', () => {
     const notice = deviceNotice({ phase: 'live', seen: recovering });
     expect(notice).toMatchObject({ tone: 'attention', action: 'change-wifi' });
-    expect(notice?.text).toContain('can’t find Study Wi-Fi');
+    expect(said(notice)).toContain('can’t find Study Wi-Fi');
   });
 
   it('sends a browser that lost the setup network to the home address, restart or not', () => {
@@ -60,7 +68,7 @@ describe('deviceNotice', () => {
       { phase: 'overdue', operation: 'the restart', since: 0, seen: recovering },
     ] as const) {
       const notice = deviceNotice(connection);
-      expect(notice?.text).toContain('http://streamline-0000.local/');
+      expect(said(notice)).toContain('http://streamline-0000.local/');
       expect(notice?.action).toBeUndefined();
     }
   });

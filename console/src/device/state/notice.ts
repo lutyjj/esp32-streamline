@@ -12,13 +12,17 @@ export type NoticeTone = 'progress' | 'attention' | 'failure';
 
 export interface DeviceNotice {
   tone: NoticeTone;
-  text: string;
+  /** What holds, in one sentence. */
+  title: string;
+  description?: string;
+  /** When it began, for a condition that counts how long it has held. */
+  since?: number;
   /** The one act that answers it. */
   action?: 'change-wifi';
 }
 
-export const OVERDUE_TEXT =
-  'Still offline after a minute. The device may have fallen back to its setup network; look for esp32-streamline-… in your Wi-Fi list.';
+export const OVERDUE_DESCRIPTION =
+  'The device may have fallen back to its setup network; look for esp32-streamline-… in your Wi-Fi list.';
 
 export function deviceNotice(connection: Connection): DeviceNotice | null {
   if (connection.phase === 'opening' || connection.phase === 'handoff') return null;
@@ -29,23 +33,39 @@ export function deviceNotice(connection: Connection): DeviceNotice | null {
   switch (connection.phase) {
     case 'live': {
       const story = recoveryStory(last, false);
-      return story && { tone: 'attention', text: story.text, action: 'change-wifi' };
+      return (
+        story && {
+          tone: 'attention',
+          title: story.title,
+          description: story.description,
+          action: 'change-wifi',
+        }
+      );
     }
     case 'waiting':
       return {
         tone: 'progress',
-        text: `Restarting to apply ${connection.operation}. The console reconnects once the device answers from its new start.`,
+        title: `Restarting to apply ${connection.operation}.`,
+        description: 'The console reconnects once the device answers from its new start.',
+        since: connection.since,
       };
     case 'overdue':
-    case 'lost':
-      if (fromRecovery) {
-        return { tone: 'attention', text: recoveryStory(last, true)?.text ?? '' };
-      }
+    case 'lost': {
+      const story = fromRecovery ? recoveryStory(last, true) : null;
+      if (story) return { tone: 'attention', title: story.title, description: story.description };
       return connection.phase === 'overdue'
-        ? { tone: 'attention', text: OVERDUE_TEXT }
+        ? {
+            tone: 'attention',
+            title: 'Still restarting after a minute.',
+            description: OVERDUE_DESCRIPTION,
+            since: connection.since,
+          }
         : {
             tone: 'failure',
-            text: 'The device is not answering, so live values are unavailable. The console keeps trying.',
+            title: 'The device is not answering.',
+            description: 'Live values are unavailable until it does. The console keeps trying.',
+            since: connection.since,
           };
+    }
   }
 }

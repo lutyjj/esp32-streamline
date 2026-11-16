@@ -10,9 +10,9 @@ import { connection, status } from './device';
 
 export type RecoveryStory =
   /** The device answers on its setup network while it retries. */
-  | { kind: 'retrying'; text: string }
+  | { kind: 'retrying'; title: string; description: string }
   /** Contact ended; a rejoin restart closes the setup network, and so do other things. */
-  | { kind: 'left'; text: string };
+  | { kind: 'left'; title: string; description: string };
 
 /** What the latest join attempt says about the saved network. */
 function recoveryCause(s: StatusResponse): string {
@@ -35,7 +35,8 @@ export function recoveryStory(s: StatusResponse | null, lost: boolean): Recovery
   if (lost) {
     return {
       kind: 'left',
-      text: `Lost contact with StreamLine. If its setup network is gone, it has probably rejoined ${ssid}: reconnect to ${ssid}, then open http://${s.wifi.hostname}/ to confirm.`,
+      title: 'Lost contact with StreamLine.',
+      description: `If its setup network is gone, it has probably rejoined ${ssid}: reconnect to ${ssid}, then open http://${s.wifi.hostname}/ to confirm.`,
     };
   }
   const retry =
@@ -44,7 +45,7 @@ export function recoveryStory(s: StatusResponse | null, lost: boolean): Recovery
       : s.wifi.join_failure === 'security-mismatch'
         ? 'It keeps retrying every minute; if the network’s password changed, update the saved details.'
         : 'It retries every minute and rejoins on its own when the network is back.';
-  return { kind: 'retrying', text: `${recoveryCause(s)} ${retry}` };
+  return { kind: 'retrying', title: recoveryCause(s), description: retry };
 }
 
 /** The recovery story for the last status read; contact that ended keeps that status. */

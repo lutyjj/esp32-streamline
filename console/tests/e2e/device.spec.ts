@@ -43,7 +43,11 @@ test('a locked write asks for the key, keeps a refusal beside it, then completes
   await page.getByRole('button', { name: 'Pause streaming' }).click();
 
   await answerKey(page, 'f'.repeat(48));
-  await expect(page.getByRole('alert')).toHaveText(/did not accept this key/);
+  const field = page.getByRole('dialog').getByLabel('Admin key');
+  await expect(field).toHaveAttribute('aria-invalid', 'true');
+  await expect(
+    page.getByText('The device did not accept this key.', { exact: false }),
+  ).toBeVisible();
   await answerKey(page, mockAdminKey);
 
   await expect(page.getByRole('dialog')).toBeHidden();
@@ -67,9 +71,9 @@ test('a restart is narrated until the device answers from its new start', async 
 
 test('recovery names the network it cannot find and leads to its Wi-Fi', async ({ page }) => {
   await page.goto('/?scenario=recovery#/audio');
-  const notice = page.getByRole('status').filter({ hasText: 'can’t find Old router' });
-  await expect(notice).toContainText('retries every minute');
-  await notice.getByRole('link', { name: 'Change Wi-Fi' }).click();
+  await expect(page.getByText('StreamLine can’t find Old router.')).toBeVisible();
+  await expect(page.getByText(/retries every minute/)).toBeVisible();
+  await page.getByRole('link', { name: 'Change Wi-Fi' }).click();
   await expect(page).toHaveURL(/#\/device\/wifi$/);
   await expect(page.getByText('Old router', { exact: true })).toBeVisible();
 });

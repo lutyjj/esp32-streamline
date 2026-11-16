@@ -4,6 +4,15 @@ export function dbfs(abs: number): string {
   return (20 * Math.log10(abs / 32768)).toFixed(1);
 }
 
+/** The floor of a level scale in dBFS; anything quieter, silence included, reads as it. */
+export const LEVEL_FLOOR_DB = -60;
+
+/** Absolute sample value (0..32768) in dBFS, held to the level scale's floor. */
+export function levelDb(abs: number): number {
+  if (!abs) return LEVEL_FLOOR_DB;
+  return Math.max(LEVEL_FLOOR_DB, Math.min(0, 20 * Math.log10(abs / 32768)));
+}
+
 /** Absolute sample value as a 0-100% meter position on a -60..0 dBFS scale. */
 export function meterPct(abs: number): number {
   if (!abs) return 0;

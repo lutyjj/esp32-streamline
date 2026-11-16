@@ -67,6 +67,7 @@ function CredentialQuestion({
       title={title}
       description={description}
       confirmLabel="Unlock"
+      // Stand-in for busy on a dialog's confirm, which linen does not offer yet.
       disabled={checking || secret.trim() === ''}
       onConfirm={() => void submit()}
     >
@@ -80,15 +81,9 @@ function CredentialQuestion({
         autoFocus
         value={secret}
         readOnly={checking}
-        aria-invalid={problem !== '' || undefined}
+        error={problem === '' ? undefined : problem}
         onChange={(event) => setSecret(event.currentTarget.value)}
       />
-      {/* Stand-in for linen's field error, which is still to come. */}
-      {problem !== '' && (
-        <p role="alert" className="-mt-2 mb-4 text-sm text-danger">
-          {problem}
-        </p>
-      )}
       {remember !== undefined && (
         <Checkbox checked={keep} onCheckedChange={setKeep} secondary>
           {remember}

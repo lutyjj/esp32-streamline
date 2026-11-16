@@ -6,6 +6,11 @@ import { connection, report, restartSettled } from '../../src/device/state/devic
 import { recovery, recoveryStory } from '../../src/device/state/recovery';
 import { answering } from './answering';
 
+/** Everything a story says, title and description together. */
+function said(story: { title: string; description?: string } | null | undefined): string {
+  return story ? `${story.title} ${story.description ?? ''}` : '';
+}
+
 function recovering(joinFailure: StatusResponse['wifi']['join_failure']): StatusResponse {
   return deviceStatus({
     mode: 'recovery',
@@ -23,28 +28,28 @@ describe('recoveryStory', () => {
   it('promises the rejoin when the network is merely gone', () => {
     const story = recoveryStory(recovering('network-not-found'), false);
     expect(story?.kind).toBe('retrying');
-    expect(story?.text).toContain('can’t find Study Wi-Fi');
-    expect(story?.text).toContain('rejoins on its own');
+    expect(said(story)).toContain('can’t find Study Wi-Fi');
+    expect(said(story)).toContain('rejoins on its own');
   });
 
   it('asks for the new password when the network refuses the saved one', () => {
     const story = recoveryStory(recovering('credentials-rejected'), false);
-    expect(story?.text).toContain('Study Wi-Fi didn’t accept the saved password');
-    expect(story?.text).toContain('enter the new one');
-    expect(story?.text).not.toContain('rejoins on its own');
+    expect(said(story)).toContain('Study Wi-Fi didn’t accept the saved password');
+    expect(said(story)).toContain('enter the new one');
+    expect(said(story)).not.toContain('rejoins on its own');
   });
 
   it('asks to recheck the password choice when the security does not match', () => {
     const story = recoveryStory(recovering('security-mismatch'), false);
-    expect(story?.text).toContain('Study Wi-Fi doesn’t accept the security saved for it');
-    expect(story?.text).toContain('a security mode StreamLine can’t join');
-    expect(story?.text).toContain('update the saved details');
-    expect(story?.text).not.toContain('rejoins on its own');
+    expect(said(story)).toContain('Study Wi-Fi doesn’t accept the security saved for it');
+    expect(said(story)).toContain('a security mode StreamLine can’t join');
+    expect(said(story)).toContain('update the saved details');
+    expect(said(story)).not.toContain('rejoins on its own');
   });
 
   it('claims no cause it was not told', () => {
     for (const failure of ['other', null] as const) {
-      expect(recoveryStory(recovering(failure), false)?.text).toContain('can’t join Study Wi-Fi');
+      expect(said(recoveryStory(recovering(failure), false))).toContain('can’t join Study Wi-Fi');
     }
   });
 
@@ -54,9 +59,9 @@ describe('recoveryStory', () => {
     const story = recoveryStory(recovering('network-not-found'), true);
     expect(story?.kind).toBe('left');
     // A failed poll alone does not prove the rejoin, so the claim stays conditional.
-    expect(story?.text).toContain('If its setup network is gone');
-    expect(story?.text).toContain('reconnect to Study Wi-Fi');
-    expect(story?.text).toContain('http://streamline-0000.local/');
+    expect(said(story)).toContain('If its setup network is gone');
+    expect(said(story)).toContain('reconnect to Study Wi-Fi');
+    expect(said(story)).toContain('http://streamline-0000.local/');
   });
 });
 
@@ -76,7 +81,7 @@ describe('a restart from recovery', () => {
 
     expect(connection.value.phase).toBe('overdue');
     expect(recovery.value?.kind).toBe('left');
-    expect(recovery.value?.text).toContain('http://streamline-0000.local/');
+    expect(said(recovery.value)).toContain('http://streamline-0000.local/');
 
     // The saved network was still down after all: a new boot answers in recovery.
     const reads: string[] = [];

@@ -1,5 +1,6 @@
 import { Card, CardHead, Content, EmptyState, SettingRow } from 'linen';
-import { config, status } from '../../state/device';
+import { config, configResource, status } from '../../state/device';
+import { ResourceNotice } from '../ResourceNotice';
 import { ScreenTop } from '../ScreenTop';
 
 export function BridgeScreen() {
@@ -9,6 +10,7 @@ export function BridgeScreen() {
     <>
       <ScreenTop title="Bridge" />
       <Content>
+        <ResourceNotice resource={configResource} />
         <Card>
           <CardHead title="Destination" description="Where the device sends its audio." />
           {target?.target_host ? (

@@ -13,8 +13,9 @@ import { replacePath, usePathname } from '../../../shared/navigation';
 import { theme } from '../../../shared/theme';
 import { BUTTON_ACTION_SUMMARY, buttonRows } from '../../lib/buttons';
 import { LED_ROLE_SUMMARY, ledRows } from '../../lib/leds';
-import { config, status } from '../../state/device';
+import { config, configResource, status } from '../../state/device';
 import { sectionOf } from '../places';
+import { ResourceNotice } from '../ResourceNotice';
 import { ScreenTop } from '../ScreenTop';
 
 const SECTIONS = [
@@ -70,6 +71,7 @@ function Hardware() {
   if (!capabilities) return null;
   return (
     <div className="grid gap-4">
+      <ResourceNotice resource={configResource} />
       <Card>
         <CardHead title="Board" />
         <SettingRow title="Model">

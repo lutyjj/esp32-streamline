@@ -135,13 +135,17 @@ function Api() {
 function RestartAndReset() {
   const toast = useToast();
   const [asking, setAsking] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const held = updateLock('/api/restart');
   const restartNow = async () => {
+    setRestarting(true);
     try {
       const ack = await withAccess(() => restart());
       if (ack?.rebooting) report({ type: 'restarting', operation: 'the restart', at: Date.now() });
     } catch (error) {
       toast.show({ text: `The device did not restart: ${errorMessage(error)}`, sticky: true });
+    } finally {
+      setRestarting(false);
     }
   };
   return (
@@ -151,7 +155,7 @@ function RestartAndReset() {
         title="Restart the device"
         description={held ?? 'Audio stops for a few seconds and resumes on its own.'}
       >
-        <Button disabled={held !== null} onClick={() => setAsking(true)}>
+        <Button busy={restarting} disabled={held !== null} onClick={() => setAsking(true)}>
           Restart
         </Button>
       </SettingRow>

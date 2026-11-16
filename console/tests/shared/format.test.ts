@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { bytes, dbfs, duration, meterPct, usagePct, usageTone } from '../../src/shared/format';
+import {
+  bytes,
+  dbfs,
+  duration,
+  LEVEL_FLOOR_DB,
+  levelDb,
+  meterPct,
+  usagePct,
+  usageTone,
+} from '../../src/shared/format';
 
 describe('dbfs', () => {
   it('reads silence as -inf', () => {
@@ -97,5 +106,14 @@ describe('usageTone', () => {
   it('flags critical near full', () => {
     expect(usageTone(95)).toBe('bad');
     expect(usageTone(100)).toBe('bad');
+  });
+});
+
+describe('levelDb', () => {
+  it('reads full scale as 0 and holds silence and quiet input to the floor', () => {
+    expect(levelDb(32768)).toBe(0);
+    expect(levelDb(16384)).toBeCloseTo(-6.02, 2);
+    expect(levelDb(0)).toBe(LEVEL_FLOOR_DB);
+    expect(levelDb(1)).toBe(LEVEL_FLOOR_DB);
   });
 });

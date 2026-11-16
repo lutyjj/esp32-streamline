@@ -53,7 +53,10 @@ describe('the credential dialog', () => {
     const { answer } = await ask();
     type('wrong');
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('That key was refused.');
+    const refusal = await screen.findByText('That key was refused.');
+    const field = screen.getByLabelText('Key');
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(field.getAttribute('aria-describedby')).toContain(refusal.parentElement?.id);
 
     type('right');
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));

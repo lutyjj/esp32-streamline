@@ -120,6 +120,7 @@ where
         &mut writer,
         &api::ErrorResponse {
             error: "unauthorized",
+            field: None,
         },
     )?;
     std::io::Write::flush(&mut writer)?;
@@ -137,7 +138,14 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    error_response(request, error.status(), error.message())
+    json_response(
+        request,
+        error.status(),
+        &api::ErrorResponse {
+            error: error.message(),
+            field: error.field(),
+        },
+    )
 }
 
 pub(super) fn not_found<C>(
@@ -229,5 +237,12 @@ where
     C: embedded_svc::http::server::Connection,
     C::Error: std::error::Error + Send + Sync + 'static,
 {
-    json_response(request, code, &api::ErrorResponse { error: message })
+    json_response(
+        request,
+        code,
+        &api::ErrorResponse {
+            error: message,
+            field: None,
+        },
+    )
 }

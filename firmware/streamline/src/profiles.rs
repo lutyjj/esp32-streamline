@@ -30,7 +30,7 @@ pub struct AudioProfile {
         schema(pattern = "^[a-z0-9][a-z0-9-]*$", max_length = 32)
     )]
     pub id: String,
-    #[cfg_attr(feature = "api-spec", schema(max_length = 32))]
+    #[cfg_attr(feature = "api-spec", schema(min_length = 1, max_length = 32))]
     pub name: String,
     pub audio: AudioSettings,
 }
@@ -152,6 +152,34 @@ pub enum AudioProfileError {
     InvalidName,
     InvalidAudio(ConfigError),
     UnknownActiveProfile,
+}
+
+/// The reason a person reads beside the refused catalog or profile.
+impl std::fmt::Display for AudioProfileError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedSchema => write!(
+                formatter,
+                "These profiles use a format this firmware does not read; it reads schema_version {AUDIO_PROFILE_SCHEMA_VERSION}."
+            ),
+            Self::WrongBoard => formatter.write_str("These profiles are for another board."),
+            Self::TooManyProfiles => write!(
+                formatter,
+                "A device keeps at most {MAX_AUDIO_PROFILES} profiles."
+            ),
+            Self::DuplicateId => formatter.write_str("Two profiles share an id."),
+            Self::InvalidId => write!(
+                formatter,
+                "A profile id is 1 to {MAX_AUDIO_PROFILE_ID_CHARS} lowercase letters, digits, and hyphens, and starts with a letter or digit."
+            ),
+            Self::InvalidName => write!(
+                formatter,
+                "A profile name is 1 to {MAX_AUDIO_PROFILE_NAME_CHARS} characters, without spaces at either end."
+            ),
+            Self::InvalidAudio(error) => write!(formatter, "A profile does not fit this board. {error}"),
+            Self::UnknownActiveProfile => formatter.write_str("No profile has that id."),
+        }
+    }
 }
 
 #[cfg(test)]

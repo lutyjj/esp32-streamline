@@ -352,19 +352,17 @@ def test_invalid_wifi_credentials_leave_configuration_intact(authed_device_api: 
     code, body = authed_device_api.fetch("/api/settings")
     assert code == 200
     before = json.loads(body)
-    for fields in [
-        {"ssid": "x" * 33, "password": "test-password"},
-        {"ssid": "é" * 17, "password": "test-password"},
-        {"ssid": "test-network", "password": "x" * 65},
-        {"ssid": "test-network", "password": "short"},
-        {"ssid": "test-network", "password": "abc\0defgh"},
+    for fields, refused in [
+        ({"ssid": "x" * 33, "password": "test-password"}, "ssid"),
+        ({"ssid": "é" * 17, "password": "test-password"}, "ssid"),
+        ({"ssid": "test-network", "password": "x" * 65}, "password"),
+        ({"ssid": "test-network", "password": "short"}, "password"),
+        ({"ssid": "test-network", "password": "abc\0defgh"}, "password"),
+        ({"ssid": "test-network", "password": "test-password", "open_network": "true"}, "password"),
+        ({"ssid": "test-network", "password": "test-password", "target_host": "my bridge"}, "target_host"),
     ]:
-        code, _ = authed_device_api.post_form("/api/settings/wifi", fields)
-        assert code == 400
-    code, body = authed_device_api.post_form(
-        "/api/settings/wifi", {"ssid": "test-network", "password": "test-password", "open_network": "true"}
-    )
-    assert code == 400 and b"PasswordForOpenNetwork" in body, body[:200]
+        code, body = authed_device_api.post_form("/api/settings/wifi", fields)
+        assert code == 400 and json.loads(body)["field"] == refused, (fields, body[:200])
     code, body = authed_device_api.fetch("/api/settings")
     assert code == 200
     assert json.loads(body) == before

@@ -162,6 +162,8 @@ no bridge can answer, and when mDNS did not start.
 
 `make firmware-openapi` generates `docs/openapi.json`. Console checks generate TypeScript types from that artifact. The device serves the same artifact at `GET /api/openapi.json`.
 
+Request schemas carry every input rule JSON Schema can state, so a client checks a write before it sends one. JSON Schema counts characters, while the device counts the Wi-Fi name and password in UTF-8 bytes. For those two fields the schema states the character limit the byte limit implies and a pattern that is exact for ASCII, so no keyword refuses a value the device accepts. A refused write answers `400` with `error`, the reason a person reads, and `field`, the request field at fault, or `null` when no single field is.
+
 ```mermaid
 flowchart LR
   rust["Rust API declarations and DTOs"] --> spec["docs/openapi.json"]

@@ -47,7 +47,11 @@ impl Ack {
 #[derive(Debug, Serialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 pub struct ErrorResponse<'a> {
+    /// Why the device refused the request.
     pub error: &'a str,
+    /// The request field the device refuses, named as the request names it;
+    /// null when the refusal concerns no single field.
+    pub field: Option<&'a str>,
 }
 
 /// Bridges one network browse found, in the order the console lists them.

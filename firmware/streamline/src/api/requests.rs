@@ -2,20 +2,45 @@
 //!
 //! Form-encoded or JSON bodies validated at the boundary. The route table that
 //! references them and the response types live beside this module in `super`.
+//!
+//! JSON Schema counts characters, and the device counts some lengths in UTF-8
+//! bytes. There the schema states the character bound the byte rule implies
+//! and a pattern exact for ASCII, so no keyword refuses a value the device
+//! accepts, and the device's refusal names the field for the rest.
 
 use serde::{Deserialize, Serialize};
+
+/// A bridge host: a name or address without a scheme, port, path or spaces.
+pub const TARGET_HOST_PATTERN: &str = r"^[^:/\s]*$";
+/// A Wi-Fi network name without NUL; its length rides `maxLength`.
+pub const WIFI_SSID_PATTERN: &str = r"^[^\u0000]*$";
+/// A WPA2 password: empty, 8 to 63 ASCII characters other than NUL, 64
+/// hexadecimal digits, or any value with a character beyond ASCII, which the
+/// device measures in bytes.
+pub const WIFI_PASSWORD_PATTERN: &str =
+    r"^(?:[\u0001-\u007F]{8,63}|[0-9A-Fa-f]{64}|[^\u0000]*[^\u0000-\u007F][^\u0000]*)?$";
 
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct WifiSettingsRequest {
     /// Wi-Fi network name: 1 to 32 UTF-8 bytes, without NUL.
-    #[cfg_attr(feature = "api-spec", schema(min_length = 1))]
+    #[cfg_attr(
+        feature = "api-spec",
+        schema(min_length = 1, max_length = 32, pattern = r"^[^\u0000]*$")
+    )]
     pub ssid: String,
     /// WPA2 password: 8 to 63 bytes or a 64-digit hexadecimal PSK, without NUL.
     /// Empty keeps the stored password, so a protected network that has none
     /// stored needs one. Must be empty when `open_network` is true.
     #[serde(default)]
+    #[cfg_attr(
+        feature = "api-spec",
+        schema(
+            max_length = 64,
+            pattern = r"^(?:[\u0001-\u007F]{8,63}|[0-9A-Fa-f]{64}|[^\u0000]*[^\u0000-\u007F][^\u0000]*)?$"
+        )
+    )]
     pub password: String,
     /// Join `ssid` as an open network, without a password. The device then
     /// joins only an open network by that name.
@@ -23,9 +48,9 @@ pub struct WifiSettingsRequest {
     #[cfg_attr(feature = "api-spec", schema(default = false))]
     pub open_network: bool,
     /// Optional bridge host set during first commissioning.
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/]*$"))]
+    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/\s]*$"))]
     pub target_host: Option<String>,
-    #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
+    #[cfg_attr(feature = "api-spec", schema(minimum = 1, maximum = 65535))]
     pub target_port: Option<u16>,
     /// Generated 48-character lowercase-hex admin key. Empty preserves the
     /// stored key.
@@ -38,11 +63,12 @@ pub struct WifiSettingsRequest {
 #[cfg_attr(feature = "api-spec", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TargetSettingsRequest {
-    /// Hostname or IP without a scheme, port, or path. Empty clears the target.
+    /// Hostname or IP without a scheme, port, path, or spaces. Empty clears
+    /// the target.
     #[serde(default)]
-    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/]*$"))]
+    #[cfg_attr(feature = "api-spec", schema(pattern = r"^[^:/\s]*$"))]
     pub target_host: String,
-    #[cfg_attr(feature = "api-spec", schema(minimum = 1))]
+    #[cfg_attr(feature = "api-spec", schema(minimum = 1, maximum = 65535))]
     pub target_port: Option<u16>,
 }
 
@@ -199,6 +225,75 @@ mod tests {
             "input_line=2&input_gain=0&adc_attenuation_db=0&unexpected=true",
         );
         assert!(result.is_err());
+    }
+
+    /// The contract's Wi-Fi and host patterns admit every value the device
+    /// accepts, and agree with it on every ASCII value.
+    #[test]
+    fn contract_patterns_never_refuse_what_the_device_accepts() {
+        use crate::config::{is_valid_wifi_password, NetworkSettings, MAX_SSID_BYTES};
+
+        let pattern = |source| regex::Regex::new(source).expect("valid pattern");
+        let password = pattern(WIFI_PASSWORD_PATTERN);
+        let long = "x".repeat(63);
+        let too_long = "x".repeat(64);
+        let hex = "aB3".repeat(21) + "f";
+        let wide = "é".repeat(31);
+        let too_wide = "é".repeat(32);
+        for candidate in [
+            "seven77",
+            "eight888",
+            &long,
+            &too_long,
+            &hex,
+            "pässwö",
+            &wide,
+            &too_wide,
+            "nul\0inside",
+        ] {
+            let accepted = is_valid_wifi_password(candidate);
+            let matched = password.is_match(candidate);
+            if candidate.is_ascii() {
+                assert_eq!(matched, accepted, "{candidate:?}");
+            } else {
+                assert!(matched || !accepted, "{candidate:?}");
+            }
+        }
+        assert!(
+            password.is_match(""),
+            "an empty password keeps the stored one"
+        );
+
+        let ssid = pattern(WIFI_SSID_PATTERN);
+        let target = pattern(TARGET_HOST_PATTERN);
+        for candidate in ["home", "café 5G", &"s".repeat(MAX_SSID_BYTES), "a\0b"] {
+            let settings = NetworkSettings {
+                ssid: candidate,
+                target_host: "",
+                target_port: 1,
+            };
+            let fits = ssid.is_match(candidate) && candidate.chars().count() <= MAX_SSID_BYTES;
+            assert!(fits || settings.validate().is_err(), "{candidate:?}");
+        }
+        for host in [
+            "bridge.local",
+            "192.0.2.20",
+            "",
+            "my bridge",
+            "host:39000",
+            "http://x",
+        ] {
+            let settings = NetworkSettings {
+                ssid: "home",
+                target_host: host,
+                target_port: 1,
+            };
+            assert_eq!(
+                target.is_match(host),
+                settings.validate().is_ok(),
+                "{host:?}"
+            );
+        }
     }
 
     #[test]

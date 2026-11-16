@@ -14,6 +14,8 @@ use crate::{
 };
 
 pub const MIN_PORT: u16 = 1;
+/// Longest Wi-Fi network name, in bytes, as 802.11 limits an SSID.
+pub const MAX_SSID_BYTES: usize = 32;
 /// Longest friendly device name, in characters. Fits a browser tab title.
 pub const MAX_DEVICE_NAME_CHARS: usize = 32;
 /// Admin keys are generated, never composed by hand: exactly 24 random bytes
@@ -32,6 +34,15 @@ pub fn is_canonical_admin_key(secret: &str) -> bool {
         && secret
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Whether a WPA2 password is one the station can use: an 8 to 63 byte
+/// passphrase or the 64-digit hexadecimal key itself, without NUL.
+pub fn is_valid_wifi_password(password: &str) -> bool {
+    let bytes = password.as_bytes();
+    !password.contains('\0')
+        && ((8..=63).contains(&bytes.len())
+            || (bytes.len() == 64 && bytes.iter().all(u8::is_ascii_hexdigit)))
 }
 /// Version stamped into persisted configuration. An incompatible stored version is
 /// treated as unconfigured so the device re-commissions rather than booting without
@@ -122,7 +133,7 @@ impl<'a> NetworkSettings<'a> {
         if self.ssid.is_empty() {
             return Err(ConfigError::MissingSsid);
         }
-        if self.ssid.len() > 32 || self.ssid.contains('\0') {
+        if self.ssid.len() > MAX_SSID_BYTES || self.ssid.contains('\0') {
             return Err(ConfigError::MalformedSsid);
         }
         self.validate_target()
@@ -130,7 +141,10 @@ impl<'a> NetworkSettings<'a> {
 
     /// The stream target's own rules, which hold before an SSID exists.
     pub fn validate_target(self) -> Result<Self, ConfigError> {
-        if self.target_host.contains(':') || self.target_host.contains('/') {
+        if self
+            .target_host
+            .contains(|character: char| matches!(character, ':' | '/') || character.is_whitespace())
+        {
             return Err(ConfigError::MalformedTargetHost);
         }
         if self.target_port < MIN_PORT {
@@ -160,6 +174,52 @@ pub enum ConfigError {
     MalformedAdminKey,
     DeviceNameTooLong,
     InvalidTransport(TransportError),
+}
+
+/// The reason a person reads beside the refused field.
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingSsid => formatter.write_str("A network name is required."),
+            Self::MalformedSsid => write!(
+                formatter,
+                "A network name is at most {MAX_SSID_BYTES} bytes, without NUL."
+            ),
+            Self::MalformedWifiPassword => formatter.write_str(
+                "A Wi-Fi password is 8 to 63 bytes, or the 64-digit hexadecimal key, without NUL.",
+            ),
+            Self::MissingWifiPassword => formatter
+                .write_str("A protected network needs its password; the device stores none."),
+            Self::PasswordForOpenNetwork => formatter.write_str("An open network has no password."),
+            Self::MalformedTargetHost => formatter.write_str(
+                "A bridge host is a name or address, without a scheme, port, path, or spaces.",
+            ),
+            Self::InvalidTargetPort => {
+                write!(formatter, "A port is a number from {MIN_PORT} to 65535.")
+            }
+            Self::InvalidInputLine => formatter.write_str("This board has no such input line."),
+            Self::InvalidInputGain => {
+                formatter.write_str("The input gain is above this board's maximum.")
+            }
+            Self::InvalidAdcAttenuation => {
+                formatter.write_str("The attenuation is above this board's maximum.")
+            }
+            Self::UnsupportedAnalogPassthrough => {
+                formatter.write_str("This board has no local output.")
+            }
+            Self::UnknownLed => formatter.write_str("This board has no such LED."),
+            Self::UnknownButton => formatter.write_str("This board has no such button."),
+            Self::MalformedAdminKey => write!(
+                formatter,
+                "An admin key is {ADMIN_KEY_HEX_CHARS} lowercase hexadecimal digits."
+            ),
+            Self::DeviceNameTooLong => write!(
+                formatter,
+                "A device name is at most {MAX_DEVICE_NAME_CHARS} characters."
+            ),
+            Self::InvalidTransport(error) => write!(formatter, "{error}"),
+        }
+    }
 }
 
 /// The application-owned configuration loaded from persistent storage.
@@ -221,12 +281,7 @@ impl RuntimeConfig {
     /// Every rule a durable configuration satisfies.
     pub fn validate(&self, board: &Board) -> Result<(), ConfigError> {
         self.network().validate()?;
-        let password = self.password.as_bytes();
-        if !self.open_network()
-            && (self.password.contains('\0')
-                || !((8..=63).contains(&password.len())
-                    || (password.len() == 64 && password.iter().all(u8::is_ascii_hexdigit))))
-        {
+        if !self.open_network() && !is_valid_wifi_password(&self.password) {
             return Err(ConfigError::MalformedWifiPassword);
         }
         if !is_canonical_admin_key(&self.admin_key) {

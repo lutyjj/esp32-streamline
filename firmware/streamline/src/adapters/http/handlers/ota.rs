@@ -37,7 +37,7 @@ pub(super) fn register(server: &mut ContractServer<'_>) -> Result<()> {
             match update::custom_image_from_form(form.url.as_deref(), form.sha256.as_deref()) {
                 Ok(None) => ota_adapter::Source::LatestRelease,
                 Ok(Some(image)) => ota_adapter::Source::Custom(image),
-                Err(error) => return mutation_error(request, MutationError::InvalidInput(error)),
+                Err(error) => return mutation_error(request, error),
             };
         ota_accepted(
             request,

@@ -724,6 +724,26 @@ mod spec {
             schemas["NameSettingsRequest"]["properties"]["name"]["maxLength"],
             crate::config::MAX_DEVICE_NAME_CHARS
         );
+        let wifi = &schemas["WifiSettingsRequest"]["properties"];
+        assert_eq!(wifi["ssid"]["maxLength"], crate::config::MAX_SSID_BYTES);
+        assert_eq!(wifi["ssid"]["pattern"], crate::api::WIFI_SSID_PATTERN);
+        assert_eq!(
+            wifi["password"]["pattern"],
+            crate::api::WIFI_PASSWORD_PATTERN
+        );
+        assert_eq!(
+            wifi["target_host"]["pattern"],
+            crate::api::TARGET_HOST_PATTERN
+        );
+        assert_eq!(
+            schemas["TargetSettingsRequest"]["properties"]["target_host"]["pattern"],
+            crate::api::TARGET_HOST_PATTERN
+        );
+        for request in ["WifiSettingsRequest", "TargetSettingsRequest"] {
+            let port = &schemas[request]["properties"]["target_port"];
+            assert_eq!(port["minimum"], crate::config::MIN_PORT, "{request}");
+            assert_eq!(port["maximum"], u16::MAX, "{request}");
+        }
         assert_eq!(
             schemas["BoardSettingsRequest"]["properties"]["descriptor"]["maxLength"],
             crate::board::MAX_DESCRIPTOR_BYTES

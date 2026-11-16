@@ -86,6 +86,9 @@ test('first contact holds Join until the key is kept, then hands off to the home
 }) => {
   await page.goto('/?scenario=first-boot');
   await expect(page.getByRole('heading', { level: 1, name: 'Set up StreamLine' })).toBeVisible();
+  // A refused Join takes the focus to the first field it refused.
+  await page.getByRole('button', { name: 'Join network' }).click();
+  await expect(page.getByLabel('Network name')).toBeFocused();
   await page.getByLabel('Network name').fill('home');
   await page.getByLabel('Password').fill('correct horse');
   await page.getByRole('button', { name: 'Join network' }).click();

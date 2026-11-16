@@ -6,6 +6,7 @@ import {
   Checkbox,
   Conditions,
   Content,
+  Form,
   Notice,
   ShownOnce,
   TopBar,
@@ -52,7 +53,7 @@ export function Onboarding() {
       </Conditions>
       <TopBar title="Set up StreamLine" />
       <Content>
-        <div className="grid gap-4">
+        <Form className="grid gap-4" onSubmit={join}>
           <Card>
             <CardHead
               title="Your Wi-Fi"
@@ -105,11 +106,11 @@ export function Onboarding() {
             />
           )}
           <div className="flex justify-end">
-            <Button variant="primary" busy={joining} onClick={() => void join()}>
+            <Button type="submit" variant="primary" busy={joining}>
               Join network
             </Button>
           </div>
-        </div>
+        </Form>
       </Content>
     </>
   );

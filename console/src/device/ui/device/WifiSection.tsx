@@ -1,4 +1,4 @@
-import { Button, Card, CardBody, CardHead, Fact, Facts, useUnsavedChanges } from 'linen';
+import { Button, Card, CardBody, CardHead, Fact, Facts, Form, useUnsavedChanges } from 'linen';
 import { useState } from 'react';
 import { storesWifiPassword, type WifiEntry, wifiProblems } from '../../lib/wifi';
 import { withAccess } from '../../state/access';
@@ -74,25 +74,25 @@ function ChangeWifi() {
         description="For a new password or another network. Audio, the bridge, profiles and the admin key stay as they are."
       />
       <CardBody>
-        <WifiFields
-          entry={entry}
-          onChange={setEntry}
-          problems={tried ? problems : []}
-          storedPassword={storedPassword}
-          disabled={saving}
-        />
-        <div className="mt-4 flex justify-end">
-          <Button
-            variant="primary"
-            disabled={!unsaved}
-            onClick={() => {
-              setTried(true);
-              if (problems.length === 0) setAsking(true);
-            }}
-          >
-            Join network
-          </Button>
-        </div>
+        <Form
+          onSubmit={() => {
+            setTried(true);
+            if (problems.length === 0) setAsking(true);
+          }}
+        >
+          <WifiFields
+            entry={entry}
+            onChange={setEntry}
+            problems={tried ? problems : []}
+            storedPassword={storedPassword}
+            disabled={saving}
+          />
+          <div className="mt-4 flex justify-end">
+            <Button type="submit" variant="primary" disabled={!unsaved}>
+              Join network
+            </Button>
+          </div>
+        </Form>
       </CardBody>
       <WriteConfirm
         open={asking}

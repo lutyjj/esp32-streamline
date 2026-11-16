@@ -15,3 +15,9 @@ export function bridgeSourcesLink(address: string, source?: string): string | un
     return undefined;
   }
 }
+
+/** Why the console cannot link to `address`, or null when it can, or when there is none. */
+export function consoleAddressProblem(address: string): string | null {
+  if (address.trim() === '' || bridgeSourcesLink(address)) return null;
+  return 'Use the address the bridge console opens at, starting with http:// or https://.';
+}

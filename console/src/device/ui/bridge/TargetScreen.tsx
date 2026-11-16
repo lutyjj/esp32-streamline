@@ -13,6 +13,7 @@ import {
 import { useState } from 'react';
 import { navigate } from '../../../shared/navigation';
 import { type DiscoveredBridge, getSetTargetUrl } from '../../lib/api';
+import { consoleAddressProblem } from '../../lib/consoleAddress';
 import { targetProblems } from '../../lib/target';
 import { status } from '../../state/device';
 import { discovery, findBridges, searchOffered } from '../../state/discovery';
@@ -58,13 +59,14 @@ function TargetForm({ target }: { target: SavedTarget }) {
   const held = changes.target ? updateLock(getSetTargetUrl()) : null;
   useUnsavedChanges(unsaved, { name: 'the bridge', pending: saving });
   const problems = targetProblems(draft.entry);
+  const consoleProblem = consoleAddressProblem(draft.console);
   const problem = (field: 'host' | 'port') =>
     tried ? problems.find((entry) => entry.field === field)?.text : undefined;
 
   const save = async () => {
     setTried(true);
     setFailure(null);
-    if (problems.length > 0) return;
+    if (problems.length > 0 || consoleProblem) return;
     setSaving(true);
     try {
       if (await saveTarget(draft, saved)) navigate('/bridge');
@@ -128,6 +130,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
               hint="Optional, such as http://192.0.2.20:8088/. Bridge links straight to this device's source there."
               value={draft.console}
               readOnly={saving}
+              error={tried ? (consoleProblem ?? undefined) : undefined}
               onChange={(event) => setDraft({ ...draft, console: event.currentTarget.value })}
             />
             {failure && (

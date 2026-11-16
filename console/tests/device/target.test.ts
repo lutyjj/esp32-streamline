@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bridgeSourcesLink } from '../../src/device/lib/consoleAddress';
+import { bridgeSourcesLink, consoleAddressProblem } from '../../src/device/lib/consoleAddress';
 import { targetProblems, targetRequest } from '../../src/device/lib/target';
 
 // Stage 2: host and port are one form, but the device stores them apart, so a
@@ -47,5 +47,14 @@ describe('bridgeSourcesLink', () => {
     for (const address of ['javascript:alert(1)', 'http://user:pw@bridge.local', 'bridge.local']) {
       expect(bridgeSourcesLink(address)).toBeUndefined();
     }
+  });
+});
+
+describe('consoleAddressProblem', () => {
+  it('refuses an address the console could not link to, and nothing typed', () => {
+    expect(consoleAddressProblem('')).toBeNull();
+    expect(consoleAddressProblem('http://192.0.2.20:8088/')).toBeNull();
+    expect(consoleAddressProblem('ftp://192.0.2.20/')).toContain('http://');
+    expect(consoleAddressProblem('http://owner:secret@192.0.2.20/')).toContain('http://');
   });
 });

@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/preact-query';
 import {
   Button,
   Card,
@@ -10,14 +11,16 @@ import {
   TextField,
   useUnsavedChanges,
 } from 'linen';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { type DiscoveredBridge, getSetTargetUrl } from '../../../generated/api';
+import { errorMessage } from '../../../shared/errors';
 import { fieldErrors } from '../../../shared/http';
 import { navigate } from '../../../shared/navigation';
 import { consoleAddressProblem } from '../../lib/consoleAddress';
 import { status } from '../../state/device';
-import { discovery, findBridges, searchOffered } from '../../state/discovery';
+import { findBridges, searchOffered } from '../../state/discovery';
 import { updateLock } from '../../state/ota';
+import { queryClient } from '../../state/queries';
 import {
   adoptFound,
   draftChanges,
@@ -53,27 +56,23 @@ export function TargetScreen() {
 function TargetForm({ target }: { target: SavedTarget }) {
   const [saved] = useState(() => savedDraft(target));
   const [draft, setDraft] = useState<TargetDraft>(saved);
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
-  const errors = useMemo(() => fieldErrors(failure?.error, TARGET_FIELDS), [failure]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const save = useMutation(
+    {
+      mutationFn: () => saveTarget(draft, saved),
+      onSuccess: (done) => {
+        setErrors({});
+        if (done) navigate('/bridge');
+      },
+      onError: (error) => setErrors(fieldErrors(error, TARGET_FIELDS)),
+    },
+    queryClient,
+  );
   const changes = draftChanges(draft, saved);
   const unsaved = changes.target || changes.console;
   // A new target restarts the device, which waits while an update runs.
   const held = changes.target ? updateLock(getSetTargetUrl()) : null;
-  useUnsavedChanges(unsaved, { name: 'the bridge', pending: saving });
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const done = await saveTarget(draft, saved);
-      setFailure(null);
-      if (done) navigate('/bridge');
-    } catch (error) {
-      setFailure({ error });
-    } finally {
-      setSaving(false);
-    }
-  };
+  useUnsavedChanges(unsaved, { name: 'the bridge', pending: save.isPending });
 
   return (
     <div className="grid gap-4">
@@ -90,7 +89,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
           }
         />
         <CardBody>
-          <Form errors={errors} onSubmit={save}>
+          <Form errors={errors} onSubmit={() => save.mutateAsync().catch(() => undefined)}>
             <TextField
               label="Bridge address"
               name="target_host"
@@ -98,7 +97,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
               autoCapitalize="none"
               spellCheck={false}
               value={draft.entry.host}
-              readOnly={saving}
+              readOnly={save.isPending}
               validate={(value) => hostProblem(String(value ?? ''))}
               onChange={(event) =>
                 setDraft({ ...draft, entry: { ...draft.entry, host: event.currentTarget.value } })
@@ -110,7 +109,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
               width={32}
               inputMode="numeric"
               value={draft.entry.port}
-              readOnly={saving}
+              readOnly={save.isPending}
               validate={(value) => portProblem(String(value ?? ''))}
               onChange={(event) =>
                 setDraft({ ...draft, entry: { ...draft.entry, port: event.currentTarget.value } })
@@ -123,15 +122,15 @@ function TargetForm({ target }: { target: SavedTarget }) {
               spellCheck={false}
               hint="Optional, such as http://192.0.2.20:8088/. Bridge links straight to this device's source there."
               value={draft.console}
-              readOnly={saving}
+              readOnly={save.isPending}
               validate={(value) => consoleAddressProblem(String(value ?? ''))}
               onChange={(event) => setDraft({ ...draft, console: event.currentTarget.value })}
             />
-            {failure && Object.keys(errors).length === 0 && (
+            {save.error && Object.keys(errors).length === 0 && (
               <WriteFailure
                 className="mt-3"
                 failed="The device did not save the bridge."
-                error={failure.error}
+                error={save.error}
               />
             )}
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
@@ -139,7 +138,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
               <Button
                 type="submit"
                 variant="primary"
-                busy={saving}
+                busy={save.isPending}
                 disabled={!unsaved || held !== null}
               >
                 Save
@@ -160,21 +159,22 @@ function FoundBridges({
   draft: TargetDraft;
   onUse: (bridge: DiscoveredBridge) => void;
 }) {
-  const found = discovery.value;
+  const search = useMutation({ mutationFn: findBridges }, queryClient);
+  const found = search.data;
   return (
     <Card>
       <CardHead
         title="Find a bridge"
         description="The device asks its network for bridges for about three seconds."
       >
-        <Button busy={found.phase === 'searching'} onClick={() => void findBridges()}>
+        <Button busy={search.isPending} onClick={() => search.mutate()}>
           Search the network
         </Button>
       </CardHead>
-      {found.phase === 'found' && found.bridges.length > 0 && (
+      {found && found.length > 0 && (
         // biome-ignore lint/a11y/useSemanticElements: SettingRow is a div with the listitem role, which a <ul> may not hold.
         <div role="list" aria-label="Bridges found">
-          {found.bridges.map((bridge) => (
+          {found.map((bridge) => (
             <SettingRow
               key={`${bridge.host}:${bridge.port}`}
               role="listitem"
@@ -191,13 +191,13 @@ function FoundBridges({
           ))}
         </div>
       )}
-      {(found.phase === 'found' || found.phase === 'failed') && (
+      {(found || search.isError) && (
         <CardBody>
-          {found.phase === 'found' ? (
+          {found ? (
             <Notice
               tone="accent"
               title={
-                found.bridges.length > 0
+                found.length > 0
                   ? 'A found bridge is a hint: any computer on the network can answer as one.'
                   : 'No bridge answered.'
               }
@@ -207,7 +207,7 @@ function FoundBridges({
             <Notice
               tone="warn"
               title="The search did not finish."
-              description={`${found.reason}. Type the bridge's address instead.`}
+              description={`${errorMessage(search.error)}. Type the bridge's address instead.`}
             />
           )}
         </CardBody>

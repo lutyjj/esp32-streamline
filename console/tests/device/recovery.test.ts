@@ -1,8 +1,10 @@
+import { QueryObserver } from '@tanstack/preact-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { OVERDUE_MS } from '../../src/device/state/connection';
 import { connection, report, restartSettled } from '../../src/device/state/device';
+import { queryClient, settingsQuery } from '../../src/device/state/queries';
 import { recovery, recoveryStory } from '../../src/device/state/recovery';
 import type { StatusResponse } from '../../src/generated/api';
 import { answering } from './answering';
@@ -85,6 +87,7 @@ describe('a restart from recovery', () => {
     expect(said(recovery.value)).toContain('http://streamline-0000.local/');
 
     // The saved network was still down after all: a new boot answers in recovery.
+    const shown = new QueryObserver(queryClient, settingsQuery).subscribe(() => undefined);
     const reads: string[] = [];
     setTransport(async (request) => {
       reads.push(new URL(request.url).pathname);
@@ -99,7 +102,8 @@ describe('a restart from recovery', () => {
       operation: 'the restart',
       after: { mode: 'recovery' },
     });
-    // A finished restart re-reads the settings it applied.
+    // A finished restart re-reads the settings it applied, where they are shown.
     await vi.waitFor(() => expect(reads).toContain('/api/settings'));
+    shown();
   });
 });

@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/preact-query';
 import {
   Button,
   Card,
@@ -11,7 +12,7 @@ import {
 import { useRef, useState } from 'react';
 import type { AudioProfile, AudioProfileCatalog, StatusResponse } from '../../../generated/api';
 import { errorMessage } from '../../../shared/errors';
-import { audioProfiles, audioProfilesResource, status } from '../../state/device';
+import { status } from '../../state/device';
 import {
   deleteProfile,
   exportProfiles,
@@ -20,7 +21,8 @@ import {
   replaceProfile,
   saveProfile,
 } from '../../state/profiles';
-import { ResourceNotice } from '../ResourceNotice';
+import { audioProfilesQuery, queryClient } from '../../state/queries';
+import { ReadNotice } from '../ReadNotice';
 import { ScreenTop } from '../ScreenTop';
 import { WriteConfirm } from '../WriteConfirm';
 import { levelsWords } from './levelsWords';
@@ -40,7 +42,8 @@ type Ask =
  * kept, and move every profile in a file. Choosing one stays on Audio.
  */
 export function ProfilesScreen() {
-  const catalog = audioProfiles.value;
+  const read = useQuery(audioProfilesQuery, queryClient);
+  const catalog = read.data;
   const known = status.value;
   return (
     <>
@@ -49,7 +52,7 @@ export function ProfilesScreen() {
         {catalog && known ? (
           <Profiles catalog={catalog} known={known} />
         ) : (
-          <ResourceNotice resource={audioProfilesResource} />
+          <ReadNotice read={read} name="audio profiles" />
         )}
       </Content>
     </>

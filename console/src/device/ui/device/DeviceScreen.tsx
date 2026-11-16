@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/preact-query';
 import {
   Card,
   CardHead,
@@ -13,9 +14,10 @@ import { replacePath, usePathname } from '../../../shared/navigation';
 import { theme } from '../../../shared/theme';
 import { BUTTON_ACTION_SUMMARY, buttonRows } from '../../lib/buttons';
 import { LED_ROLE_SUMMARY, ledRows } from '../../lib/leds';
-import { config, configResource, status } from '../../state/device';
+import { status } from '../../state/device';
+import { queryClient, settingsQuery } from '../../state/queries';
 import { sectionOf } from '../places';
-import { ResourceNotice } from '../ResourceNotice';
+import { ReadNotice } from '../ReadNotice';
 import { ScreenTop } from '../ScreenTop';
 import { WifiSection } from './WifiSection';
 
@@ -50,11 +52,12 @@ export function DeviceScreen() {
 
 function Hardware() {
   const capabilities = status.value?.capabilities;
-  const settings = config.value;
+  const read = useQuery(settingsQuery, queryClient);
+  const settings = read.data;
   if (!capabilities) return null;
   return (
     <div className="grid gap-4">
-      <ResourceNotice resource={configResource} />
+      <ReadNotice read={read} name="device settings" />
       <Card>
         <CardHead title="Board" />
         <SettingRow title="Model">

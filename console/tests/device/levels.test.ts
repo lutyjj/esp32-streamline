@@ -3,7 +3,7 @@ import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
 import { edited, followed, seeded, unsaved } from '../../src/device/lib/follow';
 import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
-import { audioProfiles, connection, status } from '../../src/device/state/device';
+import { connection, status } from '../../src/device/state/device';
 import {
   discardLevels,
   editLevel,
@@ -12,6 +12,7 @@ import {
   levelsUnsaved,
   saveLevels,
 } from '../../src/device/state/levels';
+import { audioProfilesQuery, queryClient } from '../../src/device/state/queries';
 import type { StatusResponse } from '../../src/generated/api';
 import { answering } from './answering';
 
@@ -112,7 +113,7 @@ describe('saving the levels', () => {
       active_profile_id: 'loud',
       profiles: [{ id: 'loud', name: 'Loud', audio: device.audio }],
     };
-    audioProfiles.value = catalog;
+    queryClient.setQueryData(audioProfilesQuery.queryKey, catalog);
     setTransport(async (request) => {
       const path = new URL(request.url).pathname;
       if (path === '/api/audio-profiles')
@@ -122,7 +123,7 @@ describe('saving the levels', () => {
 
     await saveLevels(editLevel(levelsDraft(device), 'input_gain', 24));
 
-    expect(audioProfiles.value?.active_profile_id).toBeNull();
-    audioProfiles.value = null;
+    expect(queryClient.getQueryData(audioProfilesQuery.queryKey)?.active_profile_id).toBeNull();
+    queryClient.clear();
   });
 });

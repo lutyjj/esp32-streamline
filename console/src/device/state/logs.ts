@@ -8,9 +8,9 @@
  * either way rather than presenting a log with silent holes.
  */
 
-import { signal } from '@preact/signals';
+import { queryOptions } from '@tanstack/preact-query';
 import { type BootLog, getLogs } from '../../generated/api';
-import { errorMessage } from '../../shared/errors';
+import { queryClient } from './queries';
 
 /** One line, numbered within its boot. */
 export interface LogLine {
@@ -79,48 +79,46 @@ export function mergeBootLog(held: BootLogView, incoming: BootLog): BootLogView 
   };
 }
 
-/** The running boot, merged across reads. */
-export const currentLog = signal<BootLogView>(EMPTY_BOOT_LOG);
-/**
- * The boot before this one, as the device reported it. Never merged: it is
- * already final, and the device returns the same lines every time.
- */
-export const previousLog = signal<BootLogView | null>(null);
-export const logsError = signal('');
-export const logsLoading = signal(false);
-
-let inflight = false;
-
-/** Read the device log once. Overlapping calls collapse into the running one. */
-export async function loadLogs(): Promise<void> {
-  if (inflight) return;
-  inflight = true;
-  logsLoading.value = true;
-  try {
-    const response = await getLogs();
-    currentLog.value = mergeBootLog(currentLog.value, response.current);
-    previousLog.value = response.previous
-      ? {
-          boot: response.previous.boot,
-          lines: numberedLines(response.previous),
-          droppedByDevice: response.previous.dropped,
-          trimmed: 0,
-        }
-      : null;
-    logsError.value = '';
-  } catch (cause) {
-    logsError.value = errorMessage(cause);
-  } finally {
-    inflight = false;
-    logsLoading.value = false;
-  }
+/** What the console holds of the device log. */
+export interface DeviceLog {
+  /** The running boot, merged across reads. */
+  current: BootLogView;
+  /**
+   * The boot before this one, as the device reported it. Never merged: it is
+   * already final, and the device returns the same lines every time.
+   */
+  previous: BootLogView | null;
 }
+
+const LOGS_KEY = ['logs'] as const;
+
+/**
+ * The device log as a read: each one merges into what the cache holds, so a
+ * screen that follows it (`refetchInterval: FOLLOW_MS`) keeps more than the
+ * device can, and a failed read leaves what was shown.
+ */
+export const logsQuery = queryOptions({
+  queryKey: LOGS_KEY,
+  queryFn: async (): Promise<DeviceLog> => {
+    const response = await getLogs();
+    const held = queryClient.getQueryData<DeviceLog>(LOGS_KEY);
+    return {
+      current: mergeBootLog(held?.current ?? EMPTY_BOOT_LOG, response.current),
+      previous: response.previous
+        ? {
+            boot: response.previous.boot,
+            lines: numberedLines(response.previous),
+            droppedByDevice: response.previous.dropped,
+            trimmed: 0,
+          }
+        : null,
+    };
+  },
+});
 
 /** Drop everything held, so a fresh read starts from what the device has. */
 export function clearLogs(): void {
-  currentLog.value = EMPTY_BOOT_LOG;
-  previousLog.value = null;
-  logsError.value = '';
+  queryClient.removeQueries({ queryKey: LOGS_KEY });
 }
 
 /** One boot's lines as text, for the clipboard. */

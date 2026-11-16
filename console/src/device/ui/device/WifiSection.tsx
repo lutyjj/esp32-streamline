@@ -1,20 +1,23 @@
+import { useQuery } from '@tanstack/preact-query';
 import { Button, Card, CardBody, CardHead, Fact, Facts, Form, useUnsavedChanges } from 'linen';
-import { useMemo, useRef, useState } from 'react';
-import { getSetWifiUrl } from '../../../generated/api';
+import { useRef, useState } from 'react';
+import { getSetWifiUrl, type SettingsResponse } from '../../../generated/api';
 import { fieldErrors } from '../../../shared/http';
 import { storesWifiPassword, WIFI_FIELDS, type WifiEntry } from '../../lib/wifi';
 import { withAccess } from '../../state/access';
-import { config, configResource, status } from '../../state/device';
+import { status } from '../../state/device';
 import { homeAddress } from '../../state/handoff';
 import { joinNetwork } from '../../state/join';
 import { updateLock } from '../../state/ota';
-import { ResourceNotice } from '../ResourceNotice';
+import { queryClient, settingsQuery } from '../../state/queries';
+import { ReadNotice } from '../ReadNotice';
 import { WriteConfirm } from '../WriteConfirm';
 import { WifiFields } from '../wifi/WifiFields';
 
 /** The network the device joins, and a change of it, which ends in a handoff like first contact. */
 export function WifiSection() {
   const wifi = status.value?.wifi;
+  const settings = useQuery(settingsQuery, queryClient);
   if (!wifi) return null;
   return (
     <div className="grid gap-4">
@@ -37,45 +40,43 @@ export function WifiSection() {
           </Facts>
         </CardBody>
       </Card>
-      {config.value ? <ChangeWifi /> : <ResourceNotice resource={configResource} />}
+      {settings.data ? (
+        <ChangeWifi saved={settings.data} />
+      ) : (
+        <ReadNotice read={settings} name="device settings" />
+      )}
     </div>
   );
 }
 
-function ChangeWifi() {
-  const saved = config.value;
+function ChangeWifi({ saved }: { saved: SettingsResponse }) {
   const known = status.value;
   const storedPassword = storesWifiPassword(saved);
   const [entry, setEntry] = useState<WifiEntry>({
-    ssid: saved?.ssid ?? '',
+    ssid: saved.ssid,
     password: '',
-    open: saved?.open_network ?? false,
+    open: saved.open_network,
   });
   const [asking, setAsking] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [refusal, setRefusal] = useState<{ error: unknown } | null>(null);
-  const errors = useMemo(() => fieldErrors(refusal?.error, WIFI_FIELDS), [refusal]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   // The submit is answered when the confirmation closes, so a refused field takes the focus.
   const answered = useRef<() => void>(() => {});
   const unsaved =
-    entry.ssid.trim() !== (saved?.ssid ?? '') ||
-    entry.password !== '' ||
-    entry.open !== (saved?.open_network ?? false);
-  useUnsavedChanges(unsaved, { name: 'the Wi-Fi settings', pending: saving });
+    entry.ssid.trim() !== saved.ssid || entry.password !== '' || entry.open !== saved.open_network;
+  // The confirmation holds the page while the join is written, then the handoff takes it.
+  useUnsavedChanges(unsaved, { name: 'the Wi-Fi settings', pending: asking });
   // Joining restarts the device, which waits while an update runs.
   const held = updateLock(getSetWifiUrl());
 
-  const save = async () => {
-    setSaving(true);
+  const join = async () => {
     try {
       await withAccess(() => joinNetwork(entry));
-      setRefusal(null);
+      setErrors({});
     } catch (error) {
+      const refused = fieldErrors(error, WIFI_FIELDS);
+      setErrors(refused);
       // A refused field shows on the field, and the confirmation closes.
-      if (Object.keys(fieldErrors(error, WIFI_FIELDS)).length === 0) throw error;
-      setRefusal({ error });
-    } finally {
-      setSaving(false);
+      if (Object.keys(refused).length === 0) throw error;
     }
   };
 
@@ -95,12 +96,7 @@ function ChangeWifi() {
             })
           }
         >
-          <WifiFields
-            entry={entry}
-            onChange={setEntry}
-            storedPassword={storedPassword}
-            disabled={saving}
-          />
+          <WifiFields entry={entry} onChange={setEntry} storedPassword={storedPassword} />
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
             {held && <p className="mr-auto text-sm text-text-secondary">{held}</p>}
             <Button type="submit" variant="primary" disabled={!unsaved || held !== null}>
@@ -119,7 +115,7 @@ function ChangeWifi() {
         description={`The device restarts to join it, and this page loses contact. Then connect to ${entry.ssid.trim()} and open ${homeAddress(known)}.`}
         confirmLabel="Join network"
         failed="The device did not save the network."
-        write={save}
+        write={join}
       />
     </Card>
   );

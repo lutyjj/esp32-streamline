@@ -16,7 +16,12 @@ import {
   type TransportStatus,
   verifyTransportKey,
 } from '../../generated/api';
-import { loadConfig } from './device';
+import { readAgain, settingsQuery } from './queries';
+
+/** Read the settings again, where the transport's state lives. */
+function readSettings(): Promise<void> {
+  return readAgain(settingsQuery);
+}
 
 export interface TransportApi {
   stage(): Promise<TransportKeyResponse>;
@@ -77,7 +82,7 @@ export class TransportController {
 
   constructor(
     private readonly api: TransportApi = runtimeApi,
-    private readonly reload: () => Promise<void> = loadConfig,
+    private readonly reload: () => Promise<void> = readSettings,
   ) {}
 
   async stage(): Promise<undefined> {

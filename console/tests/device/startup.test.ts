@@ -1,14 +1,11 @@
+import { QueryObserver } from '@tanstack/preact-query';
 import { getResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice } from '../../src/device/mocks/device';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
-import {
-  audioProfilesResource,
-  configResource,
-  report,
-  startPolling,
-} from '../../src/device/state/device';
+import { report, startPolling } from '../../src/device/state/device';
+import { audioProfilesQuery, queryClient, settingsQuery } from '../../src/device/state/queries';
 import { answering } from './answering';
 
 /**
@@ -42,14 +39,12 @@ function keepsTwoConnections(resets: string[] = []): { peak: () => number; answe
   return { peak: () => peak, answered };
 }
 
-const now = async () => {};
+const loaded = (query: { queryKey: readonly unknown[] }) =>
+  queryClient.getQueryState(query.queryKey)?.status;
 
 // A fresh page: nothing has loaded yet.
 beforeEach(() => {
-  for (const startup of [configResource, audioProfilesResource]) {
-    startup.data.value = null;
-    startup.state.value = 'loading';
-  }
+  queryClient.clear();
 });
 
 afterEach(() => {
@@ -60,21 +55,23 @@ afterEach(() => {
 describe('opening the console', () => {
   it('reads everything it starts with without opening more connections than the device keeps', async () => {
     const device = keepsTwoConnections();
-    (await startPolling(now))();
+    (await startPolling())();
     expect(device.answered).toEqual(['/api/status', '/api/settings', '/api/audio-profiles']);
     expect(device.peak()).toBeLessThanOrEqual(2);
-    expect(configResource.state.value).toBe('ready');
-    expect(audioProfilesResource.state.value).toBe('ready');
+    expect(loaded(settingsQuery)).toBe('success');
+    expect(loaded(audioProfilesQuery)).toBe('success');
   });
 
   it('reads a reset startup read again', async () => {
     const device = keepsTwoConnections(['/api/settings']);
-    (await startPolling(now))();
+    (await startPolling())();
     expect(device.answered).toContain('/api/settings');
-    expect(configResource.state.value).toBe('ready');
+    expect(loaded(settingsQuery)).toBe('success');
   });
 
-  it('reads settings again after a restart, and again if that read is reset', async () => {
+  it('reads shown settings again after a restart, and again if that read is reset', async () => {
+    // A screen that shows the settings, as Device or Bridge does.
+    const shown = new QueryObserver(queryClient, settingsQuery).subscribe(() => undefined);
     const device = keepsTwoConnections(['/api/settings']);
     const inBoot = (boot: number) => {
       const s = deviceStatus();
@@ -83,11 +80,12 @@ describe('opening the console', () => {
     report({ type: 'answered', status: inBoot(1), at: 0 });
     report({ type: 'restarting', operation: 'the board', at: 1000 });
     report({ type: 'answered', status: inBoot(2), at: 9000 });
-    // The reset read is read again after the real pause between reads.
+    // The reset read is read again after the pause between reads.
     await vi.waitFor(
       () => expect(device.answered.filter((path) => path === '/api/settings')).toHaveLength(1),
       { timeout: 3000 },
     );
-    await vi.waitFor(() => expect(configResource.state.value).toBe('ready'));
+    await vi.waitFor(() => expect(loaded(settingsQuery)).toBe('success'));
+    shown();
   });
 });

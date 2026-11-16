@@ -2,16 +2,15 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { setTransport } from '../../src/device/lib/http';
 import {
   clearLogs,
-  currentLog,
   EMPTY_BOOT_LOG,
   hiddenLines,
-  loadLogs,
+  logsQuery,
   logText,
   mergeBootLog,
   numberedLines,
-  previousLog,
   RETAINED_LINES,
 } from '../../src/device/state/logs';
+import { queryClient } from '../../src/device/state/queries';
 import type { BootLog } from '../../src/generated/api';
 
 const BOOT = 4242;
@@ -113,33 +112,39 @@ describe('reading the device log', () => {
     setTransport((request) => fetch(request));
   });
 
+  const read = () => queryClient.fetchQuery({ ...logsQuery, staleTime: 0 }).catch(() => undefined);
+  const held = () => queryClient.getQueryData(logsQuery.queryKey);
+
   it('merges each read into the running boot and keeps the previous one', async () => {
     const responses = [
       { current: bootLog(0, 2), previous: bootLog(0, 1, 3) },
       { current: bootLog(1, 3), previous: bootLog(0, 1, 3) },
     ];
-    let read = 0;
+    let reads = 0;
     setTransport(async () => {
-      const body = JSON.stringify(responses[Math.min(read++, responses.length - 1)]);
+      const body = JSON.stringify(responses[Math.min(reads++, responses.length - 1)]);
       return new Response(body, { status: 200 });
     });
 
-    await loadLogs();
-    await loadLogs();
+    await read();
+    await read();
 
-    expect(texts(currentLog.value)).toEqual(['line 0', 'line 1', 'line 2', 'line 3']);
-    expect(previousLog.value && texts(previousLog.value)).toEqual(['line 0']);
-    expect(previousLog.value && hiddenLines(previousLog.value)).toBe(3);
+    const log = held();
+    expect(log && texts(log.current)).toEqual(['line 0', 'line 1', 'line 2', 'line 3']);
+    expect(log?.previous && texts(log.previous)).toEqual(['line 0']);
+    expect(log?.previous && hiddenLines(log.previous)).toBe(3);
   });
 
   it('surfaces a failed read without discarding what it already showed', async () => {
     setTransport(
       async () => new Response(JSON.stringify({ current: bootLog(0, 2) }), { status: 200 }),
     );
-    await loadLogs();
+    await read();
     setTransport(async () => new Response('{"error":"unauthorized"}', { status: 401 }));
-    await loadLogs();
+    await read();
 
-    expect(texts(currentLog.value)).toEqual(['line 0', 'line 1']);
+    const log = held();
+    expect(log && texts(log.current)).toEqual(['line 0', 'line 1']);
+    expect(queryClient.getQueryState(logsQuery.queryKey)?.error).toMatchObject({ status: 401 });
   });
 });

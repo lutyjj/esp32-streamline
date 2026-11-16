@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/preact-query';
 import {
   buttonClass,
   Card,
@@ -16,11 +17,12 @@ import { bridgeSourcesLink } from '../../lib/consoleAddress';
 import { audioActivity } from '../../state/activity';
 import { rememberedBridgeConsole } from '../../state/bridgeConsole';
 import { delivery } from '../../state/delivery';
-import { config, configResource, liveStatus, status } from '../../state/device';
+import { liveStatus, status } from '../../state/device';
+import { queryClient, settingsQuery } from '../../state/queries';
 import { episodeDrops, lossCalloutVisible } from '../../state/streamLoss';
 import { ActivityStatus } from '../activityWords';
 import { sectionOf } from '../places';
-import { ResourceNotice } from '../ResourceNotice';
+import { ReadNotice } from '../ReadNotice';
 import { ScreenTop } from '../ScreenTop';
 import { TargetScreen } from './TargetScreen';
 
@@ -35,13 +37,14 @@ export function BridgeScreen() {
 
 function BridgeOverview() {
   const known = status.value;
-  const facts = known ? delivery(known, config.value) : null;
+  const settings = useQuery(settingsQuery, queryClient);
+  const facts = known ? delivery(known, settings.data ?? null) : null;
   return (
     <>
       <ScreenTop title="Bridge" meta={<ActivityStatus activity={audioActivity.value} />} />
       <Content>
         <div className="grid gap-4">
-          <ResourceNotice resource={configResource} />
+          <ReadNotice read={settings} name="device settings" />
           {facts ? (
             <>
               <Card>
@@ -112,7 +115,8 @@ function Reception({ source, address }: { source: string | null; address: string
 
 function Delivery() {
   const live = liveStatus.value;
-  const facts = live ? delivery(live, config.value) : null;
+  const settings = useQuery(settingsQuery, queryClient).data ?? null;
+  const facts = live ? delivery(live, settings) : null;
   return (
     <Card>
       <CardHead

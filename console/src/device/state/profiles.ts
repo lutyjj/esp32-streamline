@@ -13,11 +13,12 @@ import {
   updateProfile,
 } from '../lib/profiles';
 import { withAccess } from './access';
-import { audioProfiles, loadAudioProfiles, status } from './device';
+import { status } from './device';
+import { audioProfilesQuery, queryClient, readAgain } from './queries';
 
 /** What the catalog work needs from the device; throws while a part has not loaded. */
 function loaded() {
-  const catalog = audioProfiles.value;
+  const catalog = queryClient.getQueryData(audioProfilesQuery.queryKey);
   const known = status.value;
   if (!catalog || !known) throw new Error('The profiles have not loaded yet.');
   return { catalog, known };
@@ -27,7 +28,7 @@ function loaded() {
 async function store(catalog: string): Promise<boolean> {
   const done = await withAccess(() => setAudioProfiles({ catalog }));
   if (done === null) return false;
-  await loadAudioProfiles();
+  await readAgain(audioProfilesQuery);
   return true;
 }
 

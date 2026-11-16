@@ -2,8 +2,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LinenProvider, ToastProvider, UnsavedChangesGuard } from 'linen';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { deviceConfig, deviceStatus } from '../../src/device/mocks/fixtures';
-import { audioProfiles, config } from '../../src/device/state/device';
 import { UPDATE_BUSY_REASON } from '../../src/device/state/ota';
+import { audioProfilesQuery, queryClient, settingsQuery } from '../../src/device/state/queries';
 import { AudioScreen } from '../../src/device/ui/audio/AudioScreen';
 import { BridgeScreen } from '../../src/device/ui/bridge/BridgeScreen';
 import { DeviceScreen } from '../../src/device/ui/device/DeviceScreen';
@@ -26,7 +26,7 @@ function mount(path: string, page = <AudioScreen />) {
 
 describe('during a firmware update', () => {
   beforeEach(() => {
-    audioProfiles.value = {
+    queryClient.setQueryData(audioProfilesQuery.queryKey, {
       schema_version: 1,
       board_id: deviceStatus().capabilities.board_id,
       active_profile_id: null,
@@ -37,15 +37,14 @@ describe('during a firmware update', () => {
           audio: { input_line: 2, input_gain: 0, adc_attenuation_db: 18 },
         },
       ],
-    };
-    config.value = deviceConfig();
+    });
+    queryClient.setQueryData(settingsQuery.queryKey, deviceConfig());
     answering(deviceStatus({ ota: { busy: true, phase: 'checking' } }));
   });
 
   afterEach(() => {
     cleanup();
-    audioProfiles.value = null;
-    config.value = null;
+    queryClient.clear();
     answering(null);
     replacePath('/');
   });

@@ -1,3 +1,4 @@
+import { useMutation, useQuery } from '@tanstack/preact-query';
 import {
   Button,
   buttonClass,
@@ -12,7 +13,7 @@ import {
   SettingToggle,
   useToast,
 } from 'linen';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   getSetAudioProfileUrl,
   setAnalogPassthrough,
@@ -24,15 +25,10 @@ import { Link, replacePath, usePathname } from '../../../shared/navigation';
 import { withAccess, withRestart } from '../../state/access';
 import { type AudioActivity, audioActivity } from '../../state/activity';
 import { clipCalloutVisible } from '../../state/clipCallout';
-import {
-  audioProfiles,
-  liveStatus,
-  loadAudioProfiles,
-  passthroughLocked,
-  status,
-} from '../../state/device';
+import { liveStatus, passthroughLocked, status } from '../../state/device';
 import { blockingHealth } from '../../state/health';
 import { updateLock } from '../../state/ota';
+import { audioProfilesQuery, queryClient, readAgain } from '../../state/queries';
 import { ACTIVITY, ActivityStatus } from '../activityWords';
 import { sectionOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
@@ -112,29 +108,30 @@ function InputCard() {
 
 function ProfileRow() {
   const toast = useToast();
-  const catalog = audioProfiles.value;
-  const [switching, setSwitching] = useState(false);
+  const catalog = useQuery(audioProfilesQuery, queryClient).data;
+  const choose = useMutation(
+    {
+      mutationFn: async (profileId: string) => {
+        const done = await withRestart('the profile change', () =>
+          setAudioProfile({ profile_id: profileId }),
+        );
+        if (done) await readAgain(audioProfilesQuery);
+        return done;
+      },
+      onSuccess: (done, profileId) => {
+        if (!done) return;
+        const name = catalog?.profiles.find((profile) => profile.id === profileId)?.name;
+        toast.show({ text: name ? `Switched to ${name}.` : 'Back to custom levels.' });
+      },
+      onError: (error) =>
+        toast.show({ text: `The profile did not switch: ${errorMessage(error)}`, sticky: true }),
+    },
+    queryClient,
+  );
   // Switching can restart the device, which waits while an update runs.
   const held = updateLock(getSetAudioProfileUrl());
   if (!catalog) return null;
   const saved = catalog.profiles.length > 0;
-  const choose = async (profileId: string) => {
-    setSwitching(true);
-    try {
-      const done = await withRestart('the profile change', () =>
-        setAudioProfile({ profile_id: profileId }),
-      );
-      if (done) {
-        await loadAudioProfiles();
-        const name = catalog.profiles.find((profile) => profile.id === profileId)?.name;
-        toast.show({ text: name ? `Switched to ${name}.` : 'Back to custom levels.' });
-      }
-    } catch (error) {
-      toast.show({ text: `The profile did not switch: ${errorMessage(error)}`, sticky: true });
-    } finally {
-      setSwitching(false);
-    }
-  };
   return (
     <SettingRow
       title="Profile"
@@ -155,8 +152,8 @@ function ProfileRow() {
               label: profile.name,
             }))}
             value={catalog.active_profile_id ?? ''}
-            disabled={switching || held !== null}
-            onValueChange={(next) => void choose(next)}
+            disabled={choose.isPending || held !== null}
+            onValueChange={(next) => choose.mutate(next)}
           />
         )}
         <Link href="/audio/profiles" className={buttonClass()}>
@@ -171,23 +168,20 @@ function PassthroughRow() {
   const toast = useToast();
   const known = status.value;
   const output = known?.capabilities.analog_passthrough;
-  const [saving, setSaving] = useState(false);
+  const turn = useMutation(
+    {
+      mutationFn: (enabled: boolean) => withAccess(() => setAnalogPassthrough({ enabled })),
+      onError: (error) =>
+        toast.show({
+          text: `Analog passthrough did not change: ${errorMessage(error)}`,
+          sticky: true,
+        }),
+    },
+    queryClient,
+  );
   if (!known || !output) return null;
   const locked = passthroughLocked.value;
   const fault = known.analog_passthrough.fault;
-  const turn = async (enabled: boolean) => {
-    setSaving(true);
-    try {
-      await withAccess(() => setAnalogPassthrough({ enabled }));
-    } catch (error) {
-      toast.show({
-        text: `Analog passthrough did not change: ${errorMessage(error)}`,
-        sticky: true,
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
   return (
     <SettingToggle
       title="Analog passthrough"
@@ -198,9 +192,9 @@ function PassthroughRow() {
       }
       label="Analog passthrough"
       checked={known.analog_passthrough.enabled}
-      busy={saving}
+      busy={turn.isPending}
       disabled={locked !== null}
-      onCheckedChange={(enabled) => void turn(enabled)}
+      onCheckedChange={(enabled) => turn.mutate(enabled)}
     />
   );
 }
@@ -208,7 +202,14 @@ function PassthroughRow() {
 function StreamCard({ activity }: { activity: AudioActivity }) {
   const toast = useToast();
   const live = liveStatus.value;
-  const [changing, setChanging] = useState(false);
+  const toggle = useMutation(
+    {
+      mutationFn: (enabled: boolean) => withAccess(() => setStream({ enabled })),
+      onError: (error) =>
+        toast.show({ text: `Streaming did not change: ${errorMessage(error)}`, sticky: true }),
+    },
+    queryClient,
+  );
   const fault = blockingHealth.value;
   const target = status.value?.target;
 
@@ -226,16 +227,6 @@ function StreamCard({ activity }: { activity: AudioActivity }) {
   }
 
   const enabled = live?.stream.enabled ?? true;
-  const toggle = async () => {
-    setChanging(true);
-    try {
-      await withAccess(() => setStream({ enabled: !enabled }));
-    } catch (error) {
-      toast.show({ text: `Streaming did not change: ${errorMessage(error)}`, sticky: true });
-    } finally {
-      setChanging(false);
-    }
-  };
   return (
     <Card>
       <CardHead
@@ -243,7 +234,7 @@ function StreamCard({ activity }: { activity: AudioActivity }) {
         description={fault ? (fault.remedy ?? fault.detail) : ACTIVITY[activity].meaning}
       >
         {live?.mode === 'provisioned' && (
-          <Button busy={changing} onClick={() => void toggle()}>
+          <Button busy={toggle.isPending} onClick={() => toggle.mutate(!enabled)}>
             {enabled ? 'Pause streaming' : 'Resume streaming'}
           </Button>
         )}

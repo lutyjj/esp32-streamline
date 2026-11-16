@@ -1,18 +1,10 @@
 /**
- * Device state: the status poll, the editable settings snapshot, and the
- * derived meter and delivery state every view renders from.
+ * Device state: the status poll and the derived meter and delivery state
+ * every view renders from. The other reads live in the query cache.
  */
 
 import { computed, signal } from '@preact/signals';
-import {
-  type AudioProfileCatalog,
-  getAudioProfiles,
-  getSettings,
-  getStatus,
-  type SettingsResponse,
-  type StatusResponse,
-} from '../../generated/api';
-import { resource, settle } from '../../shared/resource';
+import { getStatus, type StatusResponse } from '../../generated/api';
 import {
   type Connection,
   type ConnectionEvent,
@@ -21,6 +13,7 @@ import {
   sightingOf,
   untakenJoin,
 } from './connection';
+import { audioProfilesQuery, queryClient, settingsQuery } from './queries';
 
 export const POLL_MS = 1500;
 /**
@@ -72,15 +65,6 @@ export const restartSettled = signal<SettledRestart | null>(null);
 
 /** A network the device was asked to join and never did, while its news waits to be told. */
 export const joinUntaken = signal<{ ssid: string; still: string } | null>(null);
-/** Last /api/settings read; forms copy it into local edit state. */
-export const configResource = resource<SettingsResponse>('device settings', getSettings);
-export const config = configResource.data;
-/** Device-owned named audio profiles, stored separately from raw settings. */
-export const audioProfilesResource = resource<AudioProfileCatalog>(
-  'audio profiles',
-  getAudioProfiles,
-);
-export const audioProfiles = audioProfilesResource.data;
 /** Peak-hold marks for the level meters. */
 export const peakHold = signal<PeakHold>({ left: 0, right: 0, at: 0 });
 /** PCM bytes the previous answer counted, and in which boot, to tell whether audio still flows. */
@@ -150,7 +134,7 @@ export function report(event: ConnectionEvent): void {
       after: next.seen.status,
     };
     // The restart applied settings; read them as they are now.
-    void readDeviceSettings();
+    void queryClient.invalidateQueries();
   }
   const ssid = untakenJoin(previous, next);
   if (ssid !== null && next.phase === 'live') {
@@ -200,40 +184,17 @@ function observeAudio(s: StatusResponse, now: number): void {
   lastPcm = { boot: s.system.boot, bytes: s.metrics.bytes_total };
 }
 
-export async function loadConfig(): Promise<void> {
-  await configResource.load();
-}
-
-export async function loadAudioProfiles(): Promise<void> {
-  await audioProfilesResource.load();
-}
-
-/** Reads a dropped read gets before its resource reports the failure. */
-export const READ_ATTEMPTS = 4;
-const READ_PAUSE_MS = 1000;
-
-function pauseBetweenReads(): Promise<void> {
-  return new Promise((done) => setTimeout(done, READ_PAUSE_MS));
-}
-
 /**
- * Settings and audio profiles, one read at a time, each read again when the
- * device drops it. The device keeps few connections and closes one when a
- * browser opens more.
+ * Status first, then the poll, then settings and profiles, which the
+ * transport sends one after the other beside the poll. Resolves with how to
+ * stop the poll once the first reads are done.
  */
-export async function readDeviceSettings(pause = pauseBetweenReads): Promise<void> {
-  await settle(configResource, READ_ATTEMPTS, pause);
-  await settle(audioProfilesResource, READ_ATTEMPTS, pause);
-}
-
-/**
- * Status first, then the poll, then settings and profiles in turn. The poll
- * runs beside those reads, so at most two requests are open at once. Resolves
- * with how to stop the poll once the first reads are done.
- */
-export async function startPolling(pause = pauseBetweenReads): Promise<() => void> {
+export async function startPolling(): Promise<() => void> {
   await refresh();
   const poll = setInterval(refresh, POLL_MS);
-  await readDeviceSettings(pause);
+  await Promise.all([
+    queryClient.prefetchQuery(settingsQuery),
+    queryClient.prefetchQuery(audioProfilesQuery),
+  ]);
   return () => clearInterval(poll);
 }

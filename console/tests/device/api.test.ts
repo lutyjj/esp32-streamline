@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forgetAdminKey, isUnlocked, unlockSettings } from '../../src/device/lib/adminKey';
 import { digestResponse, parseDigestFields } from '../../src/device/lib/digest';
 import { ANSWER_WITHIN_MS, setTransport, verifyAdminKey } from '../../src/device/lib/http';
-import { getLogs, getStatus, restart, setWifi } from '../../src/generated/api';
+import {
+  getBridges,
+  getLogs,
+  getSettings,
+  getStatus,
+  restart,
+  setWifi,
+} from '../../src/generated/api';
 
 function respond(status: number, body: string): Response {
   return new Response(body, { status });
@@ -183,6 +190,26 @@ describe('api transport', () => {
     await expect(getStatus()).rejects.toThrow('the device did not answer in time');
     await expect(verifyAdminKey('a'.repeat(48))).rejects.toThrow('did not answer in time');
     expect(bound).toHaveBeenCalledWith(ANSWER_WITHIN_MS);
+  });
+
+  it('sends status reads in their own lane, so a slow request never holds up the poll', async () => {
+    const sent: string[] = [];
+    let release = () => {};
+    setTransport(async (request) => {
+      const path = new URL(request.url).pathname;
+      sent.push(path);
+      if (path === '/api/bridges') await new Promise<void>((done) => (release = done));
+      return respond(200, '{"bridges":[]}');
+    });
+
+    const search = getBridges();
+    const settings = getSettings();
+    await getStatus();
+    // The device keeps two connections: the search holds one, the poll the other.
+    expect(sent).toEqual(['/api/bridges', '/api/status']);
+    release();
+    await Promise.all([search, settings]);
+    expect(sent).toEqual(['/api/bridges', '/api/status', '/api/settings']);
   });
 
   it('keeps the bound a caller sets for itself', async () => {

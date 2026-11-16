@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/preact-query';
 import {
   Button,
   buttonClass,
@@ -25,6 +26,7 @@ import {
   saveLevels,
 } from '../../state/levels';
 import { updateLock } from '../../state/ota';
+import { queryClient } from '../../state/queries';
 import { ScreenTop } from '../ScreenTop';
 import { WriteFailure } from '../WriteFailure';
 import { InputMeter } from './InputMeter';
@@ -45,8 +47,18 @@ export function LevelsScreen() {
 function LevelsEditor({ known }: { known: StatusResponse }) {
   const toast = useToast();
   const [draft, setDraft] = useState(() => levelsDraft(known));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  const save = useMutation(
+    {
+      mutationFn: () => saveLevels(draft),
+      onSuccess: (done) => {
+        if (!done) return;
+        setDraft((current) => keptLevels(current));
+        toast.show({ text: 'Input levels saved.' });
+      },
+    },
+    queryClient,
+  );
+  const saving = save.isPending;
   // Untouched fields follow the device, so a button's gain step shows here too.
   useEffect(() => setDraft((current) => levelsDraft(known, current)), [known]);
   const unsaved = levelsUnsaved(draft);
@@ -56,21 +68,6 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
   const { input_lines: lines, input_gain_max, adc_atten_max_db } = known.capabilities;
   const edit = (level: Level) => (value: number | null) => {
     if (value !== null) setDraft((current) => editLevel(current, level, value));
-  };
-
-  const save = async () => {
-    setFailure(null);
-    setSaving(true);
-    try {
-      if (await saveLevels(draft)) {
-        setDraft((current) => keptLevels(current));
-        toast.show({ text: 'Input levels saved.' });
-      }
-    } catch (error) {
-      setFailure({ error });
-    } finally {
-      setSaving(false);
-    }
   };
 
   return (
@@ -98,7 +95,7 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
           description="Attenuation lowers the input before it is captured, so loud material stays under the clipping mark."
         />
         <CardBody>
-          <Form onSubmit={save}>
+          <Form onSubmit={() => save.mutateAsync().catch(() => undefined)}>
             {lines.length > 1 && (
               <Select
                 label="Input line"
@@ -132,11 +129,11 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
               disabled={saving}
               onValueChange={edit('adc_attenuation_db')}
             />
-            {failure && (
+            {save.error && (
               <WriteFailure
                 className="mt-3"
                 failed="The device did not save the levels."
-                error={failure.error}
+                error={save.error}
               />
             )}
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">

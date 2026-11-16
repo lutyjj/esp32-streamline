@@ -1,5 +1,6 @@
+import { useMutation } from '@tanstack/preact-query';
 import { ConfirmDialog } from 'linen';
-import { useState } from 'react';
+import { queryClient } from '../state/queries';
 import { WriteFailure } from './WriteFailure';
 
 interface WriteConfirmProps {
@@ -21,25 +22,20 @@ interface WriteConfirmProps {
  * in view for another try or a way out.
  */
 export function WriteConfirm({ onOpenChange, failed, write, ...dialog }: WriteConfirmProps) {
-  const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  const run = useMutation(
+    { mutationFn: () => write(), onSuccess: () => onOpenChange(false) },
+    queryClient,
+  );
   return (
     <ConfirmDialog
       {...dialog}
       onOpenChange={(open) => {
-        setFailure(null);
+        run.reset();
         onOpenChange(open);
       }}
-      onConfirm={async () => {
-        setFailure(null);
-        try {
-          await write();
-          onOpenChange(false);
-        } catch (error) {
-          setFailure({ error });
-        }
-      }}
+      onConfirm={() => run.mutateAsync().catch(() => undefined)}
     >
-      {failure && <WriteFailure failed={failed} error={failure.error} />}
+      {run.error && <WriteFailure failed={failed} error={run.error} />}
     </ConfirmDialog>
   );
 }

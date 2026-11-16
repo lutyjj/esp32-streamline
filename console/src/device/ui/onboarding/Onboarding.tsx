@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/preact-query';
 import {
   Button,
   Card,
@@ -11,11 +12,12 @@ import {
   ShownOnce,
   TopBar,
 } from 'linen';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { errorMessage } from '../../../shared/errors';
 import { fieldErrors } from '../../../shared/http';
 import { WIFI_FIELDS, type WifiEntry } from '../../lib/wifi';
 import { joinNetwork, keyUnconfirmed } from '../../state/join';
+import { queryClient } from '../../state/queries';
 import { setupKey } from '../../state/setupKey';
 import { deviceConditions } from '../DeviceConditions';
 import { WifiFields } from '../wifi/WifiFields';
@@ -28,23 +30,20 @@ export function Onboarding() {
   const [entry, setEntry] = useState<WifiEntry>({ ssid: '', password: '', open: false });
   const [keySaved, setKeySaved] = useState(false);
   const [keyAsked, setKeyAsked] = useState(false);
-  const [joining, setJoining] = useState(false);
-  const [refusal, setRefusal] = useState<{ error: unknown } | null>(null);
-  // Held between renders: Base UI hands a field's error back whenever this changes.
-  const errors = useMemo(() => fieldErrors(refusal?.error, WIFI_FIELDS), [refusal]);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const join = useMutation(
+    {
+      mutationFn: () => joinNetwork(entry),
+      onSuccess: () => setErrors({}),
+      onError: (error) => setErrors(fieldErrors(error, WIFI_FIELDS)),
+    },
+    queryClient,
+  );
 
-  const join = async () => {
+  const submit = async () => {
     setKeyAsked(true);
     if (keyUnconfirmed(keySaved)) return;
-    setJoining(true);
-    try {
-      await joinNetwork(entry);
-      setRefusal(null);
-    } catch (error) {
-      setRefusal({ error });
-    } finally {
-      setJoining(false);
-    }
+    await join.mutateAsync().catch(() => undefined);
   };
 
   return (
@@ -52,7 +51,7 @@ export function Onboarding() {
       <Conditions conditions={deviceConditions()} />
       <TopBar title="Set up StreamLine" />
       <Content>
-        <Form className="grid gap-4" errors={errors} onSubmit={join}>
+        <Form className="grid gap-4" errors={errors} onSubmit={submit}>
           <Card>
             <CardHead
               title="Your Wi-Fi"
@@ -63,7 +62,7 @@ export function Onboarding() {
                 entry={entry}
                 onChange={setEntry}
                 storedPassword={false}
-                disabled={joining}
+                disabled={join.isPending}
               />
             </CardBody>
           </Card>
@@ -96,15 +95,15 @@ export function Onboarding() {
               )}
             </CardBody>
           </Card>
-          {refusal && Object.keys(errors).length === 0 && (
+          {join.error && Object.keys(errors).length === 0 && (
             <Notice
               tone="danger"
               title="The device did not save the network."
-              description={errorMessage(refusal.error)}
+              description={errorMessage(join.error)}
             />
           )}
           <div className="flex justify-end">
-            <Button type="submit" variant="primary" busy={joining}>
+            <Button type="submit" variant="primary" busy={join.isPending}>
               Join network
             </Button>
           </div>

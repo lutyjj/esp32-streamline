@@ -8,7 +8,8 @@
 import { type Ack, type AudioSettings, type StatusResponse, setAudio } from '../../generated/api';
 import { discarded, edited, type Followed, followed, seeded, unsaved } from '../lib/follow';
 import { withRestart } from './access';
-import { audioProfiles, loadAudioProfiles, readBack } from './device';
+import { readBack } from './device';
+import { audioProfilesQuery, queryClient, readAgain } from './queries';
 
 export type Level = keyof AudioSettings;
 
@@ -79,6 +80,9 @@ export async function saveLevels(draft: LevelsDraft): Promise<boolean> {
  */
 export async function writeAudio(audio: AudioSettings, options?: RequestInit): Promise<Ack> {
   const ack = await setAudio(audio, options);
-  if (!ack.rebooting && audioProfiles.value?.active_profile_id) await loadAudioProfiles();
+  const catalog = queryClient.getQueryData(audioProfilesQuery.queryKey);
+  if (!ack.rebooting && catalog?.active_profile_id) {
+    await readAgain(audioProfilesQuery);
+  }
   return ack;
 }

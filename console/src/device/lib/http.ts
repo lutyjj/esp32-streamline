@@ -43,9 +43,31 @@ async function bounded<T>(work: Promise<T>): Promise<T> {
 /** The accepted challenge writes reuse; dropped when the device stops accepting it. */
 let session: DigestSession | null = null;
 
+/** Runs each exchange once the one before it has ended, in the order they came. */
+function oneAtATime(): <T>(work: () => Promise<T>) => Promise<T> {
+  let last: Promise<unknown> = Promise.resolve();
+  return (work) => {
+    const turn = last.then(work, work);
+    last = turn.catch(() => undefined);
+    return turn;
+  };
+}
+
+/**
+ * The device keeps two connections and resets a third. Status reads take one
+ * lane and every other request the other, so a slow search or write never
+ * holds up the poll that tells whether the device answers.
+ */
+let lanes = { status: oneAtATime(), other: oneAtATime() };
+
+function laneOf(request: Request) {
+  return new URL(request.url).pathname === '/api/status' ? lanes.status : lanes.other;
+}
+
 export function setTransport(next: FetchLike): void {
   transport = next;
   session = null;
+  lanes = { status: oneAtATime(), other: oneAtATime() };
 }
 
 /**
@@ -81,10 +103,13 @@ async function authorizedExchange(request: Request, key: string): Promise<Respon
 }
 
 export function deviceFetch<T>(url: string, options: RequestInit): Promise<T> {
-  return bounded(exchange<T>(deviceRequest(url, options)));
+  const request = deviceRequest(url, options);
+  return bounded(laneOf(request)(() => exchange<T>(request)));
 }
 
 async function exchange<T>(request: Request): Promise<T> {
+  // A caller that gave up while the request waited for its lane sends nothing.
+  request.signal.throwIfAborted();
   const key = needsAdminKey(request) && isUnlocked() ? storedAdminKey() : '';
 
   const response = key ? await authorizedExchange(request, key) : await transport(request);
@@ -120,7 +145,7 @@ function parseBody(text: string): unknown {
 
 /** Ask the device whether it accepts `key`; this intentionally bypasses stored auth state. */
 export function verifyAdminKey(key: string): Promise<boolean> {
-  return bounded(checkKey(key));
+  return bounded(lanes.other(() => checkKey(key)));
 }
 
 async function checkKey(key: string): Promise<boolean> {

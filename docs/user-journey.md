@@ -11,6 +11,8 @@ owns installation commands.
 - Failed status reads, including reads unanswered after five seconds, replace
   live indicators with an unavailable state.
   Last-known configuration cannot establish current audio delivery.
+- Any other request the device leaves unanswered for ten seconds fails, and
+  the screen that sent it says so. Nothing waits on a silent device.
 - Every wait names its operation and completion evidence. A timer never proves
   a network join, successful reboot, or audible playback. A restart still
   offline after a minute reads as overdue on every surface that narrated it.

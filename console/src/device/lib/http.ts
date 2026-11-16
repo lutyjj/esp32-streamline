@@ -5,6 +5,12 @@ import { DigestSession, parseChallenge } from './digest';
 let transport: FetchLike = (request) => fetch(request);
 
 /**
+ * How long a request waits for the device when its caller sets no bound of
+ * its own. The device's slowest answer, a bridge search, takes three seconds.
+ */
+export const ANSWER_WITHIN_MS = 10_000;
+
+/**
  * The console answers the device's digest challenge itself, so its requests
  * must not carry browser-managed credentials. A same-origin request that does
  * would make the browser prompt for a username and password on the 401
@@ -13,7 +19,23 @@ let transport: FetchLike = (request) => fetch(request);
  * dialog the console cannot style, explain, or dismiss.
  */
 function deviceRequest(url: string, options: RequestInit = {}): Request {
-  return new Request(url, { ...options, credentials: 'omit' });
+  return new Request(url, {
+    ...options,
+    signal: options.signal ?? AbortSignal.timeout(ANSWER_WITHIN_MS),
+    credentials: 'omit',
+  });
+}
+
+/** An exchange the device left unanswered past its bound fails in words a person can act on. */
+async function bounded<T>(work: Promise<T>): Promise<T> {
+  try {
+    return await work;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      throw new Error('the device did not answer in time');
+    }
+    throw error;
+  }
 }
 
 /** The accepted challenge writes reuse; dropped when the device stops accepting it. */
@@ -66,8 +88,11 @@ async function authorizedExchange(request: Request, key: string): Promise<Respon
   return answered;
 }
 
-export async function deviceFetch<T>(url: string, options: RequestInit): Promise<T> {
-  const request = deviceRequest(url, options);
+export function deviceFetch<T>(url: string, options: RequestInit): Promise<T> {
+  return bounded(exchange<T>(deviceRequest(url, options)));
+}
+
+async function exchange<T>(request: Request): Promise<T> {
   const key = needsAdminKey(request) && isUnlocked() ? storedAdminKey() : '';
 
   const response = key ? await authorizedExchange(request, key) : await transport(request);
@@ -98,7 +123,11 @@ function parseBody(text: string): unknown {
 }
 
 /** Ask the device whether it accepts `key`; this intentionally bypasses stored auth state. */
-export async function verifyAdminKey(key: string): Promise<boolean> {
+export function verifyAdminKey(key: string): Promise<boolean> {
+  return bounded(checkKey(key));
+}
+
+async function checkKey(key: string): Promise<boolean> {
   const attempt = (authorization?: string) => {
     const request = deviceRequest('/api/unlock', { method: 'POST' });
     if (authorization) request.headers.set('Authorization', authorization);

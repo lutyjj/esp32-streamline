@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forgetAdminKey, isUnlocked, unlockSettings } from '../../src/device/lib/adminKey';
 import { getLogs, getStatus, restart, setTransport, setWifi } from '../../src/device/lib/api';
 import { digestResponse, parseDigestFields } from '../../src/device/lib/digest';
-import { AUTHENTICATED_READS, verifyAdminKey } from '../../src/device/lib/http';
+import { ANSWER_WITHIN_MS, AUTHENTICATED_READS, verifyAdminKey } from '../../src/device/lib/http';
 
 function respond(status: number, body: string): Response {
   return new Response(body, { status });
@@ -47,7 +47,15 @@ function deviceTransport(key: string, ok: (request: Request) => Response) {
   return { seen, transport };
 }
 
+/** A device that never answers: the request settles only when its signal ends it. */
+function silentDevice(request: Request): Promise<Response> {
+  return new Promise((_, reject) => {
+    request.signal.addEventListener('abort', () => reject(request.signal.reason));
+  });
+}
+
 afterEach(() => {
+  vi.restoreAllMocks();
   forgetAdminKey();
   setTransport((request) => fetch(request));
 });
@@ -174,5 +182,25 @@ describe('api transport', () => {
   it('falls back to raw text when the error body is not JSON', async () => {
     setTransport(async () => respond(500, 'boom'));
     await expect(getStatus()).rejects.toThrow('boom');
+  });
+
+  it('ends a request the device leaves unanswered, in words, at the bound', async () => {
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    // The bound shrinks to a millisecond so the test does not wait out ten seconds.
+    const bound = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => timeout(1));
+    setTransport(silentDevice);
+    await expect(getStatus()).rejects.toThrow('the device did not answer in time');
+    await expect(verifyAdminKey('a'.repeat(48))).rejects.toThrow('did not answer in time');
+    expect(bound).toHaveBeenCalledWith(ANSWER_WITHIN_MS);
+  });
+
+  it('keeps the bound a caller sets for itself', async () => {
+    const bound = vi.spyOn(AbortSignal, 'timeout');
+    const caller = new AbortController();
+    setTransport(silentDevice);
+    const read = getStatus({ signal: caller.signal });
+    caller.abort(new Error('the search was stopped'));
+    await expect(read).rejects.toThrow('the search was stopped');
+    expect(bound).not.toHaveBeenCalled();
   });
 });

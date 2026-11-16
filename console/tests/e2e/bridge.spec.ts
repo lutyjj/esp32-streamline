@@ -141,6 +141,21 @@ test('a bridge that does not record names the option that turns recording on', a
   ).toBeVisible();
 });
 
+test('a phone chooses the theme under Settings, This browser, even while the bridge is away', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/status', (route) => route.abort());
+  await page.goto('/bridge.html#/settings/browser');
+  await expect(page.getByText('The bridge is not answering.')).toBeVisible();
+
+  await page
+    .getByRole('radiogroup', { name: 'Theme' })
+    .getByRole('radio', { name: 'Dark' })
+    .click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});
+
 test('the bridge serves its console at its root under its policy', async ({ page }) => {
   const violations: string[] = [];
   page.on('console', (message) => {

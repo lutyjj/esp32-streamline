@@ -269,6 +269,22 @@ test('the theme is chosen at the foot of the rail', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
+test('a phone, whose tab bar holds the places alone, chooses the theme under This browser', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/device/browser');
+  const tabs = page.getByRole('navigation', { name: 'Device console' }).last();
+  await expect(tabs.getByRole('link')).toHaveText(['Audio', 'Bridge', 'Device', 'Maintenance']);
+  await expect(tabs.getByRole('button')).toHaveCount(0);
+
+  await page
+    .getByRole('radiogroup', { name: 'Theme' })
+    .getByRole('radio', { name: 'Dark' })
+    .click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});
+
 /** Find the release and start installing it from Maintenance → Updates. */
 async function startUpdate(page: Page): Promise<void> {
   await page.goto('/#/maintenance/updates');

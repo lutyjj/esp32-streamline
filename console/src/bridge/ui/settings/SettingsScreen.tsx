@@ -7,12 +7,14 @@ import { ReadNotice } from '../../../shared/ReadNotice';
 import { statusQuery } from '../../state/queries';
 import { itemOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
+import { BrowserSection } from './BrowserSection';
 import { DeploymentSection } from './DeploymentSection';
 import { SecuritySection } from './SecuritySection';
 
 const SECTIONS = [
   { href: '/settings/security', label: 'Audio security' },
   { href: '/settings/deployment', label: 'Deployment' },
+  { href: '/settings/browser', label: 'This browser' },
 ] as const;
 
 export function SettingsScreen() {
@@ -27,7 +29,9 @@ export function SettingsScreen() {
       <ScreenTop title="Settings" />
       <SectionNav label="Settings" sections={SECTIONS} />
       <Content>
-        {!status.data ? (
+        {section === 'browser' ? (
+          <BrowserSection />
+        ) : !status.data ? (
           <ReadNotice read={status} name="bridge status" />
         ) : section === 'deployment' ? (
           <DeploymentSection known={status.data} />

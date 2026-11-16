@@ -6,7 +6,6 @@ import {
   CardHead,
   Checkbox,
   Notice,
-  SettingRow,
   ShownOnce,
   useToast,
   useUnsavedChanges,
@@ -14,23 +13,12 @@ import {
 import { useState } from 'react';
 import { queryClient } from '../../../shared/queries';
 import { WriteFailure } from '../../../shared/WriteFailure';
-import {
-  forgetAdminKey,
-  generateAdminKey,
-  keyRemembered,
-  storedAdminKey,
-  useAuthEpoch,
-} from '../../lib/adminKey';
+import { generateAdminKey } from '../../lib/adminKey';
 import { changeAdminKey } from '../../state/access';
 
-/** The device's admin key, and what this browser keeps of it. */
+/** The device's admin key. */
 export function AccessSection() {
-  return (
-    <div className="grid gap-4">
-      <AdminKeyCard />
-      <BrowserCard />
-    </div>
-  );
+  return <AdminKeyCard />;
 }
 
 /**
@@ -105,28 +93,6 @@ function AdminKeyCard() {
           </div>
         </CardBody>
       )}
-    </Card>
-  );
-}
-
-function BrowserCard() {
-  useAuthEpoch();
-  const stored = storedAdminKey() !== '';
-  return (
-    <Card>
-      <CardHead title="This browser" description="What this browser keeps for this device." />
-      <SettingRow
-        title="Admin key"
-        description={
-          keyRemembered()
-            ? 'Remembered on this browser until it forgets it.'
-            : stored
-              ? 'Kept until this tab closes.'
-              : 'Not kept. A change asks for it.'
-        }
-      >
-        {stored && <Button onClick={forgetAdminKey}>Forget the key</Button>}
-      </SettingRow>
     </Card>
   );
 }

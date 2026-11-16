@@ -20,6 +20,7 @@ const DEVICE_SCREENS = [
   '/#/device/wifi',
   '/#/device/hardware',
   '/#/device/access',
+  '/#/device/browser',
   '/#/maintenance/updates',
   '/#/maintenance/diagnostics',
   '/#/maintenance/api',
@@ -64,6 +65,7 @@ for (const width of [390, 800, 1280]) {
         ['/bridge.html#/recordings', 'Saved recordings'],
         ['/bridge.html#/settings/security', 'Listener'],
         ['/bridge.html#/settings/deployment', 'Version'],
+        ['/bridge.html#/settings/browser', 'How this browser shows the console.'],
       ];
       for (const [path, drawn] of screens) {
         await page.goto(path);

@@ -1,4 +1,4 @@
-import { Checkbox, FormDialog, TextField } from 'linen';
+import { Checkbox, FormDialog, Notice, TextField } from 'linen';
 import { type ReactNode, useState } from 'react';
 import { answerCredential, credentialAsked, credentialAsks } from './credentialGate';
 import { errorMessage } from './errors';
@@ -40,19 +40,21 @@ function CredentialQuestion({
 }: CredentialProps) {
   const [secret, setSecret] = useState('');
   const [keep, setKeep] = useState(false);
-  const [problem, setProblem] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [failure, setFailure] = useState('');
 
-  // The dialog waits on this check, and the problem is set before it settles,
+  // The dialog waits on this check, and its answer is set before it settles,
   // so a refused key takes the focus back to its field.
   const submit = async () => {
-    setProblem('');
     try {
       const verdict = await verify(secret.trim(), keep);
       if (!credentialAsked.value) return;
+      setErrors(verdict === 'rejected' ? { secret: rejected } : {});
+      setFailure('');
       if (verdict === 'accepted') answerCredential(true);
-      else setProblem(rejected);
     } catch (error) {
-      setProblem(`The check did not complete: ${errorMessage(error)}. Try again.`);
+      setErrors({});
+      setFailure(`The check did not complete: ${errorMessage(error)}. Try again.`);
     }
   };
 
@@ -66,6 +68,7 @@ function CredentialQuestion({
       description={description}
       confirmLabel="Unlock"
       disabled={secret.trim() === ''}
+      errors={errors}
       onConfirm={submit}
     >
       {username !== undefined && (
@@ -73,11 +76,11 @@ function CredentialQuestion({
       )}
       <TextField
         label={label}
+        name="secret"
         type="password"
         autoComplete="current-password"
         autoFocus
         value={secret}
-        error={problem === '' ? undefined : problem}
         onChange={(event) => setSecret(event.currentTarget.value)}
       />
       {remember !== undefined && (
@@ -85,6 +88,7 @@ function CredentialQuestion({
           {remember}
         </Checkbox>
       )}
+      {failure !== '' && <Notice tone="danger" title={failure} />}
     </FormDialog>
   );
 }

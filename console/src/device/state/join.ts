@@ -8,7 +8,7 @@
 import { setWifi } from '../../generated/api';
 import { ApiError } from '../../shared/http';
 import { unlockSettings } from '../lib/adminKey';
-import { type WifiEntry, type WifiProblem, wifiProblems, wifiRequest } from '../lib/wifi';
+import { type WifiEntry, wifiRequest } from '../lib/wifi';
 import { report } from './device';
 import { setupKey } from './setupKey';
 
@@ -19,19 +19,13 @@ import { setupKey } from './setupKey';
  */
 export type JoinOutcome = 'confirmed' | 'unconfirmed';
 
-export type JoinBlock = WifiProblem | { field: 'key'; text: string };
-
 /**
- * What keeps a join from going. First contact also waits for the owner to
- * confirm the generated key is kept outside this console: the device adopts
- * it in the same write, and this browser cannot carry it to the home address.
+ * Whether first contact still waits for the owner to confirm the generated
+ * key is kept outside this console: the device adopts it in the same write,
+ * and this browser cannot carry it to the home address.
  */
-export function joinBlocks(entry: WifiEntry, keySaved: boolean): JoinBlock[] {
-  const blocks: JoinBlock[] = wifiProblems(entry);
-  if (setupKey.value !== '' && !keySaved) {
-    blocks.push({ field: 'key', text: 'Confirm the admin key is saved outside this console.' });
-  }
-  return blocks;
+export function keyUnconfirmed(keySaved: boolean): boolean {
+  return setupKey.value !== '' && !keySaved;
 }
 
 /**

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  passwordProblem,
+  ssidProblem,
   storesWifiPassword,
   type WifiEntry,
-  wifiProblems,
   wifiRequest,
 } from '../../src/device/lib/wifi';
 import { deviceConfig } from '../../src/device/mocks/fixtures';
@@ -40,37 +41,33 @@ describe('storesWifiPassword', () => {
   });
 });
 
-describe('wifiProblems', () => {
-  it('passes a named network with a WPA2 passphrase or hexadecimal key', () => {
-    expect(wifiProblems(entry({}))).toEqual([]);
-    expect(wifiProblems(entry({ password: 'a'.repeat(63) }))).toEqual([]);
-    expect(wifiProblems(entry({ password: 'aB'.repeat(32) }))).toEqual([]);
+describe('ssidProblem', () => {
+  it('passes a name, trimming space', () => {
+    expect(ssidProblem(' home ')).toBeNull();
   });
 
   it('asks for a name, and refuses one longer than the contract allows', () => {
-    expect(wifiProblems(entry({ ssid: '   ' }))).toEqual([
-      { field: 'ssid', text: 'Enter the network’s name.' },
-    ]);
-    expect(wifiProblems(entry({ ssid: 'n'.repeat(33) }))).toEqual([
-      { field: 'ssid', text: expect.stringContaining('32 bytes') },
-    ]);
+    expect(ssidProblem('   ')).toBe('Enter the network’s name.');
+    expect(ssidProblem('n'.repeat(33))).toContain('32 bytes');
     // The contract bounds characters; the device counts bytes and refuses the rest itself.
-    expect(wifiProblems(entry({ ssid: 'é'.repeat(17) }))).toEqual([]);
+    expect(ssidProblem('é'.repeat(17))).toBeNull();
+  });
+});
+
+describe('passwordProblem', () => {
+  it('passes a WPA2 passphrase or hexadecimal key', () => {
+    expect(passwordProblem('correct horse')).toBeNull();
+    expect(passwordProblem('a'.repeat(63))).toBeNull();
+    expect(passwordProblem('aB'.repeat(32))).toBeNull();
   });
 
   it('leaves a blank password to the device, which keeps a stored one or refuses', () => {
-    expect(wifiProblems(entry({ password: '' }))).toEqual([]);
+    expect(passwordProblem('')).toBeNull();
   });
 
   it('refuses a password the network cannot take', () => {
     for (const password of ['short', 'x'.repeat(64), 'a'.repeat(65), 'with\0nul!']) {
-      expect(wifiProblems(entry({ password }))).toEqual([
-        { field: 'password', text: expect.stringContaining('8 to 63') },
-      ]);
+      expect(passwordProblem(password), password).toContain('8 to 63');
     }
-  });
-
-  it('ignores whatever the password field holds once the network is open', () => {
-    expect(wifiProblems(entry({ password: 'short', open: true }))).toEqual([]);
   });
 });

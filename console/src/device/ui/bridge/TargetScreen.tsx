@@ -10,9 +10,9 @@ import {
   TextField,
   useUnsavedChanges,
 } from 'linen';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { type DiscoveredBridge, getSetTargetUrl } from '../../../generated/api';
-import { fieldRefusal } from '../../../shared/http';
+import { fieldErrors } from '../../../shared/http';
 import { navigate } from '../../../shared/navigation';
 import { consoleAddressProblem } from '../../lib/consoleAddress';
 import { status } from '../../state/device';
@@ -22,13 +22,13 @@ import {
   adoptFound,
   draftChanges,
   fillsTarget,
+  hostProblem,
+  portProblem,
   type SavedTarget,
   savedDraft,
   saveTarget,
   TARGET_FIELDS,
   type TargetDraft,
-  type TargetProblem,
-  targetProblems,
 } from '../../state/targetForm';
 import { ScreenTop } from '../ScreenTop';
 import { WriteFailure } from '../WriteFailure';
@@ -53,35 +53,21 @@ export function TargetScreen() {
 function TargetForm({ target }: { target: SavedTarget }) {
   const [saved] = useState(() => savedDraft(target));
   const [draft, setDraft] = useState<TargetDraft>(saved);
-  const [tried, setTried] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+  const errors = useMemo(() => fieldErrors(failure?.error, TARGET_FIELDS), [failure]);
   const changes = draftChanges(draft, saved);
   const unsaved = changes.target || changes.console;
   // A new target restarts the device, which waits while an update runs.
   const held = changes.target ? updateLock(getSetTargetUrl()) : null;
   useUnsavedChanges(unsaved, { name: 'the bridge', pending: saving });
-  const problems = targetProblems(draft.entry);
-  const consoleProblem = consoleAddressProblem(draft.console);
-  const refused = fieldRefusal(failure?.error, TARGET_FIELDS);
-  const problem = (field: TargetProblem['field']) =>
-    refused?.field === field
-      ? refused.text
-      : tried
-        ? problems.find((entry) => entry.field === field)?.text
-        : undefined;
-  const edit = (next: TargetDraft) => {
-    setFailure(null);
-    setDraft(next);
-  };
 
   const save = async () => {
-    setTried(true);
-    setFailure(null);
-    if (problems.length > 0 || consoleProblem) return;
     setSaving(true);
     try {
-      if (await saveTarget(draft, saved)) navigate('/bridge');
+      const done = await saveTarget(draft, saved);
+      setFailure(null);
+      if (done) navigate('/bridge');
     } catch (error) {
       setFailure({ error });
     } finally {
@@ -92,7 +78,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
   return (
     <div className="grid gap-4">
       {searchOffered.value && (
-        <FoundBridges draft={draft} onUse={(bridge) => edit(adoptFound(draft, bridge))} />
+        <FoundBridges draft={draft} onUse={(bridge) => setDraft(adoptFound(draft, bridge))} />
       )}
       <Card>
         <CardHead
@@ -104,28 +90,30 @@ function TargetForm({ target }: { target: SavedTarget }) {
           }
         />
         <CardBody>
-          <Form onSubmit={save}>
+          <Form errors={errors} onSubmit={save}>
             <TextField
               label="Bridge address"
+              name="target_host"
               width={96}
               autoCapitalize="none"
               spellCheck={false}
               value={draft.entry.host}
               readOnly={saving}
-              error={problem('target_host')}
+              validate={(value) => hostProblem(String(value ?? ''))}
               onChange={(event) =>
-                edit({ ...draft, entry: { ...draft.entry, host: event.currentTarget.value } })
+                setDraft({ ...draft, entry: { ...draft.entry, host: event.currentTarget.value } })
               }
             />
             <TextField
               label="Port"
+              name="target_port"
               width={32}
               inputMode="numeric"
               value={draft.entry.port}
               readOnly={saving}
-              error={problem('target_port')}
+              validate={(value) => portProblem(String(value ?? ''))}
               onChange={(event) =>
-                edit({ ...draft, entry: { ...draft.entry, port: event.currentTarget.value } })
+                setDraft({ ...draft, entry: { ...draft.entry, port: event.currentTarget.value } })
               }
             />
             <TextField
@@ -136,10 +124,10 @@ function TargetForm({ target }: { target: SavedTarget }) {
               hint="Optional, such as http://192.0.2.20:8088/. Bridge links straight to this device's source there."
               value={draft.console}
               readOnly={saving}
-              error={tried ? (consoleProblem ?? undefined) : undefined}
-              onChange={(event) => edit({ ...draft, console: event.currentTarget.value })}
+              validate={(value) => consoleAddressProblem(String(value ?? ''))}
+              onChange={(event) => setDraft({ ...draft, console: event.currentTarget.value })}
             />
-            {failure && !refused && (
+            {failure && Object.keys(errors).length === 0 && (
               <WriteFailure
                 className="mt-3"
                 failed="The device did not save the bridge."

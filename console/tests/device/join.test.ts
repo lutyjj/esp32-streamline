@@ -3,7 +3,7 @@ import { forgetAdminKey, isUnlocked } from '../../src/device/lib/adminKey';
 import { setTransport } from '../../src/device/lib/http';
 import type { WifiEntry } from '../../src/device/lib/wifi';
 import { connection } from '../../src/device/state/device';
-import { joinBlocks, joinNetwork } from '../../src/device/state/join';
+import { joinNetwork, keyUnconfirmed } from '../../src/device/state/join';
 import { setupKey } from '../../src/device/state/setupKey';
 import { answering } from './answering';
 
@@ -35,24 +35,15 @@ afterEach(() => {
   setTransport((request) => fetch(request));
 });
 
-describe('joinBlocks', () => {
+describe('keyUnconfirmed', () => {
   it('holds first contact until the owner confirms the key is kept elsewhere', () => {
-    const entry = { ssid: 'studio', password: 'correct horse', open: false };
-    expect(joinBlocks(entry, false)).toEqual([
-      { field: 'key', text: expect.stringContaining('saved outside this console') },
-    ]);
-    expect(joinBlocks(entry, true)).toEqual([]);
+    expect(keyUnconfirmed(false)).toBe(true);
+    expect(keyUnconfirmed(true)).toBe(false);
   });
 
   it('asks no confirmation of a device that keeps its own key', () => {
     setupKey.value = '';
-    const entry = { ssid: 'studio', password: '', open: false };
-    expect(joinBlocks(entry, false)).toEqual([]);
-  });
-
-  it('lists the entry’s own problems beside the key', () => {
-    const blocks = joinBlocks({ ssid: '', password: 'short', open: false }, false);
-    expect(blocks.map((block) => block.field)).toEqual(['ssid', 'password', 'key']);
+    expect(keyUnconfirmed(false)).toBe(false);
   });
 });
 

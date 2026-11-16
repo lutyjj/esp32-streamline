@@ -10,7 +10,7 @@ import { connection, joinUntaken, restartSettled, status } from '../state/device
 import { updateNews } from '../state/ota';
 import { AudioScreen } from './audio/AudioScreen';
 import { BridgeScreen } from './bridge/BridgeScreen';
-import { DeviceConditions } from './DeviceConditions';
+import { deviceConditions } from './DeviceConditions';
 import { DeviceScreen } from './device/DeviceScreen';
 import { MaintenanceScreen } from './maintenance/MaintenanceScreen';
 import { Handoff } from './onboarding/Handoff';
@@ -116,7 +116,7 @@ function DeviceShell({ name }: { name: string | undefined }) {
       mark={mark}
       storageKey="streamline:rail"
       screen={place ?? 'audio'}
-      conditions={<DeviceConditions />}
+      conditions={deviceConditions()}
     >
       {place === 'bridge' ? (
         <BridgeScreen />

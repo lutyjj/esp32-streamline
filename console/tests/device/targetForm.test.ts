@@ -12,9 +12,10 @@ import {
   consoleAddressAfterUse,
   draftChanges,
   fillsTarget,
+  hostProblem,
+  portProblem,
   savedDraft,
   saveTarget,
-  targetProblems,
   targetRequest,
 } from '../../src/device/state/targetForm';
 import { answering } from './answering';
@@ -23,38 +24,33 @@ const BRIDGE = { name: 'StreamLine Bridge', host: '192.0.2.20', port: 39000, htt
 
 // Host and port are one form, but the device stores them apart, so a host
 // that carries its own port, scheme or path is refused rather than split.
-describe('targetProblems', () => {
-  it('passes a bare name or address with a port, trimming space', () => {
-    expect(targetProblems({ host: '  bridge.local ', port: ' 39000 ' })).toEqual([]);
+describe('the target fields', () => {
+  it('pass a bare name or address with a port, trimming space', () => {
+    expect(hostProblem('  bridge.local ')).toBeNull();
+    expect(portProblem(' 39000 ')).toBeNull();
     expect(targetRequest({ host: '  bridge.local ', port: ' 39000 ' })).toEqual({
       target_host: 'bridge.local',
       target_port: 39000,
     });
   });
 
-  it('asks for a host, and refuses one that carries a port, scheme, path or space', () => {
-    expect(targetProblems({ host: '', port: '39000' })).toEqual([
-      { field: 'target_host', text: 'Enter the bridge’s name or address.' },
-    ]);
+  it('ask for a host, and refuse one that carries a port, scheme, path or space', () => {
+    expect(hostProblem('')).toBe('Enter the bridge’s name or address.');
     for (const host of [
       'bridge.local:39000',
       'http://bridge.local',
       'bridge.local/s',
       'my bridge',
     ]) {
-      expect(targetProblems({ host, port: '39000' }), host).toEqual([
-        { field: 'target_host', text: expect.stringContaining('only the name or address') },
-      ]);
+      expect(hostProblem(host), host).toContain('only the name or address');
     }
   });
 
-  it('takes a port from 1 to 65535 and nothing else', () => {
+  it('take a port from 1 to 65535 and nothing else', () => {
     for (const port of ['', '0', '65536', '39000.5', '-1', 'http']) {
-      expect(targetProblems({ host: 'bridge.local', port }), port).toEqual([
-        { field: 'target_port', text: expect.stringContaining('1 to 65535') },
-      ]);
+      expect(portProblem(port), port).toContain('1 to 65535');
     }
-    expect(targetProblems({ host: 'bridge.local', port: '65535' })).toEqual([]);
+    expect(portProblem('65535')).toBeNull();
   });
 });
 

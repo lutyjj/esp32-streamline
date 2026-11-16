@@ -11,13 +11,13 @@ import {
   ShownOnce,
   TopBar,
 } from 'linen';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { errorMessage } from '../../../shared/errors';
-import { fieldRefusal } from '../../../shared/http';
+import { fieldErrors } from '../../../shared/http';
 import { WIFI_FIELDS, type WifiEntry } from '../../lib/wifi';
-import { joinBlocks, joinNetwork } from '../../state/join';
+import { joinNetwork, keyUnconfirmed } from '../../state/join';
 import { setupKey } from '../../state/setupKey';
-import { DeviceConditions } from '../DeviceConditions';
+import { deviceConditions } from '../DeviceConditions';
 import { WifiFields } from '../wifi/WifiFields';
 
 /**
@@ -27,20 +27,19 @@ import { WifiFields } from '../wifi/WifiFields';
 export function Onboarding() {
   const [entry, setEntry] = useState<WifiEntry>({ ssid: '', password: '', open: false });
   const [keySaved, setKeySaved] = useState(false);
-  const [tried, setTried] = useState(false);
+  const [keyAsked, setKeyAsked] = useState(false);
   const [joining, setJoining] = useState(false);
   const [refusal, setRefusal] = useState<{ error: unknown } | null>(null);
-  const blocks = joinBlocks(entry, keySaved);
-  const shown = tried ? blocks : [];
-  const refused = fieldRefusal(refusal?.error, WIFI_FIELDS);
+  // Held between renders: Base UI hands a field's error back whenever this changes.
+  const errors = useMemo(() => fieldErrors(refusal?.error, WIFI_FIELDS), [refusal]);
 
   const join = async () => {
-    setTried(true);
-    setRefusal(null);
-    if (blocks.length > 0) return;
+    setKeyAsked(true);
+    if (keyUnconfirmed(keySaved)) return;
     setJoining(true);
     try {
       await joinNetwork(entry);
+      setRefusal(null);
     } catch (error) {
       setRefusal({ error });
     } finally {
@@ -50,12 +49,10 @@ export function Onboarding() {
 
   return (
     <>
-      <Conditions>
-        <DeviceConditions />
-      </Conditions>
+      <Conditions conditions={deviceConditions()} />
       <TopBar title="Set up StreamLine" />
       <Content>
-        <Form className="grid gap-4" onSubmit={join}>
+        <Form className="grid gap-4" errors={errors} onSubmit={join}>
           <Card>
             <CardHead
               title="Your Wi-Fi"
@@ -64,14 +61,7 @@ export function Onboarding() {
             <CardBody>
               <WifiFields
                 entry={entry}
-                onChange={(next) => {
-                  setRefusal(null);
-                  setEntry(next);
-                }}
-                problems={[
-                  ...(refused ? [refused] : []),
-                  ...shown.flatMap((block) => (block.field === 'key' ? [] : [block])),
-                ]}
+                onChange={setEntry}
                 storedPassword={false}
                 disabled={joining}
               />
@@ -97,16 +87,16 @@ export function Onboarding() {
               <Checkbox className="mt-4" checked={keySaved} onCheckedChange={setKeySaved}>
                 I saved the key outside this console
               </Checkbox>
-              {shown.some((block) => block.field === 'key') && (
+              {keyAsked && keyUnconfirmed(keySaved) && (
                 <Notice
                   className="mt-3"
                   tone="danger"
-                  title={shown.find((block) => block.field === 'key')?.text ?? ''}
+                  title="Confirm the admin key is saved outside this console."
                 />
               )}
             </CardBody>
           </Card>
-          {refusal && !refused && (
+          {refusal && Object.keys(errors).length === 0 && (
             <Notice
               tone="danger"
               title="The device did not save the network."

@@ -1,8 +1,8 @@
 import { Button, Card, CardBody, CardHead, Fact, Facts, Form, useUnsavedChanges } from 'linen';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { getSetWifiUrl } from '../../../generated/api';
-import { fieldRefusal } from '../../../shared/http';
-import { storesWifiPassword, WIFI_FIELDS, type WifiEntry, wifiProblems } from '../../lib/wifi';
+import { fieldErrors } from '../../../shared/http';
+import { storesWifiPassword, WIFI_FIELDS, type WifiEntry } from '../../lib/wifi';
 import { withAccess } from '../../state/access';
 import { config, configResource, status } from '../../state/device';
 import { homeAddress } from '../../state/handoff';
@@ -51,12 +51,12 @@ function ChangeWifi() {
     password: '',
     open: saved?.open_network ?? false,
   });
-  const [tried, setTried] = useState(false);
   const [asking, setAsking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<{ error: unknown } | null>(null);
-  const problems = wifiProblems(entry);
-  const refused = fieldRefusal(refusal?.error, WIFI_FIELDS);
+  const errors = useMemo(() => fieldErrors(refusal?.error, WIFI_FIELDS), [refusal]);
+  // The submit is answered when the confirmation closes, so a refused field takes the focus.
+  const answered = useRef<() => void>(() => {});
   const unsaved =
     entry.ssid.trim() !== (saved?.ssid ?? '') ||
     entry.password !== '' ||
@@ -69,9 +69,10 @@ function ChangeWifi() {
     setSaving(true);
     try {
       await withAccess(() => joinNetwork(entry));
+      setRefusal(null);
     } catch (error) {
       // A refused field shows on the field, and the confirmation closes.
-      if (!fieldRefusal(error, WIFI_FIELDS)) throw error;
+      if (Object.keys(fieldErrors(error, WIFI_FIELDS)).length === 0) throw error;
       setRefusal({ error });
     } finally {
       setSaving(false);
@@ -86,18 +87,17 @@ function ChangeWifi() {
       />
       <CardBody>
         <Form
-          onSubmit={() => {
-            setTried(true);
-            if (problems.length === 0) setAsking(true);
-          }}
+          errors={errors}
+          onSubmit={() =>
+            new Promise<void>((done) => {
+              answered.current = done;
+              setAsking(true);
+            })
+          }
         >
           <WifiFields
             entry={entry}
-            onChange={(next) => {
-              setRefusal(null);
-              setEntry(next);
-            }}
-            problems={[...(refused ? [refused] : []), ...(tried ? problems : [])]}
+            onChange={setEntry}
             storedPassword={storedPassword}
             disabled={saving}
           />
@@ -111,7 +111,10 @@ function ChangeWifi() {
       </CardBody>
       <WriteConfirm
         open={asking}
-        onOpenChange={setAsking}
+        onOpenChange={(open) => {
+          setAsking(open);
+          if (!open) answered.current();
+        }}
         title={`Join ${entry.ssid.trim()}?`}
         description={`The device restarts to join it, and this page loses contact. Then connect to ${entry.ssid.trim()} and open ${homeAddress(known)}.`}
         confirmLabel="Join network"

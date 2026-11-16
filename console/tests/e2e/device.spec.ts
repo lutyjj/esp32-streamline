@@ -64,7 +64,7 @@ test('a locked write asks for the key, keeps a refusal beside it, then completes
 test('a restart is narrated until the device answers from its new start', async ({ page }) => {
   await page.goto('/#/maintenance/reset');
   await page.getByRole('button', { name: 'Restart', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Restart' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Restart' }).click();
   await answerKey(page, mockAdminKey);
   const condition = page.getByText('Waiting for the restart to finish.');
   await expect(condition).toBeVisible();
@@ -90,7 +90,7 @@ test('first contact holds Join until the key is kept, then hands off to the home
   await page.getByRole('button', { name: 'Join network' }).click();
   await expect(page.getByLabel('Network name')).toBeFocused();
   await page.getByLabel('Network name').fill('home');
-  await page.getByLabel('Password').fill('correct horse');
+  await page.getByRole('textbox', { name: 'Password' }).fill('correct horse');
   await page.getByRole('button', { name: 'Join network' }).click();
   await expect(
     page.getByText('Confirm the admin key is saved outside this console.'),
@@ -108,7 +108,7 @@ test('an open network is a choice that names what it exposes', async ({ page }) 
   await page.getByRole('checkbox', { name: 'I saved the key outside this console' }).click();
   await page.getByRole('button', { name: 'Join network' }).click();
   // The device refuses a protected network without a password, on that field.
-  await expect(page.getByLabel('Password')).toHaveAccessibleDescription(
+  await expect(page.getByRole('textbox', { name: 'Password' })).toHaveAccessibleDescription(
     /A protected network needs its password/,
   );
   await page.getByRole('checkbox', { name: 'This network has no password' }).click();
@@ -120,10 +120,10 @@ test('an open network is a choice that names what it exposes', async ({ page }) 
 test('recovery changes Wi-Fi with the admin key and hands off', async ({ page }) => {
   await page.goto('/?scenario=recovery#/device/wifi');
   await page.getByLabel('Network name').fill('home');
-  await page.getByLabel('Password').fill('correct horse');
+  await page.getByRole('textbox', { name: 'Password' }).fill('correct horse');
   await page.getByRole('button', { name: 'Join network' }).click();
   await page
-    .getByRole('dialog', { name: 'Join home?' })
+    .getByRole('alertdialog', { name: 'Join home?' })
     .getByRole('button', { name: 'Join network' })
     .click();
   await answerKey(page, mockAdminKey);
@@ -144,7 +144,7 @@ test('a found bridge fills the form, and only Save writes it and restarts', asyn
 
   // Use saved nothing: leaving asks first, and staying keeps the draft.
   await page.getByRole('link', { name: 'Bridge', exact: true }).first().click();
-  const leave = page.getByRole('dialog', { name: 'Leave without saving?' });
+  const leave = page.getByRole('alertdialog', { name: 'Leave without saving?' });
   await leave.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByLabel('Bridge address')).toHaveValue('192.0.2.21');
 
@@ -165,7 +165,7 @@ test('adjusting the input holds a draft until Save, and leaving it asks first', 
 
   await page.getByRole('link', { name: 'Audio', exact: true }).first().click();
   await page
-    .getByRole('dialog', { name: 'Leave without saving?' })
+    .getByRole('alertdialog', { name: 'Leave without saving?' })
     .getByRole('button', { name: 'Cancel' })
     .click();
   await expect(page.getByLabel('Gain')).toHaveValue('12');

@@ -13,14 +13,15 @@ export class ApiError extends Error {
   }
 }
 
-/** A refusal of one of a form's `fields`, in the server's words, or null for any other failure. */
-export function fieldRefusal<F extends string>(
-  error: unknown,
-  fields: readonly F[],
-): { field: F; text: string } | null {
-  if (!(error instanceof ApiError)) return null;
-  const field = fields.find((name) => name === error.field);
-  return field ? { field, text: error.message } : null;
+/**
+ * A form's errors after `error`: the server's reason under the field it
+ * refused, when the form has that field. Empty for anything else, which the
+ * form says in a notice instead.
+ */
+export function fieldErrors(error: unknown, fields: readonly string[]): Record<string, string> {
+  return error instanceof ApiError && error.field !== null && fields.includes(error.field)
+    ? { [error.field]: error.message }
+    : {};
 }
 
 /** The fetch a console's requests go through, replaceable in tests. */

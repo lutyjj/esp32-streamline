@@ -4,9 +4,9 @@
  * console address beside it stays in this browser.
  */
 
+import * as v from 'valibot';
 import { type DiscoveredBridge, setTarget, type TargetSettingsRequest } from '../../generated/api';
 import { TargetSettingsRequest as targetRule } from '../../generated/rules';
-import { brokenFields } from '../lib/brokenFields';
 import { withRestart } from './access';
 import { rememberBridgeConsole, rememberedBridgeConsole } from './bridgeConsole';
 import { bridgeConsoleAddress } from './discovery';
@@ -17,36 +17,29 @@ export interface TargetEntry {
   port: string;
 }
 
-/** The request fields the target form shows problems on. */
+/** The request fields the target form names its fields after. */
 export const TARGET_FIELDS = ['target_host', 'target_port'] as const;
-
-export interface TargetProblem {
-  field: (typeof TARGET_FIELDS)[number];
-  text: string;
-}
 
 /** The fields a target save sends. */
 export function targetRequest(entry: TargetEntry): Required<TargetSettingsRequest> {
   return { target_host: entry.host.trim(), target_port: Number(entry.port.trim()) };
 }
 
-/** What keeps an entry from being saved, per field; none means it can go. */
-export function targetProblems(entry: TargetEntry): TargetProblem[] {
-  const broken = brokenFields(targetRule, targetRequest(entry));
-  const problems: TargetProblem[] = [];
+/** Why `value` cannot be the bridge's host, or null. */
+export function hostProblem(value: string): string | null {
+  const host = value.trim();
   // The contract lets an empty host clear the target; this form connects one.
-  if (entry.host.trim() === '') {
-    problems.push({ field: 'target_host', text: 'Enter the bridge’s name or address.' });
-  } else if (broken.has('target_host')) {
-    problems.push({
-      field: 'target_host',
-      text: 'Enter only the name or address, without http://, a port, a path or spaces.',
-    });
-  }
-  if (broken.has('target_port')) {
-    problems.push({ field: 'target_port', text: 'A port is a number from 1 to 65535.' });
-  }
-  return problems;
+  if (host === '') return 'Enter the bridge’s name or address.';
+  return v.is(targetRule.entries.target_host, host)
+    ? null
+    : 'Enter only the name or address, without http://, a port, a path or spaces.';
+}
+
+/** Why the contract refuses `value` as the bridge's port, or null. */
+export function portProblem(value: string): string | null {
+  return v.is(targetRule.entries.target_port, Number(value.trim()))
+    ? null
+    : 'A port is a number from 1 to 65535.';
 }
 
 /** Whether the target fields already name this bridge. */

@@ -7,7 +7,7 @@ import { hashNavigation, replacePath, usePathname } from '../../shared/navigatio
 import { verifyKey } from '../state/access';
 import { UPDATE_OPERATION } from '../state/connection';
 import { connection, joinUntaken, restartSettled, status } from '../state/device';
-import { installSource, updateNews } from '../state/ota';
+import { updateNews } from '../state/ota';
 import { AudioScreen } from './audio/AudioScreen';
 import { BridgeScreen } from './bridge/BridgeScreen';
 import { DeviceConditions } from './DeviceConditions';
@@ -86,7 +86,7 @@ function useRestartToasts() {
         untracked(() => {
           const news =
             settled.operation === UPDATE_OPERATION
-              ? updateNews(settled, installSource.value)
+              ? updateNews(settled)
               : { text: `Back online after ${settled.operation}.`, failure: false };
           toast.show({ text: news.text, sticky: news.failure });
         });

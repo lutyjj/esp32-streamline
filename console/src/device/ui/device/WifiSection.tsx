@@ -1,7 +1,8 @@
 import { Button, Card, CardBody, CardHead, Fact, Facts, Form, useUnsavedChanges } from 'linen';
 import { useState } from 'react';
 import { getSetWifiUrl } from '../../../generated/api';
-import { storesWifiPassword, type WifiEntry, wifiProblems } from '../../lib/wifi';
+import { fieldRefusal } from '../../../shared/http';
+import { storesWifiPassword, WIFI_FIELDS, type WifiEntry, wifiProblems } from '../../lib/wifi';
 import { withAccess } from '../../state/access';
 import { config, configResource, status } from '../../state/device';
 import { homeAddress } from '../../state/handoff';
@@ -53,7 +54,9 @@ function ChangeWifi() {
   const [tried, setTried] = useState(false);
   const [asking, setAsking] = useState(false);
   const [saving, setSaving] = useState(false);
-  const problems = wifiProblems(entry, storedPassword);
+  const [refusal, setRefusal] = useState<{ error: unknown } | null>(null);
+  const problems = wifiProblems(entry);
+  const refused = fieldRefusal(refusal?.error, WIFI_FIELDS);
   const unsaved =
     entry.ssid.trim() !== (saved?.ssid ?? '') ||
     entry.password !== '' ||
@@ -65,7 +68,11 @@ function ChangeWifi() {
   const save = async () => {
     setSaving(true);
     try {
-      await withAccess(() => joinNetwork(entry, storedPassword));
+      await withAccess(() => joinNetwork(entry));
+    } catch (error) {
+      // A refused field shows on the field, and the confirmation closes.
+      if (!fieldRefusal(error, WIFI_FIELDS)) throw error;
+      setRefusal({ error });
     } finally {
       setSaving(false);
     }
@@ -86,8 +93,11 @@ function ChangeWifi() {
         >
           <WifiFields
             entry={entry}
-            onChange={setEntry}
-            problems={tried ? problems : []}
+            onChange={(next) => {
+              setRefusal(null);
+              setEntry(next);
+            }}
+            problems={[...(refused ? [refused] : []), ...(tried ? problems : [])]}
             storedPassword={storedPassword}
             disabled={saving}
           />

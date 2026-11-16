@@ -7,15 +7,12 @@ import { computed, signal } from '@preact/signals';
 import {
   type AudioProfileCatalog,
   getAudioProfiles,
-  getOpenapi,
   getSettings,
   getStatus,
   type SettingsResponse,
   type StatusResponse,
 } from '../../generated/api';
 import { resource, settle } from '../../shared/resource';
-import { type ApiDocument, audioProfileConstraints } from '../lib/contract';
-import type { AudioProfileImportLimits } from '../lib/profiles';
 import {
   type Connection,
   type ConnectionEvent,
@@ -84,27 +81,10 @@ export const audioProfilesResource = resource<AudioProfileCatalog>(
   getAudioProfiles,
 );
 export const audioProfiles = audioProfilesResource.data;
-/** The device-served OpenAPI contract; the console validates imports from it. */
-export const contractResource = resource<ApiDocument>(
-  'the device contract',
-  async () => (await getOpenapi()) as ApiDocument,
-);
-export const contract = contractResource.data;
-/**
- * Audio-profile import limits: structural bounds declared on the contract plus
- * the catalog schema version the device currently speaks. Both come from the
- * device, so the console never hardcodes either.
- */
-export const audioProfileLimits = computed<AudioProfileImportLimits | null>(() => {
-  const doc = contract.value;
-  const catalog = audioProfiles.value;
-  if (!doc || !catalog) return null;
-  return { ...audioProfileConstraints(doc), schemaVersion: catalog.schema_version };
-});
 /** Peak-hold marks for the level meters. */
 export const peakHold = signal<PeakHold>({ left: 0, right: 0, at: 0 });
-/** PCM bytes seen on the previous poll, to tell whether audio still flows. */
-let lastPcmBytes = -1;
+/** PCM bytes the previous answer counted, and in which boot, to tell whether audio still flows. */
+let lastPcm: { boot: number; bytes: number } | null = null;
 /** True when PCM bytes increased between the last two polls. */
 export const audioMoving = signal(false);
 /** Whether two answers in a row exist to compare, so `audioMoving` means something. */
@@ -158,7 +138,7 @@ export function report(event: ConnectionEvent): void {
   else if (event.type === 'unanswered') {
     audioMoving.value = false;
     deliveryObserved.value = false;
-    lastPcmBytes = -1;
+    lastPcm = null;
   }
   const next = nextConnection(previous, event);
   connection.value = next;
@@ -213,11 +193,11 @@ function observeAudio(s: StatusResponse, now: number): void {
     s.metrics.peak_abs_right,
     now,
   );
-  deliveryObserved.value = lastPcmBytes >= 0;
-  // A count below the last comes from a new boot, and all of it was sent since.
-  const since = s.metrics.bytes_total < lastPcmBytes ? 0 : lastPcmBytes;
-  audioMoving.value = lastPcmBytes >= 0 && s.metrics.bytes_total > since;
-  lastPcmBytes = s.metrics.bytes_total;
+  deliveryObserved.value = lastPcm !== null;
+  // A new boot counts from zero, so all of its count was sent since.
+  const since = lastPcm?.boot === s.system.boot ? lastPcm.bytes : 0;
+  audioMoving.value = lastPcm !== null && s.metrics.bytes_total > since;
+  lastPcm = { boot: s.system.boot, bytes: s.metrics.bytes_total };
 }
 
 export async function loadConfig(): Promise<void> {
@@ -226,11 +206,6 @@ export async function loadConfig(): Promise<void> {
 
 export async function loadAudioProfiles(): Promise<void> {
   await audioProfilesResource.load();
-}
-
-/** The contract is static for a firmware build, so it loads once at startup. */
-export async function loadContract(): Promise<void> {
-  await contractResource.load();
 }
 
 /** Reads a dropped read gets before its resource reports the failure. */
@@ -252,14 +227,13 @@ export async function readDeviceSettings(pause = pauseBetweenReads): Promise<voi
 }
 
 /**
- * Status first, then the poll, then settings, profiles and the contract in
- * turn. The poll runs beside those reads, so at most two requests are open at
- * once. Resolves with how to stop the poll once the first reads are done.
+ * Status first, then the poll, then settings and profiles in turn. The poll
+ * runs beside those reads, so at most two requests are open at once. Resolves
+ * with how to stop the poll once the first reads are done.
  */
 export async function startPolling(pause = pauseBetweenReads): Promise<() => void> {
   await refresh();
   const poll = setInterval(refresh, POLL_MS);
   await readDeviceSettings(pause);
-  await settle(contractResource, READ_ATTEMPTS, pause);
   return () => clearInterval(poll);
 }

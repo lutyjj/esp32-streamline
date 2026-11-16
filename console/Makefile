@@ -57,7 +57,7 @@ lock: dev-image
 	$(CONTAINER_RUN) npm install --package-lock-only --ignore-scripts
 
 generate: deps
-	$(CONTAINER_RUN) npx orval --fail-on-warnings
+	$(CONTAINER_RUN) sh -c 'npx orval --fail-on-warnings && node scripts/contractFacts.ts'
 
 format: generate
 	$(CONTAINER_RUN) npx biome check --write .

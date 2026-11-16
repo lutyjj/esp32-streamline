@@ -12,9 +12,9 @@ import {
 } from 'linen';
 import { useState } from 'react';
 import { type DiscoveredBridge, getSetTargetUrl } from '../../../generated/api';
+import { fieldRefusal } from '../../../shared/http';
 import { navigate } from '../../../shared/navigation';
 import { consoleAddressProblem } from '../../lib/consoleAddress';
-import { targetProblems } from '../../lib/target';
 import { status } from '../../state/device';
 import { discovery, findBridges, searchOffered } from '../../state/discovery';
 import { updateLock } from '../../state/ota';
@@ -25,7 +25,10 @@ import {
   type SavedTarget,
   savedDraft,
   saveTarget,
+  TARGET_FIELDS,
   type TargetDraft,
+  type TargetProblem,
+  targetProblems,
 } from '../../state/targetForm';
 import { ScreenTop } from '../ScreenTop';
 import { WriteFailure } from '../WriteFailure';
@@ -60,8 +63,17 @@ function TargetForm({ target }: { target: SavedTarget }) {
   useUnsavedChanges(unsaved, { name: 'the bridge', pending: saving });
   const problems = targetProblems(draft.entry);
   const consoleProblem = consoleAddressProblem(draft.console);
-  const problem = (field: 'host' | 'port') =>
-    tried ? problems.find((entry) => entry.field === field)?.text : undefined;
+  const refused = fieldRefusal(failure?.error, TARGET_FIELDS);
+  const problem = (field: TargetProblem['field']) =>
+    refused?.field === field
+      ? refused.text
+      : tried
+        ? problems.find((entry) => entry.field === field)?.text
+        : undefined;
+  const edit = (next: TargetDraft) => {
+    setFailure(null);
+    setDraft(next);
+  };
 
   const save = async () => {
     setTried(true);
@@ -80,7 +92,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
   return (
     <div className="grid gap-4">
       {searchOffered.value && (
-        <FoundBridges draft={draft} onUse={(bridge) => setDraft(adoptFound(draft, bridge))} />
+        <FoundBridges draft={draft} onUse={(bridge) => edit(adoptFound(draft, bridge))} />
       )}
       <Card>
         <CardHead
@@ -100,12 +112,9 @@ function TargetForm({ target }: { target: SavedTarget }) {
               spellCheck={false}
               value={draft.entry.host}
               readOnly={saving}
-              error={problem('host')}
+              error={problem('target_host')}
               onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  entry: { ...draft.entry, host: event.currentTarget.value },
-                })
+                edit({ ...draft, entry: { ...draft.entry, host: event.currentTarget.value } })
               }
             />
             <TextField
@@ -114,12 +123,9 @@ function TargetForm({ target }: { target: SavedTarget }) {
               inputMode="numeric"
               value={draft.entry.port}
               readOnly={saving}
-              error={problem('port')}
+              error={problem('target_port')}
               onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  entry: { ...draft.entry, port: event.currentTarget.value },
-                })
+                edit({ ...draft, entry: { ...draft.entry, port: event.currentTarget.value } })
               }
             />
             <TextField
@@ -131,9 +137,9 @@ function TargetForm({ target }: { target: SavedTarget }) {
               value={draft.console}
               readOnly={saving}
               error={tried ? (consoleProblem ?? undefined) : undefined}
-              onChange={(event) => setDraft({ ...draft, console: event.currentTarget.value })}
+              onChange={(event) => edit({ ...draft, console: event.currentTarget.value })}
             />
-            {failure && (
+            {failure && !refused && (
               <WriteFailure
                 className="mt-3"
                 failed="The device did not save the bridge."

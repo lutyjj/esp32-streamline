@@ -6,7 +6,6 @@ import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
   audioProfilesResource,
   configResource,
-  contractResource,
   report,
   startPolling,
 } from '../../src/device/state/device';
@@ -47,7 +46,7 @@ const now = async () => {};
 
 // A fresh page: nothing has loaded yet.
 beforeEach(() => {
-  for (const startup of [configResource, audioProfilesResource, contractResource]) {
+  for (const startup of [configResource, audioProfilesResource]) {
     startup.data.value = null;
     startup.state.value = 'loading';
   }
@@ -62,16 +61,10 @@ describe('opening the console', () => {
   it('reads everything it starts with without opening more connections than the device keeps', async () => {
     const device = keepsTwoConnections();
     (await startPolling(now))();
-    expect(device.answered).toEqual([
-      '/api/status',
-      '/api/settings',
-      '/api/audio-profiles',
-      '/api/openapi.json',
-    ]);
+    expect(device.answered).toEqual(['/api/status', '/api/settings', '/api/audio-profiles']);
     expect(device.peak()).toBeLessThanOrEqual(2);
     expect(configResource.state.value).toBe('ready');
     expect(audioProfilesResource.state.value).toBe('ready');
-    expect(contractResource.state.value).toBe('ready');
   });
 
   it('reads a reset startup read again', async () => {
@@ -83,13 +76,13 @@ describe('opening the console', () => {
 
   it('reads settings again after a restart, and again if that read is reset', async () => {
     const device = keepsTwoConnections(['/api/settings']);
-    const up = (uptime: number) => {
+    const inBoot = (boot: number) => {
       const s = deviceStatus();
-      return { ...s, system: { ...s.system, uptime_seconds: uptime } };
+      return { ...s, system: { ...s.system, boot } };
     };
-    report({ type: 'answered', status: up(100), at: 0 });
+    report({ type: 'answered', status: inBoot(1), at: 0 });
     report({ type: 'restarting', operation: 'the board', at: 1000 });
-    report({ type: 'answered', status: up(2), at: 9000 });
+    report({ type: 'answered', status: inBoot(2), at: 9000 });
     // The reset read is read again after the real pause between reads.
     await vi.waitFor(
       () => expect(device.answered.filter((path) => path === '/api/settings')).toHaveLength(1),

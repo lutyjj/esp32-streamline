@@ -3,12 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
 import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
-import {
-  audioProfiles,
-  loadAudioProfiles,
-  loadContract,
-  refresh,
-} from '../../src/device/state/device';
+import { audioProfiles, loadAudioProfiles, refresh } from '../../src/device/state/device';
 import {
   deleteProfile,
   exportProfiles,
@@ -30,7 +25,7 @@ beforeEach(async () => {
     return response;
   });
   unlockSettings(MOCK_ADMIN_KEY, false);
-  await Promise.all([refresh(), loadAudioProfiles(), loadContract()]);
+  await Promise.all([refresh(), loadAudioProfiles()]);
 });
 
 afterEach(() => {
@@ -73,7 +68,18 @@ describe('profile operations', () => {
     await deleteProfile(audioProfiles.value?.profiles[0]?.id ?? '');
     await importProfiles(exported);
     expect(names()).toEqual(['Turntable']);
-    await expect(importProfiles('{"not":"a catalog"}')).rejects.toThrow();
+    await expect(importProfiles('{"not":"a catalog"}')).rejects.toMatchObject({
+      field: 'catalog',
+    });
+    const otherBoard = JSON.stringify({ ...JSON.parse(exported), board_id: 'another-board' });
+    await expect(importProfiles(otherBoard)).rejects.toThrow(
+      'These profiles are for another board.',
+    );
     expect(names()).toEqual(['Turntable']);
+  });
+
+  it('pass on the reason the device refuses a name', async () => {
+    await expect(saveProfile('x'.repeat(40))).rejects.toMatchObject({ field: 'catalog' });
+    expect(names()).toEqual([]);
   });
 });

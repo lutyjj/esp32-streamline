@@ -105,13 +105,14 @@ test('first contact holds Join until the key is kept, then hands off to the home
 test('an open network is a choice that names what it exposes', async ({ page }) => {
   await page.goto('/?scenario=first-boot');
   await page.getByLabel('Network name').fill('Cafe guest');
+  await page.getByRole('checkbox', { name: 'I saved the key outside this console' }).click();
   await page.getByRole('button', { name: 'Join network' }).click();
-  await expect(
-    page.getByText('Enter the network’s password, or choose an open network.'),
-  ).toBeVisible();
+  // The device refuses a protected network without a password, on that field.
+  await expect(page.getByLabel('Password')).toHaveAccessibleDescription(
+    /A protected network needs its password/,
+  );
   await page.getByRole('checkbox', { name: 'This network has no password' }).click();
   await expect(page.getByText('Anyone in range can join an open network.')).toBeVisible();
-  await page.getByRole('checkbox', { name: 'I saved the key outside this console' }).click();
   await page.getByRole('button', { name: 'Join network' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Joining Cafe guest' })).toBeVisible();
 });

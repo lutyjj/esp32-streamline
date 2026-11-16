@@ -8,6 +8,7 @@
  */
 
 import { type HttpHandler, HttpResponse, http, type JsonBodyType } from 'msw';
+import * as v from 'valibot';
 import contract from '../../../../docs/openapi.json';
 import type {
   AudioProfileCatalog,
@@ -23,6 +24,8 @@ import type {
   TransportKeyResponse,
   TransportMode,
 } from '../../generated/api';
+import { RESTARTING_WRITES } from '../../generated/facts';
+import { AudioProfileCatalog as catalogRule } from '../../generated/rules';
 
 /** One captured line as the fake device holds it before rendering to text. */
 interface MockLogLine {
@@ -40,18 +43,11 @@ import { deviceConfig, deviceStatus, discoveredBridges, setupNetwork } from './f
  */
 export const MOCK_ADMIN_KEY = 'a'.repeat(48);
 
-/** The version an install lands on, so update recovery reads as applied. */
+/** The version a custom image, or an install with no newer release, lands on. */
 const MOCK_UPDATED_VERSION = '0.5.0-mock';
 
 /** The realm the firmware names in every digest challenge. */
 const DIGEST_REALM = 'streamline';
-
-/** Operations the contract marks `x-restarting`, which the device refuses while an update is busy. */
-const RESTARTING: ReadonlySet<string> = new Set(
-  Object.entries(contract.paths as Record<string, { post?: { 'x-restarting'?: boolean } }>)
-    .filter(([, operations]) => operations.post?.['x-restarting'])
-    .map(([path]) => path),
-);
 
 /**
  * Where in the journey the fake device starts: `steady` is a provisioned,
@@ -168,7 +164,6 @@ export class FakeDevice {
   private logLines: MockLogLine[] = [];
   private logSequence = 0;
   private logDropped = 0;
-  private logBoot = 0;
   private previousBootLog: BootLog | null = null;
   /** OTA phases still to play out, one per status poll. */
   private otaSteps: Array<() => void> = [];
@@ -338,6 +333,8 @@ export class FakeDevice {
   }
 
   private reset(scenario: DeviceScenario): void {
+    // A factory reset keeps counting boots, as the firmware's boot id does.
+    const boot = this.status ? this.status.system.boot : null;
     if (scenario === 'steady') {
       this.status = deviceStatus({ metrics: { playing: true } });
       this.config = deviceConfig();
@@ -373,6 +370,7 @@ export class FakeDevice {
       this.config = deviceConfig({ ssid: '', target_host: '' });
       this.adminKey = null;
     }
+    if (boot !== null) this.status.system.boot = boot;
     this.status.ota.rollback_available = false;
     this.config.led_roles = [{ id: 'status', role: 'status' }];
     this.resetLog(scenario);
@@ -493,7 +491,7 @@ export class FakeDevice {
       if (!this.here(request)) return HttpResponse.error();
       const denied = this.deny(request);
       if (denied) return denied;
-      if (this.status.ota.busy && RESTARTING.has(path)) {
+      if (this.status.ota.busy && RESTARTING_WRITES.has(path)) {
         return reject(409, 'a firmware update or check is in progress; retry after it finishes');
       }
       const form = await request.formData().catch(() => null);
@@ -507,14 +505,22 @@ export class FakeDevice {
     });
   }
 
-  /**
-   * A new boot: silent while it restarts, unless a join already took it
-   * away, then uptime counts from zero and streaming resumes.
-   */
+  /** A restarting write: silent while it restarts, unless a join already took it away. */
   private boot(): void {
     if (this.absentReads === 0) this.leave(RESTART_READS);
+    this.restart();
+  }
+
+  /**
+   * A new boot: a new boot id, uptime from zero, streaming resumed, and the
+   * log of the boot that ended kept as the previous one.
+   */
+  private restart(): void {
+    this.previousBootLog = this.currentLog();
+    this.status.system.boot += 1;
     this.status.system.uptime_seconds = 0;
     this.status.stream.enabled = true;
+    this.startLog();
   }
 
   /** One status poll: audio moves while playing, and pending OTA phases advance. */
@@ -686,14 +692,31 @@ export class FakeDevice {
     return { ok: true, rebooting: true };
   }
 
-  private replaceProfiles(catalog: string | undefined): JsonBodyType | Response {
-    let parsed: AudioProfileCatalog;
+  /**
+   * Like the firmware: a catalog that breaks the contract's rule or names
+   * another board is refused, the file's active profile is ignored, and the
+   * one in use stays while the catalog keeps it.
+   */
+  private replaceProfiles(text: string | undefined): JsonBodyType | Response {
+    let parsed: unknown;
     try {
-      parsed = JSON.parse(catalog ?? '') as AudioProfileCatalog;
+      parsed = JSON.parse(text ?? '');
     } catch {
       return reject(400, 'This is not a profile catalog: not valid JSON.', 'catalog');
     }
-    this.profiles = { ...parsed, board_id: this.status.capabilities.board_id };
+    const checked = v.safeParse(catalogRule, parsed);
+    if (!checked.success) {
+      return reject(400, `This is not a profile catalog: ${checked.issues[0].message}.`, 'catalog');
+    }
+    const catalog: AudioProfileCatalog = checked.output;
+    if (catalog.board_id !== this.status.capabilities.board_id) {
+      return reject(400, 'These profiles are for another board.', 'catalog');
+    }
+    const active = this.profiles.active_profile_id;
+    this.profiles = {
+      ...catalog,
+      active_profile_id: catalog.profiles.some((profile) => profile.id === active) ? active : null,
+    };
     return { ok: true };
   }
 
@@ -750,9 +773,9 @@ export class FakeDevice {
       () => {
         // The device restarts into the new image and answers from it.
         this.leave(RESTART_READS, () => {
+          this.restart();
           this.status.firmware_version = target;
-          this.status.system.uptime_seconds = 0;
-          this.status.stream.enabled = true;
+          ota.last_result = 'installed';
           ota.busy = false;
           ota.phase = 'idle';
           ota.message = '';
@@ -768,6 +791,7 @@ export class FakeDevice {
     const ota = this.status.ota;
     if (!ota.rollback_available) return reject(400, 'no previous image to roll back to');
     this.status.firmware_version = ota.rollback_version;
+    ota.last_result = 'rolled-back';
     ota.rollback_available = false;
     ota.rollback_version = '';
     return { ok: true, rebooting: true };
@@ -778,17 +802,11 @@ export class FakeDevice {
    * so it can show the boot before this one; a first-boot device cannot.
    */
   private resetLog(scenario: DeviceScenario): void {
-    this.logLines = [];
-    this.logSequence = 0;
-    this.logDropped = 0;
-    // Each run of the fake device counts on from the last, exactly as the
-    // firmware carries its boot id across a restart.
-    this.logBoot += 1;
-    for (const text of BOOT_LOG) this.appendLog(text);
+    this.startLog();
     this.previousBootLog =
       scenario === 'steady'
         ? {
-            boot: this.logBoot - 1,
+            boot: this.status.system.boot - 1,
             first_sequence: 12,
             dropped: 12,
             text: [...this.logLines.map((line) => line.text), ...PREVIOUS_BOOT_TAIL]
@@ -796,6 +814,23 @@ export class FakeDevice {
               .join(''),
           }
         : null;
+  }
+
+  private startLog(): void {
+    this.logLines = [];
+    this.logSequence = 0;
+    this.logDropped = 0;
+    for (const text of BOOT_LOG) this.appendLog(text);
+  }
+
+  /** This boot's log as the device reports it. */
+  private currentLog(): BootLog {
+    return {
+      boot: this.status.system.boot,
+      first_sequence: this.logSequence - this.logLines.length,
+      dropped: this.logDropped,
+      text: this.logLines.map((line) => `${line.text}\n`).join(''),
+    };
   }
 
   private appendLog(text: string): void {
@@ -820,15 +855,7 @@ export class FakeDevice {
         ? `stream: sent ${this.status.metrics.packets_total} packets`
         : 'capture: input silent, stream paused',
     );
-    return {
-      current: {
-        boot: this.logBoot,
-        first_sequence: this.logSequence - this.logLines.length,
-        dropped: this.logDropped,
-        text: this.logLines.map((line) => `${line.text}\n`).join(''),
-      },
-      previous: this.previousBootLog,
-    };
+    return { current: this.currentLog(), previous: this.previousBootLog };
   }
 
   private metricsText(): string {

@@ -1,14 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forgetAdminKey, isUnlocked, unlockSettings } from '../../src/device/lib/adminKey';
 import { digestResponse, parseDigestFields } from '../../src/device/lib/digest';
-import {
-  ANSWER_WITHIN_MS,
-  AUTHENTICATED_READS,
-  setTransport,
-  verifyAdminKey,
-} from '../../src/device/lib/http';
+import { ANSWER_WITHIN_MS, setTransport, verifyAdminKey } from '../../src/device/lib/http';
 import { getLogs, getStatus, restart, setWifi } from '../../src/generated/api';
 
 function respond(status: number, body: string): Response {
@@ -136,18 +129,6 @@ describe('api transport', () => {
     );
   });
 
-  it('gates exactly the reads the contract marks as authenticated', () => {
-    // vitest runs with the console package as its working directory.
-    const contract = JSON.parse(readFileSync(resolve('..', 'docs', 'openapi.json'), 'utf8')) as {
-      paths: Record<string, Record<string, { security?: unknown[] }>>;
-    };
-    const gated = Object.entries(contract.paths)
-      .filter(([, operations]) => operations.get?.security?.length)
-      .map(([path]) => path);
-
-    expect([...AUTHENTICATED_READS].sort()).toEqual(gated.sort());
-  });
-
   it('serializes form bodies and returns response data directly', async () => {
     let seen: Request | undefined;
     setTransport(async (request) => {
@@ -179,9 +160,14 @@ describe('api transport', () => {
     expect(isUnlocked()).toBe(false);
   });
 
-  it('surfaces the device error message on a rejected write', async () => {
-    setTransport(async () => respond(400, '{"error":"ssid is required"}'));
-    await expect(setWifi({ ssid: '' })).rejects.toThrow('ssid is required');
+  it('surfaces the device’s reason, and the field it names, on a refused write', async () => {
+    setTransport(async () =>
+      respond(400, '{"error":"A network name is required.","field":"ssid"}'),
+    );
+    await expect(setWifi({ ssid: '' })).rejects.toMatchObject({
+      message: 'A network name is required.',
+      field: 'ssid',
+    });
   });
 
   it('falls back to raw text when the error body is not JSON', async () => {

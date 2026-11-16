@@ -5,7 +5,7 @@ import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
 import { UPDATE_OPERATION } from '../../src/device/state/connection';
 import { connection, refresh, restartSettled } from '../../src/device/state/device';
-import { install, installSource, updateNews } from '../../src/device/state/ota';
+import { install, updateNews } from '../../src/device/state/ota';
 import { answering } from './answering';
 
 afterEach(() => {
@@ -29,7 +29,6 @@ it('follows a release install through its restart to the version it reached', as
   const before = connection.value.phase === 'live' ? connection.value.seen.status : null;
 
   await expect(install()).resolves.toBe(true);
-  expect(installSource.value).toBe('release');
   const phases = new Set<string>();
   for (let read = 0; read < 12 && !restartSettled.value; read += 1) {
     await refresh();
@@ -39,7 +38,7 @@ it('follows a release install through its restart to the version it reached', as
   expect(phases).toContain('waiting');
   const settled = restartSettled.value;
   expect(settled?.operation).toBe(UPDATE_OPERATION);
-  expect(settled && updateNews(settled, installSource.value).text).toBe(
+  expect(settled && updateNews(settled).text).toBe(
     `Updated to ${settled?.after.firmware_version}.`,
   );
   expect(settled?.after.firmware_version).not.toBe(before?.firmware_version);

@@ -8,7 +8,7 @@
 import { setWifi } from '../../generated/api';
 import { ApiError } from '../../shared/http';
 import { unlockSettings } from '../lib/adminKey';
-import { type WifiEntry, type WifiProblem, wifiCredentials, wifiProblems } from '../lib/wifi';
+import { type WifiEntry, type WifiProblem, wifiProblems, wifiRequest } from '../lib/wifi';
 import { report } from './device';
 import { setupKey } from './setupKey';
 
@@ -26,11 +26,8 @@ export type JoinBlock = WifiProblem | { field: 'key'; text: string };
  * confirm the generated key is kept outside this console: the device adopts
  * it in the same write, and this browser cannot carry it to the home address.
  */
-export function joinBlocks(
-  entry: WifiEntry,
-  { storedPassword, keySaved }: { storedPassword: boolean; keySaved: boolean },
-): JoinBlock[] {
-  const blocks: JoinBlock[] = wifiProblems(entry, storedPassword);
+export function joinBlocks(entry: WifiEntry, keySaved: boolean): JoinBlock[] {
+  const blocks: JoinBlock[] = wifiProblems(entry);
   if (setupKey.value !== '' && !keySaved) {
     blocks.push({ field: 'key', text: 'Confirm the admin key is saved outside this console.' });
   }
@@ -40,19 +37,15 @@ export function joinBlocks(
 /**
  * Save the network and hand off. The device flushes its response before it
  * restarts, so an HTTP error ([`ApiError`]) is a refusal the caller shows
- * beside the form. The same restart tears down the setup network this browser
- * is on, so the connection can drop after a successful save: that outcome
- * stays unconfirmed.
+ * beside the form, on the field it names. The same restart tears down the
+ * setup network this browser is on, so the connection can drop after a
+ * successful save: that outcome stays unconfirmed.
  */
-export async function joinNetwork(entry: WifiEntry, storedPassword: boolean): Promise<JoinOutcome> {
-  const ssid = entry.ssid.trim();
+export async function joinNetwork(entry: WifiEntry): Promise<JoinOutcome> {
+  const request = wifiRequest(entry);
   let outcome: JoinOutcome;
   try {
-    await setWifi({
-      ssid,
-      ...wifiCredentials(entry.open, entry.password, storedPassword),
-      admin_key: setupKey.value,
-    });
+    await setWifi({ ...request, admin_key: setupKey.value });
     outcome = 'confirmed';
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -63,7 +56,7 @@ export async function joinNetwork(entry: WifiEntry, storedPassword: boolean): Pr
   if (setupKey.value) unlockSettings(setupKey.value, false);
   report({
     type: 'handoff',
-    handoff: { kind: 'join', ssid, confirmed: outcome === 'confirmed' },
+    handoff: { kind: 'join', ssid: request.ssid, confirmed: outcome === 'confirmed' },
     at: Date.now(),
   });
   return outcome;

@@ -75,7 +75,7 @@ describe('a Wi-Fi change from the home network', () => {
     const after = await readStatus(2);
     if (!after) throw new Error('the device did not come back');
     expect(after.mode).toBe('provisioned');
-    expect(after.system.uptime_seconds).toBeLessThan(before.system.uptime_seconds);
+    expect(after.system.boot).not.toBe(before.system.boot);
   });
 
   it('to another network leaves this browser for good', async () => {

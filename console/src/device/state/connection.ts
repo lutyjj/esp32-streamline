@@ -23,12 +23,6 @@ export const JOIN_GRACE_MS = 15_000;
 /** Update phases in which the device is writing or about to boot a new image. */
 const INSTALLING: readonly string[] = ['downloading', 'verifying', 'installed'];
 
-/**
- * Uptime counts whole seconds and a read takes time to answer, so a restart
- * shows only once the reported uptime falls this far below the expected one.
- */
-const UPTIME_SLACK_S = 2;
-
 /** The device's last answer and when it arrived. */
 export interface Sighting {
   status: StatusResponse;
@@ -65,14 +59,9 @@ export function sightingOf(connection: Connection): Sighting | null {
   return connection.phase === 'opening' ? null : connection.seen;
 }
 
-/**
- * Whether `status` comes from a boot that started after `seen`: its uptime is
- * well below what the earlier answer plus the time since would make it.
- */
-export function restartedSince(seen: Sighting | null, status: StatusResponse, at: number): boolean {
-  if (!seen) return true;
-  const expected = seen.status.system.uptime_seconds + (at - seen.at) / 1000;
-  return status.system.uptime_seconds + UPTIME_SLACK_S < expected;
+/** Whether `status` comes from another boot than `seen`: the device names each run of its firmware. */
+export function restartedSince(seen: Sighting | null, status: StatusResponse): boolean {
+  return !seen || status.system.boot !== seen.status.system.boot;
 }
 
 export function nextConnection(connection: Connection, event: ConnectionEvent): Connection {
@@ -92,7 +81,7 @@ export function nextConnection(connection: Connection, event: ConnectionEvent): 
         connection.phase === 'handoff';
       if (
         !awaitsRestart ||
-        restartedSince(seen, event.status, event.at) ||
+        restartedSince(seen, event.status) ||
         joinNotTaken(connection, event.at)
       ) {
         // A device that installed an update restarts into it next.
@@ -139,8 +128,7 @@ export function untakenJoin(previous: Connection, next: Connection): string | nu
   if (previous.phase !== 'handoff' || previous.handoff.kind !== 'join' || next.phase !== 'live') {
     return null;
   }
-  return joinNotTaken(previous, next.seen.at) &&
-    !restartedSince(previous.seen, next.seen.status, next.seen.at)
+  return joinNotTaken(previous, next.seen.at) && !restartedSince(previous.seen, next.seen.status)
     ? previous.handoff.ssid
     : null;
 }
@@ -156,5 +144,5 @@ function overdueBy(connection: Connection, at: number): Connection {
 export function settledRestart(previous: Connection, next: Connection): string | null {
   const waited = previous.phase === 'waiting' || previous.phase === 'overdue';
   if (!waited || next.phase !== 'live') return null;
-  return restartedSince(previous.seen, next.seen.status, next.seen.at) ? previous.operation : null;
+  return restartedSince(previous.seen, next.seen.status) ? previous.operation : null;
 }

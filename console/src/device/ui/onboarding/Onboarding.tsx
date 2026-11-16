@@ -13,7 +13,8 @@ import {
 } from 'linen';
 import { useState } from 'react';
 import { errorMessage } from '../../../shared/errors';
-import type { WifiEntry } from '../../lib/wifi';
+import { fieldRefusal } from '../../../shared/http';
+import { WIFI_FIELDS, type WifiEntry } from '../../lib/wifi';
 import { joinBlocks, joinNetwork } from '../../state/join';
 import { setupKey } from '../../state/setupKey';
 import { DeviceConditions } from '../DeviceConditions';
@@ -28,19 +29,20 @@ export function Onboarding() {
   const [keySaved, setKeySaved] = useState(false);
   const [tried, setTried] = useState(false);
   const [joining, setJoining] = useState(false);
-  const [refusal, setRefusal] = useState('');
-  const blocks = joinBlocks(entry, { storedPassword: false, keySaved });
+  const [refusal, setRefusal] = useState<{ error: unknown } | null>(null);
+  const blocks = joinBlocks(entry, keySaved);
   const shown = tried ? blocks : [];
+  const refused = fieldRefusal(refusal?.error, WIFI_FIELDS);
 
   const join = async () => {
     setTried(true);
-    setRefusal('');
+    setRefusal(null);
     if (blocks.length > 0) return;
     setJoining(true);
     try {
-      await joinNetwork(entry, false);
+      await joinNetwork(entry);
     } catch (error) {
-      setRefusal(errorMessage(error));
+      setRefusal({ error });
     } finally {
       setJoining(false);
     }
@@ -62,8 +64,14 @@ export function Onboarding() {
             <CardBody>
               <WifiFields
                 entry={entry}
-                onChange={setEntry}
-                problems={shown.flatMap((block) => (block.field === 'key' ? [] : [block]))}
+                onChange={(next) => {
+                  setRefusal(null);
+                  setEntry(next);
+                }}
+                problems={[
+                  ...(refused ? [refused] : []),
+                  ...shown.flatMap((block) => (block.field === 'key' ? [] : [block])),
+                ]}
                 storedPassword={false}
                 disabled={joining}
               />
@@ -98,11 +106,11 @@ export function Onboarding() {
               )}
             </CardBody>
           </Card>
-          {refusal !== '' && (
+          {refusal && !refused && (
             <Notice
               tone="danger"
               title="The device did not save the network."
-              description={refusal}
+              description={errorMessage(refusal.error)}
             />
           )}
           <div className="flex justify-end">

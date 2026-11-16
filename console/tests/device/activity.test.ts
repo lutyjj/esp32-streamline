@@ -59,14 +59,19 @@ describe('audioActivity', () => {
 
   it('keeps sending through a restart quicker than a poll, from the new boot’s count', async () => {
     let bytes = 10240;
+    let boot = 1;
     setTransport(
-      async () => new Response(JSON.stringify(deviceStatus({ metrics: { bytes_total: bytes } }))),
+      async () =>
+        new Response(
+          JSON.stringify(deviceStatus({ metrics: { bytes_total: bytes }, system: { boot } })),
+        ),
     );
     await refresh();
     bytes += 1024;
     await refresh();
     expect(audioMoving.value).toBe(true);
-    // The device restarted between two polls; its count starts again.
+    // The device restarted between two polls; the new boot counts again from zero.
+    boot = 2;
     bytes = 2048;
     await refresh();
     expect(audioMoving.value).toBe(true);

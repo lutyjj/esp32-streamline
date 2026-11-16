@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LinenProvider, ToastProvider, UnsavedChangesGuard } from 'linen';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { deviceConfig, deviceContract, deviceStatus } from '../../src/device/mocks/fixtures';
-import { audioProfiles, config, contract } from '../../src/device/state/device';
+import { deviceConfig, deviceStatus } from '../../src/device/mocks/fixtures';
+import { audioProfiles, config } from '../../src/device/state/device';
 import { UPDATE_BUSY_REASON } from '../../src/device/state/ota';
 import { AudioScreen } from '../../src/device/ui/audio/AudioScreen';
 import { BridgeScreen } from '../../src/device/ui/bridge/BridgeScreen';
@@ -26,7 +26,6 @@ function mount(path: string, page = <AudioScreen />) {
 
 describe('during a firmware update', () => {
   beforeEach(() => {
-    contract.value = deviceContract();
     audioProfiles.value = {
       schema_version: 1,
       board_id: deviceStatus().capabilities.board_id,
@@ -45,7 +44,6 @@ describe('during a firmware update', () => {
 
   afterEach(() => {
     cleanup();
-    contract.value = null;
     audioProfiles.value = null;
     config.value = null;
     answering(null);

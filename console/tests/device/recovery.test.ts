@@ -90,7 +90,7 @@ describe('a restart from recovery', () => {
       reads.push(new URL(request.url).pathname);
       return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
     });
-    const after = { ...before, system: { ...before.system, uptime_seconds: 3 } };
+    const after = { ...before, system: { ...before.system, boot: before.system.boot + 1 } };
     report({ type: 'answered', status: after, at: 2000 + OVERDUE_MS });
 
     expect(connection.value.phase).toBe('live');

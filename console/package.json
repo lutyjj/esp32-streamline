@@ -10,7 +10,8 @@
     "esp-web-tools": "10.4.0",
     "linen": "https://github.com/lutyjj/linen/releases/download/v0.4.0/linen-0.4.0.tgz",
     "lucide-react": "^1.73.0",
-    "preact": "^11.1.1"
+    "preact": "^11.1.1",
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.5",
@@ -24,7 +25,7 @@
     "@types/react-dom": "^19.3.0",
     "happy-dom": "^21.0.4",
     "msw": "^3.0.3",
-    "orval": "8.46.0",
+    "orval": "8.48.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.5",

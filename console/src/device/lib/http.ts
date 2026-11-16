@@ -1,3 +1,5 @@
+import type { ErrorResponse } from '../../generated/api';
+import { AUTHENTICATED_READS } from '../../generated/facts';
 import { ApiError, type FetchLike } from '../../shared/http';
 import { isUnlocked, lockSettings, storedAdminKey } from './adminKey';
 import { DigestSession, parseChallenge } from './digest';
@@ -47,19 +49,9 @@ export function setTransport(next: FetchLike): void {
 }
 
 /**
- * Reads the device gates behind the admin key. Every other read is open, and
- * staying open matters: the status poll runs every couple of seconds and
- * should not spend digest round trips.
- *
- * `tests/device/api.test.ts` pins this list to the operations `docs/openapi.json`
- * declares `digest_auth` on, so a new authenticated read cannot forget it.
+ * Writes and the reads the contract gates carry the key. Every other read
+ * stays open, so the status poll spends no digest round trips.
  */
-export const AUTHENTICATED_READS: ReadonlySet<string> = new Set([
-  '/api/logs',
-  '/api/coredump',
-  '/api/coredump/image',
-]);
-
 function needsAdminKey(request: Request): boolean {
   return request.method !== 'GET' || AUTHENTICATED_READS.has(new URL(request.url).pathname);
 }
@@ -100,14 +92,18 @@ async function exchange<T>(request: Request): Promise<T> {
 
   const text = await response.text();
   if (!response.ok) {
-    const error = parseBody(text) as { error?: string } | string | undefined;
+    const error = parseBody(text) as Partial<ErrorResponse> | string | undefined;
     const message =
       response.status === 401
         ? 'unauthorized — unlock settings with the admin key'
         : typeof error === 'string'
           ? error
           : error?.error || text || String(response.status);
-    throw new ApiError(response.status, message);
+    throw new ApiError(
+      response.status,
+      message,
+      typeof error === 'object' ? (error.field ?? null) : null,
+    );
   }
 
   return parseBody(text) as T;

@@ -123,9 +123,14 @@ pub fn last_install_result(store: &Mutex<ConfigStore>) -> InstallResult {
         Ok(store) => store.install_record(),
         Err(_) => None,
     };
+    record.map_or(InstallResult::None, |record| record.result(running_slot()))
+}
+
+/// The label of the slot this boot runs from, such as `ota_0`.
+pub fn running_slot() -> &'static str {
+    static LABEL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     // SAFETY: the running partition is static for the life of the image.
-    let running = partition_label(unsafe { sys::esp_ota_get_running_partition() });
-    record.map_or(InstallResult::None, |record| record.result(&running))
+    LABEL.get_or_init(|| partition_label(unsafe { sys::esp_ota_get_running_partition() }))
 }
 
 /// The label of `partition`, such as `ota_1`; empty for a null pointer.

@@ -619,6 +619,7 @@ streamline_ota_busy 0\n"
                 signed_updates: true,
                 signing_key_sha256: "a".repeat(64),
                 last_result: Default::default(),
+                running_slot: "ota_0".to_owned(),
             },
             status_indicator_visible: true,
         }

@@ -56,6 +56,9 @@ the last install ended:
 
 The device records which slot an install wrote and compares it with the slot it
 boots from, so the result holds when the new image has the same version.
+`ota.running_slot` names the slot it boots from, such as `ota_0`, so a client
+can tell that an install or a rollback booted another image, even one with the
+same version.
 `GET /api/settings` reports
 `auto_update_schedule`; `POST /api/settings/firmware` sets `disabled`, `daily`,
 or `weekly` without a reboot.

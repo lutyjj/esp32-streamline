@@ -447,6 +447,9 @@ pub struct OtaStatus<'a> {
     pub signing_key_sha256: &'a str,
     /// How the last install ended.
     pub last_result: crate::update::outcome::InstallResult,
+    /// The OTA slot this boot runs from, such as `ota_0`. Booting another image,
+    /// after an install or a rollback, changes it; a restart keeps it.
+    pub running_slot: &'a str,
 }
 
 #[derive(Serialize)]

@@ -127,6 +127,7 @@ pub fn status() -> Value {
             signed_updates: true,
             signing_key_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             last_result: crate::update::outcome::InstallResult::None,
+            running_slot: "ota_0",
         },
         indicator: IndicatorStatus {
             available: true,

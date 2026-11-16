@@ -176,6 +176,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             signed_updates: crate::adapters::ota::SIGNED_UPDATES,
             signing_key_sha256: crate::adapters::ota::signing_key_sha256().to_owned(),
             last_result: ota.last_result,
+            running_slot: crate::adapters::ota::running_slot().to_owned(),
         },
         status_indicator_visible: config.shows_status_indicator(state.board.as_ref()),
     }
@@ -309,6 +310,7 @@ impl<'a> api::StatusResponse<'a> {
                 signed_updates: snapshot.ota.signed_updates,
                 signing_key_sha256: &snapshot.ota.signing_key_sha256,
                 last_result: snapshot.ota.last_result,
+                running_slot: &snapshot.ota.running_slot,
             },
             indicator: api::IndicatorStatus {
                 available: snapshot.status_indicator_visible,

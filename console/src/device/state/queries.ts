@@ -9,7 +9,7 @@ import {
   type QueryKey,
   queryOptions,
 } from '@tanstack/preact-query';
-import { getAudioProfiles, getSettings } from '../../generated/api';
+import { getAudioProfiles, getBoards, getSettings } from '../../generated/api';
 
 /** Reads a read the device dropped gets in all before it reports the failure. */
 export const READ_ATTEMPTS = 4;
@@ -40,6 +40,12 @@ export const settingsQuery = queryOptions({
 export const audioProfilesQuery = queryOptions({
   queryKey: ['audio-profiles'],
   queryFn: () => getAudioProfiles(),
+});
+
+/** The boards this firmware knows and the one the device runs as. */
+export const boardsQuery = queryOptions({
+  queryKey: ['boards'],
+  queryFn: () => getBoards(),
 });
 
 /**

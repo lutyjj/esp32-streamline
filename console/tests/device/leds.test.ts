@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LED_ROLE_CHOICES, ledRows } from '../../src/device/lib/leds';
+import { ledRows } from '../../src/device/lib/leds';
 import type { LedCapabilityStatus, LedRoleStatus } from '../../src/generated/api';
 
 const led = (id: string, extra: Partial<LedCapabilityStatus> = {}): LedCapabilityStatus => ({
@@ -27,9 +27,5 @@ describe('ledRows', () => {
   it('falls back to the descriptor default when settings omit the LED', () => {
     const leds = [led('status', { default_role: 'status' })];
     expect(ledRows(leds, [])).toEqual([{ id: 'status', label: 'STATUS', role: 'status' }]);
-  });
-
-  it('offers status, on, and off as the role choices', () => {
-    expect(LED_ROLE_CHOICES.map((choice) => choice.value)).toEqual(['status', 'on', 'off']);
   });
 });

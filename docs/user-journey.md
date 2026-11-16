@@ -35,7 +35,7 @@ owns installation commands.
 |---|---|---|
 | Device | Audio | Check the input, what the audio is doing, and saved profiles; open tuning when needed |
 | Device | Bridge | Connect a bridge and follow delivery to it; set up encrypted audio |
-| Device | Device | Wi-Fi, hardware, and what this browser keeps |
+| Device | Device | Wi-Fi, the name and hardware, the admin key, and what this browser keeps |
 | Device | Maintenance | Updates, diagnostics, the machine interface, restart and reset |
 | Bridge | Listen | Observe sources and copy playback addresses |
 | Bridge | Recordings | Capture a source and retrieve saved WAV files |
@@ -46,7 +46,8 @@ guided task opens on a screen of its own beneath its workspace. The bridge
 console's Settings is a task index; each destination opens one focused task
 with an All settings link. URLs identify the workspace, section, or task, and
 browser Back retraces navigation. Phones use
-the same destinations and bottom primary navigation. A condition of the whole
+the same destinations and bottom primary navigation. The theme choice stands
+at the foot of the device console's navigation, and this browser keeps it. A condition of the whole
 console, such as lost contact or a restart under way, stands above every
 screen until it ends.
 
@@ -142,9 +143,18 @@ attempts, and transmission. Resume reverses a pause. External button or API
 changes update fields the user has not edited. The console never guesses which
 physical source a waveform represents.
 
-Device → Hardware assigns advertised buttons and LEDs. Destructive button
-assignments carry a warning. A console pause is not a persistent shutdown;
-restarting resumes streaming according to firmware policy.
+Device → Hardware names the device, shows its board, and assigns advertised
+buttons and LEDs. A button or LED change applies at once. Assigning factory
+reset to a button asks first, and its row keeps saying what one press does.
+Choosing another built-in board or loading a board file restarts the device.
+A console pause is not a persistent shutdown; restarting resumes streaming
+according to firmware policy.
+
+Device → Access replaces the admin key. The console makes a new key and shows
+it once; Save waits until the owner confirms it is kept outside the console,
+and this browser stays unlocked on it. Until then the old key stays in use,
+and leaving asks first. Access also says whether this browser keeps the key
+and forgets it on request.
 
 Bridge Listen shows known sources, levels, connection state, playback addresses,
 and reception details. Recordings separates capture from the file library.

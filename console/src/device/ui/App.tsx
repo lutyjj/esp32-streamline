@@ -17,6 +17,7 @@ import { MaintenanceScreen } from './maintenance/MaintenanceScreen';
 import { Handoff } from './onboarding/Handoff';
 import { Onboarding } from './onboarding/Onboarding';
 import { PLACES, placeOf } from './places';
+import { ThemeChoice } from './ThemeChoice';
 
 export function App() {
   return (
@@ -113,6 +114,7 @@ function DeviceShell({ name }: { name: string | undefined }) {
       storageKey="streamline:rail"
       screen={place ?? 'audio'}
       conditions={deviceConditions()}
+      foot={<ThemeChoice />}
     >
       {place === 'bridge' ? (
         <BridgeScreen />

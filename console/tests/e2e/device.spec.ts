@@ -216,3 +216,55 @@ test('Connect a bridge opened directly shows the saved target', async ({ page })
   await expect(page.getByLabel('Bridge address')).toHaveValue('192.0.2.20');
   await expect(page.getByLabel('Port')).toHaveValue('39000');
 });
+
+test('a button set to factory reset asks first and then warns on its row', async ({ page }) => {
+  await page.goto('/#/device/hardware');
+  await page.getByRole('combobox', { name: 'Key 3 action' }).click();
+  await page.getByRole('option', { name: 'Factory reset' }).click();
+  const ask = page.getByRole('alertdialog', { name: 'Make Key 3 a factory reset button?' });
+  await ask.getByRole('button', { name: 'Make it factory reset' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(ask).toBeHidden();
+  await expect(page.getByRole('combobox', { name: 'Key 3 action' })).toHaveText(/Factory reset/);
+  await expect(page.getByText('One press erases every setting', { exact: false })).toBeVisible();
+
+  // A light changes as it is chosen, and the name reaches the rail and the tab.
+  await page.getByRole('radio', { name: 'Off' }).click();
+  await expect(page.getByText('Always dark.')).toBeVisible();
+  await page.getByLabel('Name', { exact: true }).fill('Turntable');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page).toHaveTitle('Turntable · StreamLine');
+});
+
+test('a new admin key is kept before it saves, then the device takes only it', async ({ page }) => {
+  await page.goto('/#/device/access');
+  await page.getByRole('button', { name: 'Replace admin key' }).click();
+  const next = await page.getByLabel('New admin key', { exact: true }).textContent();
+  expect(next).toMatch(/^[0-9a-f]{48}$/);
+
+  await page.getByRole('button', { name: 'Save new key' }).click();
+  await expect(page.getByText('Confirm the new key is saved outside this console.')).toBeVisible();
+  await page.getByText('I saved the new key outside this console').click();
+  await page.getByRole('button', { name: 'Save new key' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(page.getByText('The device takes the new admin key now.')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Settings unlocked/ })).toBeVisible();
+
+  // Locked again, the old key is refused and the new one opens the next change.
+  await page.getByRole('button', { name: /^Settings unlocked/ }).click();
+  await page.getByRole('button', { name: /^Settings locked/ }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(
+    page.getByText('The device did not accept this key.', { exact: false }),
+  ).toBeVisible();
+  await answerKey(page, next ?? '');
+  await expect(page.getByRole('button', { name: /^Settings unlocked/ })).toBeVisible();
+});
+
+test('the theme is chosen at the foot of the rail', async ({ page }) => {
+  await page.goto('/#/audio');
+  await page.getByRole('radio', { name: 'Dark' }).first().click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});

@@ -7,10 +7,10 @@ export interface LedRow {
 }
 
 /**
- * Pair each board LED with its effective role, in descriptor order. The device
- * returns a role for every LED, so this normally just zips the two lists; a
- * missing entry falls back to the LED's descriptor default so a row never
- * renders blank.
+ * Pair each board LED with its effective role, in descriptor order. Labels
+ * come from the status and roles from the settings, which a board change can
+ * leave a read apart, so a LED the settings do not name yet shows its
+ * descriptor default.
  */
 export function ledRows(leds: LedCapabilityStatus[], roles: LedRoleStatus[]): LedRow[] {
   const roleById = new Map(roles.map((entry) => [entry.id, entry.role]));
@@ -21,16 +21,9 @@ export function ledRows(leds: LedCapabilityStatus[], roles: LedRoleStatus[]): Le
   }));
 }
 
-/** The assignable roles in display order, with the label the console shows. */
-export const LED_ROLE_CHOICES: { value: LedRole; label: string }[] = [
-  { value: 'status', label: 'Status' },
-  { value: 'on', label: 'On' },
-  { value: 'off', label: 'Off' },
-];
-
-/** One-line description of what each role does, shown under the LED name. */
-export const LED_ROLE_SUMMARY: Record<LedRole, string> = {
-  status: 'Follows the device state',
-  on: 'Always lit',
-  off: 'Always dark',
+/** What each role is called and does, in the order the console offers them. */
+export const LED_ROLES: Record<LedRole, { label: string; summary: string }> = {
+  status: { label: 'Status', summary: 'Follows what the device is doing.' },
+  on: { label: 'On', summary: 'Always lit.' },
+  off: { label: 'Off', summary: 'Always dark.' },
 };

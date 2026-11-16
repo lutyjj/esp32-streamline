@@ -4,10 +4,16 @@
  * key asks once more before it gives up.
  */
 
-import type { Ack } from '../../generated/api';
+import { type Ack, setAdminKey } from '../../generated/api';
 import { requestCredential } from '../../shared/credentialGate';
 import { ApiError } from '../../shared/http';
-import { isUnlocked, lockSettings, unlockSettings } from '../lib/adminKey';
+import {
+  isUnlocked,
+  keyRemembered,
+  lockSettings,
+  replaceAdminKey,
+  unlockSettings,
+} from '../lib/adminKey';
 import { verifyAdminKey } from '../lib/http';
 import { report, status } from './device';
 
@@ -52,4 +58,15 @@ export async function withRestart(
   const ack = await withAccess(write);
   if (ack?.rebooting) report({ type: 'restarting', operation, at: Date.now() });
   return ack;
+}
+
+/**
+ * Give the device `next` as its admin key and keep this browser unlocked on
+ * it, kept the way the old one was. Resolves null when the owner declines to
+ * unlock.
+ */
+export function changeAdminKey(next: string): Promise<Ack | null> {
+  return withAccess(() =>
+    replaceAdminKey((secret) => setAdminKey({ admin_key: secret }), next, keyRemembered()),
+  );
 }

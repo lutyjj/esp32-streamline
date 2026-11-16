@@ -92,11 +92,8 @@ export async function replaceAdminKey(
   return ack;
 }
 
+/** A new key in the contract's form: 48 lowercase hexadecimal digits. */
 export function generateAdminKey(): string {
-  if (!window.crypto?.getRandomValues) {
-    throw new Error('secure random generation is unavailable in this browser');
-  }
-  const bytes = new Uint8Array(24);
-  window.crypto.getRandomValues(bytes);
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

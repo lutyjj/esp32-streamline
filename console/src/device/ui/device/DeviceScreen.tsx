@@ -1,24 +1,10 @@
-import { useQuery } from '@tanstack/preact-query';
-import {
-  Card,
-  CardHead,
-  Content,
-  SectionNav,
-  SegmentedControl,
-  SettingRow,
-  THEME_PREFERENCES,
-  type ThemePreference,
-} from 'linen';
+import { Content, SectionNav } from 'linen';
 import { useEffect } from 'react';
 import { replacePath, usePathname } from '../../../shared/navigation';
-import { theme } from '../../../shared/theme';
-import { BUTTON_ACTION_SUMMARY, buttonRows } from '../../lib/buttons';
-import { LED_ROLE_SUMMARY, ledRows } from '../../lib/leds';
-import { status } from '../../state/device';
-import { queryClient, settingsQuery } from '../../state/queries';
 import { sectionOf } from '../places';
-import { ReadNotice } from '../ReadNotice';
 import { ScreenTop } from '../ScreenTop';
+import { AccessSection } from './AccessSection';
+import { HardwareSection } from './HardwareSection';
 import { WifiSection } from './WifiSection';
 
 const SECTIONS = [
@@ -39,77 +25,13 @@ export function DeviceScreen() {
       <SectionNav label="Device" sections={SECTIONS} />
       <Content>
         {section === 'hardware' ? (
-          <Hardware />
+          <HardwareSection />
         ) : section === 'access' ? (
-          <Access />
+          <AccessSection />
         ) : (
           <WifiSection />
         )}
       </Content>
     </>
-  );
-}
-
-function Hardware() {
-  const capabilities = status.value?.capabilities;
-  const read = useQuery(settingsQuery, queryClient);
-  const settings = read.data;
-  if (!capabilities) return null;
-  return (
-    <div className="grid gap-4">
-      <ReadNotice read={read} name="device settings" />
-      <Card>
-        <CardHead title="Board" />
-        <SettingRow title="Model">
-          <span className="text-sm">{capabilities.board}</span>
-        </SettingRow>
-        <SettingRow title="Codec">
-          <span className="font-mono text-sm">{capabilities.codec.driver}</span>
-        </SettingRow>
-      </Card>
-      {settings && capabilities.buttons.length > 0 && (
-        <Card>
-          <CardHead title="Buttons" />
-          {buttonRows(capabilities.buttons, settings.button_actions).map((row) => (
-            <SettingRow key={row.id} title={row.label}>
-              <span className="text-sm">{BUTTON_ACTION_SUMMARY[row.action]}</span>
-            </SettingRow>
-          ))}
-        </Card>
-      )}
-      {settings && capabilities.leds.length > 0 && (
-        <Card>
-          <CardHead title="Lights" />
-          {ledRows(capabilities.leds, settings.led_roles).map((row) => (
-            <SettingRow key={row.id} title={row.label}>
-              <span className="text-sm">{LED_ROLE_SUMMARY[row.role]}</span>
-            </SettingRow>
-          ))}
-        </Card>
-      )}
-    </div>
-  );
-}
-
-const THEME_WORDS: Record<ThemePreference, string> = {
-  system: 'Auto',
-  light: 'Light',
-  dark: 'Dark',
-};
-
-function Access() {
-  const { preference, setPreference } = theme.useTheme();
-  return (
-    <Card>
-      <CardHead title="This browser" description="What this browser keeps for this device." />
-      <SettingRow title="Theme">
-        <SegmentedControl
-          label="Theme"
-          value={preference}
-          options={THEME_PREFERENCES.map((value) => ({ value, label: THEME_WORDS[value] }))}
-          onValueChange={setPreference}
-        />
-      </SettingRow>
-    </Card>
   );
 }

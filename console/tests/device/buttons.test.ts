@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BUTTON_ACTION_CHOICES,
-  buttonRows,
-  DESTRUCTIVE_ACTIONS,
-} from '../../src/device/lib/buttons';
+import { buttonRows } from '../../src/device/lib/buttons';
 import type { ButtonActionStatus, ButtonCapabilityStatus } from '../../src/generated/api';
 
 const button = (
@@ -39,20 +35,5 @@ describe('buttonRows', () => {
     expect(buttonRows(buttons, [])).toEqual([
       { id: 'key1', label: 'KEY1', action: 'toggle_stream' },
     ]);
-  });
-
-  it('offers every assignable action, and only factory reset is destructive', () => {
-    expect(BUTTON_ACTION_CHOICES.map((choice) => choice.value)).toEqual([
-      'none',
-      'toggle_stream',
-      'cycle_input',
-      'gain_up',
-      'gain_down',
-      'attenuation_up',
-      'attenuation_down',
-      'restart',
-      'factory_reset',
-    ]);
-    expect([...DESTRUCTIVE_ACTIONS]).toEqual(['factory_reset']);
   });
 });

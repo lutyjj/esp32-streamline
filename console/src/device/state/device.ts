@@ -63,8 +63,11 @@ export interface SettledRestart {
 /** The latest restart the console saw finish; each one is a new object. */
 export const restartSettled = signal<SettledRestart | null>(null);
 
-/** A network the device was asked to join and never did, while its news waits to be told. */
-export const joinUntaken = signal<{ ssid: string; still: string } | null>(null);
+/**
+ * A network the device was asked to join and never did, while its news waits
+ * to be told, and the network it is still on: null for its setup network.
+ */
+export const joinUntaken = signal<{ ssid: string; still: string | null } | null>(null);
 /** Peak-hold marks for the level meters. */
 export const peakHold = signal<PeakHold>({ left: 0, right: 0, at: 0 });
 /** PCM bytes the previous answer counted, and in which boot, to tell whether audio still flows. */
@@ -138,7 +141,8 @@ export function report(event: ConnectionEvent): void {
   }
   const ssid = untakenJoin(previous, next);
   if (ssid !== null && next.phase === 'live') {
-    joinUntaken.value = { ssid, still: next.seen.status.wifi.ssid };
+    const seen = next.seen.status;
+    joinUntaken.value = { ssid, still: seen.mode === 'provisioned' ? seen.wifi.ssid : null };
   }
 }
 

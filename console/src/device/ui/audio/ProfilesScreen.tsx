@@ -8,10 +8,11 @@ import {
   EmptyState,
   PromptDialog,
   SettingRow,
+  useToast,
 } from 'linen';
 import { useRef, useState } from 'react';
 import type { AudioProfile, AudioProfileCatalog, StatusResponse } from '../../../generated/api';
-import { errorMessage } from '../../../shared/errors';
+import { ApiError } from '../../../shared/http';
 import { status } from '../../state/device';
 import {
   deleteProfile,
@@ -25,6 +26,7 @@ import { audioProfilesQuery, queryClient } from '../../state/queries';
 import { ReadNotice } from '../ReadNotice';
 import { ScreenTop } from '../ScreenTop';
 import { WriteConfirm } from '../WriteConfirm';
+import { UNANSWERED } from '../WriteFailure';
 import { levelsWords } from './levelsWords';
 
 const TRAIL = [{ href: '/audio', label: 'Audio' }];
@@ -184,14 +186,23 @@ function Questions({
   saved: number;
   onDone: () => void;
 }) {
+  const toast = useToast();
   const [refusal, setRefusal] = useState('');
+  // The device's refusal stays on the name it was sent; any other failure
+  // closes the question, and the toast says what may have happened.
   const named = (act: (name: string) => Promise<boolean>) => async (name: string) => {
-    setRefusal('');
     try {
       await act(name);
+      setRefusal('');
       onDone();
     } catch (error) {
-      setRefusal(errorMessage(error));
+      if (error instanceof ApiError) {
+        setRefusal(error.message);
+        return;
+      }
+      setRefusal('');
+      onDone();
+      toast.show({ text: `${UNANSWERED.title} ${UNANSWERED.description}`, sticky: true });
     }
   };
   const closed = (open: boolean) => {

@@ -7,6 +7,7 @@ import { hashNavigation, replacePath, usePathname } from '../../shared/navigatio
 import { verifyKey } from '../state/access';
 import { UPDATE_OPERATION } from '../state/connection';
 import { connection, joinUntaken, restartSettled, status } from '../state/device';
+import { untakenJoinNews } from '../state/join';
 import { updateNews } from '../state/ota';
 import { AudioScreen } from './audio/AudioScreen';
 import { BridgeScreen } from './bridge/BridgeScreen';
@@ -63,12 +64,7 @@ function useUntakenJoinToasts() {
         const untaken = joinUntaken.value;
         if (!untaken) return;
         joinUntaken.value = null;
-        untracked(() =>
-          toast.show({
-            text: `The device did not join ${untaken.ssid}. It is still on ${untaken.still}; change Wi-Fi again to retry.`,
-            sticky: true,
-          }),
-        );
+        untracked(() => toast.show({ text: untakenJoinNews(untaken), sticky: true }));
       }),
     [toast],
   );

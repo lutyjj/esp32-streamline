@@ -92,8 +92,9 @@ fills the host and port and never saves them. A listed bridge is a hint, since a
 network can advertise one, so the owner compares the address before saving.
 No answer, or a failed search, names the manual fallback: a bridge behind port
 mapping or a network that blocks multicast stays reachable by its typed
-address. The device searches only from the home network, and the setup network
-offers no bridge step: connect one once the device is on the home network.
+address. The device searches only from the home network. First contact offers
+no bridge step, and a device in recovery, back on its setup network, offers
+the address form without the search.
 
 After saving, the device distinguishes restarting, quiet input, connecting, and
 sending. Only observed transmission supports Sending audio. Open the bridge

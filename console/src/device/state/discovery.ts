@@ -8,7 +8,7 @@ import { computed } from '@preact/signals';
 import { type DiscoveredBridge, getBridges } from '../../generated/api';
 import { status } from './device';
 
-/** The device browses only from the home network; the setup network offers the form alone. */
+/** The device browses only from the home network; on the setup network the form stands alone. */
 export const searchOffered = computed(() => status.value?.mode === 'provisioned');
 
 /** Browse once, for the bridges that answered. */

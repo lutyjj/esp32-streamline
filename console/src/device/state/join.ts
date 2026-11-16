@@ -28,6 +28,13 @@ export function keyUnconfirmed(keySaved: boolean): boolean {
   return setupKey.value !== '' && !keySaved;
 }
 
+/** What the console says once a network the device was given turns out never joined. */
+export function untakenJoinNews({ ssid, still }: { ssid: string; still: string | null }): string {
+  return still === null
+    ? `The device did not join ${ssid}. It is still on its setup network; try the join again.`
+    : `The device did not join ${ssid}. It is still on ${still}; change Wi-Fi again to retry.`;
+}
+
 /**
  * Save the network and hand off. The device flushes its response before it
  * restarts, so an HTTP error ([`ApiError`]) is a refusal the caller shows

@@ -157,18 +157,18 @@ const INSTALL: Record<Install, { label: string; description: string; steps: stri
     label: 'Home Assistant',
     description: 'The StreamLine Bridge app runs beside Music Assistant.',
     steps:
-      'Add the StreamLine repository under Settings → Apps in Home Assistant, install StreamLine Bridge, start it, then search for it here.',
+      'Add the StreamLine repository under Settings → Apps in Home Assistant, install StreamLine Bridge, start it, then connect it here.',
   },
   docker: {
     label: 'Docker',
     description: 'The bridge image on any computer that stays on.',
     steps:
-      'Run the bridge with the Compose file from the StreamLine README on a computer on this network, then search for it here.',
+      'Run the bridge with the Compose file from the StreamLine README on a computer on this network, then connect it here.',
   },
   existing: {
     label: 'A bridge I already run',
     description: 'Point the device at it.',
-    steps: 'Search for it here, or type its address and port.',
+    steps: 'Connect it here by its address and port.',
   },
 };
 

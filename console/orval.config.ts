@@ -11,7 +11,9 @@ export default defineConfig({
       // A handler for every operation, the base under the fake device.
       mock: { generators: [{ type: 'msw', useExamples: true }] },
       override: {
-        // Orval types a binary response as a Blob but draws it as numbers.
+        // Workaround: Orval 8.48 types a binary response's mock as a Blob but
+        // draws it as an array of numbers, which fails tsc. The fake answers
+        // this route itself; remove once Orval draws binary mocks as a Blob.
         operations: { get_coredump_image: { mock: { data: () => new Blob() } } },
         fetch: {
           includeHttpResponseReturnType: false,

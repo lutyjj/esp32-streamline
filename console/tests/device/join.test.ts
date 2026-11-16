@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, isUnlocked } from '../../src/device/lib/adminKey';
 import { setTransport } from '../../src/device/lib/http';
 import type { WifiEntry } from '../../src/device/lib/wifi';
-import { connection } from '../../src/device/state/device';
-import { joinNetwork, keyUnconfirmed } from '../../src/device/state/join';
+import { deviceStatus } from '../../src/device/mocks/fixtures';
+import { JOIN_GRACE_MS } from '../../src/device/state/connection';
+import { connection, joinUntaken, report } from '../../src/device/state/device';
+import { joinNetwork, keyUnconfirmed, untakenJoinNews } from '../../src/device/state/join';
 import { setupKey } from '../../src/device/state/setupKey';
 import { answering } from './answering';
 
@@ -44,6 +46,29 @@ describe('keyUnconfirmed', () => {
   it('asks no confirmation of a device that keeps its own key', () => {
     setupKey.value = '';
     expect(keyUnconfirmed(false)).toBe(false);
+  });
+});
+
+describe('a join the device never took', () => {
+  it('names the network it is still on, or its setup network', () => {
+    const setup = deviceStatus({ mode: 'setup', wifi: { ssid: '' } });
+    report({ type: 'answered', status: setup, at: 0 });
+    report({
+      type: 'handoff',
+      handoff: { kind: 'join', ssid: 'home', confirmed: false },
+      at: 1000,
+    });
+    report({ type: 'answered', status: setup, at: 1000 + JOIN_GRACE_MS });
+
+    const untaken = joinUntaken.value;
+    expect(untaken).toEqual({ ssid: 'home', still: null });
+    expect(untaken && untakenJoinNews(untaken)).toBe(
+      'The device did not join home. It is still on its setup network; try the join again.',
+    );
+    expect(untakenJoinNews({ ssid: 'home', still: 'Study Wi-Fi' })).toContain(
+      'It is still on Study Wi-Fi',
+    );
+    joinUntaken.value = null;
   });
 });
 

@@ -5,14 +5,19 @@
  * what it refuses. None of them applies a profile, which is selection's job.
  */
 
-import { type AudioProfileCatalog, setAudioProfiles } from '../../generated/api';
+import {
+  type Ack,
+  type AudioProfileCatalog,
+  setAudioProfile,
+  setAudioProfiles,
+} from '../../generated/api';
 import {
   addProfile,
   exportAudioProfileCatalog,
   removeProfile,
   updateProfile,
 } from '../lib/profiles';
-import { withAccess } from './access';
+import { withAccess, withRestart } from './access';
 import { status } from './device';
 import { audioProfilesQuery, queryClient, readAgain } from './queries';
 
@@ -67,6 +72,18 @@ export async function deleteProfile(id: string): Promise<boolean> {
  */
 export function importProfiles(text: string): Promise<boolean> {
   return store(text);
+}
+
+/**
+ * Apply profile `id`, or the custom levels for ''. A device without a
+ * running codec restarts to apply it, and the restart reads the profiles
+ * again; otherwise they are read again at once. Resolves null when the owner
+ * declines to unlock.
+ */
+export async function switchProfile(id: string): Promise<Ack | null> {
+  const done = await withRestart('the profile change', () => setAudioProfile({ profile_id: id }));
+  if (done && !done.rebooting) await readAgain(audioProfilesQuery);
+  return done;
 }
 
 export function exportProfiles(): string {

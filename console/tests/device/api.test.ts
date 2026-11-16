@@ -205,11 +205,40 @@ describe('api transport', () => {
     const search = getBridges();
     const settings = getSettings();
     await getStatus();
-    // The device keeps two connections: the search holds one, the poll the other.
+    // The console holds two connections: the search one, the poll the other.
     expect(sent).toEqual(['/api/bridges', '/api/status']);
     release();
     await Promise.all([search, settings]);
     expect(sent).toEqual(['/api/bridges', '/api/status', '/api/settings']);
+  });
+
+  it('starts a request’s bound when it is sent, not while it waits for its lane', async () => {
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => timeout(50));
+    const sent: string[] = [];
+    let release = () => {};
+    setTransport(async (request) => {
+      const path = new URL(request.url).pathname;
+      sent.push(path);
+      if (path === '/api/bridges') await new Promise<void>((done) => (release = done));
+      return respond(200, '{"bridges":[]}');
+    });
+
+    const search = getBridges();
+    const settings = getSettings();
+    await new Promise((done) => setTimeout(done, 100));
+    release();
+    await expect(settings).resolves.toBeDefined();
+    await search;
+    expect(sent).toEqual(['/api/bridges', '/api/settings']);
+  });
+
+  it('keeps a refusal whose body is null a refusal', async () => {
+    setTransport(async () => respond(400, 'null'));
+    await expect(setWifi({ ssid: 'home' })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 400,
+    });
   });
 
   it('keeps the bound a caller sets for itself', async () => {

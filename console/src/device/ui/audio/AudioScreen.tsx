@@ -14,21 +14,17 @@ import {
   useToast,
 } from 'linen';
 import { useEffect } from 'react';
-import {
-  getSetAudioProfileUrl,
-  setAnalogPassthrough,
-  setAudioProfile,
-  setStream,
-} from '../../../generated/api';
+import { getSetAudioProfileUrl, setAnalogPassthrough, setStream } from '../../../generated/api';
 import { errorMessage } from '../../../shared/errors';
 import { Link, replacePath, usePathname } from '../../../shared/navigation';
-import { withAccess, withRestart } from '../../state/access';
+import { withAccess } from '../../state/access';
 import { type AudioActivity, audioActivity } from '../../state/activity';
 import { clipCalloutVisible } from '../../state/clipCallout';
 import { liveStatus, passthroughLocked, status } from '../../state/device';
 import { blockingHealth } from '../../state/health';
 import { updateLock } from '../../state/ota';
-import { audioProfilesQuery, queryClient, readAgain } from '../../state/queries';
+import { switchProfile } from '../../state/profiles';
+import { audioProfilesQuery, queryClient } from '../../state/queries';
 import { ACTIVITY, ActivityStatus } from '../activityWords';
 import { sectionOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
@@ -111,13 +107,7 @@ function ProfileRow() {
   const catalog = useQuery(audioProfilesQuery, queryClient).data;
   const choose = useMutation(
     {
-      mutationFn: async (profileId: string) => {
-        const done = await withRestart('the profile change', () =>
-          setAudioProfile({ profile_id: profileId }),
-        );
-        if (done) await readAgain(audioProfilesQuery);
-        return done;
-      },
+      mutationFn: switchProfile,
       onSuccess: (done, profileId) => {
         if (!done) return;
         const name = catalog?.profiles.find((profile) => profile.id === profileId)?.name;

@@ -10,9 +10,8 @@ import {
   queryOptions,
 } from '@tanstack/preact-query';
 import { getAudioProfiles, getSettings } from '../../generated/api';
-import { ApiError } from '../../shared/http';
 
-/** Reads a dropped read gets in all before it reports the failure. */
+/** Reads a read the device dropped gets in all before it reports the failure. */
 export const READ_ATTEMPTS = 4;
 
 export const queryClient = new QueryClient({
@@ -23,8 +22,8 @@ export const queryClient = new QueryClient({
       // What the device holds changes through writes and restarts, which read it again.
       staleTime: Number.POSITIVE_INFINITY,
       gcTime: Number.POSITIVE_INFINITY,
-      // The device drops a connection when it serves others; a refusal is final.
-      retry: (failures, error) => failures < READ_ATTEMPTS - 1 && !(error instanceof ApiError),
+      // A dropped connection is read again; an unanswered or refused read is final.
+      retry: (failures, error) => failures < READ_ATTEMPTS - 1 && error instanceof TypeError,
       retryDelay: 1000,
     },
     mutations: { networkMode: 'always' },

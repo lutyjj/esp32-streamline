@@ -9,9 +9,9 @@ import { audioProfilesQuery, queryClient, settingsQuery } from '../../src/device
 import { answering } from './answering';
 
 /**
- * A device that keeps two connections: a request that arrives while two are
- * open is reset, as the firmware's server does when a browser opens more.
- * `resets` names paths whose first read is reset regardless.
+ * A device that resets a request arriving while two are open, so a test sees
+ * whether the console ever holds more than two. `resets` names paths whose
+ * first read is reset regardless.
  */
 function keepsTwoConnections(resets: string[] = []): { peak: () => number; answered: string[] } {
   const device = new FakeDevice('steady');

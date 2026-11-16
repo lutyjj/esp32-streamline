@@ -397,8 +397,8 @@ before it writes. `console/scripts/contractFacts.ts` adds which writes can
 restart the device and which reads need the admin key. The hand-written
 `deviceFetch` adapter owns admin-key injection, error normalization, and the
 replaceable transport used by tests. TypeScript rejects an unknown operation,
-form field, or response shape. The console's API tab renders the served contract,
-so integrations and the UI inspect the same document.
+form field, or response shape. The console's API section gives the address of
+the served contract, so a script reads the document the console was built from.
 
 Endpoint paths use nouns for state and verbs for actions. Every write requires
 the admin key ([security.md](security.md)). Reads are open where they return
@@ -424,8 +424,8 @@ console's and linen's own classes.
 | `motion` resolved to `linen/still` | Every state stays; only movement between states goes, and the bundle drops the animation library |
 | System fonts | The embedded typeface was a third of the console's gzipped size |
 | linen pinned to a release tarball with its integrity | linen is not on a registry; each console upgrade is a deliberate change to that pin |
-| Reads and writes on `@tanstack/preact-query`, beside a hand-written status poll | A dropped read is read again and a write's change is read back with no machinery of the console's own; the poll and the connection story it feeds stay the console's |
-| Two request lanes in the transport | The device keeps two connections and resets a third, so status reads take one lane and every other request the other, and a slow search never stalls the poll |
+| Reads and writes on `@tanstack/preact-query`, beside a hand-written status poll | A read whose connection dropped is read again, and a write's change is read back, with no machinery of the console's own; the poll and the connection story it feeds stay the console's |
+| Two request lanes in the transport | The device's server keeps four sockets and closes the least recently used when another arrives; the console holds at most two, status reads in one lane and every other request in the other, so the poll never waits behind the console's own queue |
 
 `make firmware-artifacts` measures the embedded console against the OTA slot
 through `ota-size-check`.

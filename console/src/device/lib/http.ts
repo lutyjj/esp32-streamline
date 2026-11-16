@@ -54,14 +54,17 @@ function oneAtATime(): <T>(work: () => Promise<T>) => Promise<T> {
 }
 
 /**
- * The device keeps two connections and resets a third. Status reads take one
- * lane and every other request the other, so a slow search or write never
- * holds up the poll that tells whether the device answers.
+ * The device's server keeps four sockets and closes the least recently used
+ * when another arrives. The console holds at most two of them: status reads
+ * take one lane and every other request the other, so the poll that tells
+ * whether the device answers never waits behind the console's own queue.
  */
 let lanes = { status: oneAtATime(), other: oneAtATime() };
 
-function laneOf(request: Request) {
-  return new URL(request.url).pathname === '/api/status' ? lanes.status : lanes.other;
+function laneOf(url: string) {
+  return new URL(url, 'http://device.invalid').pathname === '/api/status'
+    ? lanes.status
+    : lanes.other;
 }
 
 export function setTransport(next: FetchLike): void {
@@ -103,12 +106,12 @@ async function authorizedExchange(request: Request, key: string): Promise<Respon
 }
 
 export function deviceFetch<T>(url: string, options: RequestInit): Promise<T> {
-  const request = deviceRequest(url, options);
-  return bounded(laneOf(request)(() => exchange<T>(request)));
+  // The request, and with it its bound, starts when its lane is free.
+  return bounded(laneOf(url)(() => exchange<T>(deviceRequest(url, options))));
 }
 
 async function exchange<T>(request: Request): Promise<T> {
-  // A caller that gave up while the request waited for its lane sends nothing.
+  // A caller that gave up while its request waited for the lane sends nothing.
   request.signal.throwIfAborted();
   const key = needsAdminKey(request) && isUnlocked() ? storedAdminKey() : '';
 
@@ -127,7 +130,7 @@ async function exchange<T>(request: Request): Promise<T> {
     throw new ApiError(
       response.status,
       message,
-      typeof error === 'object' ? (error.field ?? null) : null,
+      typeof error === 'object' && error !== null ? (error.field ?? null) : null,
     );
   }
 

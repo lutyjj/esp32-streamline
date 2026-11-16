@@ -11,13 +11,16 @@ import {
   renameProfile,
   replaceProfile,
   saveProfile,
+  switchProfile,
 } from '../../src/device/state/profiles';
 import { audioProfilesQuery, queryClient } from '../../src/device/state/queries';
 import { setAudio } from '../../src/generated/api';
 import { answering } from './answering';
 
+let device: FakeDevice;
+
 beforeEach(async () => {
-  const device = new FakeDevice('steady');
+  device = new FakeDevice('steady');
   setTransport(async (request) => {
     const response = await getResponse(device.handlers, request, {
       baseUrl: window.location.origin,
@@ -84,5 +87,30 @@ describe('profile operations', () => {
   it('pass on the reason the device refuses a name', async () => {
     await expect(saveProfile('x'.repeat(40))).rejects.toMatchObject({ field: 'catalog' });
     expect(names()).toEqual([]);
+  });
+});
+
+describe('switching profiles', () => {
+  it('reads the profiles again at once, or leaves it to the restart that applies one', async () => {
+    await saveProfile('Turntable');
+    const id = catalog()?.profiles[0]?.id ?? '';
+    const reads: string[] = [];
+    const answer = device.handlers;
+    setTransport(async (request) => {
+      if (request.method === 'GET') reads.push(new URL(request.url).pathname);
+      const response = await getResponse(answer, request, { baseUrl: window.location.origin });
+      if (!response) throw new Error(`No mock handler for ${request.url}`);
+      return response;
+    });
+
+    await expect(switchProfile(id)).resolves.toMatchObject({ ok: true });
+    expect(reads).toEqual(['/api/audio-profiles']);
+    expect(catalog()?.active_profile_id).toBe(id);
+
+    reads.length = 0;
+    device.codecRunning = false;
+    await refresh();
+    await expect(switchProfile('')).resolves.toMatchObject({ rebooting: true });
+    expect(reads).toEqual(['/api/status']);
   });
 });

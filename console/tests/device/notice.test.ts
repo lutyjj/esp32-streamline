@@ -36,7 +36,7 @@ describe('deviceNotice', () => {
       seen: home,
     });
     expect(notice).toMatchObject({ tone: 'progress' });
-    expect(said(notice)).toContain('Restarting to apply the board');
+    expect(said(notice)).toContain('Waiting for the board to finish.');
   });
 
   it('marks lost contact as a failure and an overdue restart as a fallback warning', () => {

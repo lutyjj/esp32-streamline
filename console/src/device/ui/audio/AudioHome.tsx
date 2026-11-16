@@ -213,7 +213,7 @@ function ProfileRow() {
   const choose = async (profileId: string) => {
     setSwitching(true);
     try {
-      const done = await withRestart('the profile', () => setActiveAudioProfile(profileId));
+      const done = await withRestart('the profile change', () => setActiveAudioProfile(profileId));
       if (done) {
         await loadAudioProfiles();
         const name = catalog.profiles.find((profile) => profile.id === profileId)?.name;

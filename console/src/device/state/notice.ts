@@ -45,8 +45,9 @@ export function deviceNotice(connection: Connection): DeviceNotice | null {
     case 'waiting':
       return {
         tone: 'progress',
-        title: `Restarting to apply ${connection.operation}.`,
-        description: 'The console reconnects once the device answers from its new start.',
+        title: `Waiting for ${connection.operation} to finish.`,
+        description:
+          'The device is restarting; the console reconnects once it answers from its new start.',
         since: connection.since,
       };
     case 'overdue':

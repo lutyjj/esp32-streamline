@@ -64,7 +64,7 @@ validates immediately.
 
 ## Encrypt a device
 
-1. Generate the one-time bridge credential under **Settings → Encrypted audio** in the device console and copy it.
+1. Generate the one-time bridge credential under **Bridge → Encryption** in the device console and copy it.
 2. Open **Open Web UI**, unlock with `api_token`, and add the one-time key id
    and PSK under **Device credentials**. Audio keeps streaming.
 3. In the Web UI's **Settings → Audio security** task, switch on encrypted mode.

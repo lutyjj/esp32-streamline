@@ -93,9 +93,9 @@ describe('withAccess', () => {
 
   it('follows a restart the device answers with, named for its operation', async () => {
     unlockSettings('key', false);
-    await withRestart('the profile', async () => ({ ok: true }));
+    await withRestart('the profile change', async () => ({ ok: true }));
     expect(connection.value.phase).toBe('live');
-    await withRestart('the profile', async () => ({ ok: true, rebooting: true }));
-    expect(connection.value).toMatchObject({ phase: 'waiting', operation: 'the profile' });
+    await withRestart('the profile change', async () => ({ ok: true, rebooting: true }));
+    expect(connection.value).toMatchObject({ phase: 'waiting', operation: 'the profile change' });
   });
 });

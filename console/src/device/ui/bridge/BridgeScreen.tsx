@@ -10,6 +10,7 @@ import {
   Facts,
   Notice,
   OptionCards,
+  SettingRow,
 } from 'linen';
 import { useEffect, useState } from 'react';
 import { Link, replacePath, usePathname } from '../../../shared/navigation';
@@ -24,15 +25,38 @@ import { ActivityStatus } from '../activityWords';
 import { sectionOf } from '../places';
 import { ReadNotice } from '../ReadNotice';
 import { ScreenTop } from '../ScreenTop';
+import { EncryptionScreen } from './EncryptionScreen';
 import { TargetScreen } from './TargetScreen';
 
 /** The Bridge place: where the audio goes and how delivery holds, and the task that changes it. */
 export function BridgeScreen() {
   const task = sectionOf(usePathname());
   useEffect(() => {
-    if (task !== undefined && task !== 'target') replacePath('/bridge');
+    if (task !== undefined && task !== 'target' && task !== 'encryption') replacePath('/bridge');
   }, [task]);
-  return task === 'target' ? <TargetScreen /> : <BridgeOverview />;
+  if (task === 'target') return <TargetScreen />;
+  if (task === 'encryption') return <EncryptionScreen />;
+  return <BridgeOverview />;
+}
+
+/** Whether the audio crosses the network encrypted, and the way to change it. */
+function EncryptionRow({ encrypted, staged }: { encrypted: boolean; staged: boolean }) {
+  return (
+    <SettingRow
+      title="Encryption"
+      description={
+        staged
+          ? 'Setup is under way with a credential the device made.'
+          : encrypted
+            ? 'On: the bridge knows this device by its credential.'
+            : 'Off: audio crosses the network in the clear.'
+      }
+    >
+      <Link href="/bridge/encryption" className={buttonClass()}>
+        {staged ? 'Resume setup' : encrypted ? 'Manage' : 'Set up encryption'}
+      </Link>
+    </SettingRow>
+  );
 }
 
 function BridgeOverview() {
@@ -62,9 +86,6 @@ function BridgeOverview() {
                     >
                       {facts.address}
                     </Fact>
-                    <Fact name="Encryption">
-                      {facts.encrypted ? 'On' : 'Off: audio crosses the network in the clear'}
-                    </Fact>
                     {facts.source && (
                       <Fact name="Name on the bridge" mono>
                         {facts.source}
@@ -72,6 +93,10 @@ function BridgeOverview() {
                     )}
                   </Facts>
                 </CardBody>
+                <EncryptionRow
+                  encrypted={facts.encrypted}
+                  staged={Boolean(settings.data?.transport.pending_key_id)}
+                />
               </Card>
               <Reception source={facts.source} address={facts.address} />
               <Delivery />

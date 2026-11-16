@@ -172,9 +172,12 @@ directs the owner to an unavailable unlock action.
 
 ## 5. Enable encrypted audio
 
-Bridge → Encryption offers Set up encryption or Resume setup. Generate
-and preserve a credential, enroll it under bridge Settings → Audio security,
-require encryption there, verify from the device, then activate and restart.
+Bridge offers Set up encryption, Resume setup, or Manage, each leading to
+Bridge → Encryption beneath it. Its guide shows three steps and resumes where
+the device's key stands: make a credential, which the device shows once; enroll
+it under bridge Settings → Audio security and require encryption there, then
+verify from the device; turn it on, which restarts the device. Given the bridge
+console's address, the guide links to Audio security.
 
 The bridge mode affects every connected device. Switching the bridge before device
 activation pauses cleartext audio. Failed verification does not activate the
@@ -183,8 +186,11 @@ credential does not restore the bridge mode. Recovery explicitly requires restor
 cleartext on the bridge when abandoning that transition.
 
 Active encryption needs no routine intervention. Advanced security contains key
-replacement, rollback, and lost-key recovery. The generated secret is unavailable
-after dismissal. [TCP transport](tcp-transport.md) owns the protocol and API sequence.
+replacement, rollback to and retirement of the previous key, lost-key recovery,
+and the switch back to cleartext, which follows the bridge's. A replacement waits
+until the previous key is retired or rolled back to. The generated secret is
+unavailable once the guide's page reloads, and the guide then says so and offers
+to discard it. [TCP transport](tcp-transport.md) owns the protocol and API sequence.
 
 ## 6. Maintain and recover
 

@@ -311,3 +311,27 @@ test('a factory reset ends on the setup network it names', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText('http://192.168.71.1/')).toBeVisible();
 });
+
+test('encryption is set up step by step, then a replacement can be discarded', async ({ page }) => {
+  await page.goto('/#/bridge');
+  await page.getByRole('link', { name: 'Set up encryption' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Encryption' })).toBeVisible();
+  await page.getByRole('button', { name: 'Make a credential' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(page.getByLabel('PSK', { exact: true })).toHaveText(/^[0-9a-f]{64}$/);
+  await expect(page.getByText('Choose Require encryption.', { exact: false })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Verify with the bridge' }).click();
+  await expect(page.getByText('The bridge accepted the credential.')).toBeVisible();
+  await page.getByRole('button', { name: 'Turn on encryption' }).click();
+  await expect(page.getByText('Back online after the switch to encryption.')).toBeVisible();
+  await expect(page.getByText('Encryption is on')).toBeVisible();
+
+  // A replacement leaves the bridge encrypted, and discarding it keeps the one in use.
+  await page.getByRole('button', { name: 'Replace', exact: true }).click();
+  await expect(page.getByText('Replace the credential', { exact: true })).toBeVisible();
+  await expect(page.getByText('Choose Require encryption.', { exact: false })).toBeHidden();
+  await page.getByRole('button', { name: 'Discard' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByText('Encryption is on')).toBeVisible();
+});

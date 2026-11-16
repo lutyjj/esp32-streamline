@@ -1,25 +1,27 @@
-import { describe, expect, it, vi } from 'vitest';
+import { getResponse } from 'msw';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
+import { setTransport } from '../../src/device/lib/http';
+import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
+import { connection, refresh } from '../../src/device/state/device';
+import { queryClient, settingsQuery } from '../../src/device/state/queries';
 import {
-  type TransportApi,
-  TransportController,
-  transportActions,
-  transportJourney,
+  activateKey,
+  discardKey,
+  encryptionStep,
+  keyActions,
+  makeKey,
+  retireKey,
+  returnToCleartext,
+  revealed,
+  verifyKey,
 } from '../../src/device/state/transport';
-import type {
-  Ack,
-  SettingsResponse,
-  TransportKeyResponse,
-  TransportStatus,
-} from '../../src/generated/api';
+import type { TransportStatus } from '../../src/generated/api';
+import { answering } from './answering';
 
-const ack: Ack = { ok: true, rebooting: false, started: false };
-const credential: TransportKeyResponse = {
-  contract_version: 1,
-  key_id: 'eli1-0123456789abcdef0123456789abcdef',
-  psk: '01'.repeat(32),
-};
+const keyId = 'eli1-0123456789abcdef0123456789abcdef';
 
-function status(overrides: Partial<TransportStatus> = {}): TransportStatus {
+function keys(overrides: Partial<TransportStatus> = {}): TransportStatus {
   return {
     contract_version: 1,
     mode: 'cleartext',
@@ -31,134 +33,104 @@ function status(overrides: Partial<TransportStatus> = {}): TransportStatus {
   };
 }
 
-function fakeApi(overrides: Partial<TransportApi> = {}): TransportApi {
-  return {
-    stage: vi.fn(async () => credential),
-    verify: vi.fn(async () => ack),
-    activate: vi.fn(async () => ack),
-    discard: vi.fn(async () => ack),
-    rollback: vi.fn(async () => ack),
-    retire: vi.fn(async () => ack),
-    recover: vi.fn(async () => credential),
-    configure: vi.fn(async () => ack),
-    ...overrides,
-  };
-}
+describe('where the key stands', () => {
+  it('resumes the guide at the step the device reports', () => {
+    expect(encryptionStep(keys())).toBe('credential');
+    expect(encryptionStep(keys({ pending_key_id: keyId }))).toBe('bridge');
+    expect(encryptionStep(keys({ pending_key_id: keyId, pending_verified: true }))).toBe(
+      'activate',
+    );
+  });
 
-describe('PCM transport lifecycle', () => {
-  it('keeps first setup on explicit cleartext', () => {
-    expect(transportActions(status())).toEqual({
-      canStage: true,
-      canVerify: false,
-      canActivate: false,
-      canDiscard: false,
-      canRollback: false,
-      canRetire: false,
+  it('holds a new credential until the previous one is retired or gone back to', () => {
+    const rotated = keys({ mode: 'tls-psk', active_key_id: keyId, rollback_key_id: 'eli1-old' });
+    expect(keyActions(rotated)).toEqual({ stage: false, rollBack: true, retire: true });
+    expect(keyActions(keys({ ...rotated, pending_key_id: 'eli1-new' }))).toEqual({
+      stage: false,
+      rollBack: false,
+      retire: false,
+    });
+    expect(keyActions(keys({ mode: 'tls-psk', active_key_id: keyId })).stage).toBe(true);
+  });
+});
+
+describe('the key lifecycle', () => {
+  beforeEach(async () => {
+    const device = new FakeDevice('steady');
+    setTransport(async (request) => {
+      const response = await getResponse(device.handlers, request, {
+        baseUrl: window.location.origin,
+      });
+      if (!response) throw new Error(`No mock handler for ${request.url}`);
+      return response;
+    });
+    unlockSettings(MOCK_ADMIN_KEY, false);
+    queryClient.clear();
+    revealed.value = null;
+    await Promise.all([refresh(), queryClient.query(settingsQuery)]);
+  });
+
+  afterEach(() => {
+    forgetAdminKey();
+    answering(null);
+    setTransport((request) => fetch(request));
+  });
+
+  const transport = () => queryClient.getQueryData(settingsQuery.queryKey)?.transport;
+
+  /** Poll until the device answers from its new start. */
+  async function restarted(): Promise<void> {
+    for (let read = 0; read < 6 && connection.value.phase !== 'live'; read += 1) await refresh();
+  }
+
+  it('shows a credential once, verifies it, and restarts into it', async () => {
+    await expect(makeKey()).resolves.toBe(true);
+    const made = revealed.value;
+    expect(made).toMatchObject({ recovery: false, key_id: transport()?.pending_key_id });
+    expect(made?.psk).toMatch(/^[0-9a-f]{64}$/);
+
+    await verifyKey();
+    expect(transport()?.pending_verified).toBe(true);
+
+    await activateKey();
+    expect(revealed.value).toBeNull();
+    expect(connection.value).toMatchObject({
+      phase: 'waiting',
+      operation: 'the switch to encryption',
     });
   });
 
-  it('requires a successful verification before cutover', () => {
-    expect(transportActions(status({ pending_key_id: credential.key_id }))).toMatchObject({
-      canStage: false,
-      canVerify: true,
-      canActivate: false,
-    });
-    expect(
-      transportActions(status({ pending_key_id: credential.key_id, pending_verified: true })),
-    ).toMatchObject({ canVerify: false, canActivate: true });
+  it('discards a staged credential with its reveal', async () => {
+    await makeKey();
+    await discardKey();
+    expect(revealed.value).toBeNull();
+    expect(transport()?.pending_key_id).toBeNull();
   });
 
-  it('shows one progressive journey step for each persisted state', () => {
-    expect(transportJourney(status())).toBe('opt-in');
-    expect(transportJourney(status({ pending_key_id: credential.key_id }))).toBe('provision');
-    expect(
-      transportJourney(status({ pending_key_id: credential.key_id, pending_verified: true })),
-    ).toBe('activate');
-    expect(transportJourney(status({ mode: 'tls-psk' }))).toBe('secure');
-    expect(
-      transportJourney(
-        status({
-          mode: 'tls-psk',
-          rollback_key_id: 'eli1-fedcba9876543210fedcba9876543210',
-        }),
-      ),
-    ).toBe('rotation');
+  it('replaces a lost credential, shown once, and starts in the clear', async () => {
+    await makeKey(true);
+    expect(revealed.value?.recovery).toBe(true);
+    expect(transport()).toMatchObject({ mode: 'cleartext', pending_verified: false });
   });
 
-  it('surfaces rotation rollback and retirement only when their keys exist', () => {
-    expect(
-      transportActions(
-        status({
-          mode: 'tls-psk',
-          active_key_id: credential.key_id,
-          rollback_key_id: 'eli1-fedcba9876543210fedcba9876543210',
-        }),
-      ),
-    ).toMatchObject({ canStage: false, canRollback: true, canRetire: true });
-  });
+  it('retires the previous credential and returns to cleartext with a restart', async () => {
+    for (let round = 0; round < 2; round += 1) {
+      await makeKey();
+      await verifyKey();
+      await activateKey();
+      await restarted();
+    }
+    await queryClient.query({ ...settingsQuery, staleTime: 0 });
+    expect(transport()?.rollback_key_id).not.toBeNull();
 
-  it('keeps a one-time key visible after staging and supports a failed verification retry', async () => {
-    const verify = vi
-      .fn<TransportApi['verify']>()
-      .mockRejectedValueOnce(new Error('bridge rejected key'))
-      .mockResolvedValueOnce(ack);
-    const reload = vi.fn(async () => undefined);
-    const controller = new TransportController(fakeApi({ verify }), reload);
-
-    await controller.stage();
-    expect(controller.revealed.value).toEqual({ ...credential, recovery: false });
-    await expect(controller.verify()).rejects.toThrow('bridge rejected key');
-    expect(reload).toHaveBeenCalledTimes(1);
-    await expect(controller.verify()).resolves.toEqual(ack);
-    expect(reload).toHaveBeenCalledTimes(2);
-  });
-
-  it('spends the one-time reveal when the key is activated', async () => {
-    const controller = new TransportController(fakeApi(), async () => undefined);
-
-    await controller.stage();
-    expect(controller.revealed.value).toBeDefined();
-    await controller.activate();
-
-    expect(controller.revealed.value).toBeUndefined();
-  });
-
-  it('discards a pending key with its one-time reveal so setup can be abandoned', async () => {
-    const api = fakeApi();
-    const reload = vi.fn(async () => undefined);
-    const controller = new TransportController(api, reload);
-
-    await controller.stage();
-    expect(transportActions(status({ pending_key_id: credential.key_id }))).toMatchObject({
-      canDiscard: true,
-    });
-    await expect(controller.discard()).resolves.toEqual(ack);
-
-    expect(api.discard).toHaveBeenCalledTimes(1);
-    expect(controller.revealed.value).toBeUndefined();
-    expect(reload).toHaveBeenCalledTimes(2);
-  });
-
-  it('recovers a lost key into cleartext with a replacement shown once', async () => {
-    const controller = new TransportController(fakeApi(), async () => undefined);
-
-    await controller.recover();
-
-    expect(controller.revealed.value).toEqual({ ...credential, recovery: true });
-    controller.dismissReveal();
-    expect(controller.revealed.value).toBeUndefined();
-  });
-
-  it('uses the version when explicitly returning the one listener to cleartext', async () => {
-    const api = fakeApi();
-    const controller = new TransportController(api, async () => undefined);
-    const config = { transport: status({ contract_version: 1 }) } as SettingsResponse;
-
-    await controller.useCleartext(config);
-
-    expect(api.configure).toHaveBeenCalledWith({
-      contract_version: 1,
-      mode: 'cleartext',
+    await retireKey();
+    expect(transport()?.rollback_key_id).toBeNull();
+    const now = transport();
+    if (!now) throw new Error('no settings');
+    await returnToCleartext(now);
+    expect(connection.value).toMatchObject({
+      phase: 'waiting',
+      operation: 'the switch to cleartext',
     });
   });
 });

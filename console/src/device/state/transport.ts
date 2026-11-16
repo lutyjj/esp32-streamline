@@ -1,4 +1,8 @@
-/** Tested state and actions for the device PCM transport lifecycle. */
+/**
+ * Encrypted audio: where the device's credential stands, the lifecycle
+ * writes, and the one-time reveal of a credential it makes.
+ * docs/tcp-transport.md owns the sequence.
+ */
 
 import { signal } from '@preact/signals';
 import {
@@ -8,152 +12,95 @@ import {
   recoverTransport,
   retireTransportKey,
   rollbackTransportKey,
-  type SettingsResponse,
   setTransportMode,
   stageTransportKey,
   type TransportKeyResponse,
-  type TransportSettingsRequest,
   type TransportStatus,
   verifyTransportKey,
 } from '../../generated/api';
+import { withAccess, withRestart } from './access';
 import { readAgain, settingsQuery } from './queries';
 
-/** Read the settings again, where the transport's state lives. */
-function readSettings(): Promise<void> {
-  return readAgain(settingsQuery);
-}
-
-export interface TransportApi {
-  stage(): Promise<TransportKeyResponse>;
-  verify(): Promise<Ack>;
-  activate(): Promise<Ack>;
-  discard(): Promise<Ack>;
-  rollback(): Promise<Ack>;
-  retire(): Promise<Ack>;
-  recover(): Promise<TransportKeyResponse>;
-  configure(request: TransportSettingsRequest): Promise<Ack>;
-}
-
-export interface RevealedTransportKey extends TransportKeyResponse {
+/** A credential the device made, shown once; `recovery` when it replaced a lost one. */
+export interface RevealedKey extends TransportKeyResponse {
   recovery: boolean;
 }
 
-export interface TransportActions {
-  canStage: boolean;
-  canVerify: boolean;
-  canActivate: boolean;
-  canDiscard: boolean;
-  canRollback: boolean;
-  canRetire: boolean;
+/** The credential this visit made, until it is activated or discarded. */
+export const revealed = signal<RevealedKey | null>(null);
+
+/** The guide's steps: make a credential, add it to the bridge and verify, turn it on. */
+export type EncryptionStep = 'credential' | 'bridge' | 'activate';
+
+/** Where the guide stands for the device's key state; it resumes there. */
+export function encryptionStep(status: TransportStatus): EncryptionStep {
+  if (!status.pending_key_id) return 'credential';
+  return status.pending_verified ? 'activate' : 'bridge';
 }
 
-export type TransportJourney = 'opt-in' | 'provision' | 'activate' | 'secure' | 'rotation';
-
-const runtimeApi: TransportApi = {
-  stage: stageTransportKey,
-  verify: verifyTransportKey,
-  activate: activateTransportKey,
-  discard: discardTransportKey,
-  rollback: rollbackTransportKey,
-  retire: retireTransportKey,
-  recover: recoverTransport,
-  configure: setTransportMode,
-};
-
-export function transportActions(status: TransportStatus): TransportActions {
+/**
+ * Which lifecycle writes the key state allows. The device keeps two slots,
+ * so a new credential waits until the previous one is retired or rolled
+ * back to, and nothing but the pending key moves while one is staged.
+ */
+export function keyActions(status: TransportStatus) {
+  const previous = Boolean(status.rollback_key_id) && !status.pending_key_id;
   return {
-    canStage: !status.pending_key_id && !status.rollback_key_id,
-    canVerify: Boolean(status.pending_key_id) && !status.pending_verified,
-    canActivate: Boolean(status.pending_key_id) && status.pending_verified,
-    canDiscard: Boolean(status.pending_key_id),
-    canRollback: status.mode === 'tls-psk' && Boolean(status.rollback_key_id),
-    canRetire: Boolean(status.rollback_key_id),
+    stage: !status.pending_key_id && !status.rollback_key_id,
+    rollBack: previous,
+    retire: previous,
   };
 }
 
-export function transportJourney(status: TransportStatus): TransportJourney {
-  if (status.pending_key_id) return status.pending_verified ? 'activate' : 'provision';
-  if (status.rollback_key_id) return 'rotation';
-  return status.mode === 'tls-psk' ? 'secure' : 'opt-in';
+/** A write that moves the key state, which the settings carry. */
+async function keyWrite(write: () => Promise<Ack>): Promise<Ack | null> {
+  const done = await withAccess(write);
+  if (done) await readAgain(settingsQuery);
+  return done;
 }
-
-export class TransportController {
-  readonly revealed = signal<RevealedTransportKey>();
-
-  constructor(
-    private readonly api: TransportApi = runtimeApi,
-    private readonly reload: () => Promise<void> = readSettings,
-  ) {}
-
-  async stage(): Promise<undefined> {
-    this.revealed.value = { ...(await this.api.stage()), recovery: false };
-    await this.reload();
-    return undefined;
-  }
-
-  async verify(): Promise<Ack> {
-    const response = await this.api.verify();
-    await this.reload();
-    return response;
-  }
-
-  /** Activation hands the key over for good; the one-time reveal is spent. */
-  async activate(): Promise<Ack> {
-    const response = await this.api.activate();
-    this.revealed.value = undefined;
-    return response;
-  }
-
-  /** Abandon the staged key and its one-time reveal; nothing was cut over. */
-  async discard(): Promise<Ack> {
-    const response = await this.api.discard();
-    this.revealed.value = undefined;
-    await this.reload();
-    return response;
-  }
-
-  rollback(): Promise<Ack> {
-    return this.api.rollback();
-  }
-
-  async retire(): Promise<Ack> {
-    const response = await this.api.retire();
-    await this.reload();
-    return response;
-  }
-
-  async recover(): Promise<undefined> {
-    this.revealed.value = { ...(await this.api.recover()), recovery: true };
-    await this.reload();
-    return undefined;
-  }
-
-  useCleartext(config: SettingsResponse): Promise<Ack> {
-    return this.api.configure({
-      contract_version: config.transport.contract_version,
-      mode: 'cleartext',
-    });
-  }
-
-  dismissReveal(): void {
-    this.revealed.value = undefined;
-  }
-}
-
-export const transport = new TransportController();
 
 /**
- * Every entry point into encryption setup — the bridge wizard's last step,
- * the Encryption card's opt-in, a mid-journey resume, a credential
- * replacement — opens the one guided TransportWizard. The app root renders
- * it while this is set.
+ * Make a credential, or with `recovery` replace a lost one and select
+ * cleartext for the next start. The device shows its PSK this once.
  */
-export const setupWizardRequested = signal(false);
+export async function makeKey(recovery = false): Promise<boolean> {
+  const key = await withAccess(() => (recovery ? recoverTransport() : stageTransportKey()));
+  if (!key) return false;
+  revealed.value = { ...key, recovery };
+  await readAgain(settingsQuery);
+  return true;
+}
 
-export type SetupWizardStep = 'credential' | 'enroll' | 'activate' | 'done';
+/** The device makes a real handshake with the bridge on its target. */
+export function verifyKey(): Promise<Ack | null> {
+  return keyWrite(() => verifyTransportKey());
+}
 
-/** Where the guided setup resumes for the device's current key state. */
-export function setupWizardStep(status: TransportStatus): SetupWizardStep {
-  if (!status.pending_key_id) return 'credential';
-  return status.pending_verified ? 'activate' : 'enroll';
+/** Abandon the staged credential; the device stays as it was. */
+export async function discardKey(): Promise<Ack | null> {
+  const done = await keyWrite(() => discardTransportKey());
+  if (done) revealed.value = null;
+  return done;
+}
+
+/** Promote the verified credential and restart into encrypted audio. */
+export async function activateKey(): Promise<Ack | null> {
+  const done = await withRestart('the switch to encryption', () => activateTransportKey());
+  if (done) revealed.value = null;
+  return done;
+}
+
+export function rollBackKey(): Promise<Ack | null> {
+  return withRestart('the credential rollback', () => rollbackTransportKey());
+}
+
+export function retireKey(): Promise<Ack | null> {
+  return keyWrite(() => retireTransportKey());
+}
+
+/** Restart into cleartext; the bridge must already accept it. */
+export function returnToCleartext(status: TransportStatus): Promise<Ack | null> {
+  return withRestart('the switch to cleartext', () =>
+    setTransportMode({ contract_version: status.contract_version, mode: 'cleartext' }),
+  );
 }

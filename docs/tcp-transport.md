@@ -165,25 +165,24 @@ set `api_token` in the app configuration.
 
 Open the device console and the bridge console:
 
-1. In device **Bridge → Encryption**, select **Set up encryption**,
-   then **Generate bridge credential**. Copy the one-time
-   key id and PSK. Cleartext keeps streaming.
+1. In device **Bridge**, select **Set up encryption**, then **Make a
+   credential**. Copy the one-time key id and PSK. Cleartext keeps streaming.
 2. In bridge **Settings → Audio security**, unlock with the API token and add that key id
    and PSK under **Device credentials**. Audio still streams.
 3. Select **Require encryption** and confirm the bridge-wide change. The one
    PCM port now rejects cleartext, so audio pauses until the device follows.
-4. On the device, select **Verify with bridge**. The device performs a real TLS
+4. On the device, select **Verify with the bridge**. The device performs a real TLS
    handshake on the configured target port and marks the pending credential
    verified only after it succeeds. A failure names what to fix: an
    unreachable port, a bridge still in cleartext, or a credential the bridge
    does not accept.
-5. Select **Activate encryption**. Activation promotes the verified key,
+5. Select **Turn on encryption**. Activation promotes the verified key,
    selects `tls-psk`, and restarts the device as one failure-atomic state
    transition. Audio resumes encrypted.
 6. Confirm the bridge reports the source by key id over `tls-psk`.
 
-To back out before activation, select **Recovery → Discard pending
-credential** or `POST /api/transport/keys/discard`, and switch the bridge back
+To back out before activation, select **Discard** in the guide or
+`POST /api/transport/keys/discard`, and switch the bridge back
 to cleartext. The device abandons the staged key, stays on cleartext, and
 returns to the opt-in state; remove any already-enrolled bridge key with
 `DELETE /api/transport/keys/<key-id>`.
@@ -266,8 +265,8 @@ transport cannot bypass HTTP administration.
 ## Switch back to cleartext
 
 Switch the bridge to cleartext first, in its console or with
-`PUT /api/transport/mode`. Then disable encryption in the device's **Advanced
-security** controls. The device restarts in cleartext on the same host and
+`PUT /api/transport/mode`. Then select **Switch to cleartext** under the device's **Advanced
+security**. The device restarts in cleartext on the same host and
 port. The gap between those actions is expected; neither side accepts the
 other protocol.
 

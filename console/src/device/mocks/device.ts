@@ -283,10 +283,12 @@ export class FakeDevice {
         this.config.auto_update_schedule = body.auto_update_schedule;
         return { ok: true };
       }),
+      // Like the firmware, a new mode restarts the device; the same one does not.
       this.write('/api/settings/transport', rules.TransportSettingsRequest, ({ mode }) => {
+        if (mode === this.transport().mode) return { ok: true };
         this.transport().mode = mode;
         this.status.target.transport = mode === 'tls-psk' ? 'tls' : 'tcp';
-        return { ok: true };
+        return { ok: true, rebooting: true };
       }),
       this.write('/api/transport/keys/stage', null, () => this.stageKey()),
       this.write('/api/transport/keys/verify', null, () => {
@@ -302,10 +304,12 @@ export class FakeDevice {
       }),
       this.write('/api/transport/keys/rollback', null, () => {
         const transport = this.transport();
-        if (!transport.rollback_key_id) return reject(400, 'no previous credential');
-        transport.active_key_id = transport.rollback_key_id;
-        transport.rollback_key_id = null;
-        return { ok: true };
+        if (!transport.rollback_key_id) return reject(400, 'no PCM transport rollback key exists');
+        [transport.active_key_id, transport.rollback_key_id] = [
+          transport.rollback_key_id,
+          transport.active_key_id ?? null,
+        ];
+        return { ok: true, rebooting: true };
       }),
       this.write('/api/transport/keys/retire', null, () => {
         this.transport().rollback_key_id = null;
@@ -666,7 +670,7 @@ export class FakeDevice {
     transport.pending_verified = false;
     transport.mode = 'tls-psk';
     this.status.target.transport = 'tls';
-    return { ok: true };
+    return { ok: true, rebooting: true };
   }
 
   private boards(): BoardCatalogResponse {

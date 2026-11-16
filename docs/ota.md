@@ -3,7 +3,7 @@
 The device installs signed firmware from GitHub releases. Daily automatic
 updates are enabled by default. After a ten-minute boot delay, the device checks
 on its selected daily or weekly cadence and waits for idle audio before updating.
-Settings → Updates controls the schedule and offers manual checks and installs.
+Maintenance → Updates controls the schedule and offers manual checks and installs.
 
 ## Update flow
 
@@ -57,7 +57,7 @@ checksum verification as a release install.
 1. Run `make firmware-artifacts`. It creates
    `dist/firmware/streamline-dev-ota.bin` and `SHA256SUMS`.
 2. Serve the artifacts on the LAN using an HTTP server.
-3. Submit the image URL and its digest through the API or Settings → Updates →
+3. Submit the image URL and its digest through the API or Maintenance → Updates →
    Install a custom image.
 
 A plain HTTP URL works on an offline bench because the signature authenticates
@@ -115,7 +115,7 @@ firmware exposes no signature-bypass setting. Returning to release trust needs
 the same authorization from the development key or a serial flash.
 
 `GET /api/status` reports `ota.signing_key_sha256`, the SHA-256 of the running
-image's block-0 public key, or an empty string if it cannot be read. Settings →
+image's block-0 public key, or an empty string if it cannot be read. Maintenance →
 Updates → Install a custom image shows the same digest. `signed_updates` describes signature
 enforcement; it does not identify a release key. Compare the digest with the
 signing key used to produce the intended image. A version match alone says

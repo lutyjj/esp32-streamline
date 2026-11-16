@@ -1,17 +1,6 @@
+import { ApiError, type FetchLike } from '../../shared/http';
 import { isUnlocked, lockSettings, storedAdminKey } from './adminKey';
 import { DigestSession, parseChallenge } from './digest';
-
-export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-export type FetchLike = (request: Request) => Promise<Response>;
 
 let transport: FetchLike = (request) => fetch(request);
 
@@ -40,7 +29,7 @@ export function setTransport(next: FetchLike): void {
  * staying open matters: the status poll runs every couple of seconds and
  * should not spend digest round trips.
  *
- * `tests/api.test.ts` pins this list to the operations `docs/openapi.json`
+ * `tests/device/api.test.ts` pins this list to the operations `docs/openapi.json`
  * declares `digest_auth` on, so a new authenticated read cannot forget it.
  */
 export const AUTHENTICATED_READS: ReadonlySet<string> = new Set([

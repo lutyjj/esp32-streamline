@@ -88,11 +88,11 @@ Host networking lets devices [discover the bridge](docs/bridge.md#discovery) dur
 1. Read the setup network's name and password from the WebFlasher's **Logs & console** (or `espflash monitor`); the board prints both when it starts. No password at hand? Hold KEY1 while plugging the board in, and the setup network starts open for that one boot.
 2. Join `esp32-streamline-XXXX`. The setup console opens by itself, or at `http://192.168.71.1/`.
 3. Enter your Wi-Fi and **save the admin key** it generates. The device shows it once, every later settings change needs it, and losing it means a reflash.
-4. After the reboot, open `http://streamline-xxxx.local/` (or the device's IP if your network drops mDNS), pick the bridge under **Settings → Connect a player**, and set levels under **Audio**.
+4. After the reboot, open `http://streamline-xxxx.local/` (or the device's IP if your network drops mDNS), pick the bridge under **Bridge**, and set levels under **Audio**.
 
 The stream is then live at `http://<bridge-host>:8088/streamline.wav`. To play it in Music Assistant, create a pairing token in the bridge console's **Settings → Music Assistant** and paste it into the source's setup there; [Music Assistant live inputs](docs/bridge.md#music-assistant-live-inputs) covers the rest.
 
-Updates install daily once the audio goes idle, and **Settings → Updates** changes that. See [OTA updates](docs/ota.md).
+Updates install daily once the audio goes idle, and **Maintenance → Updates** changes that. See [OTA updates](docs/ota.md).
 
 ## Configuration
 

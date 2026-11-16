@@ -77,7 +77,8 @@ export {
   stageTransportKey,
   verifyTransportKey,
 } from '../../generated/api';
-export { ApiError, setTransport, verifyAdminKey } from './http';
+export { ApiError } from '../../shared/http';
+export { setTransport, verifyAdminKey } from './http';
 
 import type { AudioProfileCatalog, Board } from '../../generated/api';
 

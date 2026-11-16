@@ -9,7 +9,7 @@ if (import.meta.env.VITE_MOCK) {
   await startDeviceMock();
 }
 
-startPolling();
+void startPolling();
 
 const root = document.getElementById('app');
 if (root) createRoot(root).render(<App />);

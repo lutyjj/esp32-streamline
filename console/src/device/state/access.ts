@@ -6,8 +6,8 @@
 
 import { requestCredential } from '../../shared/credentialGate';
 import { isUnlocked, lockSettings, unlockSettings } from '../lib/adminKey';
-import { ApiError, verifyAdminKey } from '../lib/api';
-import { status } from './device';
+import { type Ack, ApiError, verifyAdminKey } from '../lib/api';
+import { report, status } from './device';
 
 /** The device holds an admin key, so its writes need one. */
 function keyRequired(): boolean {
@@ -36,4 +36,18 @@ export async function verifyKey(key: string, remember: boolean): Promise<'accept
   if (!(await verifyAdminKey(key))) return 'rejected';
   unlockSettings(key, remember);
   return 'accepted';
+}
+
+/**
+ * Run a write that the device may answer by restarting, and follow that
+ * restart as `operation`, such as "the profile". Resolves null when the owner
+ * declines to unlock.
+ */
+export async function withRestart(
+  operation: string,
+  write: () => Promise<Ack>,
+): Promise<Ack | null> {
+  const ack = await withAccess(write);
+  if (ack?.rebooting) report({ type: 'restarting', operation, at: Date.now() });
+  return ack;
 }

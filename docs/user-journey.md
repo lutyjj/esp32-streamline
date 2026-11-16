@@ -63,23 +63,23 @@ blank password alone does not save. Back retains entered values.
 
 The setup address and home-network hostname are different browser origins.
 Remembering a key at one address does not transfer it to another. Before joining,
-the owner confirms the key is saved outside this console. Settings → Wi-Fi keeps the same safeguard.
+the owner confirms the key is saved outside this console. Device → Wi-Fi keeps the same safeguard.
 
 A transport disconnect during joining is an unconfirmed handoff, not success.
 Reconnect to home Wi-Fi, open the advertised device address, and enter the saved
 key there. Reaching that console verifies the join. Closing onboarding exposes
-Settings → Wi-Fi without hiding the custody requirement.
+Device → Wi-Fi without hiding the custody requirement.
 
 ## 2. Connect a bridge and player
 
 Capture and calibration work before a bridge exists. Audio offers Connect bridge
 when no destination is configured. The guide explains Home Assistant, Docker,
-or an existing installation, then saves the target. Settings → Connect a player also provides
+or an existing installation, then saves the target. The Bridge workspace also provides
 the host and port form; both use the same API.
 
 When the guide asks for the bridge, the device searches its network for about
 three seconds and the guide lists the bridges that answer, up to eight, by
-name and address. Settings → Connect a player runs the same search on request. Use fills the host and
+name and address. The Bridge workspace runs the same search on request. Use fills the host and
 port and never saves them. A listed bridge is a hint, since any host on the
 network can advertise one, so the owner compares the address before saving.
 No answer, or a failed search, names the manual fallback: a bridge behind port
@@ -131,7 +131,7 @@ attempts, and transmission. Resume reverses a pause. External button or API
 changes update fields the user has not edited. The console never guesses which
 physical source a waveform represents.
 
-Settings → Device assigns advertised buttons and LEDs. Destructive button
+Device → Hardware assigns advertised buttons and LEDs. Destructive button
 assignments carry a warning. A console pause is not a persistent shutdown;
 restarting resumes streaming according to firmware policy.
 
@@ -151,7 +151,7 @@ directs the owner to an unavailable unlock action.
 
 ## 5. Enable encrypted audio
 
-Settings → Encrypted audio offers Set up encryption or Resume setup. Generate
+Bridge → Encryption offers Set up encryption or Resume setup. Generate
 and preserve a credential, enroll it under bridge Settings → Audio security,
 require encryption there, verify from the device, then activate and restart.
 
@@ -167,12 +167,12 @@ after dismissal. [TCP transport](tcp-transport.md) owns the protocol and API seq
 
 ## 6. Maintain and recover
 
-Settings → Updates owns scheduling, checks, installation, rollback, and developer
+Maintenance → Updates owns scheduling, checks, installation, rollback, and developer
 installs. Updates narrate interruption and recovery. A failed install does not
 claim completion. [OTA](ota.md) owns verification and rollback behavior.
 
-Settings → Troubleshooting exposes health, the protected device log, and raw status.
-Settings → Developer API exposes the machine interface. Settings → Restart & reset
+Maintenance → Diagnostics exposes health, the protected device log, and raw status.
+Maintenance → API exposes the machine interface. Maintenance → Restart & reset
 contains restart and confirmed factory reset.
 
 A provisioned device that cannot reach its saved Wi-Fi serves a recovery console
@@ -180,7 +180,7 @@ on its setup network, not first-run commissioning. A banner names the network an
 what the latest join attempt found: no such network in range, a rejected
 password, or security the saved settings cannot use, such as a network that
 added or removed its password. The device retries every minute and rejoins on its own; Change Wi-Fi
-opens Settings → Wi-Fi for a renamed network or a new password. Unlock requires
+opens Device → Wi-Fi for a renamed network or a new password. Unlock requires
 the admin key. A blank password field keeps the stored password; a saved open
 network has none to keep, so switching it to a protected one needs the password. Changing
 Wi-Fi leaves audio, target, profiles, identity, board, and update schedule intact

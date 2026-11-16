@@ -4,7 +4,7 @@
  * lifecycle, and OTA phases follow the machines the firmware implements.
  * Writes parse `application/x-www-form-urlencoded` bodies, the encoding the
  * contract declares for every device settings operation.
- * `tests/mockCoverage.test.ts` pins the handler set to `docs/openapi.json`.
+ * `tests/device/mockCoverage.test.ts` pins the handler set to `docs/openapi.json`.
  */
 
 import { type HttpHandler, HttpResponse, http, type JsonBodyType } from 'msw';
@@ -112,6 +112,9 @@ const NETWORKS_IN_RANGE: Readonly<Record<string, string | null>> = {
 
 /** Status reads the device stays silent for while it restarts and tries a network. */
 const JOIN_ATTEMPT_READS = 4;
+
+/** Status reads until a restarted device answers again; the last one is answered. */
+const RESTART_READS = 2;
 
 type JoinFailure = NonNullable<StatusResponse['wifi']['join_failure']>;
 
@@ -481,8 +484,12 @@ export class FakeDevice {
     });
   }
 
-  /** A new boot: uptime counts from zero and streaming resumes, whatever paused it. */
+  /**
+   * A new boot: silent while it restarts, unless a join already took it
+   * away, then uptime counts from zero and streaming resumes.
+   */
   private boot(): void {
+    if (this.absentReads === 0) this.leave(RESTART_READS);
     this.status.system.uptime_seconds = 0;
     this.status.stream.enabled = true;
   }
@@ -664,7 +671,12 @@ export class FakeDevice {
       return reject(400, `unknown profile "${profileId}"`);
     }
     this.profiles.active_profile_id = profileId || null;
-    return { ok: true };
+    const profile = this.profiles.profiles.find((entry) => entry.id === profileId);
+    if (profile) Object.assign(this.status.audio, profile.audio);
+    // Like the firmware: without a running codec the levels apply at the next start.
+    const codecRuns =
+      this.status.mode === 'provisioned' && this.status.health.status !== 'blocking';
+    return codecRuns ? { ok: true } : { ok: true, rebooting: true };
   }
 
   /**
@@ -698,13 +710,17 @@ export class FakeDevice {
         ota.message = 'Restarting into the new image';
       },
       () => {
-        this.status.firmware_version = target;
-        this.boot();
-        ota.busy = false;
-        ota.phase = 'idle';
-        ota.message = '';
-        ota.rollback_available = true;
-        ota.rollback_version = from;
+        // The device restarts into the new image and answers from it.
+        this.leave(RESTART_READS, () => {
+          this.status.firmware_version = target;
+          this.status.system.uptime_seconds = 0;
+          this.status.stream.enabled = true;
+          ota.busy = false;
+          ota.phase = 'idle';
+          ota.message = '';
+          ota.rollback_available = true;
+          ota.rollback_version = from;
+        });
       },
     ];
     return { ok: true, started: true };

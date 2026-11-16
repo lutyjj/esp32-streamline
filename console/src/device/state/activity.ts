@@ -5,7 +5,7 @@
  */
 
 import { computed } from '@preact/signals';
-import { audioMoving, connection, liveStatus } from './device';
+import { audioMoving, connection, deliveryObserved, liveStatus } from './device';
 import { blockingHealth } from './health';
 
 export type AudioActivity =
@@ -23,6 +23,8 @@ export type AudioActivity =
   | 'paused'
   /** The input is silent; the device sends silence records instead. */
   | 'quiet'
+  /** Audio plays and a second answer has yet to show whether bytes are leaving. */
+  | 'checking'
   /** Audio plays but no bytes have left for the bridge since the last read. */
   | 'connecting'
   | 'sending';
@@ -36,5 +38,6 @@ export const audioActivity = computed<AudioActivity>(() => {
   if (!s.target.target_host) return 'no-bridge';
   if (!s.stream.enabled) return 'paused';
   if (!s.metrics.playing) return 'quiet';
+  if (!deliveryObserved.value) return 'checking';
   return audioMoving.value ? 'sending' : 'connecting';
 });

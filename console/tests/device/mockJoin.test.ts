@@ -70,7 +70,9 @@ describe('a Wi-Fi change from the home network', () => {
     unlockSettings(MOCK_ADMIN_KEY, false);
     const before = await getStatus();
     await setWifi({ ssid: before.wifi.ssid, password: 'correct horse' });
-    const after = await getStatus();
+    await expect(getStatus()).rejects.toThrow(TypeError);
+    const after = await readStatus(2);
+    if (!after) throw new Error('the device did not come back');
     expect(after.mode).toBe('provisioned');
     expect(after.system.uptime_seconds).toBeLessThan(before.system.uptime_seconds);
   });

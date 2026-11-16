@@ -14,8 +14,8 @@ import { errorMessage } from '../../../shared/errors';
 import { bytes, duration } from '../../../shared/format';
 import { replacePath, usePathname } from '../../../shared/navigation';
 import { restart } from '../../lib/api';
-import { withAccess } from '../../state/access';
-import { liveStatus, report, status } from '../../state/device';
+import { withRestart } from '../../state/access';
+import { liveStatus, status } from '../../state/device';
 import { updateLock } from '../../state/ota';
 import { sectionOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
@@ -140,8 +140,7 @@ function RestartAndReset() {
   const restartNow = async () => {
     setRestarting(true);
     try {
-      const ack = await withAccess(() => restart());
-      if (ack?.rebooting) report({ type: 'restarting', operation: 'the restart', at: Date.now() });
+      await withRestart('the restart', () => restart());
     } catch (error) {
       toast.show({ text: `The device did not restart: ${errorMessage(error)}`, sticky: true });
     } finally {

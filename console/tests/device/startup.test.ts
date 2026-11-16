@@ -1,12 +1,14 @@
 import { getResponse } from 'msw';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTransport } from '../../src/device/lib/api';
 import { FakeDevice } from '../../src/device/mocks/device';
+import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
   audioProfilesResource,
   configResource,
   contractResource,
-  openConsole,
+  report,
+  startPolling,
 } from '../../src/device/state/device';
 import { answering } from './answering';
 
@@ -59,14 +61,14 @@ afterEach(() => {
 describe('opening the console', () => {
   it('reads everything it starts with without opening more connections than the device keeps', async () => {
     const device = keepsTwoConnections();
-    await openConsole(now);
+    (await startPolling(now))();
     expect(device.answered).toEqual([
       '/api/status',
       '/api/settings',
       '/api/audio-profiles',
       '/api/openapi.json',
     ]);
-    expect(device.peak()).toBe(1);
+    expect(device.peak()).toBeLessThanOrEqual(2);
     expect(configResource.state.value).toBe('ready');
     expect(audioProfilesResource.state.value).toBe('ready');
     expect(contractResource.state.value).toBe('ready');
@@ -74,8 +76,25 @@ describe('opening the console', () => {
 
   it('reads a reset startup read again', async () => {
     const device = keepsTwoConnections(['/api/settings']);
-    await openConsole(now);
+    (await startPolling(now))();
     expect(device.answered).toContain('/api/settings');
     expect(configResource.state.value).toBe('ready');
+  });
+
+  it('reads settings again after a restart, and again if that read is reset', async () => {
+    const device = keepsTwoConnections(['/api/settings']);
+    const up = (uptime: number) => {
+      const s = deviceStatus();
+      return { ...s, system: { ...s.system, uptime_seconds: uptime } };
+    };
+    report({ type: 'answered', status: up(100), at: 0 });
+    report({ type: 'restarting', operation: 'the board', at: 1000 });
+    report({ type: 'answered', status: up(2), at: 9000 });
+    // The reset read is read again after the real pause between reads.
+    await vi.waitFor(
+      () => expect(device.answered.filter((path) => path === '/api/settings')).toHaveLength(1),
+      { timeout: 3000 },
+    );
+    await vi.waitFor(() => expect(configResource.state.value).toBe('ready'));
   });
 });

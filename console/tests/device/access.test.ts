@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetAdminKey, isUnlocked, unlockSettings } from '../../src/device/lib/adminKey';
 import { ApiError } from '../../src/device/lib/api';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
-import { withAccess } from '../../src/device/state/access';
+import { withAccess, withRestart } from '../../src/device/state/access';
+import { connection } from '../../src/device/state/device';
 import { answerCredential, credentialAsked } from '../../src/shared/credentialGate';
 import { answering } from './answering';
 
@@ -88,5 +89,13 @@ describe('withAccess', () => {
         throw new ApiError(409, 'a firmware update is running');
       }),
     ).rejects.toThrow('a firmware update is running');
+  });
+
+  it('follows a restart the device answers with, named for its operation', async () => {
+    unlockSettings('key', false);
+    await withRestart('the profile', async () => ({ ok: true }));
+    expect(connection.value.phase).toBe('live');
+    await withRestart('the profile', async () => ({ ok: true, rebooting: true }));
+    expect(connection.value).toMatchObject({ phase: 'waiting', operation: 'the profile' });
   });
 });

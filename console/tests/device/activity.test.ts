@@ -2,13 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTransport } from '../../src/device/lib/api';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { audioActivity } from '../../src/device/state/activity';
-import { audioMoving, connection, refresh, STATUS_TIMEOUT_MS } from '../../src/device/state/device';
+import {
+  audioMoving,
+  connection,
+  deliveryObserved,
+  refresh,
+  STATUS_TIMEOUT_MS,
+} from '../../src/device/state/device';
 import { answering } from './answering';
 
 describe('audioActivity', () => {
   beforeEach(() => {
     answering(null);
     audioMoving.value = false;
+    deliveryObserved.value = true;
   });
   afterEach(() => setTransport((request) => fetch(request)));
 
@@ -128,5 +135,11 @@ describe('audioActivity', () => {
     answering(deviceStatus({ metrics: { playing: true } }));
     audioMoving.value = true;
     expect(audioActivity.value).toBe('sending');
+  });
+
+  it('claims no connection attempt before a second answer can show bytes moving', () => {
+    answering(deviceStatus({ metrics: { playing: true } }));
+    deliveryObserved.value = false;
+    expect(audioActivity.value).toBe('checking');
   });
 });

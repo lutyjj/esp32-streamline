@@ -57,6 +57,8 @@ describe('mock audio transport', () => {
 
     reach('steady');
     await setTarget({ target_host: '' });
+    // The device restarts to apply the target.
+    await expect(getStatus()).rejects.toThrow();
     const untargeted = await getStatus();
     expect((await getStatus()).metrics.packets_total).toBe(untargeted.metrics.packets_total);
   });

@@ -100,6 +100,8 @@ export const peakHold = signal<PeakHold>({ left: 0, right: 0, at: 0 });
 let lastPcmBytes = -1;
 /** True when PCM bytes increased between the last two polls. */
 export const audioMoving = signal(false);
+/** Whether two answers in a row exist to compare, so `audioMoving` means something. */
+export const deliveryObserved = signal(false);
 
 /** Unconfigured: first-run onboarding owns the console. */
 export const firstRun = computed(() => status.value?.mode === 'setup');
@@ -148,6 +150,7 @@ export function report(event: ConnectionEvent): void {
   if (event.type === 'answered') observeAudio(event.status, event.at);
   else if (event.type === 'unanswered') {
     audioMoving.value = false;
+    deliveryObserved.value = false;
     lastPcmBytes = -1;
   }
   const next = nextConnection(previous, event);
@@ -159,7 +162,8 @@ export function report(event: ConnectionEvent): void {
       before: sightingOf(previous)?.status ?? null,
       after: next.seen.status,
     };
-    loadDeviceSettings().catch(() => {});
+    // The restart applied settings; read them as they are now.
+    void readDeviceSettings();
   }
 }
 
@@ -186,6 +190,7 @@ function observeAudio(s: StatusResponse, now: number): void {
     s.metrics.peak_abs_right,
     now,
   );
+  deliveryObserved.value = lastPcmBytes >= 0;
   audioMoving.value = lastPcmBytes >= 0 && s.metrics.bytes_total > lastPcmBytes;
   lastPcmBytes = s.metrics.bytes_total;
 }
@@ -198,40 +203,38 @@ export async function loadAudioProfiles(): Promise<void> {
   await audioProfilesResource.load();
 }
 
-export async function loadDeviceSettings(): Promise<void> {
-  await Promise.all([loadConfig(), loadAudioProfiles()]);
-}
-
 /** The contract is static for a firmware build, so it loads once at startup. */
 export async function loadContract(): Promise<void> {
   await contractResource.load();
 }
 
-/**
- * Wire the poll loop and the initial settings read; called once from main.
- * Each resource fails independently and retries from its own notice — a
- * failed settings read never hides the status the poll can still deliver.
- */
-/** Reads a dropped startup read gets before its resource reports the failure. */
-export const STARTUP_ATTEMPTS = 4;
-const STARTUP_PAUSE_MS = 1000;
+/** Reads a dropped read gets before its resource reports the failure. */
+export const READ_ATTEMPTS = 4;
+const READ_PAUSE_MS = 1000;
 
-/**
- * The first reads: status, then settings, profiles and the contract one at a
- * time. The device keeps few connections and closes one when a browser opens
- * more, so startup never asks for them all at once, and a dropped read is
- * read again.
- */
-export async function openConsole(
-  pause: () => Promise<void> = () => new Promise((done) => setTimeout(done, STARTUP_PAUSE_MS)),
-): Promise<void> {
-  await refresh();
-  for (const startup of [configResource, audioProfilesResource, contractResource]) {
-    await settle<unknown>(startup, STARTUP_ATTEMPTS, pause);
-  }
+function pauseBetweenReads(): Promise<void> {
+  return new Promise((done) => setTimeout(done, READ_PAUSE_MS));
 }
 
-export function startPolling(): void {
-  void openConsole();
-  setInterval(refresh, POLL_MS);
+/**
+ * Settings and audio profiles, one read at a time, each read again when the
+ * device drops it. The device keeps few connections and closes one when a
+ * browser opens more.
+ */
+export async function readDeviceSettings(pause = pauseBetweenReads): Promise<void> {
+  await settle(configResource, READ_ATTEMPTS, pause);
+  await settle(audioProfilesResource, READ_ATTEMPTS, pause);
+}
+
+/**
+ * Status first, then the poll, then settings, profiles and the contract in
+ * turn. The poll runs beside those reads, so at most two requests are open at
+ * once. Resolves with how to stop the poll once the first reads are done.
+ */
+export async function startPolling(pause = pauseBetweenReads): Promise<() => void> {
+  await refresh();
+  const poll = setInterval(refresh, POLL_MS);
+  await readDeviceSettings(pause);
+  await settle(contractResource, READ_ATTEMPTS, pause);
+  return () => clearInterval(poll);
 }

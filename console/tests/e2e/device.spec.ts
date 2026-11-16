@@ -66,7 +66,10 @@ test('a restart is narrated until the device answers from its new start', async 
   await page.getByRole('button', { name: 'Restart', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Restart' }).click();
   await answerKey(page, mockAdminKey);
+  const condition = page.getByText('Restarting to apply the restart.');
+  await expect(condition).toBeVisible();
   await expect(page.getByText('Back online after the restart.')).toBeVisible();
+  await expect(condition).toBeHidden();
 });
 
 test('recovery names the network it cannot find and leads to its Wi-Fi', async ({ page }) => {

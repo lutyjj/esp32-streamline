@@ -22,8 +22,13 @@ import { useState } from 'react';
 import { errorMessage } from '../../../shared/errors';
 import { LEVEL_FLOOR_DB, levelDb } from '../../../shared/format';
 import { Link } from '../../../shared/navigation';
-import { setActiveAudioProfile, setAnalogPassthrough, setStream } from '../../lib/api';
-import { withAccess } from '../../state/access';
+import {
+  getSetAudioProfileUrl,
+  setActiveAudioProfile,
+  setAnalogPassthrough,
+  setStream,
+} from '../../lib/api';
+import { withAccess, withRestart } from '../../state/access';
 import { type AudioActivity, audioActivity } from '../../state/activity';
 import { clipCalloutVisible } from '../../state/clipCallout';
 import {
@@ -35,6 +40,7 @@ import {
   status,
 } from '../../state/device';
 import { blockingHealth } from '../../state/health';
+import { updateLock } from '../../state/ota';
 import { ScreenTop } from '../ScreenTop';
 
 /** What each activity is called, how it reads at a glance, and what it means for the owner. */
@@ -72,6 +78,11 @@ const ACTIVITY: Record<
     word: 'Quiet input',
     tone: 'neutral',
     meaning: 'The input is silent, so the device keeps the stream open with silence.',
+  },
+  checking: {
+    word: 'Checking delivery',
+    tone: 'unknown',
+    meaning: 'Audio is playing; the next read shows whether it leaves for the bridge.',
   },
   connecting: {
     word: 'Connecting to the bridge',
@@ -196,11 +207,13 @@ function ProfileRow() {
   const toast = useToast();
   const catalog = audioProfiles.value;
   const [switching, setSwitching] = useState(false);
+  // Switching can restart the device, which waits while an update runs.
+  const held = updateLock(getSetAudioProfileUrl());
   if (!catalog || catalog.profiles.length === 0) return null;
   const choose = async (profileId: string) => {
     setSwitching(true);
     try {
-      const done = await withAccess(() => setActiveAudioProfile(profileId));
+      const done = await withRestart('the profile', () => setActiveAudioProfile(profileId));
       if (done) {
         await loadAudioProfiles();
         const name = catalog.profiles.find((profile) => profile.id === profileId)?.name;
@@ -213,13 +226,16 @@ function ProfileRow() {
     }
   };
   return (
-    <SettingRow title="Profile" description="Applies a saved input, gain and attenuation at once.">
+    <SettingRow
+      title="Profile"
+      description={held ?? 'Applies a saved input, gain and attenuation at once.'}
+    >
       <CellSelect
         aria-label="Profile"
         placeholder="Custom levels"
         choices={catalog.profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
         value={catalog.active_profile_id ?? ''}
-        disabled={switching}
+        disabled={switching || held !== null}
         onValueChange={(next) => void choose(next)}
       />
     </SettingRow>

@@ -1,7 +1,8 @@
 /**
  * Base UI's `use-sync-external-store` on Preact's own hook, for tests: the
  * package ships only as CommonJS, which Vitest loads in Node past every alias.
- * The browser bundle compiles the package itself.
+ * The browser bundle compiles the package itself. Remove this once the
+ * package ships ES modules or Base UI stops importing it.
  */
 import { useCallback, useRef, useSyncExternalStore } from 'preact/compat';
 

@@ -406,6 +406,26 @@ when it crashed. Responses carry
 `rebooting: true` when a change restarts the device, so clients react to the
 response instead of assuming.
 
+## Console UI
+
+The consoles build on [linen](https://github.com/lutyjj/linen), a component
+library written for React, and run it on Preact through `preact/compat`. The
+device console is one file the firmware serves from flash, so the build
+resolves linen's motion layer to its stand-in, `linen/still`, keeping only
+the animations its stylesheet runs, and uses the system fonts rather than
+embedding a typeface. Tailwind CSS 4 generates the stylesheet from the
+console's and linen's own classes.
+
+| Choice | Reason |
+|---|---|
+| linen components on `preact/compat` | One design language for both consoles, with Preact's runtime size in the OTA image |
+| `motion` resolved to `linen/still` | Every state stays; only movement between states goes, and the bundle drops the animation library |
+| System fonts | The embedded typeface was a third of the console's gzipped size |
+| linen pinned to a release tarball with its integrity | linen is not on a registry; each console upgrade is a deliberate change to that pin |
+
+`make firmware-artifacts` measures the embedded console against the OTA slot
+through `ota-size-check`.
+
 ## QEMU Image Variant
 
 Espressif's QEMU fork emulates the ESP32 but no Wi-Fi PHY, I2S, or codec, so

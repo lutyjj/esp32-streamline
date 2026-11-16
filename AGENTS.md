@@ -180,7 +180,7 @@ on a device, because nothing in QEMU reproduces a megabyte of real TLS records
 landing on a fragmented heap.
 
 Install a hardware proof over the custom OTA path: the console's developer
-install under System → Firmware, or `POST /api/ota/update` with `url` and
+install under Maintenance → Updates, or `POST /api/ota/update` with `url` and
 `sha256`. Serial flashing is for repartitioning, bootloader work, and
 recovery. Your device's address and admin key live in the gitignored root
 `.env` (see `.env.example`).

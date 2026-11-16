@@ -24,8 +24,8 @@ owns installation commands.
   asks for it when it is made and then completes; both consoles use one
   credential-dialog pattern. Device admin keys and bridge API tokens are
   separate. [Security](security.md) defines protected reads and writes.
-- Visiting another workspace or settings category preserves edited fields for
-  the page session. Reloading is not draft persistence.
+- Leaving a screen that holds unsaved changes, by a link, Back or a reload,
+  asks first and names what is lost. Only saving keeps a change.
 - Switches represent applied boolean settings. Encryption uses explicit task
   actions because it coordinates two systems and may interrupt audio.
 
@@ -44,9 +44,8 @@ owns installation commands.
 The device console's Device and Maintenance workspaces hold sections, and a
 guided task opens on a screen of its own beneath its workspace. The bridge
 console's Settings is a task index; each destination opens one focused task
-with an All settings link. URLs identify the workspace, section, or task,
-browser Back retraces navigation, and leaving a form with unsaved changes
-asks first. Phones use
+with an All settings link. URLs identify the workspace, section, or task, and
+browser Back retraces navigation. Phones use
 the same destinations and bottom primary navigation. A condition of the whole
 console, such as lost contact or a restart under way, stands above every
 screen until it ends.
@@ -67,7 +66,8 @@ blank password alone does not save. Back retains entered values.
 
 The setup address and home-network hostname are different browser origins.
 Remembering a key at one address does not transfer it to another. Before joining,
-the owner confirms the key is saved outside this console. Device → Wi-Fi keeps the same safeguard.
+the owner confirms the key is saved outside this console. Device → Wi-Fi asks
+for the key before it saves, so there the owner already holds it.
 
 A transport disconnect during joining is an unconfirmed handoff, not success.
 Reconnect to home Wi-Fi, open the advertised device address, and enter the saved

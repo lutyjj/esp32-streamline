@@ -22,6 +22,7 @@ import {
   adoptFound,
   draftChanges,
   fillsTarget,
+  type SavedTarget,
   savedDraft,
   saveTarget,
   type TargetDraft,
@@ -35,7 +36,18 @@ const TRAIL = [{ href: '/bridge', label: 'Bridge' }];
  * type its address. Use fills the fields; only Save writes the target.
  */
 export function TargetScreen() {
-  const [saved] = useState(() => savedDraft(status.value?.target));
+  const known = status.value;
+  return (
+    <>
+      <ScreenTop title="Connect a bridge" trail={TRAIL} />
+      <Content>{known && <TargetForm target={known.target} />}</Content>
+    </>
+  );
+}
+
+/** The form, opened on the target the device last reported. */
+function TargetForm({ target }: { target: SavedTarget }) {
+  const [saved] = useState(() => savedDraft(target));
   const [draft, setDraft] = useState<TargetDraft>(saved);
   const [tried, setTried] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -64,88 +76,83 @@ export function TargetScreen() {
   };
 
   return (
-    <>
-      <ScreenTop title="Connect a bridge" trail={TRAIL} />
-      <Content>
-        <div className="grid gap-4">
-          {searchOffered.value && (
-            <FoundBridges draft={draft} onUse={(bridge) => setDraft(adoptFound(draft, bridge))} />
-          )}
-          <Card>
-            <CardHead
-              title="Address"
-              description={
-                changes.target
-                  ? 'The device restarts to send its audio to this bridge.'
-                  : 'The bridge the device sends its audio to.'
+    <div className="grid gap-4">
+      {searchOffered.value && (
+        <FoundBridges draft={draft} onUse={(bridge) => setDraft(adoptFound(draft, bridge))} />
+      )}
+      <Card>
+        <CardHead
+          title="Address"
+          description={
+            changes.target
+              ? 'The device restarts to send its audio to this bridge.'
+              : 'The bridge the device sends its audio to.'
+          }
+        />
+        <CardBody>
+          <Form onSubmit={save}>
+            <TextField
+              label="Bridge address"
+              width={96}
+              autoCapitalize="none"
+              spellCheck={false}
+              value={draft.entry.host}
+              readOnly={saving}
+              error={problem('host')}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  entry: { ...draft.entry, host: event.currentTarget.value },
+                })
               }
             />
-            <CardBody>
-              <Form onSubmit={save}>
-                <TextField
-                  label="Bridge address"
-                  width={96}
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  value={draft.entry.host}
-                  readOnly={saving}
-                  error={problem('host')}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      entry: { ...draft.entry, host: event.currentTarget.value },
-                    })
-                  }
-                />
-                <TextField
-                  label="Port"
-                  width={32}
-                  inputMode="numeric"
-                  value={draft.entry.port}
-                  readOnly={saving}
-                  error={problem('port')}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      entry: { ...draft.entry, port: event.currentTarget.value },
-                    })
-                  }
-                />
-                <TextField
-                  label="Bridge console address"
-                  width={96}
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  hint="Optional, such as http://192.0.2.20:8088/. Bridge links straight to this device's source there."
-                  value={draft.console}
-                  readOnly={saving}
-                  onChange={(event) => setDraft({ ...draft, console: event.currentTarget.value })}
-                />
-                {failure !== '' && (
-                  <Notice
-                    className="mt-3"
-                    tone="danger"
-                    title="The device did not save the bridge."
-                    description={failure}
-                  />
-                )}
-                <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-                  {held && <p className="mr-auto text-sm text-text-secondary">{held}</p>}
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    busy={saving}
-                    disabled={!unsaved || held !== null}
-                  >
-                    Save
-                  </Button>
-                </div>
-              </Form>
-            </CardBody>
-          </Card>
-        </div>
-      </Content>
-    </>
+            <TextField
+              label="Port"
+              width={32}
+              inputMode="numeric"
+              value={draft.entry.port}
+              readOnly={saving}
+              error={problem('port')}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  entry: { ...draft.entry, port: event.currentTarget.value },
+                })
+              }
+            />
+            <TextField
+              label="Bridge console address"
+              width={96}
+              autoCapitalize="none"
+              spellCheck={false}
+              hint="Optional, such as http://192.0.2.20:8088/. Bridge links straight to this device's source there."
+              value={draft.console}
+              readOnly={saving}
+              onChange={(event) => setDraft({ ...draft, console: event.currentTarget.value })}
+            />
+            {failure !== '' && (
+              <Notice
+                className="mt-3"
+                tone="danger"
+                title="The device did not save the bridge."
+                description={failure}
+              />
+            )}
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+              {held && <p className="mr-auto text-sm text-text-secondary">{held}</p>}
+              <Button
+                type="submit"
+                variant="primary"
+                busy={saving}
+                disabled={!unsaved || held !== null}
+              >
+                Save
+              </Button>
+            </div>
+          </Form>
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 

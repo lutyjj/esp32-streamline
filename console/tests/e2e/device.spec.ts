@@ -209,3 +209,9 @@ test('calibration names playback heard while it measures the quiet, and cancels 
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(page).toHaveURL(/#\/audio$/);
 });
+
+test('Connect a bridge opened directly shows the saved target', async ({ page }) => {
+  await page.goto('/#/bridge/target');
+  await expect(page.getByLabel('Bridge address')).toHaveValue('192.0.2.20');
+  await expect(page.getByLabel('Port')).toHaveValue('39000');
+});

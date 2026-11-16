@@ -117,7 +117,11 @@ function Credentials({ known, readOnly }: { known: BridgeStatus; readOnly: boole
       {ids.length === 0 ? (
         <EmptyState
           title="No credential enrolled"
-          description="A device makes its credential in its own console, under Bridge, Encryption, and shows it once to enroll here."
+          description={
+            readOnly
+              ? 'A device makes its credential in its own console, under Bridge, Encryption.'
+              : 'A device makes its credential in its own console, under Bridge, Encryption, and shows it once to enroll here.'
+          }
         />
       ) : (
         // biome-ignore lint/a11y/useSemanticElements: SettingRow is a div with the listitem role, which a <ul> may not hold.

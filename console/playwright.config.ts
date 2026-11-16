@@ -12,7 +12,17 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:5173',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // The screenshots wait for the journeys, which change the one bridge both use, so a
+  // screen never shows another test's passing state.
+  projects: [
+    { name: 'journeys', testIgnore: /design\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'screens',
+      testMatch: /design\.spec\.ts/,
+      dependencies: ['journeys'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
   webServer: {
     command: 'npx vite --host 127.0.0.1',
     url: 'http://127.0.0.1:5173/',

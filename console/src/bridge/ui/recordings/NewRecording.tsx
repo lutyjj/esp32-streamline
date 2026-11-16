@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/preact-query';
 import { Button, Card, CardBody, CardHead, Form, Select, TextField } from 'linen';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { BridgeStatus } from '../../../generated/bridge';
 import { duration } from '../../../shared/format';
 import { fieldErrors } from '../../../shared/http';
@@ -30,10 +30,18 @@ export function NewRecording({
   const [source, setSource] = useState('');
   const [title, setTitle] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const first = sources[0];
+  // The first source shown is held as chosen, so it never gives way to another unasked.
+  useEffect(() => {
+    if (source === '' && first !== undefined) setSource(first);
+  }, [source, first]);
   const { source: chosen, gone } = recordingSource(source, sources);
   // A source that stopped streaming stays chosen and says so, rather than giving way to another.
   const shown = useMemo(
-    () => (gone ? { ...errors, source: 'This source stopped streaming. Choose another.' } : errors),
+    () =>
+      gone
+        ? { ...errors, source: 'This source is no longer available to record. Choose another.' }
+        : errors,
     [gone, errors],
   );
   const start = useMutation(

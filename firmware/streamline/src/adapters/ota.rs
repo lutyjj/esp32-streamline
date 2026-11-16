@@ -23,6 +23,7 @@ use crate::{
     stream::{pause_transport, StreamStatus},
     update::{
         self,
+        outcome::{InstallRecord, InstallResult},
         progress::{OtaProgress, Phase},
         CustomImage, ImageSink, ImageSource, InstallProgress,
     },
@@ -113,6 +114,29 @@ pub fn rollback_target() -> Option<String> {
     } else {
         Some(String::new())
     }
+}
+
+/// How the install before this boot ended, from the record it left and the
+/// slot this boot runs from.
+pub fn last_install_result(store: &Mutex<ConfigStore>) -> InstallResult {
+    let record = match store.lock() {
+        Ok(store) => store.install_record(),
+        Err(_) => None,
+    };
+    // SAFETY: the running partition is static for the life of the image.
+    let running = partition_label(unsafe { sys::esp_ota_get_running_partition() });
+    record.map_or(InstallResult::None, |record| record.result(&running))
+}
+
+/// The label of `partition`, such as `ota_1`; empty for a null pointer.
+fn partition_label(partition: *const sys::esp_partition_t) -> String {
+    if partition.is_null() {
+        return String::new();
+    }
+    // SAFETY: a partition table entry's label is a NUL-terminated array.
+    unsafe { std::ffi::CStr::from_ptr((*partition).label.as_ptr()) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Point the next boot at the inactive slot, returning to the previous firmware.
@@ -231,7 +255,7 @@ fn run(
     {
         Ok(pause) => pause,
         Err(error) => {
-            note_outcome(store, error);
+            install_failed(progress, store, error);
             return progress.fail(error.to_owned());
         }
     };
@@ -316,15 +340,21 @@ fn install_and_reboot(
     progress.set_phase(Phase::Downloading);
     // Written before the download so a crash mid-install still leaves evidence;
     // overwritten by the final outcome below.
-    note_outcome(store, &format!("installing {what} (did not finish)"));
+    record_install(
+        store,
+        &InstallRecord::Started,
+        &format!("installing {what} (did not finish)"),
+    );
     if let Err(error) = install(url, sha256, progress) {
         let message = format!("install {what} failed: {error:#}");
-        note_outcome(store, &message);
+        install_failed(progress, store, &message);
         return Err(message);
     }
 
     let message = format!("installed {what}; rebooting");
-    note_outcome(store, &message);
+    // SAFETY: completing the install selected the boot partition just read.
+    let written = partition_label(unsafe { sys::esp_ota_get_boot_partition() });
+    record_install(store, &InstallRecord::Written(written), &message);
     progress.set_phase(Phase::Installed);
     progress.set_message(&message);
     log::info!("OTA {message}");
@@ -338,20 +368,31 @@ fn install_and_reboot(
     unsafe { esp_idf_svc::sys::esp_restart() }
 }
 
-/// Persist the install outcome, tagged with the version that ran the install,
-/// so `/api/status` can still explain what happened after the reboot — and
-/// after a rollback, when the running version contradicts the note.
-/// Best-effort: diagnostics must never fail an update.
-fn note_outcome(store: Option<&Mutex<ConfigStore>>, outcome: &str) {
+/// Persist where an install stands, for the boot after it to read its
+/// outcome, and a note in words tagged with the version that ran the install.
+/// Best-effort: diagnostics must never fail an update. A check carries no
+/// store and records nothing.
+fn record_install(store: Option<&Mutex<ConfigStore>>, record: &InstallRecord, outcome: &str) {
     let Some(store) = store else { return };
     let note = format!("v{}: {outcome}", env!("CARGO_PKG_VERSION"));
     match store.lock() {
         Ok(guard) => {
-            if let Err(error) = guard.save_last_ota(&note) {
+            if let Err(error) = guard
+                .save_install_record(record)
+                .and_then(|()| guard.save_last_ota(&note))
+            {
                 log::warn!("could not persist OTA outcome: {error:#}");
             }
         }
         Err(_) => log::warn!("could not persist OTA outcome: store lock poisoned"),
+    }
+}
+
+/// Record an install that stopped before its restart, and report it now.
+fn install_failed(progress: &OtaProgress, store: Option<&Mutex<ConfigStore>>, message: &str) {
+    if store.is_some() {
+        record_install(store, &InstallRecord::Failed, message);
+        progress.set_last_result(InstallResult::Failed);
     }
 }
 

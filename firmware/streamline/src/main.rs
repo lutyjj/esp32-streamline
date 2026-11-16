@@ -165,6 +165,7 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
     let key_verifier = Some(Arc::new(TlsKeyVerifier) as Arc<dyn KeyVerifier>);
     #[cfg(feature = "qemu")]
     let key_verifier: Option<Arc<dyn KeyVerifier>> = None;
+    let last_install = ota::last_install_result(&store);
     let state = Arc::new(ApiState {
         control: Mutex::new(()),
         restart: Default::default(),
@@ -181,7 +182,7 @@ fn run(listener: &mut Option<http::Listener>) -> Result<()> {
         codec,
         analog_passthrough: Arc::new(Mutex::new(analog_passthrough)),
         mdns,
-        ota: Arc::new(update::progress::OtaProgress::default()),
+        ota: Arc::new(update::progress::OtaProgress::new(last_install)),
         health,
         setup_network,
         auth: Mutex::new(streamline_firmware::auth::DigestAuthenticator::default()),

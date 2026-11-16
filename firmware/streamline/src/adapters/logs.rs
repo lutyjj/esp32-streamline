@@ -154,6 +154,12 @@ pub fn discard_previous() {
     }
 }
 
+/// This boot's id, the one `/api/logs` reports as `current.boot`; zero
+/// before [`install`] has run.
+pub fn boot() -> u32 {
+    with_buffers(|current, _| current.boot()).unwrap_or(0)
+}
+
 /// Read both buffers under one lock. `None` before [`install`] has run.
 ///
 /// The closure runs with logging blocked, so it must not log, and it must not

@@ -592,6 +592,7 @@ streamline_ota_busy 0\n"
                 last_ota: String::new(),
             },
             system: SystemTelemetry {
+                boot: 1,
                 uptime_seconds: 3_600,
                 task_count: 12,
                 heap: HeapTelemetry {
@@ -617,6 +618,7 @@ streamline_ota_busy 0\n"
                 rollback_version: String::new(),
                 signed_updates: true,
                 signing_key_sha256: "a".repeat(64),
+                last_result: Default::default(),
             },
             status_indicator_visible: true,
         }

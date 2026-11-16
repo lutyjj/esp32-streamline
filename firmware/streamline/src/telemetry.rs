@@ -102,6 +102,8 @@ pub struct DiagnosticsTelemetry {
 /// asks for status or metrics.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SystemTelemetry {
+    /// Identifies this run of the firmware; a restart changes it.
+    pub boot: u32,
     pub uptime_seconds: u64,
     /// FreeRTOS tasks currently scheduled across both cores.
     pub task_count: u32,
@@ -148,6 +150,7 @@ pub struct OtaTelemetry {
     /// vendor key it trusts. Always true on a signed release build.
     pub signed_updates: bool,
     pub signing_key_sha256: String,
+    pub last_result: crate::update::outcome::InstallResult,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]

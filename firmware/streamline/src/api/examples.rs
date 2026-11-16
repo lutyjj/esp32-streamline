@@ -100,6 +100,7 @@ pub fn status() -> Value {
             last_ota: "",
         },
         system: SystemStatus {
+            boot: 2_751_483_904,
             uptime_seconds: 3600,
             task_count: 14,
             heap: HeapStatus {
@@ -125,6 +126,7 @@ pub fn status() -> Value {
             rollback_version: "",
             signed_updates: true,
             signing_key_sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            last_result: crate::update::outcome::InstallResult::None,
         },
         indicator: IndicatorStatus {
             available: true,

@@ -128,6 +128,17 @@ def test_status_reports_a_valid_mode(device_api: DeviceApi) -> None:
     status = json.loads(body)
     assert status["mode"] in _MODES, f"unknown mode {status['mode']!r}"
     assert isinstance(status["firmware_version"], str) and status["firmware_version"]
+    assert isinstance(status["system"]["boot"], int)
+    assert status["ota"]["last_result"] in {"none", "failed", "installed", "rolled-back"}, status["ota"]
+
+
+def test_status_names_the_boot_its_log_comes_from(authed_device_api: DeviceApi) -> None:
+    code, body = authed_device_api.fetch("/api/status")
+    assert code == 200
+    boot = json.loads(body)["system"]["boot"]
+    code, body = authed_device_api.fetch("/api/logs")
+    assert code == 200
+    assert json.loads(body)["current"]["boot"] == boot
 
 
 def test_bridge_discovery_runs_only_on_the_home_network(device_api: DeviceApi) -> None:

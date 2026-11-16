@@ -17,6 +17,7 @@ import { config, configResource, status } from '../../state/device';
 import { sectionOf } from '../places';
 import { ResourceNotice } from '../ResourceNotice';
 import { ScreenTop } from '../ScreenTop';
+import { WifiSection } from './WifiSection';
 
 const SECTIONS = [
   { href: '/device/wifi', label: 'Wi-Fi' },
@@ -35,33 +36,15 @@ export function DeviceScreen() {
       <ScreenTop title="Device" />
       <SectionNav label="Device" sections={SECTIONS} />
       <Content>
-        {section === 'hardware' ? <Hardware /> : section === 'access' ? <Access /> : <WiFi />}
+        {section === 'hardware' ? (
+          <Hardware />
+        ) : section === 'access' ? (
+          <Access />
+        ) : (
+          <WifiSection />
+        )}
       </Content>
     </>
-  );
-}
-
-function WiFi() {
-  const wifi = status.value?.wifi;
-  if (!wifi) return null;
-  return (
-    <Card>
-      <CardHead title="Wi-Fi" description="The network the device joins at every start." />
-      <SettingRow title="Network">
-        <span className="text-sm">{wifi.ssid || 'None saved'}</span>
-      </SettingRow>
-      <SettingRow title="Address">
-        <span className="font-mono text-sm">{wifi.sta_ip || wifi.ap_ip || 'None'}</span>
-      </SettingRow>
-      <SettingRow title="Name on the network">
-        <span className="font-mono text-sm">{wifi.hostname}</span>
-      </SettingRow>
-      {wifi.sta_ip && (
-        <SettingRow title="Signal">
-          <span className="text-sm tabular-nums">{wifi.rssi_dbm} dBm</span>
-        </SettingRow>
-      )}
-    </Card>
   );
 }
 

@@ -80,3 +80,48 @@ test('recovery names the network it cannot find and leads to its Wi-Fi', async (
   await expect(page).toHaveURL(/#\/device\/wifi$/);
   await expect(page.getByText('Old router', { exact: true })).toBeVisible();
 });
+
+test('first contact holds Join until the key is kept, then hands off to the home network', async ({
+  page,
+}) => {
+  await page.goto('/?scenario=first-boot');
+  await expect(page.getByRole('heading', { level: 1, name: 'Set up StreamLine' })).toBeVisible();
+  await page.getByLabel('Network name').fill('home');
+  await page.getByLabel('Password').fill('correct horse');
+  await page.getByRole('button', { name: 'Join network' }).click();
+  await expect(
+    page.getByText('Confirm the admin key is saved outside this console.'),
+  ).toBeVisible();
+
+  await page.getByRole('checkbox', { name: 'I saved the key outside this console' }).click();
+  await page.getByRole('button', { name: 'Join network' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Joining home' })).toBeVisible();
+  await expect(page.getByText('http://streamline-0000.local/')).toBeVisible();
+});
+
+test('an open network is a choice that names what it exposes', async ({ page }) => {
+  await page.goto('/?scenario=first-boot');
+  await page.getByLabel('Network name').fill('Cafe guest');
+  await page.getByRole('button', { name: 'Join network' }).click();
+  await expect(
+    page.getByText('Enter the network’s password, or choose an open network.'),
+  ).toBeVisible();
+  await page.getByRole('checkbox', { name: 'This network has no password' }).click();
+  await expect(page.getByText('Anyone in range can join an open network.')).toBeVisible();
+  await page.getByRole('checkbox', { name: 'I saved the key outside this console' }).click();
+  await page.getByRole('button', { name: 'Join network' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Joining Cafe guest' })).toBeVisible();
+});
+
+test('recovery changes Wi-Fi with the admin key and hands off', async ({ page }) => {
+  await page.goto('/?scenario=recovery#/device/wifi');
+  await page.getByLabel('Network name').fill('home');
+  await page.getByLabel('Password').fill('correct horse');
+  await page.getByRole('button', { name: 'Join network' }).click();
+  await page
+    .getByRole('dialog', { name: 'Join home?' })
+    .getByRole('button', { name: 'Join network' })
+    .click();
+  await answerKey(page, mockAdminKey);
+  await expect(page.getByRole('heading', { level: 1, name: 'Joining home' })).toBeVisible();
+});

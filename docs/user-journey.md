@@ -56,8 +56,9 @@ password. A pre-provisioned board can carry them on its label. Holding the first
 button at power-on opens the setup network for that boot when the password is lost.
 
 Join the setup network and open its captive console, or `http://192.168.71.1/`.
-An unconfigured device opens onboarding. Choose Wi-Fi, preserve the generated
-admin key, then submit the network change. A network without a password needs
+An unconfigured device's console is onboarding alone. Choose Wi-Fi, preserve
+the generated admin key, then join the network; Join waits until the owner
+confirms the key is kept outside the console. A network without a password needs
 the explicit open-network choice, which names what an open network exposes; a
 blank password alone does not save. Back retains entered values.
 
@@ -67,8 +68,8 @@ the owner confirms the key is saved outside this console. Device → Wi-Fi keeps
 
 A transport disconnect during joining is an unconfirmed handoff, not success.
 Reconnect to home Wi-Fi, open the advertised device address, and enter the saved
-key there. Reaching that console verifies the join. Closing onboarding exposes
-Device → Wi-Fi without hiding the custody requirement.
+key there. Reaching that console verifies the join. Should the join fail, the
+device opens its setup network again, and its console names the cause.
 
 ## 2. Connect a bridge and player
 
@@ -84,8 +85,8 @@ port and never saves them. A listed bridge is a hint, since any host on the
 network can advertise one, so the owner compares the address before saving.
 No answer, or a failed search, names the manual fallback: a bridge behind port
 mapping or a network that blocks multicast stays reachable by its typed
-address. The device searches only from the home network, so the setup network
-offers the form alone.
+address. The device searches only from the home network, and the setup network
+offers no bridge step: connect one once the device is on the home network.
 
 After saving, the device distinguishes restarting, quiet input, connecting, and
 sending. Only observed transmission supports Sending audio. Open the bridge
@@ -108,9 +109,8 @@ signal.
 
 Audio places saved profiles beside the live meter. Adjust input opens a focused
 editor with its own live meter, Save, and Discard changes. Fields remain locked
-while saving. Changes apply when saved, except on an unconfigured device, where
-they wait without a restart and apply once it starts on the home network;
-the meter describes applied settings while a draft is edited. A clipping warning
+while saving. Changes apply when saved; the meter describes applied settings
+while a draft is edited. A clipping warning
 offers calibration. The guide asks the owner to pause the source and play loud
 material. Cancellation restores entry levels and reports restoration failures;
 completion applies the measured result.

@@ -1,13 +1,5 @@
 import { effect, untracked } from '@preact/signals';
-import {
-  Content,
-  EmptyState,
-  LinenProvider,
-  Shell,
-  ToastProvider,
-  UnsavedChangesGuard,
-  useToast,
-} from 'linen';
+import { LinenProvider, Shell, ToastProvider, UnsavedChangesGuard, useToast } from 'linen';
 import { useEffect } from 'react';
 import icon from '../../icon.svg';
 import { CredentialDialog } from '../../shared/CredentialDialog';
@@ -21,6 +13,8 @@ import { BridgeScreen } from './bridge/BridgeScreen';
 import { DeviceConditions } from './DeviceConditions';
 import { DeviceScreen } from './device/DeviceScreen';
 import { MaintenanceScreen } from './maintenance/MaintenanceScreen';
+import { Handoff } from './onboarding/Handoff';
+import { Onboarding } from './onboarding/Onboarding';
 import { PLACES, placeOf } from './places';
 
 export function App() {
@@ -53,8 +47,9 @@ function Console() {
   useRestartToasts();
 
   const now = connection.value;
-  if (now.phase === 'handoff') return <StandIn title="The device left this network" />;
-  if (status.value?.mode === 'setup') return <StandIn title="This device is not set up yet" />;
+  if (now.phase === 'handoff')
+    return <Handoff handoff={now.handoff} last={now.seen?.status ?? null} />;
+  if (status.value?.mode === 'setup') return <Onboarding />;
   return <DeviceShell name={name} />;
 }
 
@@ -112,14 +107,5 @@ function DeviceShell({ name }: { name: string | undefined }) {
         <AudioHome />
       )}
     </Shell>
-  );
-}
-
-/** Stand-in for the onboarding and handoff screens, which come with their milestone. */
-function StandIn({ title }: { title: string }) {
-  return (
-    <Content>
-      <EmptyState title={title} />
-    </Content>
   );
 }

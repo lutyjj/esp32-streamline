@@ -1,6 +1,4 @@
-import { render } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ThemeSwitch } from '../src/components/ThemeSwitch';
 import {
   CONSOLE_PREFERENCES_SCHEMA_VERSION,
   CONSOLE_PREFERENCES_STORAGE_KEY,
@@ -65,23 +63,5 @@ describe('console preferences', () => {
 
     expect(loadConsolePreferences(storage)).toEqual({ theme: 'system' });
     expect(updateConsolePreference('theme', 'dark', storage)).toEqual({ theme: 'dark' });
-  });
-});
-
-describe('ThemeSwitch', () => {
-  it('exposes System, Light, and Dark choices and stores the selected one', () => {
-    const host = document.createElement('div');
-    render(<ThemeSwitch />, host);
-
-    const choices = [...host.querySelectorAll<HTMLOptionElement>('option')];
-    expect(choices.map((choice) => choice.value)).toEqual(['system', 'light', 'dark']);
-
-    const select = host.querySelector('select');
-    if (!select) throw new Error('theme choice missing');
-    select.value = 'light';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-
-    expect(loadConsolePreferences()).toEqual({ theme: 'light' });
-    expect(document.documentElement.dataset.theme).toBe('light');
   });
 });

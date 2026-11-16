@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { copyText, custodyDegraded, custodyStore } from '../../src/shared/custody';
+import { afterEach, describe, expect, it } from 'vitest';
+import { custodyDegraded, custodyStore } from '../../src/shared/custody';
 
 function blockedStorage(): Storage {
   const deny = () => {
@@ -61,29 +61,5 @@ describe('custody store', () => {
 
     expect(store.set('k', 'v')).toBe(false);
     expect(store.get('k')).toBe('v');
-  });
-});
-
-describe('copyText', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
-
-  it('rejects when the fallback copy path reports failure', async () => {
-    // Plain-HTTP context: no async clipboard, execCommand refuses.
-    vi.stubGlobal('isSecureContext', false);
-    document.execCommand = vi.fn().mockReturnValue(false);
-
-    await expect(copyText('secret')).rejects.toThrow(/copy/);
-    // The scratch element never lingers after a failed copy.
-    expect(document.querySelector('textarea')).toBeNull();
-  });
-
-  it('resolves only when the fallback copy path reports success', async () => {
-    vi.stubGlobal('isSecureContext', false);
-    document.execCommand = vi.fn().mockReturnValue(true);
-
-    await expect(copyText('secret')).resolves.toBeUndefined();
   });
 });

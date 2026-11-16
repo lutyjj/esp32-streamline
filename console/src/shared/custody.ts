@@ -1,9 +1,8 @@
 /**
- * Failure-aware custody adapters for the browser boundaries the console
- * cannot trust: storage (private mode, quota, sandboxing can make any call
- * throw) and the clipboard (the fallback path can fail silently). Remote
- * outcomes must never look failed because local custody degraded, and a
- * value accepted for custody must stay readable for the life of the tab.
+ * Failure-aware browser storage: private mode, quota and sandboxing can make
+ * any call throw. Remote outcomes must never look failed because local
+ * custody degraded, and a value accepted for custody must stay readable for
+ * the life of the tab.
  */
 
 import { signal } from '@preact/signals';
@@ -59,30 +58,3 @@ export function custodyStore(backing: () => Storage): CustodyStore {
 
 export const sessionStore = custodyStore(() => sessionStorage);
 export const localStore = custodyStore(() => localStorage);
-
-/**
- * Copy to the clipboard or reject — never claim success silently. The device
- * serves plain HTTP, so the async clipboard API is often unavailable and the
- * deprecated selection fallback is the only path that works there.
- */
-export async function copyText(value: string): Promise<void> {
-  if (!value) return;
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
-  const scratch = document.createElement('textarea');
-  scratch.value = value;
-  scratch.setAttribute('readonly', '');
-  scratch.style.position = 'fixed';
-  scratch.style.opacity = '0';
-  document.body.appendChild(scratch);
-  try {
-    scratch.select();
-    if (!document.execCommand('copy')) {
-      throw new Error('copying is blocked here — select the value and copy it manually');
-    }
-  } finally {
-    scratch.remove();
-  }
-}

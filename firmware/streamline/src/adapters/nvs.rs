@@ -15,11 +15,13 @@ use crate::{
     random::RandomBytes,
     setup_network,
     state::{GenerationStorage, PersistentState, StateStore},
+    update::outcome::InstallRecord,
 };
 
 const NAMESPACE: &str = "streamline";
 const KEY_LAST_FALLBACK: &str = "last_fallback";
 const KEY_LAST_OTA: &str = "last_ota";
+const KEY_INSTALL: &str = "ota_install";
 const KEY_SETUP_AP_PASSWORD: &str = "setup_ap_pw";
 /// Diagnostic notes are trimmed to fit the 256-byte read buffer.
 const MAX_NOTE_BYTES: usize = 240;
@@ -250,7 +252,7 @@ impl ConfigStore {
     /// across resets.
     pub fn clear(&self) -> Result<()> {
         self.state_store().clear().map_err(anyhow::Error::new)?;
-        for key in [KEY_LAST_FALLBACK, KEY_LAST_OTA] {
+        for key in [KEY_LAST_FALLBACK, KEY_LAST_OTA, KEY_INSTALL] {
             if let Err(error) = self.nvs.remove(key) {
                 log::warn!("could not clear reset diagnostic {key}: {error:#}");
             }
@@ -301,6 +303,17 @@ impl ConfigStore {
         self.nvs
             .set_str(KEY_LAST_OTA, truncate_utf8(outcome, MAX_NOTE_BYTES))?;
         Ok(())
+    }
+
+    /// Record where the current install stands, for the boot after it.
+    pub fn save_install_record(&self, record: &InstallRecord) -> Result<()> {
+        self.nvs.set_str(KEY_INSTALL, &record.encode())?;
+        Ok(())
+    }
+
+    /// Where the last install stood; `None` when none ran since a reset.
+    pub fn install_record(&self) -> Option<InstallRecord> {
+        InstallRecord::decode(&self.optional_string(KEY_INSTALL))
     }
 
     pub fn last_fallback(&self) -> String {

@@ -11,6 +11,7 @@ use std::time::Duration;
 
 mod check;
 pub use check::check_release;
+pub mod outcome;
 pub mod progress;
 
 use sha2::{Digest, Sha256};

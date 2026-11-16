@@ -16,6 +16,7 @@ use crate::telemetry::{HeapTelemetry, NvsTelemetry, SystemTelemetry};
 /// are non-blocking and internally synchronized.
 pub fn snapshot() -> SystemTelemetry {
     SystemTelemetry {
+        boot: crate::adapters::logs::boot(),
         uptime_seconds: uptime_seconds(),
         // Returns UBaseType_t (u32); the tasks are the kernel's own count.
         task_count: unsafe { uxTaskGetNumberOfTasks() },

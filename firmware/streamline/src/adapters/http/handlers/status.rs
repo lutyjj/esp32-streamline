@@ -175,6 +175,7 @@ fn telemetry_snapshot(state: &ApiState) -> TelemetrySnapshot {
             rollback_version: rollback.clone().unwrap_or_default(),
             signed_updates: crate::adapters::ota::SIGNED_UPDATES,
             signing_key_sha256: crate::adapters::ota::signing_key_sha256().to_owned(),
+            last_result: ota.last_result,
         },
         status_indicator_visible: config.shows_status_indicator(state.board.as_ref()),
     }
@@ -281,6 +282,7 @@ impl<'a> api::StatusResponse<'a> {
                 last_ota: &snapshot.diagnostics.last_ota,
             },
             system: api::SystemStatus {
+                boot: snapshot.system.boot,
                 uptime_seconds: snapshot.system.uptime_seconds,
                 task_count: snapshot.system.task_count,
                 heap: api::HeapStatus {
@@ -306,6 +308,7 @@ impl<'a> api::StatusResponse<'a> {
                 rollback_version: &snapshot.ota.rollback_version,
                 signed_updates: snapshot.ota.signed_updates,
                 signing_key_sha256: &snapshot.ota.signing_key_sha256,
+                last_result: snapshot.ota.last_result,
             },
             indicator: api::IndicatorStatus {
                 available: snapshot.status_indicator_visible,

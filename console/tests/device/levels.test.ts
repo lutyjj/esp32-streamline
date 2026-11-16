@@ -7,6 +7,7 @@ import { audioProfiles, connection, status } from '../../src/device/state/device
 import {
   discardLevels,
   editLevel,
+  keptLevels,
   levelsDraft,
   levelsUnsaved,
   saveLevels,
@@ -55,6 +56,17 @@ describe('the levels draft', () => {
     const discarded = discardLevels(draft);
     expect(discarded.input_gain.value).toBe(20);
     expect(levelsUnsaved(discarded)).toBe(false);
+  });
+});
+
+describe('a draft the device has taken', () => {
+  it('holds nothing unsaved through the restart that applies it, then follows the device', () => {
+    const before = withAudio({ input_gain: 20 });
+    const kept = keptLevels(editLevel(levelsDraft(before), 'input_gain', 24));
+    expect(levelsUnsaved(kept)).toBe(false);
+    // A start that applied it moves nothing; one that did not shows the device's levels.
+    expect(levelsDraft(withAudio({ input_gain: 24 }), kept).input_gain.value).toBe(24);
+    expect(levelsDraft(withAudio({ input_gain: 30 }), kept).input_gain.value).toBe(30);
   });
 });
 

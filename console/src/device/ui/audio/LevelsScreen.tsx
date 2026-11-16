@@ -18,6 +18,7 @@ import { status } from '../../state/device';
 import {
   discardLevels,
   editLevel,
+  keptLevels,
   type Level,
   levelsDraft,
   levelsUnsaved,
@@ -61,7 +62,10 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
     setFailure(null);
     setSaving(true);
     try {
-      if (await saveLevels(draft)) toast.show({ text: 'Input levels saved.' });
+      if (await saveLevels(draft)) {
+        setDraft((current) => keptLevels(current));
+        toast.show({ text: 'Input levels saved.' });
+      }
     } catch (error) {
       setFailure({ error });
     } finally {

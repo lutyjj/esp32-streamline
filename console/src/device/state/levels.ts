@@ -39,6 +39,16 @@ export function levelsUnsaved(draft: LevelsDraft): boolean {
   return LEVELS.some((level) => unsaved(draft[level]));
 }
 
+/**
+ * The draft once the device has taken it, before or after the restart that
+ * applies it: what it holds is what the device applies, and it follows again.
+ */
+export function keptLevels(draft: LevelsDraft): LevelsDraft {
+  const next = {} as LevelsDraft;
+  for (const level of LEVELS) next[level] = seeded(draft[level].value);
+  return next;
+}
+
 export function discardLevels(draft: LevelsDraft): LevelsDraft {
   const next = {} as LevelsDraft;
   for (const level of LEVELS) next[level] = discarded(draft[level]);

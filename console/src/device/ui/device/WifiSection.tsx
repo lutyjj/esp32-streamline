@@ -1,22 +1,12 @@
-import {
-  Button,
-  Card,
-  CardBody,
-  CardHead,
-  ConfirmDialog,
-  Fact,
-  Facts,
-  Notice,
-  useUnsavedChanges,
-} from 'linen';
+import { Button, Card, CardBody, CardHead, Fact, Facts, useUnsavedChanges } from 'linen';
 import { useState } from 'react';
-import { errorMessage } from '../../../shared/errors';
 import { storesWifiPassword, type WifiEntry, wifiProblems } from '../../lib/wifi';
 import { withAccess } from '../../state/access';
 import { config, configResource, status } from '../../state/device';
 import { homeAddress } from '../../state/handoff';
 import { joinNetwork } from '../../state/join';
 import { ResourceNotice } from '../ResourceNotice';
+import { WriteConfirm } from '../WriteConfirm';
 import { WifiFields } from '../wifi/WifiFields';
 
 /** The network the device joins, and a change of it, which ends in a handoff like first contact. */
@@ -61,7 +51,6 @@ function ChangeWifi() {
   const [tried, setTried] = useState(false);
   const [asking, setAsking] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [refusal, setRefusal] = useState('');
   const problems = wifiProblems(entry, storedPassword);
   const unsaved =
     entry.ssid.trim() !== (saved?.ssid ?? '') ||
@@ -71,11 +60,8 @@ function ChangeWifi() {
 
   const save = async () => {
     setSaving(true);
-    setRefusal('');
     try {
       await withAccess(() => joinNetwork(entry, storedPassword));
-    } catch (error) {
-      setRefusal(errorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -95,18 +81,9 @@ function ChangeWifi() {
           storedPassword={storedPassword}
           disabled={saving}
         />
-        {refusal !== '' && (
-          <Notice
-            className="mt-3"
-            tone="danger"
-            title="The device did not save the network."
-            description={refusal}
-          />
-        )}
         <div className="mt-4 flex justify-end">
           <Button
             variant="primary"
-            busy={saving}
             disabled={!unsaved}
             onClick={() => {
               setTried(true);
@@ -117,13 +94,14 @@ function ChangeWifi() {
           </Button>
         </div>
       </CardBody>
-      <ConfirmDialog
+      <WriteConfirm
         open={asking}
         onOpenChange={setAsking}
         title={`Join ${entry.ssid.trim()}?`}
         description={`The device restarts to join it, and this page loses contact. Then connect to ${entry.ssid.trim()} and open ${homeAddress(known)}.`}
         confirmLabel="Join network"
-        onConfirm={() => void save()}
+        failed="The device did not save the network."
+        write={save}
       />
     </Card>
   );

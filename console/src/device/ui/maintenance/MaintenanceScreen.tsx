@@ -1,16 +1,5 @@
-import {
-  Button,
-  Card,
-  CardHead,
-  ConfirmDialog,
-  Content,
-  CopyValue,
-  SectionNav,
-  SettingRow,
-  useToast,
-} from 'linen';
+import { Button, Card, CardHead, Content, CopyValue, SectionNav, SettingRow } from 'linen';
 import { useEffect, useState } from 'react';
-import { errorMessage } from '../../../shared/errors';
 import { bytes, duration } from '../../../shared/format';
 import { replacePath, usePathname } from '../../../shared/navigation';
 import { restart } from '../../lib/api';
@@ -19,6 +8,7 @@ import { liveStatus, status } from '../../state/device';
 import { updateLock } from '../../state/ota';
 import { sectionOf } from '../places';
 import { ScreenTop } from '../ScreenTop';
+import { WriteConfirm } from '../WriteConfirm';
 
 const SECTIONS = [
   { href: '/maintenance/updates', label: 'Updates' },
@@ -133,20 +123,8 @@ function Api() {
 }
 
 function RestartAndReset() {
-  const toast = useToast();
   const [asking, setAsking] = useState(false);
-  const [restarting, setRestarting] = useState(false);
   const held = updateLock('/api/restart');
-  const restartNow = async () => {
-    setRestarting(true);
-    try {
-      await withRestart('the restart', () => restart());
-    } catch (error) {
-      toast.show({ text: `The device did not restart: ${errorMessage(error)}`, sticky: true });
-    } finally {
-      setRestarting(false);
-    }
-  };
   return (
     <Card>
       <CardHead title="Restart" />
@@ -154,17 +132,18 @@ function RestartAndReset() {
         title="Restart the device"
         description={held ?? 'Audio stops for a few seconds and resumes on its own.'}
       >
-        <Button busy={restarting} disabled={held !== null} onClick={() => setAsking(true)}>
+        <Button disabled={held !== null} onClick={() => setAsking(true)}>
           Restart
         </Button>
       </SettingRow>
-      <ConfirmDialog
+      <WriteConfirm
         open={asking}
         onOpenChange={setAsking}
         title="Restart the device?"
         description="Audio stops while it restarts, and the console reconnects once it answers."
         confirmLabel="Restart"
-        onConfirm={() => void restartNow()}
+        failed="The device did not restart."
+        write={() => withRestart('the restart', () => restart())}
       />
     </Card>
   );

@@ -40,11 +40,11 @@ function CredentialQuestion({
 }: CredentialProps) {
   const [secret, setSecret] = useState('');
   const [keep, setKeep] = useState(false);
-  const [checking, setChecking] = useState(false);
   const [problem, setProblem] = useState('');
 
+  // The dialog waits on this check, and the problem is set before it settles,
+  // so a refused key takes the focus back to its field.
   const submit = async () => {
-    setChecking(true);
     setProblem('');
     try {
       const verdict = await verify(secret.trim(), keep);
@@ -53,8 +53,6 @@ function CredentialQuestion({
       else setProblem(rejected);
     } catch (error) {
       setProblem(`The check did not complete: ${errorMessage(error)}. Try again.`);
-    } finally {
-      setChecking(false);
     }
   };
 
@@ -67,9 +65,8 @@ function CredentialQuestion({
       title={title}
       description={description}
       confirmLabel="Unlock"
-      // Stand-in for busy on a dialog's confirm, which linen does not offer yet.
-      disabled={checking || secret.trim() === ''}
-      onConfirm={() => void submit()}
+      disabled={secret.trim() === ''}
+      onConfirm={submit}
     >
       {username !== undefined && (
         <input type="text" autoComplete="username" value={username} readOnly hidden />
@@ -80,7 +77,6 @@ function CredentialQuestion({
         autoComplete="current-password"
         autoFocus
         value={secret}
-        readOnly={checking}
         error={problem === '' ? undefined : problem}
         onChange={(event) => setSecret(event.currentTarget.value)}
       />

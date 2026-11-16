@@ -37,7 +37,6 @@ export function TargetDialog({
     consoleFilled: '',
   }));
   const [tried, setTried] = useState(false);
-  const [saving, setSaving] = useState(false);
   const problems = targetProblems(draft.entry);
   const problem = (field: 'host' | 'port') =>
     tried ? problems.find((entry) => entry.field === field)?.text : undefined;
@@ -46,7 +45,6 @@ export function TargetDialog({
   const save = async () => {
     setTried(true);
     if (problems.length > 0) return;
-    setSaving(true);
     try {
       const request = targetRequest(draft.entry);
       const done = await withRestart('the bridge change', () => setTarget(request));
@@ -55,8 +53,6 @@ export function TargetDialog({
       onOpenChange(false);
     } catch (error) {
       toast.show({ text: `The bridge was not saved: ${errorMessage(error)}`, sticky: true });
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -67,8 +63,7 @@ export function TargetDialog({
       title="Connect a bridge"
       description="The device sends its audio to the bridge at this address. Saving restarts it."
       confirmLabel="Save"
-      disabled={saving}
-      onConfirm={() => void save()}
+      onConfirm={save}
     >
       {searchOffered.value && (
         <div className="mb-4 grid gap-3">

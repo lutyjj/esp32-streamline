@@ -57,6 +57,8 @@ describe('the credential dialog', () => {
     const field = screen.getByLabelText('Key');
     expect(field.getAttribute('aria-invalid')).toBe('true');
     expect(field.getAttribute('aria-describedby')).toContain(refusal.parentElement?.id);
+    // The refusal is heard: the field takes the focus with its error.
+    await waitFor(() => expect(document.activeElement).toBe(field));
 
     type('right');
     fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));

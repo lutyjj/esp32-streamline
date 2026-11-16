@@ -6,11 +6,25 @@ function name(path: string, source: string): string {
   return path.replace(source, 'source').replaceAll(/[^a-z]/g, '-');
 }
 
+/**
+ * No card clips what it holds. A card hides its own overflow, so the page's width
+ * never shows content that runs past a card's edge.
+ */
+async function cardsFit(page: Page) {
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll('main section')]
+      .filter((card) => card.scrollWidth > card.clientWidth)
+      .map((card) => card.querySelector('h2')?.textContent ?? 'a card'),
+  );
+  expect(clipped).toEqual([]);
+}
+
 /** A whole screen, within the width it is drawn at, for review. */
 async function shoot(page: Page, info: TestInfo, width: number, name: string) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     width,
   );
+  await cardsFit(page);
   await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage: true });
 }
 
@@ -41,6 +55,7 @@ for (const width of [390, 800, 1280]) {
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
           width,
         );
+        await cardsFit(page);
         await page.screenshot({
           path: info.outputPath(`device${path.replaceAll(/[^a-z]/g, '-')}.png`),
           fullPage: true,

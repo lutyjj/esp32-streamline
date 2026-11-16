@@ -209,7 +209,8 @@ function CustomImageCard({ signingKey, busy }: { signingKey: string; busy: boole
         title="Install a custom image"
         description="For development: an image signed with the key this firmware trusts, pinned by its SHA-256. A different key needs a serial flash."
       />
-      <CardBody className="grid gap-4">
+      {/* A column rather than a grid, whose track the fields' stated widths would hold open on a phone. */}
+      <CardBody className="flex flex-col gap-4">
         <Facts>
           <Fact name="Signing key SHA-256" mono copy={{ value: signingKey, label: 'Signing key' }}>
             {signingKey || 'Unknown'}

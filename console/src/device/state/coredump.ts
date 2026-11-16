@@ -5,8 +5,8 @@
 
 import { queryOptions } from '@tanstack/preact-query';
 import { type Ack, getCoredump, getCoredumpImage, postCoredumpErase } from '../../generated/api';
+import { readAgain } from '../../shared/queries';
 import { withAccess } from './access';
-import { readAgain } from './queries';
 
 export const coredumpQuery = queryOptions({
   queryKey: ['coredump'],

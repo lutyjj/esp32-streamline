@@ -23,6 +23,11 @@ import {
   type StatusResponse,
 } from '../../../generated/api';
 import { fieldErrors } from '../../../shared/http';
+import { queryClient } from '../../../shared/queries';
+import { ReadNotice } from '../../../shared/ReadNotice';
+import { WriteConfirm } from '../../../shared/WriteConfirm';
+import { WriteFailure } from '../../../shared/WriteFailure';
+import { writeFailure } from '../../../shared/writeFailure';
 import { status } from '../../state/device';
 import {
   checkForUpdate,
@@ -35,11 +40,7 @@ import {
   scheduleUpdates,
   updateLock,
 } from '../../state/ota';
-import { queryClient, settingsQuery } from '../../state/queries';
-import { writeFailure } from '../../state/writeFailure';
-import { ReadNotice } from '../ReadNotice';
-import { WriteConfirm } from '../WriteConfirm';
-import { WriteFailure } from '../WriteFailure';
+import { settingsQuery } from '../../state/queries';
 
 const SCHEDULES: { value: AutoUpdateScheduleRequest; label: string }[] = [
   { value: 'disabled', label: 'Off' },
@@ -65,7 +66,7 @@ function FirmwareCard({ known }: { known: StatusResponse }) {
   const [rollbackAsked, setRollbackAsked] = useState(false);
   const { ota } = known;
   const failed = (what: string) => (error: unknown) => {
-    const words = writeFailure(error, what);
+    const words = writeFailure(error, what, 'device');
     toast.show({ text: `${words.title} ${words.description}`, sticky: true });
   };
   const check = useMutation(
@@ -165,7 +166,7 @@ function ScheduleCard() {
     {
       mutationFn: scheduleUpdates,
       onError: (error) => {
-        const words = writeFailure(error, 'The schedule stayed as it was.');
+        const words = writeFailure(error, 'The schedule stayed as it was.', 'device');
         toast.show({ text: `${words.title} ${words.description}`, sticky: true });
       },
     },

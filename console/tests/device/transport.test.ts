@@ -4,7 +4,7 @@ import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
 import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
 import { connection, refresh } from '../../src/device/state/device';
-import { queryClient, settingsQuery } from '../../src/device/state/queries';
+import { settingsQuery } from '../../src/device/state/queries';
 import {
   activateKey,
   discardKey,
@@ -17,6 +17,7 @@ import {
   verifyKey,
 } from '../../src/device/state/transport';
 import type { TransportStatus } from '../../src/generated/api';
+import { queryClient } from '../../src/shared/queries';
 import { answering } from './answering';
 
 const keyId = 'eli1-0123456789abcdef0123456789abcdef';

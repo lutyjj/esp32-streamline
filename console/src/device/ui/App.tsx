@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import icon from '../../icon.svg';
 import { CredentialDialog } from '../../shared/CredentialDialog';
 import { hashNavigation, navigate, replacePath, usePathname } from '../../shared/navigation';
+import { ThemeChoice } from '../../shared/ThemeChoice';
+import { PeerContext } from '../../shared/writeFailure';
 import { unlockWithKey } from '../state/access';
 import { UPDATE_OPERATION } from '../state/connection';
 import { connection, joinUntaken, restartSettled, status } from '../state/device';
@@ -17,25 +19,26 @@ import { MaintenanceScreen } from './maintenance/MaintenanceScreen';
 import { Handoff } from './onboarding/Handoff';
 import { Onboarding } from './onboarding/Onboarding';
 import { PLACES, placeOf } from './places';
-import { ThemeChoice } from './ThemeChoice';
 
 export function App() {
   return (
     <LinenProvider navigation={hashNavigation}>
-      <ToastProvider>
-        <UnsavedChangesGuard>
-          <Console />
-        </UnsavedChangesGuard>
-        <CredentialDialog
-          title="Unlock settings"
-          description="Settings change only with this device's admin key, which you saved when you set it up. A lost key needs a reflash."
-          label="Admin key"
-          username="admin"
-          remember="Remember on this browser"
-          rejected="The device did not accept this key. Check it and try again."
-          verify={unlockWithKey}
-        />
-      </ToastProvider>
+      <PeerContext.Provider value="device">
+        <ToastProvider>
+          <UnsavedChangesGuard>
+            <Console />
+          </UnsavedChangesGuard>
+          <CredentialDialog
+            title="Unlock settings"
+            description="Settings change only with this device's admin key, which you saved when you set it up. A lost key needs a reflash."
+            label="Admin key"
+            username="admin"
+            remember="Remember on this browser"
+            rejected="The device did not accept this key. Check it and try again."
+            verify={unlockWithKey}
+          />
+        </ToastProvider>
+      </PeerContext.Provider>
     </LinenProvider>
   );
 }

@@ -1,6 +1,6 @@
 import type { UseQueryResult } from '@tanstack/preact-query';
 import { Button, Notice } from 'linen';
-import { errorMessage } from '../../shared/errors';
+import { errorMessage } from './errors';
 
 /** Says that a read never loaded, with a retry beside it. Nothing while it loads or once it has. */
 export function ReadNotice({ read, name }: { read: UseQueryResult<unknown>; name: string }) {

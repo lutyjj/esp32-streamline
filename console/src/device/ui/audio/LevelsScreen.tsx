@@ -15,6 +15,8 @@ import {
 import { useEffect, useState } from 'react';
 import { getSetAudioUrl, type StatusResponse } from '../../../generated/api';
 import { Link } from '../../../shared/navigation';
+import { queryClient } from '../../../shared/queries';
+import { WriteFailure } from '../../../shared/WriteFailure';
 import { status } from '../../state/device';
 import {
   discardLevels,
@@ -26,9 +28,7 @@ import {
   saveLevels,
 } from '../../state/levels';
 import { updateLock } from '../../state/ota';
-import { queryClient } from '../../state/queries';
 import { ScreenTop } from '../ScreenTop';
-import { WriteFailure } from '../WriteFailure';
 import { InputMeter } from './InputMeter';
 
 const TRAIL = [{ href: '/audio', label: 'Audio' }];

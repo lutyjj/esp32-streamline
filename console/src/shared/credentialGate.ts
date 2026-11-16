@@ -5,6 +5,7 @@
  */
 
 import { signal } from '@preact/signals';
+import { ApiError } from './http';
 
 /** True while a credential is asked for. */
 export const credentialAsked = signal(false);
@@ -33,4 +34,35 @@ export function answerCredential(accepted: boolean): void {
   pending = null;
   credentialAsked.value = false;
   resolve?.(accepted);
+}
+
+/** How a console holds its credential, for a write that needs it. */
+export interface CredentialHold {
+  /** The server takes writes only with the credential. */
+  required(): boolean;
+  /** This console holds a credential its writes may use now. */
+  unlocked(): boolean;
+  /** Stop using the held credential. */
+  lock(): void;
+}
+
+/**
+ * Run `write` with the credential, asking for it first when the console is
+ * locked, and once more when the server refuses it. Resolves null when the
+ * person declines to unlock.
+ */
+export async function withCredential<T>(
+  hold: CredentialHold,
+  write: () => Promise<T>,
+): Promise<T | null> {
+  if (hold.required() && !hold.unlocked() && !(await requestCredential())) return null;
+  try {
+    return await write();
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 401)) throw error;
+    // The credential changed, or the unlock ended while the write was on its way.
+    hold.lock();
+    if (!(await requestCredential())) return null;
+    return write();
+  }
 }

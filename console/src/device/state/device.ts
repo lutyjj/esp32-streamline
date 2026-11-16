@@ -5,6 +5,7 @@
 
 import { computed, signal } from '@preact/signals';
 import { getStatus, type StatusResponse } from '../../generated/api';
+import { queryClient } from '../../shared/queries';
 import {
   type Connection,
   type ConnectionEvent,
@@ -14,7 +15,7 @@ import {
   sightingOf,
   untakenJoin,
 } from './connection';
-import { audioProfilesQuery, queryClient, settingsQuery } from './queries';
+import { audioProfilesQuery, settingsQuery } from './queries';
 
 export const POLL_MS = 1500;
 /**

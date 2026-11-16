@@ -6,10 +6,11 @@
  */
 
 import { type Ack, type AudioSettings, type StatusResponse, setAudio } from '../../generated/api';
+import { queryClient, readAgain } from '../../shared/queries';
 import { discarded, edited, type Followed, followed, seeded, unsaved } from '../lib/follow';
 import { withRestart } from './access';
 import { readBack } from './device';
-import { audioProfilesQuery, queryClient, readAgain } from './queries';
+import { audioProfilesQuery } from './queries';
 
 export type Level = keyof AudioSettings;
 

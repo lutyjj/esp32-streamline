@@ -1,6 +1,6 @@
 import { RailChoice, SegmentedControl, THEME_PREFERENCES, type ThemePreference } from 'linen';
 import { SunMoon } from 'lucide-react';
-import { theme } from '../../shared/theme';
+import { theme } from './theme';
 
 const THEME_WORDS: Record<ThemePreference, string> = {
   system: 'Auto',

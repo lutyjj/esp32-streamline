@@ -20,11 +20,15 @@ import {
   getSetTransportModeUrl,
   type TransportStatus,
 } from '../../../generated/api';
+import { queryClient } from '../../../shared/queries';
+import { ReadNotice } from '../../../shared/ReadNotice';
+import { WriteConfirm } from '../../../shared/WriteConfirm';
+import { WriteFailure } from '../../../shared/WriteFailure';
 import { bridgeSecurityLink } from '../../lib/consoleAddress';
 import { rememberedBridgeConsole } from '../../state/bridgeConsole';
 import { status } from '../../state/device';
 import { updateLock } from '../../state/ota';
-import { queryClient, settingsQuery } from '../../state/queries';
+import { settingsQuery } from '../../state/queries';
 import {
   activateKey,
   discardKey,
@@ -38,10 +42,7 @@ import {
   rollBackKey,
   verifyKey,
 } from '../../state/transport';
-import { ReadNotice } from '../ReadNotice';
 import { ScreenTop } from '../ScreenTop';
-import { WriteConfirm } from '../WriteConfirm';
-import { WriteFailure } from '../WriteFailure';
 
 const TRAIL = [{ href: '/bridge', label: 'Bridge' }];
 

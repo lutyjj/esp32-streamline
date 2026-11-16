@@ -15,9 +15,10 @@ import {
   setName,
 } from '../../generated/api';
 import { NameSettingsRequest as nameRule } from '../../generated/rules';
+import { readAgain } from '../../shared/queries';
 import { withAccess } from './access';
 import { readBack } from './device';
-import { readAgain, settingsQuery } from './queries';
+import { settingsQuery } from './queries';
 
 async function settingsWrite(write: () => Promise<Ack>): Promise<Ack | null> {
   const done = await withAccess(write);

@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/preact-query';
 import { ConfirmDialog } from 'linen';
-import { queryClient } from '../state/queries';
+import { queryClient } from './queries';
 import { WriteFailure } from './WriteFailure';
 
 interface WriteConfirmProps {
@@ -17,7 +17,7 @@ interface WriteConfirmProps {
 }
 
 /**
- * A confirmation whose act is a device write. It waits for the answer,
+ * A confirmation whose act is a write to the server. It waits for the answer,
  * closes once the write is done or the unlock declined, and keeps a failure
  * in view for another try or a way out.
  */

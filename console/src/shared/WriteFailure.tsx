@@ -1,5 +1,5 @@
 import { Notice } from 'linen';
-import { writeFailure } from '../state/writeFailure';
+import { usePeer, writeFailure } from './writeFailure';
 
 /**
  * A write that failed, in the words `writeFailure` gives it: refused, left
@@ -15,5 +15,5 @@ export function WriteFailure({
   error: unknown;
   className?: string;
 }) {
-  return <Notice className={className} {...writeFailure(error, failed)} />;
+  return <Notice className={className} {...writeFailure(error, failed, usePeer())} />;
 }

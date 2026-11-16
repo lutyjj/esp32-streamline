@@ -5,8 +5,7 @@
  */
 
 import { type Ack, setAdminKey } from '../../generated/api';
-import { requestCredential } from '../../shared/credentialGate';
-import { ApiError } from '../../shared/http';
+import { withCredential } from '../../shared/credentialGate';
 import {
   isUnlocked,
   keyRemembered,
@@ -26,17 +25,8 @@ function keyRequired(): boolean {
  * Run `write` with the admin key, asking for the key first when the console
  * is locked. Resolves null when the person declines to unlock.
  */
-export async function withAccess<T>(write: () => Promise<T>): Promise<T | null> {
-  if (keyRequired() && !isUnlocked() && !(await requestCredential())) return null;
-  try {
-    return await write();
-  } catch (error) {
-    if (!(error instanceof ApiError && error.status === 401)) throw error;
-    // The key changed, or the window closed while the write was on its way.
-    lockSettings();
-    if (!(await requestCredential())) return null;
-    return write();
-  }
+export function withAccess<T>(write: () => Promise<T>): Promise<T | null> {
+  return withCredential({ required: keyRequired, unlocked: isUnlocked, lock: lockSettings }, write);
 }
 
 /** The credential dialog's check: the console unlocks with a key the device accepts. */

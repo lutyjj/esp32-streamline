@@ -3,11 +3,13 @@ import { LinenProvider, ToastProvider, UnsavedChangesGuard } from 'linen';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { deviceConfig, deviceStatus } from '../../src/device/mocks/fixtures';
 import { UPDATE_BUSY_REASON } from '../../src/device/state/ota';
-import { audioProfilesQuery, queryClient, settingsQuery } from '../../src/device/state/queries';
+import { audioProfilesQuery, settingsQuery } from '../../src/device/state/queries';
 import { AudioScreen } from '../../src/device/ui/audio/AudioScreen';
 import { BridgeScreen } from '../../src/device/ui/bridge/BridgeScreen';
 import { DeviceScreen } from '../../src/device/ui/device/DeviceScreen';
 import { replacePath } from '../../src/shared/navigation';
+import { queryClient } from '../../src/shared/queries';
+import { PeerContext } from '../../src/shared/writeFailure';
 import { answering } from './answering';
 
 // An action that can restart the device waits while a firmware update runs,
@@ -17,9 +19,11 @@ function mount(path: string, page = <AudioScreen />) {
   replacePath(path);
   render(
     <LinenProvider>
-      <ToastProvider>
-        <UnsavedChangesGuard>{page}</UnsavedChangesGuard>
-      </ToastProvider>
+      <PeerContext.Provider value="device">
+        <ToastProvider>
+          <UnsavedChangesGuard>{page}</UnsavedChangesGuard>
+        </ToastProvider>
+      </PeerContext.Provider>
     </LinenProvider>,
   );
 }

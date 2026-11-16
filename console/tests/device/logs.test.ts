@@ -10,8 +10,8 @@ import {
   numberedLines,
   RETAINED_LINES,
 } from '../../src/device/state/logs';
-import { queryClient } from '../../src/device/state/queries';
 import type { BootLog } from '../../src/generated/api';
+import { queryClient } from '../../src/shared/queries';
 
 const BOOT = 4242;
 

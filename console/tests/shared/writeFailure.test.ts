@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { UnansweredError } from '../../src/device/lib/http';
-import { writeFailure } from '../../src/device/state/writeFailure';
-import { ApiError } from '../../src/shared/http';
+import { ApiError, UnansweredError } from '../../src/shared/http';
+import { writeFailure } from '../../src/shared/writeFailure';
 
 const FAILED = 'The profiles did not change.';
 
@@ -11,7 +10,7 @@ describe('writeFailure', () => {
       new ApiError(400, 'A device keeps at most 8 profiles.', 'catalog'),
       new ApiError(500, 'The device could not store the profiles.'),
     ]) {
-      expect(writeFailure(error, FAILED)).toEqual({
+      expect(writeFailure(error, FAILED, 'device')).toEqual({
         tone: 'danger',
         title: FAILED,
         description: error.message,
@@ -20,8 +19,8 @@ describe('writeFailure', () => {
   });
 
   it('says a write left unanswered or dropped may have happened', () => {
-    for (const error of [new UnansweredError(), new TypeError('Failed to fetch')]) {
-      expect(writeFailure(error, FAILED)).toMatchObject({
+    for (const error of [new UnansweredError('device'), new TypeError('Failed to fetch')]) {
+      expect(writeFailure(error, FAILED, 'device')).toMatchObject({
         tone: 'warn',
         title: 'The device did not answer.',
       });
@@ -29,7 +28,7 @@ describe('writeFailure', () => {
   });
 
   it('says why a write the console never sent did not go', () => {
-    expect(writeFailure(new Error('That profile is gone.'), FAILED)).toEqual({
+    expect(writeFailure(new Error('That profile is gone.'), FAILED, 'device')).toEqual({
       tone: 'danger',
       title: FAILED,
       description: 'That profile is gone.',

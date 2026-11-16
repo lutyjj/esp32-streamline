@@ -21,16 +21,16 @@ import { useState } from 'react';
 import type { CheckStatus, StatusResponse } from '../../../generated/api';
 import { requestCredential } from '../../../shared/credentialGate';
 import { bytes, duration } from '../../../shared/format';
+import { queryClient } from '../../../shared/queries';
+import { ReadNotice } from '../../../shared/ReadNotice';
 import { saveFile } from '../../../shared/saveFile';
+import { WriteConfirm } from '../../../shared/WriteConfirm';
+import { writeFailure } from '../../../shared/writeFailure';
 import { isUnlocked, useAuthEpoch } from '../../lib/adminKey';
 import { coredumpImage, coredumpQuery, eraseCoredump } from '../../state/coredump';
 import { liveStatus, status } from '../../state/device';
 import { headroomZones } from '../../state/health';
 import { FOLLOW_MS, logsQuery, logText } from '../../state/logs';
-import { queryClient } from '../../state/queries';
-import { writeFailure } from '../../state/writeFailure';
-import { ReadNotice } from '../ReadNotice';
-import { WriteConfirm } from '../WriteConfirm';
 
 const CHECK_WORDS: Record<CheckStatus, { tone: StatusTone; word: string }> = {
   ok: { tone: 'positive', word: 'OK' },
@@ -192,7 +192,7 @@ function CoredumpCard() {
         if (image) saveFile(image, 'streamline-coredump.bin');
       },
       onError: (error) => {
-        const words = writeFailure(error, 'The crash dump did not download.');
+        const words = writeFailure(error, 'The crash dump did not download.', 'device');
         toast.show({ text: `${words.title} ${words.description}`, sticky: true });
       },
     },

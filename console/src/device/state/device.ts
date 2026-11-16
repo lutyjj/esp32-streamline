@@ -191,7 +191,9 @@ function observeAudio(s: StatusResponse, now: number): void {
     now,
   );
   deliveryObserved.value = lastPcmBytes >= 0;
-  audioMoving.value = lastPcmBytes >= 0 && s.metrics.bytes_total > lastPcmBytes;
+  // A count below the last comes from a new boot, and all of it was sent since.
+  const since = s.metrics.bytes_total < lastPcmBytes ? 0 : lastPcmBytes;
+  audioMoving.value = lastPcmBytes >= 0 && s.metrics.bytes_total > since;
   lastPcmBytes = s.metrics.bytes_total;
 }
 

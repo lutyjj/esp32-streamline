@@ -57,6 +57,24 @@ describe('audioActivity', () => {
     expect(connection.value.phase).toBe('lost');
   });
 
+  it('keeps sending through a restart quicker than a poll, from the new boot’s count', async () => {
+    let bytes = 10240;
+    setTransport(
+      async () => new Response(JSON.stringify(deviceStatus({ metrics: { bytes_total: bytes } }))),
+    );
+    await refresh();
+    bytes += 1024;
+    await refresh();
+    expect(audioMoving.value).toBe(true);
+    // The device restarted between two polls; its count starts again.
+    bytes = 2048;
+    await refresh();
+    expect(audioMoving.value).toBe(true);
+    bytes = 0;
+    await refresh();
+    expect(audioMoving.value).toBe(false);
+  });
+
   it('clears live transmission evidence on failure and establishes a new baseline after recovery', async () => {
     let bytes = 10240;
     setTransport(

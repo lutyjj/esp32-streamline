@@ -7,11 +7,8 @@
 //! of staging.
 
 use crate::{
-    config::RuntimeConfig,
-    mode::ConfigWrite,
-    mutation::MutationError,
-    profiles::{AudioProfileCatalog, AudioProfileError},
-    recovery,
+    config::RuntimeConfig, mode::ConfigWrite, mutation::MutationError,
+    profiles::AudioProfileCatalog, recovery,
 };
 
 use super::ApiState;
@@ -71,9 +68,11 @@ pub(super) fn save_audio_profiles(
     state: &ApiState,
     catalog: AudioProfileCatalog,
 ) -> Result<(), MutationError> {
+    // A catalog from a request is checked, and its refusal named, before it
+    // gets here; this check guards the stored one, which no request field holds.
     catalog
         .validate(state.board.as_ref())
-        .map_err(invalid_catalog)?;
+        .map_err(|error| MutationError::InvalidInput(error.to_string()))?;
     state
         .lock_store()
         .save_audio_profiles(&catalog, state.board.as_ref())
@@ -114,14 +113,6 @@ pub(super) fn write_configuration_and_profiles(
     *state.lock_config() = config;
     *state.lock_audio_profiles() = catalog;
     Ok(())
-}
-
-/// A catalog the device refuses, named as the profiles write names it.
-pub(super) fn invalid_catalog(error: AudioProfileError) -> MutationError {
-    MutationError::InvalidField {
-        field: crate::mutation::field::CATALOG,
-        message: error.to_string(),
-    }
 }
 
 fn persistence(error: anyhow::Error) -> MutationError {

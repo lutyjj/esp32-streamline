@@ -12,7 +12,7 @@ use crate::{
 use super::super::{
     requests::form,
     responses::{json_response, mutation_error, restart_to_apply},
-    writes::{invalid_catalog, save_audio_profiles, write_configuration_and_profiles},
+    writes::{save_audio_profiles, write_configuration_and_profiles},
     ApiState, ContractServer,
 };
 
@@ -59,9 +59,12 @@ pub(super) fn register_writes(server: &mut ContractServer<'_>) -> Result<()> {
                         message: format!("This is not a profile catalog: {error}."),
                     })?;
                 catalog.active_profile_id = None;
-                catalog
-                    .validate(state.board.as_ref())
-                    .map_err(invalid_catalog)?;
+                catalog.validate(state.board.as_ref()).map_err(|error| {
+                    MutationError::InvalidField {
+                        field: crate::mutation::field::CATALOG,
+                        message: error.to_string(),
+                    }
+                })?;
                 let previous_active = state.lock_audio_profiles().active_profile_id.clone();
                 catalog.active_profile_id = previous_active
                     .filter(|id| catalog.profiles.iter().any(|profile| &profile.id == id));

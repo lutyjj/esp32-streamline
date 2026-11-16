@@ -50,7 +50,7 @@ pub struct ErrorResponse<'a> {
     /// Why the device refused the request.
     pub error: &'a str,
     /// The request field the device refuses, named as the request names it;
-    /// null when the refusal concerns no single field.
+    /// null when the device names none, as for a body it cannot decode.
     pub field: Option<&'a str>,
 }
 

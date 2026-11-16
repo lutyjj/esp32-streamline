@@ -542,13 +542,13 @@ export class FakeDevice {
 
   private selectBoard(body: FormBody): JsonBodyType | Response {
     if (body.board_id && body.board_id !== this.status.capabilities.board_id) {
-      return reject(400, `unknown board "${body.board_id}"`);
+      return reject(400, `unknown board descriptor '${body.board_id}'`, 'board_id');
     }
     if (body.descriptor) {
       try {
         JSON.parse(body.descriptor);
       } catch {
-        return reject(400, 'descriptor is not valid JSON');
+        return reject(400, 'invalid board descriptor: not valid JSON', 'descriptor');
       }
     }
     return { ok: true, rebooting: true };
@@ -559,7 +559,7 @@ export class FakeDevice {
     try {
       parsed = JSON.parse(catalog ?? '') as AudioProfileCatalog;
     } catch {
-      return reject(400, 'catalog is not valid JSON');
+      return reject(400, 'This is not a profile catalog: not valid JSON.', 'catalog');
     }
     this.profiles = { ...parsed, board_id: this.status.capabilities.board_id };
     return { ok: true };
@@ -567,7 +567,7 @@ export class FakeDevice {
 
   private activateProfile(profileId: string): JsonBodyType | Response {
     if (profileId && !this.profiles.profiles.some((profile) => profile.id === profileId)) {
-      return reject(400, `unknown profile "${profileId}"`);
+      return reject(400, 'No profile has that id.', 'profile_id');
     }
     this.profiles.active_profile_id = profileId || null;
     return { ok: true };

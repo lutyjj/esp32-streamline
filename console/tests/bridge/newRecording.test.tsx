@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LinenProvider } from 'linen';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -33,6 +33,9 @@ describe('a new recording', () => {
   it('holds the source it shows first, and never records another in its place', async () => {
     const { rerender } = render(form(knowing(SOURCE, OTHER)));
     expect(await screen.findByText(SOURCE)).toBeDefined();
+    fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'Side A' } });
+    const start = screen.getByRole('button', { name: 'Start recording' });
+    expect(start.hasAttribute('disabled')).toBe(false);
 
     rerender(form(knowing(OTHER)));
 

@@ -3,7 +3,7 @@ import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
 import { type StatusResponse, setTransport } from '../../src/device/lib/api';
 import { edited, followed, seeded, unsaved } from '../../src/device/lib/follow';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
-import { connection, status } from '../../src/device/state/device';
+import { audioProfiles, connection, status } from '../../src/device/state/device';
 import {
   discardLevels,
   editLevel,
@@ -90,5 +90,26 @@ describe('saving the levels', () => {
     setTransport(async () => Response.json({ ok: true, rebooting: true }));
     await saveLevels(editLevel(levelsDraft(device), 'input_gain', 24));
     expect(connection.value).toMatchObject({ phase: 'waiting', operation: 'the level change' });
+  });
+
+  it('reads the catalog again, since the device drops its active profile on a level save', async () => {
+    const catalog = {
+      schema_version: 1,
+      board_id: device.capabilities.board_id,
+      active_profile_id: 'loud',
+      profiles: [{ id: 'loud', name: 'Loud', audio: device.audio }],
+    };
+    audioProfiles.value = catalog;
+    setTransport(async (request) => {
+      const path = new URL(request.url).pathname;
+      if (path === '/api/audio-profiles')
+        return Response.json({ ...catalog, active_profile_id: null });
+      return request.method === 'GET' ? Response.json(device) : Response.json({ ok: true });
+    });
+
+    await saveLevels(editLevel(levelsDraft(device), 'input_gain', 24));
+
+    expect(audioProfiles.value?.active_profile_id).toBeNull();
+    audioProfiles.value = null;
   });
 });

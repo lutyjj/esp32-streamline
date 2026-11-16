@@ -244,6 +244,8 @@ export class FakeDevice {
         };
         Object.assign(this.config, audio);
         Object.assign(this.status.audio, audio);
+        // Like the firmware: levels set by hand are no profile's.
+        this.profiles.active_profile_id = null;
         return this.levelsApplied();
       }),
       this.write('/api/settings/analog-passthrough', (body) => {

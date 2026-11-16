@@ -8,10 +8,11 @@
 
 import { computed, signal } from '@preact/signals';
 import { errorMessage } from '../../shared/errors';
-import { type AudioSettings, getStatus, setAudio } from '../lib/api';
+import { type AudioSettings, getStatus } from '../lib/api';
 import { CAL_ATTEN_STEP, CalibrationEngine, type LevelSample } from '../lib/calibration';
 import { report, status } from './device';
 import { blockingHealth } from './health';
+import { writeAudio } from './levels';
 
 export type Calibration =
   /** Asks the owner to pause the source. */
@@ -98,7 +99,7 @@ export function deviceCalibration(entry: AudioSettings): CalibrationDevice {
       };
     },
     async setAttenuation(attenuation, signal) {
-      const ack = await setAudio({ ...entry, adc_attenuation_db: attenuation }, { signal });
+      const ack = await writeAudio({ ...entry, adc_attenuation_db: attenuation }, { signal });
       // A device whose input stopped restarts to apply it; the guide cannot go on.
       if (ack.rebooting) {
         report({ type: 'restarting', operation: 'the calibration', at: Date.now() });

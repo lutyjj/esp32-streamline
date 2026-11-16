@@ -5,10 +5,10 @@
  * keeps describing the applied levels until a save lands.
  */
 
-import { type AudioSettings, type StatusResponse, setAudio } from '../lib/api';
+import { type Ack, type AudioSettings, type StatusResponse, setAudio } from '../lib/api';
 import { discarded, edited, type Followed, followed, seeded, unsaved } from '../lib/follow';
 import { withRestart } from './access';
-import { readBack } from './device';
+import { audioProfiles, loadAudioProfiles, readBack } from './device';
 
 export type Level = keyof AudioSettings;
 
@@ -57,8 +57,18 @@ export async function saveLevels(draft: LevelsDraft): Promise<boolean> {
     input_gain: draft.input_gain.value,
     adc_attenuation_db: draft.adc_attenuation_db.value,
   };
-  const ack = await withRestart('the level change', () => setAudio(audio));
+  const ack = await withRestart('the level change', () => writeAudio(audio));
   if (ack === null) return false;
   if (!ack.rebooting) await readBack();
   return true;
+}
+
+/**
+ * Write audio levels. The device drops its active profile on any audio
+ * write, so a catalog that names one is read again; a restart rereads it anyway.
+ */
+export async function writeAudio(audio: AudioSettings, options?: RequestInit): Promise<Ack> {
+  const ack = await setAudio(audio, options);
+  if (!ack.rebooting && audioProfiles.value?.active_profile_id) await loadAudioProfiles();
+  return ack;
 }

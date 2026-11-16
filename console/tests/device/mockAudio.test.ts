@@ -2,9 +2,11 @@ import { getResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
 import {
+  getAudioProfiles,
   getStatus,
   setActiveAudioProfile,
   setAudio,
+  setAudioProfiles,
   setStream,
   setTarget,
   setTransport,
@@ -85,5 +87,17 @@ describe('mock audio transport', () => {
     reach('steady');
     device.codecRunning = false;
     await expect(setActiveAudioProfile('')).resolves.toEqual({ ok: true, rebooting: true });
+  });
+
+  it('drops the active profile when levels are set by hand, as the firmware does', async () => {
+    reach('steady');
+    const catalog = await getAudioProfiles();
+    const audio = { input_line: 2, input_gain: 12, adc_attenuation_db: 6 };
+    await setAudioProfiles({ ...catalog, profiles: [{ id: 'loud', name: 'Loud', audio }] });
+    await setActiveAudioProfile('loud');
+    expect((await getAudioProfiles()).active_profile_id).toBe('loud');
+
+    await setAudio({ ...audio, input_gain: 16 });
+    expect((await getAudioProfiles()).active_profile_id).toBeNull();
   });
 });

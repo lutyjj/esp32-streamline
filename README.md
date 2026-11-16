@@ -34,7 +34,7 @@ The official preset is the Ai-Thinker ESP32 Audio Kit v2.2 with its ES8388 codec
 
 ### 1. Flash the board
 
-Open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/) in desktop Chrome, Edge, or Firefox 151 or newer, connect the board over USB, and click **Connect & install**. From a terminal, download `streamline-X.Y.Z-full.bin` from [Releases](https://github.com/lutyjj/esp32-streamline/releases) and flash it with [esptool](https://docs.espressif.com/projects/esptool/):
+Open the [WebFlasher](https://lutyjj.github.io/esp32-streamline/) in Chrome or Edge on a computer, or Firefox 151 or newer, connect the board over USB, and click **Connect & install**. From a terminal, download `streamline-X.Y.Z-full.bin` from [Releases](https://github.com/lutyjj/esp32-streamline/releases) and flash it with [esptool](https://docs.espressif.com/projects/esptool/):
 
 ```sh
 esptool.py -p /dev/ttyUSB0 -b 460800 write_flash 0x0 streamline-X.Y.Z-full.bin
@@ -85,8 +85,8 @@ Host networking lets devices [discover the bridge](docs/bridge.md#discovery) dur
 
 ### 3. Set up the device
 
-1. Read the setup network's name and password from the WebFlasher's **Logs & console** (or `espflash monitor`); the board prints both when it starts. No password at hand? Hold KEY1 while plugging the board in, and the setup network starts open for that one boot.
-2. Join `esp32-streamline-XXXX`. The setup console opens by itself, or at `http://192.168.71.1/`.
+1. Read the setup network's name and password from the WebFlasher's **Logs & Console**, after **Reset Device** there (or `espflash monitor`); the board prints both when it starts. No password at hand? Hold KEY1 while plugging the board in, and the setup network starts open for that one boot.
+2. Join `esp32-streamline-XXXXXX`. The setup console opens by itself, or at `http://192.168.71.1/`.
 3. Enter your Wi-Fi and **save the admin key** it generates. The device shows it once, every later settings change needs it, and losing it means a reflash.
 4. After the reboot, open `http://streamline-xxxx.local/` (or the device's IP if your network drops mDNS), pick the bridge under **Bridge**, and set levels under **Audio**.
 

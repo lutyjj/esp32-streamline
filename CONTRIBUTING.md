@@ -64,7 +64,8 @@ No device? `make console-dev-mock` serves the device console against an
 in-memory fake and the bridge console against a real bridge container, which
 `streamline-pcm-source` feeds with the firmware's conformance frames:
 <http://localhost:5173/> is the device console (`?scenario=first-boot`
-starts at onboarding), `/bridge.html` the bridge console. The fake device
+starts at onboarding), `/bridge.html` the bridge console, and `/flasher.html`
+the WebFlasher beside the site's manifest. The fake device
 unlocks with 48 `a`s as the admin key; the bridge with the token
 `streamline-dev-bridge-token` (override with `BRIDGE_TOKEN=…`).
 `make console-dev DEV_PORT=5174` opens a second preview against the device in

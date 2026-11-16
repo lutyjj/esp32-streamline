@@ -3,7 +3,7 @@ import { LinenProvider, Shell, ToastProvider, UnsavedChangesGuard, useToast } fr
 import { useEffect } from 'react';
 import icon from '../../icon.svg';
 import { CredentialDialog } from '../../shared/CredentialDialog';
-import { hashNavigation, replacePath, usePathname } from '../../shared/navigation';
+import { hashNavigation, navigate, replacePath, usePathname } from '../../shared/navigation';
 import { unlockWithKey } from '../state/access';
 import { UPDATE_OPERATION } from '../state/connection';
 import { connection, joinUntaken, restartSettled, status } from '../state/device';
@@ -11,7 +11,7 @@ import { untakenJoinNews } from '../state/join';
 import { updateNews } from '../state/ota';
 import { AudioScreen } from './audio/AudioScreen';
 import { BridgeScreen } from './bridge/BridgeScreen';
-import { deviceConditions } from './DeviceConditions';
+import { deviceConditions, UPDATES_PATH } from './DeviceConditions';
 import { DeviceScreen } from './device/DeviceScreen';
 import { MaintenanceScreen } from './maintenance/MaintenanceScreen';
 import { Handoff } from './onboarding/Handoff';
@@ -48,6 +48,7 @@ function Console() {
   }, [name]);
   useRestartToasts();
   useUntakenJoinToasts();
+  useServedConsole();
 
   const now = connection.value;
   if (now.phase === 'handoff')
@@ -69,6 +70,17 @@ function useUntakenJoinToasts() {
       }),
     [toast],
   );
+}
+
+/** A page from another image reloads onto Updates, once a draft lets it go. */
+function useServedConsole() {
+  const path = usePathname();
+  const replaced = connection.value.phase === 'replaced';
+  useEffect(() => {
+    if (!replaced) return;
+    if (path === UPDATES_PATH) window.location.reload();
+    else navigate(UPDATES_PATH);
+  }, [replaced, path]);
 }
 
 /** Says once that a restart finished; the toast takes the news, so it is shown only once. */

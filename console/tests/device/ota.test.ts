@@ -12,13 +12,6 @@ describe('update news', () => {
     after: deviceStatus({ firmware_version: after, ota: { last_result: result } }),
   });
 
-  it('names the version an install reached', () => {
-    expect(updateNews(settled('installed', '0.5.0'))).toEqual({
-      text: 'Updated to 0.5.0.',
-      failure: false,
-    });
-  });
-
   it('marks a rollback as a failure and names the version that runs', () => {
     const news = updateNews(settled('rolled-back', '0.4.0'));
     expect(news.failure).toBe(true);
@@ -29,11 +22,6 @@ describe('update news', () => {
     const news = updateNews(settled('failed', '0.4.0'));
     expect(news.failure).toBe(true);
     expect(news.text).toContain('still runs 0.4.0');
-  });
-
-  it('holds the result even when the new image carries the same version', () => {
-    // A rebuilt image can keep its version; the device knows which slot it wrote.
-    expect(updateNews(settled('installed', '0.4.0')).text).toBe('Updated to 0.4.0.');
   });
 });
 

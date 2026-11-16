@@ -201,7 +201,11 @@ installs. A check or an install shows its phase, and an install how much it has
 written. Updates narrate interruption and recovery, and the device's record names
 how the last install ended: finished, stopped before its restart, or gone back to
 the previous image. A failed install does not claim completion. Rolling back
-asks first and restarts. [OTA](ota.md) owns verification and rollback behavior.
+asks first and restarts. A page left open while the device boots another image,
+after an install or a rollback, reloads that image's console onto Maintenance →
+Updates once the device answers. An unsaved draft holds the reload until its
+owner leaves it, and a banner offers it meanwhile. [OTA](ota.md) owns
+verification and rollback behavior.
 
 Maintenance → Diagnostics shows startup health, memory and storage headroom, and
 raw status. The device log and the crash dump need the admin key, as their

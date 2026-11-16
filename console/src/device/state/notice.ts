@@ -18,7 +18,7 @@ export interface DeviceNotice {
   /** When it began, for a condition that counts how long it has held. */
   since?: number;
   /** The one act that answers it. */
-  action?: 'change-wifi';
+  action?: 'change-wifi' | 'reload';
 }
 
 export const OVERDUE_DESCRIPTION =
@@ -49,6 +49,13 @@ export function deviceNotice(connection: Connection): DeviceNotice | null {
         description:
           'The device is restarting; the console reconnects once it answers from its new start.',
         since: connection.since,
+      };
+    case 'replaced':
+      return {
+        tone: 'attention',
+        title: 'StreamLine runs other firmware now.',
+        description: 'Reload to open the console it serves.',
+        action: 'reload',
       };
     case 'overdue':
     case 'lost': {

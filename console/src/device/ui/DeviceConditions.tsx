@@ -3,6 +3,9 @@ import { Link } from '../../shared/navigation';
 import { connection } from '../state/device';
 import { deviceNotice, type NoticeTone } from '../state/notice';
 
+/** Where a page from another image goes to load the console the device serves now. */
+export const UPDATES_PATH = '/maintenance/updates';
+
 const TONE: Record<NoticeTone, Tone> = {
   progress: 'accent',
   attention: 'warn',
@@ -31,6 +34,10 @@ export function deviceConditions(): Condition[] {
         notice.action === 'change-wifi' ? (
           <Link className={buttonClass()} href="/device/wifi">
             Change Wi-Fi
+          </Link>
+        ) : notice.action === 'reload' ? (
+          <Link className={buttonClass()} href={UPDATES_PATH}>
+            Reload
           </Link>
         ) : undefined,
     },

@@ -3,9 +3,8 @@ import { afterEach, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
 import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
-import { UPDATE_OPERATION } from '../../src/device/state/connection';
 import { connection, refresh, restartSettled } from '../../src/device/state/device';
-import { install, updateNews } from '../../src/device/state/ota';
+import { install, rollBack } from '../../src/device/state/ota';
 import { answering } from './answering';
 
 afterEach(() => {
@@ -15,9 +14,11 @@ afterEach(() => {
   setTransport((request) => fetch(request));
 });
 
-it('follows a release install through its restart to the version it reached', async () => {
+it('hands the page to the image an install or a rollback boots', async () => {
   const device = new FakeDevice('steady');
+  let reads = 0;
   setTransport(async (request) => {
+    reads += 1;
     const response = await getResponse(device.handlers, request, {
       baseUrl: window.location.origin,
     });
@@ -26,20 +27,26 @@ it('follows a release install through its restart to the version it reached', as
   });
   unlockSettings(MOCK_ADMIN_KEY, false);
   await refresh();
-  const before = connection.value.phase === 'live' ? connection.value.seen.status : null;
 
   await expect(install()).resolves.toBe(true);
   const phases = new Set<string>();
-  for (let read = 0; read < 12 && !restartSettled.value; read += 1) {
+  for (let read = 0; read < 12 && connection.value.phase !== 'replaced'; read += 1) {
     await refresh();
     phases.add(connection.value.phase);
   }
 
   expect(phases).toContain('waiting');
-  const settled = restartSettled.value;
-  expect(settled?.operation).toBe(UPDATE_OPERATION);
-  expect(settled && updateNews(settled).text).toBe(
-    `Updated to ${settled?.after.firmware_version}.`,
-  );
-  expect(settled?.after.firmware_version).not.toBe(before?.firmware_version);
+  expect(connection.value.phase).toBe('replaced');
+  expect(restartSettled.value).toBeNull();
+  const sent = reads;
+  await refresh();
+  expect(reads).toBe(sent);
+
+  // The page the installed image serves rolls back to the image before it.
+  answering(null);
+  await refresh();
+  await expect(rollBack()).resolves.not.toBeNull();
+  expect(connection.value).toMatchObject({ phase: 'waiting', operation: 'the rollback' });
+  for (let read = 0; read < 6 && connection.value.phase !== 'replaced'; read += 1) await refresh();
+  expect(connection.value.phase).toBe('replaced');
 });

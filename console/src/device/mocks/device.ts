@@ -801,6 +801,7 @@ export class FakeDevice {
           ota.message = '';
           ota.rollback_available = true;
           ota.rollback_version = from;
+          ota.running_slot = otherSlot(ota.running_slot);
         });
       },
     ];
@@ -834,6 +835,7 @@ export class FakeDevice {
     if (!ota.rollback_available) return reject(400, 'no previous image to roll back to');
     this.status.firmware_version = ota.rollback_version;
     ota.last_result = 'rolled-back';
+    ota.running_slot = otherSlot(ota.running_slot);
     ota.rollback_available = false;
     ota.rollback_version = '';
     return { ok: true, rebooting: true };
@@ -942,6 +944,11 @@ function elfImage(size: number): ArrayBuffer {
 
 /** The firmware's refusal of a key write that needs a staged key; key-state refusals are 409. */
 const NO_PENDING_KEY = 'no pending PCM transport key exists';
+
+/** The OTA slot an install writes and a rollback boots. */
+function otherSlot(slot: string): string {
+  return slot === 'ota_0' ? 'ota_1' : 'ota_0';
+}
 
 /** A refusal shaped like the device's: its reason, and the request field it names. */
 function reject(status: number, message: string, field: string | null = null): Response {

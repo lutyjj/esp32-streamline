@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
-import { readBack, refresh, status } from '../../src/device/state/device';
+import {
+  connection,
+  deliveryObserved,
+  readBack,
+  refresh,
+  status,
+} from '../../src/device/state/device';
 import type { StatusResponse } from '../../src/generated/api';
 import { answering } from './answering';
 
@@ -57,5 +63,36 @@ describe('status reads', () => {
     device.answer(1, after);
     await read;
     expect(status.value?.audio.input_gain).toBe(after.audio.input_gain);
+  });
+});
+
+/** A device that gives these answers in turn; null leaves a read unanswered. */
+function answersInTurn(...answers: Array<object | null>): void {
+  setTransport(async () => {
+    const next = answers.shift();
+    if (!next) throw new TypeError('Failed to fetch');
+    return Response.json(next);
+  });
+}
+
+describe('an answer after a lost read', () => {
+  const mine = deviceStatus();
+  const { boot: _boot, ...noBoot } = mine.system;
+  beforeEach(() => answering(mine));
+  afterEach(() => setTransport((request) => fetch(request)));
+
+  it('from another image hands the page to that image', async () => {
+    // An image older than the running slot and the boot id, as a rollback can reach.
+    const { running_slot: _slot, ...older } = mine.ota;
+    answersInTurn(mine, null, { ...mine, ota: older, system: noBoot });
+    for (let read = 0; read < 3; read += 1) await refresh();
+    expect(connection.value.phase).toBe('replaced');
+  });
+
+  it('compares delivery with no count it lost', async () => {
+    answersInTurn(mine, null, { ...mine, system: noBoot });
+    for (let read = 0; read < 3; read += 1) await refresh();
+    expect(connection.value.phase).toBe('live');
+    expect(deliveryObserved.value).toBe(false);
   });
 });

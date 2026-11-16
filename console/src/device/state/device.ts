@@ -170,13 +170,23 @@ export async function readBack(): Promise<void> {
   await refresh();
 }
 
+/** One status read; an answer from another image than the page's ends the poll. */
 async function poll(): Promise<void> {
+  if (connection.value.phase === 'replaced') return;
+  let answer: StatusResponse;
   try {
-    const answer = await getStatus({ signal: AbortSignal.timeout(STATUS_TIMEOUT_MS) });
-    report({ type: 'answered', status: answer, at: Date.now() });
+    answer = await getStatus({ signal: AbortSignal.timeout(STATUS_TIMEOUT_MS) });
   } catch {
     report({ type: 'unanswered', at: Date.now() });
+    return;
   }
+  // Every answer the page keeps comes from the image that served it.
+  const mine = status.value;
+  report(
+    mine === null || answer.ota.running_slot === mine.ota.running_slot
+      ? { type: 'answered', status: answer, at: Date.now() }
+      : { type: 'replaced', at: Date.now() },
+  );
 }
 
 function observeAudio(s: StatusResponse, now: number): void {
@@ -188,7 +198,7 @@ function observeAudio(s: StatusResponse, now: number): void {
   );
   deliveryObserved.value = lastPcm !== null;
   // A new boot counts from zero, so all of its count was sent since.
-  const since = lastPcm?.boot === s.system.boot ? lastPcm.bytes : 0;
+  const since = lastPcm !== null && lastPcm.boot === s.system.boot ? lastPcm.bytes : 0;
   audioMoving.value = lastPcm !== null && s.metrics.bytes_total > since;
   lastPcm = { boot: s.system.boot, bytes: s.metrics.bytes_total };
 }

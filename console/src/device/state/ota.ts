@@ -103,12 +103,10 @@ export function installProgress(s: StatusResponse): { words: string; fraction: n
   };
 }
 
-/** What an update's restart turned out to be, as the device reports the install's end. */
+/** How an update whose restart kept this image ended, as the device reports it. */
 export function updateNews(settled: SettledRestart): { text: string; failure: boolean } {
   const now = settled.after.firmware_version;
   switch (settled.after.ota.last_result) {
-    case 'installed':
-      return { text: `Updated to ${now}.`, failure: false };
     case 'rolled-back':
       return {
         text: `The new firmware did not start, so the device went back to ${now}.`,

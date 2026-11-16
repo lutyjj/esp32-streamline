@@ -45,11 +45,14 @@ export type Connection =
   /** A restart was asked for and has not been seen to finish. */
   | { phase: 'waiting'; operation: string; since: number; seen: Sighting | null }
   | { phase: 'overdue'; operation: string; since: number; seen: Sighting | null }
-  | { phase: 'handoff'; handoff: Handoff; since: number; seen: Sighting | null };
+  | { phase: 'handoff'; handoff: Handoff; since: number; seen: Sighting | null }
+  /** The device runs another image than the one that served this page; it stays so. */
+  | { phase: 'replaced'; seen: Sighting | null };
 
 export type ConnectionEvent =
   | { type: 'answered'; status: StatusResponse; at: number }
   | { type: 'unanswered'; at: number }
+  | { type: 'replaced'; at: number }
   /** A write answered `rebooting: true`; `operation` names what the restart applies. */
   | { type: 'restarting'; operation: string; at: number }
   | { type: 'handoff'; handoff: Handoff; at: number };
@@ -66,7 +69,10 @@ export function restartedSince(seen: Sighting | null, status: StatusResponse): b
 
 export function nextConnection(connection: Connection, event: ConnectionEvent): Connection {
   const seen = sightingOf(connection);
+  if (connection.phase === 'replaced') return connection;
   switch (event.type) {
+    case 'replaced':
+      return { phase: 'replaced', seen };
     case 'restarting':
       if (connection.phase === 'handoff') return connection;
       return { phase: 'waiting', operation: event.operation, since: event.at, seen };

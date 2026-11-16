@@ -1,7 +1,7 @@
 import { getResponse } from 'msw';
 import { afterEach, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
-import { setTransport } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
 import { UPDATE_OPERATION } from '../../src/device/state/connection';
 import { connection, refresh, restartSettled } from '../../src/device/state/device';

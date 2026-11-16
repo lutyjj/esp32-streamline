@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
-import { setTransport } from '../../src/device/lib/api';
 import type { LevelSample } from '../../src/device/lib/calibration';
+import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
   type CalibrationDevice,

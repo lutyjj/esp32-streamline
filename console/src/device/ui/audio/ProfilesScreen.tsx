@@ -9,8 +9,8 @@ import {
   SettingRow,
 } from 'linen';
 import { useRef, useState } from 'react';
+import type { AudioProfile, AudioProfileCatalog, StatusResponse } from '../../../generated/api';
 import { errorMessage } from '../../../shared/errors';
-import type { AudioProfile, AudioProfileCatalog, StatusResponse } from '../../lib/api';
 import { audioProfiles, audioProfilesResource, status } from '../../state/device';
 import {
   deleteProfile,

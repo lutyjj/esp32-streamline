@@ -5,8 +5,9 @@
  * story continues as a handoff, never as a restart wait.
  */
 
+import { setWifi } from '../../generated/api';
+import { ApiError } from '../../shared/http';
 import { unlockSettings } from '../lib/adminKey';
-import { ApiError, setWifi } from '../lib/api';
 import { type WifiEntry, type WifiProblem, wifiCredentials, wifiProblems } from '../lib/wifi';
 import { report } from './device';
 import { setupKey } from './setupKey';

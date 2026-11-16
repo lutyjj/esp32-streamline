@@ -12,8 +12,8 @@ import {
   useUnsavedChanges,
 } from 'linen';
 import { useEffect, useState } from 'react';
+import { getSetAudioUrl, type StatusResponse } from '../../../generated/api';
 import { Link } from '../../../shared/navigation';
-import { getSetAudioUrl, type StatusResponse } from '../../lib/api';
 import { status } from '../../state/device';
 import {
   discardLevels,

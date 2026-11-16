@@ -10,21 +10,19 @@
 import { type HttpHandler, HttpResponse, http, type JsonBodyType } from 'msw';
 import contract from '../../../../docs/openapi.json';
 import type {
-  AutoUpdateScheduleRequest,
-  ButtonAction,
-  LedRole,
-  TransportMode,
-} from '../../generated/api';
-import type {
   AudioProfileCatalog,
+  AutoUpdateScheduleRequest,
   BoardCatalogResponse,
   BootLog,
+  ButtonAction,
   DiscoveredBridge,
+  LedRole,
   LogsResponse,
   SettingsResponse,
   StatusResponse,
   TransportKeyResponse,
-} from '../lib/api';
+  TransportMode,
+} from '../../generated/api';
 
 /** One captured line as the fake device holds it before rendering to text. */
 interface MockLogLine {

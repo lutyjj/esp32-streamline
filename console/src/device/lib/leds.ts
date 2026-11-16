@@ -1,4 +1,4 @@
-import type { LedCapabilityStatus, LedRole, LedRoleStatus } from './api';
+import type { LedCapabilityStatus, LedRole, LedRoleStatus } from '../../generated/api';
 
 export interface LedRow {
   id: string;

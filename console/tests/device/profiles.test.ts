@@ -1,9 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  AudioProfileCatalog,
-  CapabilitiesStatus,
-  SettingsResponse,
-} from '../../src/device/lib/api';
 import {
   type AudioProfileImportLimits,
   addProfile,
@@ -14,6 +9,11 @@ import {
   removeProfile,
   updateProfile,
 } from '../../src/device/lib/profiles';
+import type {
+  AudioProfileCatalog,
+  CapabilitiesStatus,
+  SettingsResponse,
+} from '../../src/generated/api';
 
 const capabilities: CapabilitiesStatus = {
   board_id: 'board-a',

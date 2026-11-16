@@ -1,8 +1,8 @@
 import { Button, Card, CardHead, Content, CopyValue, SectionNav, SettingRow } from 'linen';
 import { useEffect, useState } from 'react';
+import { restart } from '../../../generated/api';
 import { bytes, duration } from '../../../shared/format';
 import { replacePath, usePathname } from '../../../shared/navigation';
-import { restart } from '../../lib/api';
 import { withRestart } from '../../state/access';
 import { liveStatus, status } from '../../state/device';
 import { updateLock } from '../../state/ota';

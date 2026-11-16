@@ -1,4 +1,4 @@
-import type { ButtonAction, ButtonActionStatus, ButtonCapabilityStatus } from './api';
+import type { ButtonAction, ButtonActionStatus, ButtonCapabilityStatus } from '../../generated/api';
 
 export interface ButtonRow {
   id: string;

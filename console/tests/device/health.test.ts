@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { HealthReport } from '../../src/device/lib/api';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { blockingHealth } from '../../src/device/state/health';
+import type { HealthReport } from '../../src/generated/api';
 import { answering } from './answering';
 
 const blocking: HealthReport = {

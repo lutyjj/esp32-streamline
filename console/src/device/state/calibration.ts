@@ -7,8 +7,8 @@
  */
 
 import { computed, signal } from '@preact/signals';
+import { type AudioSettings, getStatus } from '../../generated/api';
 import { errorMessage } from '../../shared/errors';
-import { type AudioSettings, getStatus } from '../lib/api';
 import { CAL_ATTEN_STEP, CalibrationEngine, type LevelSample } from '../lib/calibration';
 import { report, status } from './device';
 import { blockingHealth } from './health';

@@ -7,7 +7,7 @@
  */
 
 import { computed } from '@preact/signals';
-import type { HealthCheck } from '../lib/api';
+import type { HealthCheck } from '../../generated/api';
 import { onSetupNetwork, status } from './device';
 
 /**

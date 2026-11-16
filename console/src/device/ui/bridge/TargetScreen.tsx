@@ -11,8 +11,8 @@ import {
   useUnsavedChanges,
 } from 'linen';
 import { useState } from 'react';
+import { type DiscoveredBridge, getSetTargetUrl } from '../../../generated/api';
 import { navigate } from '../../../shared/navigation';
-import { type DiscoveredBridge, getSetTargetUrl } from '../../lib/api';
 import { consoleAddressProblem } from '../../lib/consoleAddress';
 import { targetProblems } from '../../lib/target';
 import { status } from '../../state/device';

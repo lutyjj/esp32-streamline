@@ -2,9 +2,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forgetAdminKey, isUnlocked, unlockSettings } from '../../src/device/lib/adminKey';
-import { getLogs, getStatus, restart, setTransport, setWifi } from '../../src/device/lib/api';
 import { digestResponse, parseDigestFields } from '../../src/device/lib/digest';
-import { ANSWER_WITHIN_MS, AUTHENTICATED_READS, verifyAdminKey } from '../../src/device/lib/http';
+import {
+  ANSWER_WITHIN_MS,
+  AUTHENTICATED_READS,
+  setTransport,
+  verifyAdminKey,
+} from '../../src/device/lib/http';
+import { getLogs, getStatus, restart, setWifi } from '../../src/generated/api';
 
 function respond(status: number, body: string): Response {
   return new Response(body, { status });

@@ -13,14 +13,14 @@ import {
   useToast,
 } from 'linen';
 import { useEffect, useState } from 'react';
-import { errorMessage } from '../../../shared/errors';
-import { Link, replacePath, usePathname } from '../../../shared/navigation';
 import {
   getSetAudioProfileUrl,
-  setActiveAudioProfile,
   setAnalogPassthrough,
+  setAudioProfile,
   setStream,
-} from '../../lib/api';
+} from '../../../generated/api';
+import { errorMessage } from '../../../shared/errors';
+import { Link, replacePath, usePathname } from '../../../shared/navigation';
 import { withAccess, withRestart } from '../../state/access';
 import { type AudioActivity, audioActivity } from '../../state/activity';
 import { clipCalloutVisible } from '../../state/clipCallout';
@@ -121,7 +121,9 @@ function ProfileRow() {
   const choose = async (profileId: string) => {
     setSwitching(true);
     try {
-      const done = await withRestart('the profile change', () => setActiveAudioProfile(profileId));
+      const done = await withRestart('the profile change', () =>
+        setAudioProfile({ profile_id: profileId }),
+      );
       if (done) {
         await loadAudioProfiles();
         const name = catalog.profiles.find((profile) => profile.id === profileId)?.name;

@@ -4,16 +4,16 @@
  */
 
 import { computed, signal } from '@preact/signals';
-import { resource, settle } from '../../shared/resource';
 import {
   type AudioProfileCatalog,
   getAudioProfiles,
-  getContract,
+  getOpenapi,
   getSettings,
   getStatus,
   type SettingsResponse,
   type StatusResponse,
-} from '../lib/api';
+} from '../../generated/api';
+import { resource, settle } from '../../shared/resource';
 import { type ApiDocument, audioProfileConstraints } from '../lib/contract';
 import type { AudioProfileImportLimits } from '../lib/profiles';
 import {
@@ -85,7 +85,10 @@ export const audioProfilesResource = resource<AudioProfileCatalog>(
 );
 export const audioProfiles = audioProfilesResource.data;
 /** The device-served OpenAPI contract; the console validates imports from it. */
-export const contractResource = resource<ApiDocument>('the device contract', getContract);
+export const contractResource = resource<ApiDocument>(
+  'the device contract',
+  async () => (await getOpenapi()) as ApiDocument,
+);
 export const contract = contractResource.data;
 /**
  * Audio-profile import limits: structural bounds declared on the contract plus

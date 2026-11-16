@@ -4,7 +4,7 @@
  * stays in this browser.
  */
 
-import { type DiscoveredBridge, setTarget } from '../lib/api';
+import { type DiscoveredBridge, setTarget } from '../../generated/api';
 import { BRIDGE_PORT, type TargetEntry, targetRequest } from '../lib/target';
 import { withRestart } from './access';
 import { rememberBridgeConsole, rememberedBridgeConsole } from './bridgeConsole';

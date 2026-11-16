@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetAdminKey, isUnlocked, unlockSettings } from '../../src/device/lib/adminKey';
-import { ApiError } from '../../src/device/lib/api';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { withAccess, withRestart } from '../../src/device/state/access';
 import { connection } from '../../src/device/state/device';
 import { answerCredential, credentialAsked } from '../../src/shared/credentialGate';
+import { ApiError } from '../../src/shared/http';
 import { answering } from './answering';
 
 beforeEach(() => {

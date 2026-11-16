@@ -13,7 +13,7 @@ import type {
   SetupNetworkResponse,
   StatusResponse,
   TransportStatus,
-} from '../lib/api';
+} from '../../generated/api';
 import type { ApiDocument } from '../lib/contract';
 
 // A single narrowing cast, not `as unknown`: JSON imports widen enum values

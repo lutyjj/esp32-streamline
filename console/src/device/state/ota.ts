@@ -4,7 +4,7 @@
  */
 
 import { signal } from '@preact/signals';
-import { otaUpdate, type StatusResponse } from '../lib/api';
+import { otaUpdate, type StatusResponse } from '../../generated/api';
 import { restartingWrite } from '../lib/contract';
 import { withAccess } from './access';
 import { contract, type SettledRestart, status } from './device';

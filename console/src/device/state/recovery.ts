@@ -5,7 +5,7 @@
  */
 
 import { computed } from '@preact/signals';
-import type { StatusResponse } from '../lib/api';
+import type { StatusResponse } from '../../generated/api';
 import { connection, status } from './device';
 
 export type RecoveryStory =

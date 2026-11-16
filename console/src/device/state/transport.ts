@@ -15,7 +15,7 @@ import {
   type TransportSettingsRequest,
   type TransportStatus,
   verifyTransportKey,
-} from '../lib/api';
+} from '../../generated/api';
 import { loadConfig } from './device';
 
 export interface TransportApi {

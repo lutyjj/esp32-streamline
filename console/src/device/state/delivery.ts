@@ -4,7 +4,7 @@
  * sender's facts; whether audio arrives is the bridge's to show.
  */
 
-import type { SettingsResponse, StatusResponse } from '../lib/api';
+import type { SettingsResponse, StatusResponse } from '../../generated/api';
 
 export interface Delivery {
   /** The target as `host:port`. */

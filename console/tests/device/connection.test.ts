@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { StatusResponse } from '../../src/device/lib/api';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
   type Connection,
@@ -12,6 +11,7 @@ import {
   UPDATE_OPERATION,
   untakenJoin,
 } from '../../src/device/state/connection';
+import type { StatusResponse } from '../../src/generated/api';
 
 /** A device that has been up for `uptime` seconds. */
 function up(uptime: number, overrides: Parameters<typeof deviceStatus>[0] = {}): StatusResponse {

@@ -5,7 +5,7 @@
  * same story and a timer never stands in for evidence.
  */
 
-import type { SetupNetworkResponse, StatusResponse } from '../lib/api';
+import type { SetupNetworkResponse, StatusResponse } from '../../generated/api';
 
 /** A restart still unanswered after this reads as overdue on every surface. */
 export const OVERDUE_MS = 60_000;

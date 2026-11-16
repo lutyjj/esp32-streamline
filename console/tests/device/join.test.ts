@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, isUnlocked } from '../../src/device/lib/adminKey';
-import { setTransport } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import type { WifiEntry } from '../../src/device/lib/wifi';
 import { connection } from '../../src/device/state/device';
 import { joinBlocks, joinNetwork } from '../../src/device/state/join';

@@ -3,9 +3,9 @@ import { resolve } from 'node:path';
 import { getResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
-import { getStatus, otaUpdate, restart, setName, setTransport } from '../../src/device/lib/api';
-import { deviceFetch } from '../../src/device/lib/http';
+import { deviceFetch, setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
+import { getStatus, otaUpdate, restart, setName } from '../../src/generated/api';
 
 /** The operations the device contract marks as refused while an update is busy. */
 function restartingOperations(): string[] {

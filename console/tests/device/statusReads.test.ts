@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { type StatusResponse, setTransport } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { readBack, refresh, status } from '../../src/device/state/device';
+import type { StatusResponse } from '../../src/generated/api';
 import { answering } from './answering';
 
 /** A device whose status answers wait until the test lets each one go. */

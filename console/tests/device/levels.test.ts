@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
-import { type StatusResponse, setTransport } from '../../src/device/lib/api';
 import { edited, followed, seeded, unsaved } from '../../src/device/lib/follow';
+import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { audioProfiles, connection, status } from '../../src/device/state/device';
 import {
@@ -12,6 +12,7 @@ import {
   levelsUnsaved,
   saveLevels,
 } from '../../src/device/state/levels';
+import type { StatusResponse } from '../../src/generated/api';
 import { answering } from './answering';
 
 function withAudio(audio: Partial<StatusResponse['audio']>): StatusResponse {

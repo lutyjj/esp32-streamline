@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
-import { setTransport } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import {
   rememberBridgeConsole,

@@ -4,7 +4,7 @@
  * the console's last word is where to go next and how to know it worked.
  */
 
-import type { SetupNetworkResponse, StatusResponse } from '../lib/api';
+import type { SetupNetworkResponse, StatusResponse } from '../../generated/api';
 import type { Handoff } from './connection';
 import { report } from './device';
 

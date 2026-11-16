@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setTransport } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { audioActivity } from '../../src/device/state/activity';
 import {

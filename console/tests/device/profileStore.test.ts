@@ -1,7 +1,7 @@
 import { getResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
-import { setAudio, setTransport } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
 import {
   audioProfiles,
@@ -17,6 +17,7 @@ import {
   replaceProfile,
   saveProfile,
 } from '../../src/device/state/profiles';
+import { setAudio } from '../../src/generated/api';
 import { answering } from './answering';
 
 beforeEach(async () => {

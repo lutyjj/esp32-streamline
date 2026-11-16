@@ -1,4 +1,4 @@
-import type { AudioSettings, CapabilitiesStatus } from '../../lib/api';
+import type { AudioSettings, CapabilitiesStatus } from '../../../generated/api';
 
 /** Levels in words, such as "Line 2, 3.5 mm jack · gain 0 · attenuation 9 dB". */
 export function levelsWords(

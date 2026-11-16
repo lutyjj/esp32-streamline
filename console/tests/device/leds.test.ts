@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LedCapabilityStatus, LedRoleStatus } from '../../src/device/lib/api';
 import { LED_ROLE_CHOICES, ledRows } from '../../src/device/lib/leds';
+import type { LedCapabilityStatus, LedRoleStatus } from '../../src/generated/api';
 
 const led = (id: string, extra: Partial<LedCapabilityStatus> = {}): LedCapabilityStatus => ({
   id,

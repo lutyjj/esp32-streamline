@@ -1,6 +1,6 @@
 import { Button, Card, CardBody, CardHead, Fact, Facts, Form, useUnsavedChanges } from 'linen';
 import { useState } from 'react';
-import { getSetWifiUrl } from '../../lib/api';
+import { getSetWifiUrl } from '../../../generated/api';
 import { storesWifiPassword, type WifiEntry, wifiProblems } from '../../lib/wifi';
 import { withAccess } from '../../state/access';
 import { config, configResource, status } from '../../state/device';

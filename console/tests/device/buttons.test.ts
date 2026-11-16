@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { ButtonActionStatus, ButtonCapabilityStatus } from '../../src/device/lib/api';
 import {
   BUTTON_ACTION_CHOICES,
   buttonRows,
   DESTRUCTIVE_ACTIONS,
 } from '../../src/device/lib/buttons';
+import type { ButtonActionStatus, ButtonCapabilityStatus } from '../../src/generated/api';
 
 const button = (
   id: string,

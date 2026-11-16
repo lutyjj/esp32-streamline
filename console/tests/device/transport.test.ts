@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import type {
-  Ack,
-  SettingsResponse,
-  TransportKeyResponse,
-  TransportStatus,
-} from '../../src/device/lib/api';
 import {
   type TransportApi,
   TransportController,
   transportActions,
   transportJourney,
 } from '../../src/device/state/transport';
+import type {
+  Ack,
+  SettingsResponse,
+  TransportKeyResponse,
+  TransportStatus,
+} from '../../src/generated/api';
 
 const ack: Ack = { ok: true, rebooting: false, started: false };
 const credential: TransportKeyResponse = {

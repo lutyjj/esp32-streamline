@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { BootLog } from '../../src/device/lib/api';
-import { setTransport } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import {
   clearLogs,
   currentLog,
@@ -13,6 +12,7 @@ import {
   previousLog,
   RETAINED_LINES,
 } from '../../src/device/state/logs';
+import type { BootLog } from '../../src/generated/api';
 
 const BOOT = 4242;
 

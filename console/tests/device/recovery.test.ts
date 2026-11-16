@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { type StatusResponse, setTransport } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import { deviceStatus } from '../../src/device/mocks/fixtures';
 import { OVERDUE_MS } from '../../src/device/state/connection';
 import { connection, report, restartSettled } from '../../src/device/state/device';
 import { recovery, recoveryStory } from '../../src/device/state/recovery';
+import type { StatusResponse } from '../../src/generated/api';
 import { answering } from './answering';
 
 /** Everything a story says, title and description together. */

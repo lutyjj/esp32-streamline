@@ -1,5 +1,5 @@
 import { Card, CardBody, CardHead, Content, Fact, Facts, TopBar } from 'linen';
-import type { StatusResponse } from '../../lib/api';
+import type { StatusResponse } from '../../../generated/api';
 import type { Handoff as HandoffState } from '../../state/connection';
 import { handoffStory } from '../../state/handoff';
 

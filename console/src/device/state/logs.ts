@@ -9,8 +9,8 @@
  */
 
 import { signal } from '@preact/signals';
+import { type BootLog, getLogs } from '../../generated/api';
 import { errorMessage } from '../../shared/errors';
-import { type BootLog, getLogs } from '../lib/api';
 
 /** One line, numbered within its boot. */
 export interface LogLine {

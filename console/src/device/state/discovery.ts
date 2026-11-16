@@ -5,8 +5,8 @@
  */
 
 import { computed, signal } from '@preact/signals';
+import { type DiscoveredBridge, getBridges } from '../../generated/api';
 import { errorMessage } from '../../shared/errors';
-import { type DiscoveredBridge, getBridges } from '../lib/api';
 import { status } from './device';
 
 export type Discovery =

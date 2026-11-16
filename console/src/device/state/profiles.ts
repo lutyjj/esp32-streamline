@@ -5,7 +5,7 @@
  * which is selection's job.
  */
 
-import { type AudioProfileCatalog, setAudioProfiles } from '../lib/api';
+import { type AudioProfileCatalog, setAudioProfiles } from '../../generated/api';
 import {
   addProfile,
   exportAudioProfileCatalog,
@@ -27,7 +27,7 @@ function loaded() {
 
 /** Write `next` and read it back. Resolves false when the owner declines to unlock. */
 async function store(next: AudioProfileCatalog): Promise<boolean> {
-  const done = await withAccess(() => setAudioProfiles(next));
+  const done = await withAccess(() => setAudioProfiles({ catalog: JSON.stringify(next) }));
   if (done === null) return false;
   await loadAudioProfiles();
   return true;

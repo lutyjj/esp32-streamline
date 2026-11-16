@@ -1,17 +1,17 @@
 import { getResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
+import { setTransport } from '../../src/device/lib/http';
+import { type DeviceScenario, FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
 import {
   getAudioProfiles,
   getStatus,
-  setActiveAudioProfile,
   setAudio,
+  setAudioProfile,
   setAudioProfiles,
   setStream,
   setTarget,
-  setTransport,
-} from '../../src/device/lib/api';
-import { type DeviceScenario, FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
+} from '../../src/generated/api';
 
 describe('mock audio transport', () => {
   let device: FakeDevice;
@@ -86,15 +86,20 @@ describe('mock audio transport', () => {
 
     reach('steady');
     device.codecRunning = false;
-    await expect(setActiveAudioProfile('')).resolves.toEqual({ ok: true, rebooting: true });
+    await expect(setAudioProfile({ profile_id: '' })).resolves.toEqual({
+      ok: true,
+      rebooting: true,
+    });
   });
 
   it('drops the active profile when levels are set by hand, as the firmware does', async () => {
     reach('steady');
     const catalog = await getAudioProfiles();
     const audio = { input_line: 2, input_gain: 12, adc_attenuation_db: 6 };
-    await setAudioProfiles({ ...catalog, profiles: [{ id: 'loud', name: 'Loud', audio }] });
-    await setActiveAudioProfile('loud');
+    await setAudioProfiles({
+      catalog: JSON.stringify({ ...catalog, profiles: [{ id: 'loud', name: 'Loud', audio }] }),
+    });
+    await setAudioProfile({ profile_id: 'loud' });
     expect((await getAudioProfiles()).active_profile_id).toBe('loud');
 
     await setAudio({ ...audio, input_gain: 16 });

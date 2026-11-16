@@ -1,8 +1,9 @@
 import { getResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import { forgetAdminKey, unlockSettings } from '../../src/device/lib/adminKey';
-import { getStatus, type StatusResponse, setTransport, setWifi } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import { type DeviceScenario, FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
+import { getStatus, type StatusResponse, setWifi } from '../../src/generated/api';
 
 // The fake device leaves the network it was reached on after a join, as the
 // firmware does, so a handoff is what the console sees.

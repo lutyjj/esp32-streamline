@@ -5,7 +5,7 @@
  * The limits are the ones the contract's Wi-Fi fields describe.
  */
 
-import type { SettingsResponse } from './api';
+import type { SettingsResponse } from '../../generated/api';
 
 /** What the owner entered for the network the device joins. */
 export interface WifiEntry {

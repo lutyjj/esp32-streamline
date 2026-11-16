@@ -7,8 +7,8 @@
  */
 
 import { signal } from '@preact/signals';
+import type { Ack } from '../../generated/api';
 import { localStore, sessionStore } from '../../shared/custody';
-import type { Ack } from './api';
 
 const ADMIN_KEY_STORAGE = 'streamline_admin_key';
 const UNLOCK_UNTIL_STORAGE = 'streamline_unlock_until';

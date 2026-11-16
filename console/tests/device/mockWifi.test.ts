@@ -1,7 +1,8 @@
 import { getResponse } from 'msw';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { setTransport, setWifi } from '../../src/device/lib/api';
+import { setTransport } from '../../src/device/lib/http';
 import { FakeDevice, MOCK_ADMIN_KEY } from '../../src/device/mocks/device';
+import { setWifi } from '../../src/generated/api';
 
 // The fake device refuses the Wi-Fi writes the firmware refuses, by the same error.
 beforeEach(() => {

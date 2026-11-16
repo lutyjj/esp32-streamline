@@ -1,4 +1,9 @@
-import type { AudioProfile, AudioProfileCatalog, AudioSettings, CapabilitiesStatus } from './api';
+import type {
+  AudioProfile,
+  AudioProfileCatalog,
+  AudioSettings,
+  CapabilitiesStatus,
+} from '../../generated/api';
 import type { AudioProfileConstraints } from './contract';
 
 /**

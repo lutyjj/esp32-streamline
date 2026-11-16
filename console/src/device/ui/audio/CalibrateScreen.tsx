@@ -11,8 +11,8 @@ import {
   useUnsavedChanges,
 } from 'linen';
 import { type ReactNode, useEffect, useState } from 'react';
+import { getSetAudioUrl, type StatusResponse } from '../../../generated/api';
 import { Link, navigate } from '../../../shared/navigation';
-import { getSetAudioUrl, type StatusResponse } from '../../lib/api';
 import { CAL_ATTEN_MAX } from '../../lib/calibration';
 import { withAccess } from '../../state/access';
 import {

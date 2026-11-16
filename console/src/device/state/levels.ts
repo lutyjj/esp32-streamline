@@ -5,7 +5,7 @@
  * keeps describing the applied levels until a save lands.
  */
 
-import { type Ack, type AudioSettings, type StatusResponse, setAudio } from '../lib/api';
+import { type Ack, type AudioSettings, type StatusResponse, setAudio } from '../../generated/api';
 import { discarded, edited, type Followed, followed, seeded, unsaved } from '../lib/follow';
 import { withRestart } from './access';
 import { audioProfiles, loadAudioProfiles, readBack } from './device';

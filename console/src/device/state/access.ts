@@ -4,9 +4,11 @@
  * key asks once more before it gives up.
  */
 
+import type { Ack } from '../../generated/api';
 import { requestCredential } from '../../shared/credentialGate';
+import { ApiError } from '../../shared/http';
 import { isUnlocked, lockSettings, unlockSettings } from '../lib/adminKey';
-import { type Ack, ApiError, verifyAdminKey } from '../lib/api';
+import { verifyAdminKey } from '../lib/http';
 import { report, status } from './device';
 
 /** The device holds an admin key, so its writes need one. */

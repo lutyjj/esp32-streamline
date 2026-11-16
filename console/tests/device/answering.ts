@@ -1,5 +1,5 @@
-import type { StatusResponse } from '../../src/device/lib/api';
 import { connection } from '../../src/device/state/device';
+import type { StatusResponse } from '../../src/generated/api';
 
 /** The device just answered with `status`; null means nothing has answered yet. */
 export function answering(status: StatusResponse | null): void {

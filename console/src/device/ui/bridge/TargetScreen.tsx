@@ -13,10 +13,11 @@ import {
 import { useState } from 'react';
 import { errorMessage } from '../../../shared/errors';
 import { navigate } from '../../../shared/navigation';
-import type { DiscoveredBridge } from '../../lib/api';
+import { type DiscoveredBridge, getSetTargetUrl } from '../../lib/api';
 import { targetProblems } from '../../lib/target';
 import { status } from '../../state/device';
 import { discovery, findBridges, searchOffered } from '../../state/discovery';
+import { updateLock } from '../../state/ota';
 import {
   adoptFound,
   draftChanges,
@@ -41,6 +42,8 @@ export function TargetScreen() {
   const [failure, setFailure] = useState('');
   const changes = draftChanges(draft, saved);
   const unsaved = changes.target || changes.console;
+  // A new target restarts the device, which waits while an update runs.
+  const held = changes.target ? updateLock(getSetTargetUrl()) : null;
   useUnsavedChanges(unsaved, { name: 'the bridge', pending: saving });
   const problems = targetProblems(draft.entry);
   const problem = (field: 'host' | 'port') =>
@@ -126,8 +129,14 @@ export function TargetScreen() {
                     description={failure}
                   />
                 )}
-                <div className="mt-4 flex justify-end">
-                  <Button type="submit" variant="primary" busy={saving} disabled={!unsaved}>
+                <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                  {held && <p className="mr-auto text-sm text-text-secondary">{held}</p>}
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    busy={saving}
+                    disabled={!unsaved || held !== null}
+                  >
                     Save
                   </Button>
                 </div>

@@ -1,10 +1,12 @@
 import { Button, Card, CardBody, CardHead, Fact, Facts, Form, useUnsavedChanges } from 'linen';
 import { useState } from 'react';
+import { getSetWifiUrl } from '../../lib/api';
 import { storesWifiPassword, type WifiEntry, wifiProblems } from '../../lib/wifi';
 import { withAccess } from '../../state/access';
 import { config, configResource, status } from '../../state/device';
 import { homeAddress } from '../../state/handoff';
 import { joinNetwork } from '../../state/join';
+import { updateLock } from '../../state/ota';
 import { ResourceNotice } from '../ResourceNotice';
 import { WriteConfirm } from '../WriteConfirm';
 import { WifiFields } from '../wifi/WifiFields';
@@ -57,6 +59,8 @@ function ChangeWifi() {
     entry.password !== '' ||
     entry.open !== (saved?.open_network ?? false);
   useUnsavedChanges(unsaved, { name: 'the Wi-Fi settings', pending: saving });
+  // Joining restarts the device, which waits while an update runs.
+  const held = updateLock(getSetWifiUrl());
 
   const save = async () => {
     setSaving(true);
@@ -87,8 +91,9 @@ function ChangeWifi() {
             storedPassword={storedPassword}
             disabled={saving}
           />
-          <div className="mt-4 flex justify-end">
-            <Button type="submit" variant="primary" disabled={!unsaved}>
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            {held && <p className="mr-auto text-sm text-text-secondary">{held}</p>}
+            <Button type="submit" variant="primary" disabled={!unsaved || held !== null}>
               Join network
             </Button>
           </div>

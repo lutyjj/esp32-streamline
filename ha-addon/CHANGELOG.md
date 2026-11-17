@@ -1,6 +1,13 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.21.0](https://github.com/lutyjj/esp32-streamline/compare/v0.20.0...v0.21.0) (2026-11-17)
+
+
+### Features
+
+* **console:** one layout across cards and forms, in the icon's peach ([#617](https://github.com/lutyjj/esp32-streamline/issues/617)) ([6cbfae8](https://github.com/lutyjj/esp32-streamline/commit/6cbfae89d38e8069bb96468d0ad47a2ee1fde946))
+
 ## [0.20.0](https://github.com/lutyjj/esp32-streamline/compare/v0.19.0...v0.20.0) (2026-11-16)
 
 

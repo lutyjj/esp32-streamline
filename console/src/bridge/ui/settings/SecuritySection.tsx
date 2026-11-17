@@ -215,7 +215,7 @@ function Enroll({ enrolled }: { enrolled: readonly string[] }) {
           {add.error && Object.keys(errors).length === 0 && (
             <WriteFailure failed="The credential was not enrolled." error={add.error} />
           )}
-          <div className="flex justify-end">
+          <div className="mt-4 flex justify-end">
             <Button type="submit" variant="primary" busy={add.isPending} disabled={!id || !psk}>
               Enroll
             </Button>

@@ -240,13 +240,9 @@ function CustomImageCard({ signingKey, busy }: { signingKey: string; busy: boole
             onChange={(event) => setImage({ ...image, sha256: event.currentTarget.value })}
           />
           {start.error && Object.keys(errors).length === 0 && (
-            <WriteFailure
-              className="mt-3"
-              failed="The device did not start the install."
-              error={start.error}
-            />
+            <WriteFailure failed="The device did not start the install." error={start.error} />
           )}
-          <div className="flex justify-end">
+          <div className="mt-4 flex justify-end">
             <Button type="submit" variant="primary" busy={start.isPending} disabled={busy}>
               Install
             </Button>

@@ -5,11 +5,12 @@
 @source ".";
 
 /* The icon's label: its peach is the ink, deepened in light mode to read on
- * light paper, and the paper takes its hue so every tint mixes true. */
+ * light paper and to stand clear of the danger and warn inks, and the paper
+ * takes its hue so every tint mixes true. */
 :root {
   --hue: 44;
 }
 
 @theme {
-  --color-ink: light-dark(oklch(52% 0.13 44), oklch(80.9% 0.095 44));
+  --color-ink: light-dark(oklch(42% 0.09 var(--hue)), oklch(80.9% 0.095 var(--hue)));
 }

@@ -47,8 +47,9 @@ describe('blockingHealth', () => {
 });
 
 describe('headroomZones', () => {
-  it('turns a resource tight past four fifths used and nearly out past 95%', () => {
+  it('holds a resource at ease to four fifths, tight past it and nearly out past 95%', () => {
     expect(headroomZones(1000)).toEqual([
+      { from: 0, to: 800, tone: 'positive' },
       { from: 800, to: 950, tone: 'warn' },
       { from: 950, to: 1000, tone: 'danger' },
     ]);

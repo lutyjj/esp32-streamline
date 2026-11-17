@@ -22,9 +22,10 @@ export const blockingHealth = computed<HealthCheck | null>(() => {
   return s.health?.checks.find((check) => check.severity === 'blocking') ?? null;
 });
 
-/** Where a resource of `total` turns tight (past four fifths used) and nearly out (past 95%). */
+/** A resource of `total` at ease, tight past four fifths used, and nearly out past 95%. */
 export function headroomZones(total: number) {
   return [
+    { from: 0, to: total * 0.8, tone: 'positive' },
     { from: total * 0.8, to: total * 0.95, tone: 'warn' },
     { from: total * 0.95, to: total, tone: 'danger' },
   ] as const;

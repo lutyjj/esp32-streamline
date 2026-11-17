@@ -9,7 +9,7 @@
     "@preact/signals": "^2.11.4",
     "@tanstack/preact-query": "^5.107.1",
     "esp-web-tools": "10.4.0",
-    "linen": "https://github.com/lutyjj/linen/releases/download/v0.7.0/linen-0.7.0.tgz",
+    "linen": "https://github.com/lutyjj/linen/releases/download/v0.7.3/linen-0.7.3.tgz",
     "lucide-react": "^1.73.0",
     "preact": "^11.1.1",
     "valibot": "^1.5.0"

@@ -7,3 +7,13 @@
 #   id = "GHSA-xxxx-xxxx-xxxx"
 #   ignoreUntil = 2026-12-31T00:00:00Z
 #   reason = "the vulnerable API is unreachable from StreamLine; re-check on expiry"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "chrono is unmaintained, not vulnerable; it reaches the firmware only through esp-idf-sys's build-time macro, which runs on the build host; re-check when esp-idf-sys drops it"
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2027-02-01T00:00:00Z
+reason = "picomatch is dev-only build tooling (vite, vitest, rollup) matching the repository's own globs, never user input; no fixed release exists yet"

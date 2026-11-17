@@ -17,7 +17,7 @@ import {
   Status,
   TextField,
 } from 'linen';
-import { type ReactNode, useState } from 'react';
+import { useState } from 'react';
 import type { BridgeStatus, SourceSnapshot } from '../../../generated/bridge';
 import { LEVEL_FLOOR_DB, LEVEL_ZONES, levelDb, levelText } from '../../../shared/format';
 import { fieldErrors } from '../../../shared/http';
@@ -142,15 +142,19 @@ function Listen({ id, known }: { id: string; known: BridgeStatus }) {
   const address = playbackUrl(known.public_url ?? '', window.location.href, id);
   return (
     <Card>
-      <CardHead title="Listen" />
-      <CardBody className="grid gap-3">
-        <Note>
-          {address
+      <CardHead
+        title="Listen"
+        description={
+          address
             ? 'Open this address in a player that plays HTTP WAV streams. The console itself plays nothing.'
-            : `This console opens through a path a player cannot use. Set ${whereToSet('publicUrl')} to the address players reach the bridge at, then restart the bridge.`}
-        </Note>
-        {address && <CopyValue value={address} label="Playback address" />}
-      </CardBody>
+            : `This console opens through a path a player cannot use. Set ${whereToSet('publicUrl')} to the address players reach the bridge at, then restart the bridge.`
+        }
+      />
+      {address && (
+        <CardBody>
+          <CopyValue value={address} label="Playback address" />
+        </CardBody>
+      )}
     </Card>
   );
 }
@@ -162,21 +166,25 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
   if (!known.sendspin.enabled || !published)
     return (
       <Card>
-        <CardHead title="Music Assistant" />
-        <CardBody>
-          <Note>
-            {known.sendspin.enabled
+        <CardHead
+          title="Music Assistant"
+          description={
+            known.sendspin.enabled
               ? 'This source joins Music Assistant once its device has connected.'
-              : `Publishing to Music Assistant is off. Set ${whereToSet('sendspin')}, then restart the bridge, to offer every source as a Live Input.`}
-          </Note>
-        </CardBody>
+              : `Publishing to Music Assistant is off. Set ${whereToSet('sendspin')}, then restart the bridge, to offer every source as a Live Input.`
+          }
+        />
       </Card>
     );
   const step = musicAssistantStep(published);
   const shown = revealedPairing.value?.source === id ? revealedPairing.value : null;
   return (
     <Card>
-      <CardHead title="Music Assistant" aside={<Status tone={step.tone}>{step.label}</Status>}>
+      <CardHead
+        title="Music Assistant"
+        aside={<Status tone={step.tone}>{step.label}</Status>}
+        description={step.detail}
+      >
         {readOnly ? null : shown === null ? (
           <Button
             variant={step.pairs ? 'primary' : 'default'}
@@ -189,22 +197,23 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
           <Button onClick={() => (revealedPairing.value = null)}>Done</Button>
         )}
       </CardHead>
-      <CardBody className="grid gap-3">
-        <Note>{step.detail}</Note>
-        {readOnly && <NeedsToken change="Pairing" />}
-        {make.error && <WriteFailure failed="No pairing token was made." error={make.error} />}
-        {shown && (
-          <ShownOnce
-            what="Pairing token"
-            label="Pairing token"
-            secret={shown.token}
-            copyLabel="Copy pairing token"
-            lost="Making another replaces it. A pairing already made keeps working."
-          >
-            {`Paste it into the setup of “${published.name}” in Music Assistant. Locking the console hides it.`}
-          </ShownOnce>
-        )}
-      </CardBody>
+      {(readOnly || make.error || shown) && (
+        <CardBody className="grid gap-3">
+          {readOnly && <NeedsToken change="Pairing" />}
+          {make.error && <WriteFailure failed="No pairing token was made." error={make.error} />}
+          {shown && (
+            <ShownOnce
+              what="Pairing token"
+              label="Pairing token"
+              secret={shown.token}
+              copyLabel="Copy pairing token"
+              lost="Making another replaces it. A pairing already made keeps working."
+            >
+              {`Paste it into the setup of “${published.name}” in Music Assistant. Locking the console hides it.`}
+            </ShownOnce>
+          )}
+        </CardBody>
+      )}
     </Card>
   );
 }
@@ -217,24 +226,25 @@ function Record({ id }: { id: string }) {
   if (!capabilities.data.enabled)
     return (
       <Card>
-        <CardHead title="Record" />
-        <CardBody>
-          <Note>Recording is off. Set {whereToSet('recordings')}, then restart the bridge.</Note>
-        </CardBody>
+        <CardHead
+          title="Record"
+          description={`Recording is off. Set ${whereToSet('recordings')}, then restart the bridge.`}
+        />
       </Card>
     );
   return (
     <Card>
-      <CardHead title="Record">
+      <CardHead
+        title="Record"
+        description="A lossless WAV of what the bridge receives from this source, kept on the bridge until you delete it."
+      >
         {!readOnly && <Button onClick={() => setAsking(true)}>Record this source</Button>}
       </CardHead>
-      <CardBody className="grid gap-3">
-        <Note>
-          A lossless WAV of what the bridge receives from this source, kept on the bridge until you
-          delete it.
-        </Note>
-        {readOnly && <NeedsToken change="Recording" />}
-      </CardBody>
+      {readOnly && (
+        <CardBody>
+          <NeedsToken change="Recording" />
+        </CardBody>
+      )}
       {asking && (
         <RecordDialog
           source={id}
@@ -295,9 +305,4 @@ function RecordDialog({
       )}
     </FormDialog>
   );
-}
-
-/** What a card's concern is, in the card's own words. */
-function Note({ children }: { children: ReactNode }) {
-  return <p className="max-w-prose text-sm text-text-secondary">{children}</p>;
 }

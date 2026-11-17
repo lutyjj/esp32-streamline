@@ -15,9 +15,9 @@ export function levelDb(abs: number): number {
   return Math.max(LEVEL_FLOOR_DB, Math.min(0, 20 * Math.log10(abs / 32768)));
 }
 
-/** A level gauge's tones: hot near the top of the scale, and clipping in its last decibel. */
+/** A level gauge's tones, as audio meters wear them: safe, hot near the top, clipping in its last decibel. */
 export const LEVEL_ZONES: readonly GaugeZone[] = [
-  { from: LEVEL_FLOOR_DB, to: -6, tone: 'accent' },
+  { from: LEVEL_FLOOR_DB, to: -6, tone: 'positive' },
   { from: -6, to: -1, tone: 'warn' },
   { from: -1, to: 0, tone: 'danger' },
 ];

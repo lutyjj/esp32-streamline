@@ -10,7 +10,7 @@ import {
   useToast,
   useUnsavedChanges,
 } from 'linen';
-import { type ReactNode, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getSetAudioUrl, type StatusResponse } from '../../../generated/api';
 import { Link, navigate } from '../../../shared/navigation';
 import { CAL_ATTEN_MAX } from '../../lib/calibration';
@@ -93,29 +93,57 @@ function Guide({ known }: { known: StatusResponse }) {
   // Finding the level writes the attenuation, which waits while an update runs.
   const held = updateLock(getSetAudioUrl());
   const step = calibrationStep(state);
+  const measure = () => void guide.measureQuiet();
+  const listen = () => void withAccess(() => guide.findLevel());
   const leaving = step === null || step === 'done';
   return (
-    <div className="grid gap-4">
-      {step && <Steps label="Calibration" steps={CALIBRATION_STEPS} current={step} />}
-      <Card>
-        <CardBody>
-          <Phase
-            state={state}
-            measure={() => void guide.measureQuiet()}
-            listen={() => void withAccess(() => guide.findLevel())}
-            held={held}
-            finish={finish}
-            retry={() => void guide.close()}
-          />
-          {!leaving && (
-            <div className="mt-5 flex justify-end">
-              <Button onClick={() => void cancel()}>Cancel</Button>
-            </div>
-          )}
-        </CardBody>
-      </Card>
-    </div>
+    <Card>
+      <CardBody className="grid gap-4">
+        {step && <Steps label="Calibration" steps={CALIBRATION_STEPS} current={step} />}
+        <Phase
+          state={state}
+          measure={measure}
+          listen={listen}
+          held={held}
+          finish={finish}
+          retry={() => void guide.close()}
+        />
+        {!leaving && (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button onClick={() => void cancel()}>Cancel</Button>
+            <Next state={state} measure={measure} listen={listen} held={held} />
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
+}
+
+/** The step forward a phase asks for, beside the way out. */
+function Next({
+  state,
+  measure,
+  listen,
+  held,
+}: {
+  state: Calibration;
+  measure: () => void;
+  listen: () => void;
+  held: string | null;
+}) {
+  if (state.phase === 'pause-source')
+    return (
+      <Button variant="primary" onClick={measure}>
+        Measure the quiet
+      </Button>
+    );
+  if (state.phase === 'play-loud')
+    return (
+      <Button variant="primary" disabled={held !== null} onClick={listen}>
+        Find the level
+      </Button>
+    );
+  return null;
 }
 
 function Phase({
@@ -140,11 +168,6 @@ function Phase({
         <Ask
           title="Pause the source"
           text="The device measures the quiet first, for about four seconds."
-          action={
-            <Button variant="primary" onClick={measure}>
-              Measure the quiet
-            </Button>
-          }
         />
       );
     case 'measuring-quiet':
@@ -165,11 +188,6 @@ function Phase({
           text={
             held ??
             'Play the loudest material you will stream, at the volume you will use. The device raises the attenuation until nothing clips.'
-          }
-          action={
-            <Button variant="primary" disabled={held !== null} onClick={listen}>
-              Find the level
-            </Button>
           }
         />
       );
@@ -229,14 +247,11 @@ function Phase({
   }
 }
 
-function Ask({ title, text, action }: { title: string; text: string; action: ReactNode }) {
+function Ask({ title, text }: { title: string; text: string }) {
   return (
-    <div className="grid justify-items-start gap-3">
-      <div>
-        <h2 className="text-md font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-text-secondary">{text}</p>
-      </div>
-      {action}
+    <div>
+      <h2 className="text-md font-semibold">{title}</h2>
+      <p className="mt-1 text-sm text-text-secondary">{text}</p>
     </div>
   );
 }

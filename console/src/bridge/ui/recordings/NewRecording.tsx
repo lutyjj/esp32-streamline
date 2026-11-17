@@ -72,7 +72,7 @@ export function NewRecording({
           <Form errors={shown} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
             <Select
               label="Source"
-              width={64}
+              width={96}
               name="source"
               value={chosen}
               onValueChange={setSource}
@@ -93,7 +93,7 @@ export function NewRecording({
             {start.error && Object.keys(errors).length === 0 && (
               <WriteFailure failed="The recording did not start." error={start.error} />
             )}
-            <div className="flex justify-end">
+            <div className="mt-4 flex justify-end">
               <Button type="submit" variant="primary" disabled={title.trim() === '' || gone}>
                 Start recording
               </Button>

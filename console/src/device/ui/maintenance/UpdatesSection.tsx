@@ -6,7 +6,6 @@ import {
   CardHead,
   Fact,
   Facts,
-  FieldRow,
   Form,
   type FormErrors,
   Notice,
@@ -55,7 +54,6 @@ export function UpdatesSection() {
   return (
     <div className="grid gap-4">
       <FirmwareCard known={known} />
-      <ScheduleCard />
       <CustomImageCard signingKey={known.ota.signing_key_sha256} busy={known.ota.busy} />
     </div>
   );
@@ -136,6 +134,7 @@ function FirmwareCard({ known }: { known: StatusResponse }) {
           />
         )}
       </CardBody>
+      <ScheduleRow />
       {ota.rollback_available && (
         <SettingRow
           title={`Previous image ${ota.rollback_version}`}
@@ -159,7 +158,7 @@ function FirmwareCard({ known }: { known: StatusResponse }) {
   );
 }
 
-function ScheduleCard() {
+function ScheduleRow() {
   const toast = useToast();
   const settings = useQuery(settingsQuery, queryClient);
   const schedule = useMutation(
@@ -172,22 +171,25 @@ function ScheduleCard() {
     },
     queryClient,
   );
-  if (!settings.data) return <ReadNotice read={settings} name="device settings" />;
+  if (!settings.data)
+    return settings.isError ? (
+      <CardBody>
+        <ReadNotice read={settings} name="device settings" />
+      </CardBody>
+    ) : null;
   return (
-    <Card>
-      <SettingRow
-        title="Automatic updates"
-        description="Ten minutes after it starts, the device checks on this schedule and installs a newer release once the audio is idle."
-      >
-        <SegmentedControl
-          label="Automatic updates"
-          value={settings.data.auto_update_schedule}
-          options={SCHEDULES}
-          disabled={schedule.isPending}
-          onValueChange={(value) => schedule.mutate(value)}
-        />
-      </SettingRow>
-    </Card>
+    <SettingRow
+      title="Automatic updates"
+      description="Ten minutes after it starts, the device checks on this schedule and installs a newer release once the audio is idle."
+    >
+      <SegmentedControl
+        label="Automatic updates"
+        value={settings.data.auto_update_schedule}
+        options={SCHEDULES}
+        disabled={schedule.isPending}
+        onValueChange={(value) => schedule.mutate(value)}
+      />
+    </SettingRow>
   );
 }
 
@@ -209,8 +211,7 @@ function CustomImageCard({ signingKey, busy }: { signingKey: string; busy: boole
         title="Install a custom image"
         description="For development: an image signed with the key this firmware trusts, pinned by its SHA-256. A different key needs a serial flash."
       />
-      {/* A column rather than a grid, whose track the fields' stated widths would hold open on a phone. */}
-      <CardBody className="flex flex-col gap-4">
+      <CardBody className="grid gap-4">
         <Facts>
           <Fact name="Signing key SHA-256" mono copy={{ value: signingKey, label: 'Signing key' }}>
             {signingKey || 'Unknown'}
@@ -220,7 +221,6 @@ function CustomImageCard({ signingKey, busy }: { signingKey: string; busy: boole
           <TextField
             label="Image address"
             name="url"
-            width={96}
             autoComplete="off"
             spellCheck={false}
             placeholder="http://192.0.2.5:8000/streamline-dev-ota.bin"
@@ -229,29 +229,24 @@ function CustomImageCard({ signingKey, busy }: { signingKey: string; busy: boole
             validate={(value) => imageUrlProblem(String(value ?? ''))}
             onChange={(event) => setImage({ ...image, url: event.currentTarget.value })}
           />
-          <FieldRow>
-            <TextField
-              label="SHA-256"
-              name="sha256"
-              width={96}
-              autoComplete="off"
-              spellCheck={false}
-              value={image.sha256}
-              readOnly={start.isPending}
-              validate={(value) => imageDigestProblem(String(value ?? ''))}
-              onChange={(event) => setImage({ ...image, sha256: event.currentTarget.value })}
-            />
-            <Button type="submit" busy={start.isPending} disabled={busy}>
+          <TextField
+            label="SHA-256"
+            name="sha256"
+            autoComplete="off"
+            spellCheck={false}
+            value={image.sha256}
+            readOnly={start.isPending}
+            validate={(value) => imageDigestProblem(String(value ?? ''))}
+            onChange={(event) => setImage({ ...image, sha256: event.currentTarget.value })}
+          />
+          {start.error && Object.keys(errors).length === 0 && (
+            <WriteFailure failed="The device did not start the install." error={start.error} />
+          )}
+          <div className="mt-4 flex justify-end">
+            <Button type="submit" variant="primary" busy={start.isPending} disabled={busy}>
               Install
             </Button>
-          </FieldRow>
-          {start.error && Object.keys(errors).length === 0 && (
-            <WriteFailure
-              className="mt-3"
-              failed="The device did not start the install."
-              error={start.error}
-            />
-          )}
+          </div>
         </Form>
       </CardBody>
     </Card>

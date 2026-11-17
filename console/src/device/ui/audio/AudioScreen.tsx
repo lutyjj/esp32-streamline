@@ -7,6 +7,8 @@ import {
   CardHead,
   CellSelect,
   Content,
+  Fact,
+  Facts,
   Notice,
   SettingRow,
   SettingToggle,
@@ -229,11 +231,15 @@ function StreamCard({ activity }: { activity: AudioActivity }) {
         )}
       </CardHead>
       {target?.target_host && (
-        <SettingRow title="Bridge">
-          <Link href="/bridge" className="font-mono text-sm">
-            {target.target_host}:{target.target_port}
-          </Link>
-        </SettingRow>
+        <CardBody>
+          <Facts>
+            <Fact name="Bridge" mono>
+              <Link href="/bridge">
+                {target.target_host}:{target.target_port}
+              </Link>
+            </Fact>
+          </Facts>
+        </CardBody>
       )}
     </Card>
   );

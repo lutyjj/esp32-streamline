@@ -61,9 +61,13 @@ export function DiagnosticsSection() {
         </EmptyState>
       )}
       <Card>
+        <CardHead
+          title="Raw status"
+          description="Everything the device reports, as a script reads it from /api/status."
+        />
         <CardBody>
           <LogView
-            label="Raw status"
+            label="Status JSON"
             text={JSON.stringify(known, null, 2)}
             filename="streamline-status.json"
           />
@@ -168,7 +172,7 @@ function LogCard() {
         <ReadNotice read={read} name="device log" />
         {view && (
           <LogView
-            label="Device log"
+            label={view === log?.previous ? 'Log of the start before' : 'Log of this start'}
             text={logText(view)}
             filename={`streamline-log-${view.boot}.txt`}
           />

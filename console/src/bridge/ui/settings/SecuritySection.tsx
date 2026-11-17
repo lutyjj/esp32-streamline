@@ -194,35 +194,31 @@ function Enroll({ enrolled }: { enrolled: readonly string[] }) {
             enrolled.includes(id) ? setReplacing(true) : add.mutateAsync().catch(() => undefined)
           }
         >
-          <div className="grid gap-4">
-            <TextField
-              label="Credential ID"
-              width={96}
-              name="key_id"
-              autoComplete="off"
-              spellCheck={false}
-              value={keyId}
-              validate={(value) => keyIdProblem(String(value ?? '').trim())}
-              onChange={(event) => setKeyId(event.currentTarget.value)}
-            />
-            <TextField
-              label="Key"
-              width={144}
-              name="psk"
-              autoComplete="off"
-              spellCheck={false}
-              value={psk}
-              validate={(value) => pskProblem(String(value ?? '').trim())}
-              onChange={(event) => setPsk(event.currentTarget.value)}
-            />
-            {add.error && Object.keys(errors).length === 0 && (
-              <WriteFailure failed="The credential was not enrolled." error={add.error} />
-            )}
-            <div className="flex justify-end">
-              <Button type="submit" variant="primary" busy={add.isPending} disabled={!id || !psk}>
-                Enroll
-              </Button>
-            </div>
+          <TextField
+            label="Credential ID"
+            name="key_id"
+            autoComplete="off"
+            spellCheck={false}
+            value={keyId}
+            validate={(value) => keyIdProblem(String(value ?? '').trim())}
+            onChange={(event) => setKeyId(event.currentTarget.value)}
+          />
+          <TextField
+            label="Key"
+            name="psk"
+            autoComplete="off"
+            spellCheck={false}
+            value={psk}
+            validate={(value) => pskProblem(String(value ?? '').trim())}
+            onChange={(event) => setPsk(event.currentTarget.value)}
+          />
+          {add.error && Object.keys(errors).length === 0 && (
+            <WriteFailure failed="The credential was not enrolled." error={add.error} />
+          )}
+          <div className="flex justify-end">
+            <Button type="submit" variant="primary" busy={add.isPending} disabled={!id || !psk}>
+              Enroll
+            </Button>
           </div>
         </Form>
       </CardBody>

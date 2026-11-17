@@ -72,7 +72,7 @@ export function NewRecording({
           <Form errors={shown} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
             <Select
               label="Source"
-              width={64}
+              width={96}
               name="source"
               value={chosen}
               onValueChange={setSource}

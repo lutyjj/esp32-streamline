@@ -7,6 +7,7 @@ import {
   Notice,
   Progress,
   Steps,
+  Swap,
   useToast,
   useUnsavedChanges,
 } from 'linen';
@@ -100,14 +101,16 @@ function Guide({ known }: { known: StatusResponse }) {
     <Card>
       <CardBody className="grid gap-4">
         {step && <Steps label="Calibration" steps={CALIBRATION_STEPS} current={step} />}
-        <Phase
-          state={state}
-          measure={measure}
-          listen={listen}
-          held={held}
-          finish={finish}
-          retry={() => void guide.close()}
-        />
+        <Swap view={state.phase} stepped>
+          <Phase
+            state={state}
+            measure={measure}
+            listen={listen}
+            held={held}
+            finish={finish}
+            retry={() => void guide.close()}
+          />
+        </Swap>
         {!leaving && (
           <div className="flex flex-wrap justify-end gap-2">
             <Button onClick={() => void cancel()}>Cancel</Button>

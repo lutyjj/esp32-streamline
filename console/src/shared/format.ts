@@ -1,9 +1,15 @@
 import type { GaugeZone } from 'linen';
 
+/** Decibels to a tenth; a value that rounds to zero from below carries no sign. */
+function tenths(db: number): string {
+  const text = db.toFixed(1);
+  return text === '-0.0' ? '0.0' : text;
+}
+
 /** Absolute sample value (0..32768) as dBFS text; silence reads as -inf. */
 export function dbfs(abs: number): string {
   if (!abs) return '-inf';
-  return (20 * Math.log10(abs / 32768)).toFixed(1);
+  return tenths(20 * Math.log10(abs / 32768));
 }
 
 /** The floor of a level scale in dBFS; anything quieter, silence included, reads as it. */
@@ -24,7 +30,7 @@ export const LEVEL_ZONES: readonly GaugeZone[] = [
 
 /** A level in dBFS as a gauge reads it out. */
 export function levelText(value: number): string {
-  return value <= LEVEL_FLOOR_DB ? 'silent' : `${value.toFixed(1)} dB`;
+  return value <= LEVEL_FLOOR_DB ? 'silent' : `${tenths(value)} dB`;
 }
 
 /** Byte count as a compact 1024-based string: `512 B`, `124 KB`, `1.9 MB`. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bytes, dbfs, duration, LEVEL_FLOOR_DB, levelDb } from '../../src/shared/format';
+import { bytes, dbfs, duration, LEVEL_FLOOR_DB, levelDb, levelText } from '../../src/shared/format';
 
 describe('dbfs', () => {
   it('reads silence as -inf', () => {
@@ -12,6 +12,24 @@ describe('dbfs', () => {
 
   it('reads half scale as -6.0', () => {
     expect(dbfs(16384)).toBe('-6.0');
+  });
+
+  it('reads the loudest peak under the clip threshold as 0.0, without a sign', () => {
+    expect(dbfs(32759)).toBe('0.0');
+  });
+});
+
+describe('levelText', () => {
+  it('reads the floor as silent', () => {
+    expect(levelText(LEVEL_FLOOR_DB)).toBe('silent');
+  });
+
+  it('reads the clip threshold as 0.0 dB, without a sign', () => {
+    expect(levelText(levelDb(32760))).toBe('0.0 dB');
+  });
+
+  it('reads a level below full scale to a tenth', () => {
+    expect(levelText(levelDb(16384))).toBe('-6.0 dB');
   });
 });
 

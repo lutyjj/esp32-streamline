@@ -203,10 +203,12 @@ test('calibration names playback heard while it measures the quiet, and cancels 
   await expect(page.getByRole('heading', { level: 1, name: 'Calibrate' })).toBeVisible();
   await page.getByRole('button', { name: 'Measure the quiet' }).click();
   await expect(page.getByRole('progressbar')).toBeVisible();
+  await expect(page.locator(':focus')).toContainText('Measuring the quiet');
   // The fake device's input always plays.
   await expect(page.getByText('That sounds like playback', { exact: false })).toBeVisible({
     timeout: 15_000,
   });
+  await expect(page.locator(':focus')).toContainText('The quiet was not measured.');
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(page).toHaveURL(/#\/audio$/);
 });
@@ -356,6 +358,7 @@ test('encryption is set up step by step, then a replacement can be discarded', a
 
   await page.getByRole('button', { name: 'Verify with the bridge' }).click();
   await expect(page.getByText('The bridge accepted the credential.')).toBeVisible();
+  await expect(page.locator(':focus')).toContainText('The bridge accepted the credential.');
   await page.getByRole('button', { name: 'Turn on encryption' }).click();
   await expect(page.getByText('Back online after the switch to encryption.')).toBeVisible();
   await expect(page.getByText('Encryption is on')).toBeVisible();

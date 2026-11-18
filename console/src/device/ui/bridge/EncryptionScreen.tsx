@@ -12,6 +12,7 @@ import {
   SettingRow,
   ShownOnce,
   Steps,
+  Swap,
 } from 'linen';
 import { useState } from 'react';
 import {
@@ -106,83 +107,87 @@ function Guide({ transport, target }: { transport: TransportStatus; target: stri
       />
       <CardBody className="grid gap-4">
         <Steps label="Encryption" steps={STEPS} current={step} />
-        {step === 'credential' && (
-          <>
-            {actions.stage ? (
-              <p className="text-sm text-text-secondary">
-                The device makes a credential and shows it once. Audio keeps streaming in the clear
-                until the bridge requires encryption.
-              </p>
-            ) : (
-              <Notice
-                title="The device still keeps its previous credential."
-                description="It holds two at most, so retire that one under Advanced security first."
-              />
+        <Swap view={step} stepped>
+          <div className="grid gap-4">
+            {step === 'credential' && (
+              <>
+                {actions.stage ? (
+                  <p className="text-sm text-text-secondary">
+                    The device makes a credential and shows it once. Audio keeps streaming in the
+                    clear until the bridge requires encryption.
+                  </p>
+                ) : (
+                  <Notice
+                    title="The device still keeps its previous credential."
+                    description="It holds two at most, so retire that one under Advanced security first."
+                  />
+                )}
+                {make.error && (
+                  <WriteFailure failed="The device made no credential." error={make.error} />
+                )}
+              </>
             )}
-            {make.error && (
-              <WriteFailure failed="The device made no credential." error={make.error} />
+            {step === 'bridge' && (
+              <>
+                {shown ? (
+                  <Credential shown={shown} />
+                ) : (
+                  <Notice
+                    tone="warn"
+                    title="This credential was shown on an earlier visit."
+                    description="If the bridge has it, verify. If it is lost, discard it and make another."
+                  />
+                )}
+                <ol className="grid list-decimal gap-2 pl-5 text-sm">
+                  <li>
+                    Open the bridge console's Settings → Audio security
+                    {security && (
+                      <>
+                        {' '}
+                        (
+                        <a className={LINK_CLASS} href={security} target="_blank" rel="noreferrer">
+                          open it
+                        </a>
+                        )
+                      </>
+                    )}{' '}
+                    and unlock it with the bridge API token.
+                  </li>
+                  <li>Add the key id and the PSK under Device credentials.</li>
+                  {!replacing && (
+                    <li>Choose Require encryption. Audio pauses until this device follows.</li>
+                  )}
+                  <li>Come back and verify: the device makes a real connection to the bridge.</li>
+                </ol>
+                {shown?.recovery && (
+                  <Notice
+                    tone="warn"
+                    title="The device starts in the clear from its next start."
+                    description="To hear audio before this credential is on, switch the bridge to cleartext and restart the device; then require encryption again and verify."
+                  />
+                )}
+                {verify.error && (
+                  <WriteFailure
+                    failed="The bridge did not accept the credential."
+                    error={verify.error}
+                  />
+                )}
+              </>
             )}
-          </>
-        )}
-        {step === 'bridge' && (
-          <>
-            {shown ? (
-              <Credential shown={shown} />
-            ) : (
-              <Notice
-                tone="warn"
-                title="This credential was shown on an earlier visit."
-                description="If the bridge has it, verify. If it is lost, discard it and make another."
-              />
+            {step === 'activate' && (
+              <>
+                <Notice
+                  tone="positive"
+                  title="The bridge accepted the credential."
+                  description="Turning it on restarts the device into encrypted audio, which pauses for a few seconds."
+                />
+                {activate.error && (
+                  <WriteFailure failed="Encryption stayed off." error={activate.error} />
+                )}
+              </>
             )}
-            <ol className="grid list-decimal gap-2 pl-5 text-sm">
-              <li>
-                Open the bridge console's Settings → Audio security
-                {security && (
-                  <>
-                    {' '}
-                    (
-                    <a className={LINK_CLASS} href={security} target="_blank" rel="noreferrer">
-                      open it
-                    </a>
-                    )
-                  </>
-                )}{' '}
-                and unlock it with the bridge API token.
-              </li>
-              <li>Add the key id and the PSK under Device credentials.</li>
-              {!replacing && (
-                <li>Choose Require encryption. Audio pauses until this device follows.</li>
-              )}
-              <li>Come back and verify: the device makes a real connection to the bridge.</li>
-            </ol>
-            {shown?.recovery && (
-              <Notice
-                tone="warn"
-                title="The device starts in the clear from its next start."
-                description="To hear audio before this credential is on, switch the bridge to cleartext and restart the device; then require encryption again and verify."
-              />
-            )}
-            {verify.error && (
-              <WriteFailure
-                failed="The bridge did not accept the credential."
-                error={verify.error}
-              />
-            )}
-          </>
-        )}
-        {step === 'activate' && (
-          <>
-            <Notice
-              tone="positive"
-              title="The bridge accepted the credential."
-              description="Turning it on restarts the device into encrypted audio, which pauses for a few seconds."
-            />
-            {activate.error && (
-              <WriteFailure failed="Encryption stayed off." error={activate.error} />
-            )}
-          </>
-        )}
+          </div>
+        </Swap>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {held && step === 'activate' && (
             <p className="mr-auto text-sm text-text-secondary">{held}</p>

@@ -5,7 +5,6 @@ import {
   Card,
   CardBody,
   CardHead,
-  EmptyState,
   Fact,
   Facts,
   Gauge,
@@ -54,12 +53,14 @@ export function DiagnosticsSection() {
           <CoredumpCard />
         </>
       ) : (
-        <EmptyState
-          title="Device log and crash dump"
-          description="Reading them needs the admin key: they can hold network names, addresses, and the memory of a crash."
-        >
-          <Button onClick={() => void requestCredential()}>Unlock to read</Button>
-        </EmptyState>
+        <Card>
+          <CardHead
+            title="Device log and crash dump"
+            description="Reading them needs the admin key: they can hold network names, addresses, and the memory of a crash."
+          >
+            <Button onClick={() => void requestCredential()}>Unlock to read</Button>
+          </CardHead>
+        </Card>
       )}
       <Card>
         <CardHead

@@ -4,6 +4,7 @@ import {
   buttonClass,
   Card,
   CardBody,
+  CardHead,
   Content,
   Notice,
   Progress,
@@ -32,6 +33,10 @@ import { ScreenTop } from '../ScreenTop';
 import { InputMeter } from './InputMeter';
 
 const TRAIL = [{ href: '/audio', label: 'Audio' }];
+
+/** What the second step asks, which it still says while an update holds it. */
+const PLAY_LOUD =
+  'Play the loudest material you will stream, at the volume you will use. The device raises the attenuation until nothing clips.';
 
 /** Calibrate: measure the quiet, then find the attenuation loud material needs. */
 export function CalibrateScreen() {
@@ -100,6 +105,10 @@ function Guide({ known }: { known: StatusResponse }) {
   const leaving = step === null || step === 'done';
   return (
     <Card>
+      <CardHead
+        title="Find the attenuation"
+        description="The device listens to the running input, first quiet, then at its loudest, and keeps the attenuation that stops the loudest part clipping."
+      />
       <CardBody>
         {step && <Steps label="Calibration" steps={CALIBRATION_STEPS} current={step} />}
         <Swap view={state.phase} stepped>
@@ -169,10 +178,9 @@ function Phase({
   switch (state.phase) {
     case 'pause-source':
       return (
-        <Ask
-          title="Pause the source"
-          text="The device measures the quiet first, for about four seconds."
-        />
+        <p className="text-sm text-text-secondary">
+          Pause the source. The device measures the quiet first, for about four seconds.
+        </p>
       );
     case 'measuring-quiet':
       return <Progress label="Measuring the quiet" value={state.progress} />;
@@ -187,13 +195,9 @@ function Phase({
       );
     case 'play-loud':
       return (
-        <Ask
-          title="Play the loudest part"
-          text={
-            held ??
-            'Play the loudest material you will stream, at the volume you will use. The device raises the attenuation until nothing clips.'
-          }
-        />
+        <p className="text-sm text-text-secondary">
+          {held ? `${PLAY_LOUD} ${held}` : PLAY_LOUD}
+        </p>
       );
     case 'listening':
       return (
@@ -249,13 +253,4 @@ function Phase({
     case 'closed':
       return null;
   }
-}
-
-function Ask({ title, text }: { title: string; text: string }) {
-  return (
-    <div>
-      <h2 className="text-md font-semibold">{title}</h2>
-      <p className="mt-1 text-sm text-text-secondary">{text}</p>
-    </div>
-  );
 }

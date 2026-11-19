@@ -176,7 +176,7 @@ test('adjusting the input holds a draft until Save, and leaving it asks first', 
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
   await page.getByRole('link', { name: 'Audio', exact: true }).first().click();
   await expect(page).toHaveURL(/#\/audio$/);
-  await expect(page.getByText(/gain 12 ·/)).toBeVisible();
+  await expect(page.getByText(/gain 12 ·/)).toBeVisible();
 });
 
 test('a profile keeps the applied levels and is chosen on Audio', async ({ page }) => {

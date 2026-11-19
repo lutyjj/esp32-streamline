@@ -30,7 +30,7 @@ export const LEVEL_ZONES: readonly GaugeZone[] = [
 
 /** A level in dBFS as a gauge reads it out. */
 export function levelText(value: number): string {
-  return value <= LEVEL_FLOOR_DB ? 'silent' : `${tenths(value)} dB`;
+  return value <= LEVEL_FLOOR_DB ? 'silent' : `${tenths(value)} dB`;
 }
 
 /** Byte count as a compact 1024-based string: `512 B`, `124 KB`, `1.9 MB`. */

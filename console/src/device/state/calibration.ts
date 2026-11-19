@@ -178,7 +178,7 @@ export class CalibrationGuide {
         this.state.value = {
           phase: 'loud-refused',
           floor,
-          reason: `It still clips at ${this.attenuationMax} dB. Turn the source’s volume down, then listen again.`,
+          reason: `It still clips at ${this.attenuationMax} dB. Turn the source’s volume down, then listen again.`,
         };
         return;
       case 'apply-failed':
@@ -207,7 +207,7 @@ export class CalibrationGuide {
     } catch (error) {
       this.state.value = {
         phase: 'restore-failed',
-        reason: `The attenuation is not back at ${this.entry.adc_attenuation_db} dB: ${errorMessage(error)}`,
+        reason: `The attenuation is not back at ${this.entry.adc_attenuation_db} dB: ${errorMessage(error)}`,
       };
     }
   }

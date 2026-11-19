@@ -95,7 +95,7 @@ export const passthroughLocked = computed<string | null>(() => {
   const s = status.value;
   if (s?.mode === 'setup') return 'Analog passthrough is available after setup completes.';
   if (s?.mode === 'recovery' && !s.analog_passthrough.enabled) {
-    return 'You can turn analog passthrough on once StreamLine is back on your Wi-Fi.';
+    return 'You can turn analog passthrough on once StreamLine is back on your Wi‑Fi.';
   }
   return null;
 });

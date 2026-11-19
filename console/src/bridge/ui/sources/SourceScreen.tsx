@@ -203,14 +203,13 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
           {make.error && <WriteFailure failed="No pairing token was made." error={make.error} />}
           {shown && (
             <ShownOnce
-              what="Pairing token"
+              title="Pairing token"
               label="Pairing token"
               secret={shown.token}
               copyLabel="Copy pairing token"
               lost="Making another replaces it. A pairing already made keeps working."
-            >
-              {`Paste it into the setup of “${published.name}” in Music Assistant. Locking the console hides it.`}
-            </ShownOnce>
+              description={`Paste it into the setup of “${published.name}” in Music Assistant. Locking the console hides it.`}
+            />
           )}
         </CardBody>
       )}

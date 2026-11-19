@@ -3,6 +3,7 @@ import { Actions, Button, Card, CardBody, CardHead, Form, Select, TextField } fr
 import { useEffect, useMemo, useState } from 'react';
 import type { BridgeStatus } from '../../../generated/bridge';
 import { duration } from '../../../shared/format';
+import { FIELD_WIDTH } from '../../../shared/fieldWidth';
 import { fieldErrors } from '../../../shared/http';
 import { queryClient } from '../../../shared/queries';
 import { WriteFailure } from '../../../shared/WriteFailure';
@@ -74,7 +75,7 @@ export function NewRecording({
           <CardBody>
             <Select
               label="Source"
-              width={96}
+              width={FIELD_WIDTH}
               name="source"
               value={chosen}
               onValueChange={setSource}
@@ -86,7 +87,7 @@ export function NewRecording({
             />
             <TextField
               label="Title"
-              width={96}
+              width={FIELD_WIDTH}
               name="title"
               value={title}
               validate={(value) => titleProblem(String(value ?? ''), limit)}

@@ -6,6 +6,7 @@ import {
   CardBody,
   CardHead,
   Content,
+  FieldRow,
   Form,
   Notice,
   SettingRow,
@@ -15,6 +16,7 @@ import {
 import { useState } from 'react';
 import { type DiscoveredBridge, getSetTargetUrl } from '../../../generated/api';
 import { errorMessage } from '../../../shared/errors';
+import { FIELD_WIDTH } from '../../../shared/fieldWidth';
 import { fieldErrors } from '../../../shared/http';
 import { navigate } from '../../../shared/navigation';
 import { queryClient } from '../../../shared/queries';
@@ -36,6 +38,12 @@ import {
   type TargetDraft,
 } from '../../state/targetForm';
 import { ScreenTop } from '../ScreenTop';
+
+/**
+ * A port's control: room for five digits, and narrow enough that host and port
+ * share a line in an open foldable's 524 px band.
+ */
+const PORT_WIDTH = 30;
 
 const TRAIL = [{ href: '/bridge', label: 'Bridge' }];
 
@@ -91,34 +99,36 @@ function TargetForm({ target }: { target: SavedTarget }) {
         />
         <Form errors={errors} onSubmit={() => save.mutateAsync().catch(() => undefined)}>
           <CardBody>
-            <TextField
-              label="Bridge address"
-              name="target_host"
-              width={96}
-              autoCapitalize="none"
-              spellCheck={false}
-              value={draft.entry.host}
-              readOnly={save.isPending}
-              validate={(value) => hostProblem(String(value ?? ''))}
-              onChange={(event) =>
-                setDraft({ ...draft, entry: { ...draft.entry, host: event.currentTarget.value } })
-              }
-            />
-            <TextField
-              label="Port"
-              name="target_port"
-              width={32}
-              inputMode="numeric"
-              value={draft.entry.port}
-              readOnly={save.isPending}
-              validate={(value) => portProblem(String(value ?? ''))}
-              onChange={(event) =>
-                setDraft({ ...draft, entry: { ...draft.entry, port: event.currentTarget.value } })
-              }
-            />
+            <FieldRow>
+              <TextField
+                label="Bridge address"
+                name="target_host"
+                width={FIELD_WIDTH}
+                autoCapitalize="none"
+                spellCheck={false}
+                value={draft.entry.host}
+                readOnly={save.isPending}
+                validate={(value) => hostProblem(String(value ?? ''))}
+                onChange={(event) =>
+                  setDraft({ ...draft, entry: { ...draft.entry, host: event.currentTarget.value } })
+                }
+              />
+              <TextField
+                label="Port"
+                name="target_port"
+                width={PORT_WIDTH}
+                inputMode="numeric"
+                value={draft.entry.port}
+                readOnly={save.isPending}
+                validate={(value) => portProblem(String(value ?? ''))}
+                onChange={(event) =>
+                  setDraft({ ...draft, entry: { ...draft.entry, port: event.currentTarget.value } })
+                }
+              />
+            </FieldRow>
             <TextField
               label="Bridge console address"
-              width={96}
+              width={FIELD_WIDTH}
               autoCapitalize="none"
               spellCheck={false}
               hint="Optional, such as http://192.0.2.20:8088/. Bridge links straight to this device's source there."

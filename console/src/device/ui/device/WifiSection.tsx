@@ -33,7 +33,7 @@ export function WifiSection() {
   return (
     <>
       <Card>
-        <CardHead title="Wi-Fi" description="The network the device joins at every start." />
+        <CardHead title="Connection" description="The network the device joins at every start." />
         <CardBody>
           <Facts>
             <Fact name="Network">{wifi.ssid || 'None saved'}</Fact>

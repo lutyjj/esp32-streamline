@@ -22,6 +22,7 @@ import {
   type LedRole,
   setBoard,
 } from '../../../generated/api';
+import { FIELD_WIDTH } from '../../../shared/fieldWidth';
 import { fieldErrors } from '../../../shared/http';
 import { queryClient } from '../../../shared/queries';
 import { ReadNotice } from '../../../shared/ReadNotice';
@@ -89,16 +90,16 @@ function NameCard({ saved }: { saved: string }) {
   return (
     <Card>
       <CardHead
-        title="Name"
+        title="Identity"
         description="Tells this device apart in the rail and the browser tab. Left empty, the console says StreamLine."
       />
-      <CardBody>
-        <Form errors={errors} onSubmit={() => save.mutateAsync().catch(() => undefined)}>
+      <Form errors={errors} onSubmit={() => save.mutateAsync().catch(() => undefined)}>
+        <CardBody>
           <FieldRow>
             <TextField
               label="Name"
               name="name"
-              width={64}
+              width={FIELD_WIDTH}
               autoComplete="off"
               placeholder="StreamLine"
               value={name}
@@ -113,8 +114,8 @@ function NameCard({ saved }: { saved: string }) {
           {save.error && Object.keys(errors).length === 0 && (
             <WriteFailure failed="The name did not change." error={save.error} />
           )}
-        </Form>
-      </CardBody>
+        </CardBody>
+      </Form>
     </Card>
   );
 }

@@ -22,6 +22,7 @@ import {
   getOtaRollbackUrl,
   type StatusResponse,
 } from '../../../generated/api';
+import { FIELD_WIDTH } from '../../../shared/fieldWidth';
 import { fieldErrors } from '../../../shared/http';
 import { queryClient } from '../../../shared/queries';
 import { ReadNotice } from '../../../shared/ReadNotice';
@@ -226,6 +227,7 @@ function CustomImageCard({ signingKey, busy }: { signingKey: string; busy: boole
           <TextField
             label="Image address"
             name="url"
+            width={FIELD_WIDTH}
             autoComplete="off"
             spellCheck={false}
             placeholder="http://192.0.2.5:8000/streamline-dev-ota.bin"

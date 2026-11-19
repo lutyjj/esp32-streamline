@@ -17,6 +17,7 @@ import {
 } from 'linen';
 import { useState } from 'react';
 import type { BridgeStatus } from '../../../generated/bridge';
+import { FIELD_WIDTH } from '../../../shared/fieldWidth';
 import { fieldErrors } from '../../../shared/http';
 import { queryClient } from '../../../shared/queries';
 import { WriteConfirm } from '../../../shared/WriteConfirm';
@@ -198,6 +199,7 @@ function Enroll({ enrolled }: { enrolled: readonly string[] }) {
           <TextField
             label="Credential ID"
             name="key_id"
+            width={FIELD_WIDTH}
             autoComplete="off"
             spellCheck={false}
             value={keyId}

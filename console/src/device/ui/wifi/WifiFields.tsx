@@ -1,4 +1,5 @@
 import { Checkbox, Notice, TextField } from 'linen';
+import { FIELD_WIDTH } from '../../../shared/fieldWidth';
 import { passwordProblem, ssidProblem, type WifiEntry } from '../../lib/wifi';
 
 /**
@@ -24,7 +25,7 @@ export function WifiFields({
       <TextField
         label="Network name"
         name="ssid"
-        width={96}
+        width={FIELD_WIDTH}
         autoComplete="off"
         autoCapitalize="none"
         spellCheck={false}
@@ -37,7 +38,7 @@ export function WifiFields({
         <TextField
           label="Password"
           name="password"
-          width={96}
+          width={FIELD_WIDTH}
           type="password"
           autoComplete="off"
           hint={storedPassword ? 'Leave it blank to keep the saved password.' : undefined}

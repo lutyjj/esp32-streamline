@@ -74,14 +74,13 @@ export function Onboarding() {
             <CardBody>
               {setupKey.value && (
                 <ShownOnce
-                  what="Admin key"
+                  title="Admin key"
                   label="Admin key"
                   secret={setupKey.value}
                   copyLabel="Copy key"
                   lost="A lost key needs a reflash: no screen shows it again."
-                >
-                  Keep it in a password manager before the device joins your Wi-Fi.
-                </ShownOnce>
+                  description="Keep it in a password manager before the device joins your Wi-Fi."
+                />
               )}
               <Checkbox className="mt-4" checked={keySaved} onCheckedChange={setKeySaved}>
                 I saved the key outside this console

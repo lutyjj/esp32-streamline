@@ -22,12 +22,9 @@ import { RecordingsScreen } from './recordings/RecordingsScreen';
 import { SettingsScreen } from './settings/SettingsScreen';
 import { SourcesScreen } from './sources/SourcesScreen';
 
-/** The page's Content Security Policy nonce, which the bridge puts on every script it serves. */
-const NONCE = document.querySelector<HTMLScriptElement>('script[nonce]')?.nonce || undefined;
-
 export function App() {
   return (
-    <LinenProvider navigation={hashNavigation} nonce={NONCE}>
+    <LinenProvider navigation={hashNavigation}>
       <PeerContext.Provider value="bridge">
         <ToastProvider>
           <UnsavedChangesGuard>

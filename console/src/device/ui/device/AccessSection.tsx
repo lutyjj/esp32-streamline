@@ -66,14 +66,13 @@ function AdminKeyCard() {
       {next !== null && (
         <CardBody className="grid gap-4">
           <ShownOnce
-            what="New admin key"
+            title="New admin key"
             label="New admin key"
             secret={next}
             copyLabel="Copy key"
             lost="Until it is saved the old key stays in use. Once saved, a lost key needs a reflash."
-          >
-            Keep it in a password manager, then save it here.
-          </ShownOnce>
+            description="Keep it in a password manager, then save it here."
+          />
           <Checkbox checked={kept} onCheckedChange={setKept}>
             I saved the new key outside this console
           </Checkbox>

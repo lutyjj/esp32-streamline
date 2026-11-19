@@ -248,14 +248,13 @@ function Credential({ shown }: { shown: RevealedKey }) {
         </Fact>
       </Facts>
       <ShownOnce
-        what="PSK"
+        title="PSK"
         label="PSK"
         secret={shown.psk}
         copyLabel="Copy PSK"
         lost="No screen shows it again; a lost one is replaced under Advanced security."
-      >
-        Give the bridge both, now.
-      </ShownOnce>
+        description="Give the bridge both, now."
+      />
     </div>
   );
 }

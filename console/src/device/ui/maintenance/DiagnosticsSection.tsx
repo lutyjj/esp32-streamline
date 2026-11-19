@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   Card,
   CardBody,
@@ -44,7 +45,7 @@ export function DiagnosticsSection() {
   const known = status.value;
   if (!known) return null;
   return (
-    <div className="grid gap-4">
+    <>
       <HealthCard known={known} />
       <ResourcesCard />
       {isUnlocked() ? (
@@ -73,7 +74,7 @@ export function DiagnosticsSection() {
           />
         </CardBody>
       </Card>
-    </div>
+    </>
   );
 }
 
@@ -100,7 +101,7 @@ function ResourcesCard() {
   return (
     <Card>
       <CardHead title="Resources" />
-      <CardBody className="grid gap-4">
+      <CardBody>
         <Gauges label="In use">
           <Gauge
             label="Memory"
@@ -168,7 +169,7 @@ function LogCard() {
         checked={following}
         onCheckedChange={setFollowing}
       />
-      <CardBody className="grid gap-4">
+      <CardBody>
         <ReadNotice read={read} name="device log" />
         {view && (
           <LogView
@@ -217,14 +218,14 @@ function CoredumpCard() {
           }
         >
           {dump.present && (
-            <div className="flex flex-wrap gap-2">
+            <Actions>
               <Button busy={download.isPending} onClick={() => download.mutate()}>
                 Download
               </Button>
               <Button variant="destructive" onClick={() => setEraseAsked(true)}>
                 Erase
               </Button>
-            </div>
+            </Actions>
           )}
         </SettingRow>
       )}

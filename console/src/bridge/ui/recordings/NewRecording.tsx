@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/preact-query';
-import { Button, Card, CardBody, CardHead, Form, Select, TextField } from 'linen';
+import { Actions, Button, Card, CardBody, CardHead, Form, Select, TextField } from 'linen';
 import { useEffect, useMemo, useState } from 'react';
 import type { BridgeStatus } from '../../../generated/bridge';
 import { duration } from '../../../shared/format';
@@ -63,13 +63,15 @@ export function NewRecording({
         title="New recording"
         description={`Start before the passage you want: the file begins with the first audio the bridge receives. The storage holds about ${duration(room)} more.`}
       />
-      <CardBody>
-        {sources.length === 0 ? (
+      {sources.length === 0 ? (
+        <CardBody>
           <p className="text-sm text-text-secondary">
             No source to record. A device appears under Sources while it streams to this bridge.
           </p>
-        ) : (
-          <Form errors={shown} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
+        </CardBody>
+      ) : (
+        <Form errors={shown} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
+          <CardBody>
             <Select
               label="Source"
               width={96}
@@ -93,14 +95,14 @@ export function NewRecording({
             {start.error && Object.keys(errors).length === 0 && (
               <WriteFailure failed="The recording did not start." error={start.error} />
             )}
-            <div className="mt-4 flex justify-end">
+            <Actions className="justify-end">
               <Button type="submit" variant="primary" disabled={title.trim() === '' || gone}>
                 Start recording
               </Button>
-            </div>
-          </Form>
-        )}
-      </CardBody>
+            </Actions>
+          </CardBody>
+        </Form>
+      )}
     </Card>
   );
 }

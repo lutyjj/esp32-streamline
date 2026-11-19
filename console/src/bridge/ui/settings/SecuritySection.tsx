@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   Card,
   CardBody,
@@ -35,7 +36,7 @@ import { NeedsToken } from '../NeedsToken';
 export function SecuritySection({ known }: { known: BridgeStatus }) {
   const readOnly = useReadOnly();
   return (
-    <div className="grid gap-4">
+    <>
       <Listener known={known} readOnly={readOnly} />
       {known.transport.configurable && (
         <>
@@ -43,7 +44,7 @@ export function SecuritySection({ known }: { known: BridgeStatus }) {
           {!readOnly && <Enroll enrolled={known.transport.key_ids} />}
         </>
       )}
-    </div>
+    </>
   );
 }
 
@@ -74,13 +75,13 @@ function Listener({ known, readOnly }: { known: BridgeStatus; readOnly: boolean 
       </CardHead>
       <CardBody>
         {configurable ? (
-          <div className="grid gap-3">
+          <>
             {readOnly && <NeedsToken change="Changing audio security" />}
             <Facts>
               <Fact name="Accepted handshakes">{auth_successes}</Fact>
               <Fact name="Refused handshakes">{auth_failures}</Fact>
             </Facts>
-          </div>
+          </>
         ) : (
           <p className="text-sm text-text-secondary">
             Audio security needs a place to keep its state. Set {TRANSPORT_STATE_OPTION} for a
@@ -187,13 +188,13 @@ function Enroll({ enrolled }: { enrolled: readonly string[] }) {
         title="Enroll a credential"
         description="Copy the ID and key the device console shows once, under Bridge, Encryption. Enrolling works in either mode, so do it before requiring encryption."
       />
-      <CardBody>
-        <Form
-          errors={errors}
-          onSubmit={() =>
-            enrolled.includes(id) ? setReplacing(true) : add.mutateAsync().catch(() => undefined)
-          }
-        >
+      <Form
+        errors={errors}
+        onSubmit={() =>
+          enrolled.includes(id) ? setReplacing(true) : add.mutateAsync().catch(() => undefined)
+        }
+      >
+        <CardBody>
           <TextField
             label="Credential ID"
             name="key_id"
@@ -215,13 +216,13 @@ function Enroll({ enrolled }: { enrolled: readonly string[] }) {
           {add.error && Object.keys(errors).length === 0 && (
             <WriteFailure failed="The credential was not enrolled." error={add.error} />
           )}
-          <div className="mt-4 flex justify-end">
+          <Actions className="justify-end">
             <Button type="submit" variant="primary" busy={add.isPending} disabled={!id || !psk}>
               Enroll
             </Button>
-          </div>
-        </Form>
-      </CardBody>
+          </Actions>
+        </CardBody>
+      </Form>
       <WriteConfirm
         open={replacing}
         onOpenChange={setReplacing}

@@ -71,12 +71,10 @@ export function SourceScreen({ id }: { id: string }) {
         meta={<Status tone={status.isError ? 'unknown' : state.tone}>{state.label}</Status>}
       />
       <Content>
-        <div className="grid gap-4">
-          <Reception source={source} live={!status.isError} />
-          <Listen id={id} known={status.data} />
-          <MusicAssistant id={id} known={status.data} />
-          <Record id={id} />
-        </div>
+        <Reception source={source} live={!status.isError} />
+        <Listen id={id} known={status.data} />
+        <MusicAssistant id={id} known={status.data} />
+        <Record id={id} />
       </Content>
     </>
   );
@@ -115,7 +113,7 @@ function Reception({ source, live }: { source: SourceSnapshot; live: boolean }) 
   return (
     <Card>
       <CardHead title="Reception" description={receptionAdvice(source)} />
-      <CardBody className="grid gap-4">
+      <CardBody>
         {live ? (
           <ReceivedLevel source={source} />
         ) : (
@@ -198,17 +196,17 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
         )}
       </CardHead>
       {(readOnly || make.error || shown) && (
-        <CardBody className="grid gap-3">
+        <CardBody>
           {readOnly && <NeedsToken change="Pairing" />}
           {make.error && <WriteFailure failed="No pairing token was made." error={make.error} />}
           {shown && (
             <ShownOnce
               title="Pairing token"
+              description={`Paste it into the setup of “${published.name}” in Music Assistant. Locking the console hides it.`}
               label="Pairing token"
               secret={shown.token}
               copyLabel="Copy pairing token"
               lost="Making another replaces it. A pairing already made keeps working."
-              description={`Paste it into the setup of “${published.name}” in Music Assistant. Locking the console hides it.`}
             />
           )}
         </CardBody>

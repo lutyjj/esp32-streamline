@@ -40,6 +40,8 @@ const BUTTON_CHOICES = Object.entries(BUTTON_ACTIONS).map(([value, { label }]) =
   value,
   label,
 }));
+/** Every button's picker, wide enough for its longest action, so the pickers start on one edge. */
+const ACTION_WIDTH = 56;
 const LED_CHOICES = Object.entries(LED_ROLES).map(([value, { label }]) => ({
   value: value as LedRole,
   label,
@@ -52,7 +54,7 @@ export function HardwareSection() {
   if (!known) return null;
   const { buttons, leds } = known.capabilities;
   return (
-    <div className="grid gap-4">
+    <>
       <NameCard saved={known.device_name} />
       <BoardCard />
       <ReadNotice read={settings} name="device settings" />
@@ -62,7 +64,7 @@ export function HardwareSection() {
       {settings.data && leds.length > 0 && (
         <LightsCard rows={ledRows(leds, settings.data.led_roles)} />
       )}
-    </div>
+    </>
   );
 }
 
@@ -109,7 +111,7 @@ function NameCard({ saved }: { saved: string }) {
             </Button>
           </FieldRow>
           {save.error && Object.keys(errors).length === 0 && (
-            <WriteFailure className="mt-3" failed="The name did not change." error={save.error} />
+            <WriteFailure failed="The name did not change." error={save.error} />
           )}
         </Form>
       </CardBody>
@@ -232,6 +234,7 @@ function ButtonsCard({ rows }: { rows: ButtonRow[] }) {
         >
           <CellSelect
             aria-label={`${row.label} action`}
+            width={ACTION_WIDTH}
             choices={BUTTON_CHOICES}
             value={row.action}
             disabled={assign.isPending}

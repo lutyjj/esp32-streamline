@@ -68,44 +68,42 @@ function BridgeOverview() {
     <>
       <ScreenTop title="Bridge" meta={<ActivityStatus activity={audioActivity.value} />} />
       <Content>
-        <div className="grid gap-4">
-          <ReadNotice read={settings} name="device settings" />
-          {facts ? (
-            <>
-              <Card>
-                <CardHead title="Destination" description="Where the device sends its audio.">
-                  <Link href="/bridge/target" className={buttonClass()}>
-                    Change bridge
-                  </Link>
-                </CardHead>
-                <CardBody>
-                  <Facts>
-                    <Fact
-                      name="Address"
-                      mono
-                      copy={{ value: facts.address, label: 'Bridge address' }}
-                    >
-                      {facts.address}
+        <ReadNotice read={settings} name="device settings" />
+        {facts ? (
+          <>
+            <Card>
+              <CardHead title="Destination" description="Where the device sends its audio.">
+                <Link href="/bridge/target" className={buttonClass()}>
+                  Change bridge
+                </Link>
+              </CardHead>
+              <CardBody>
+                <Facts>
+                  <Fact
+                    name="Address"
+                    mono
+                    copy={{ value: facts.address, label: 'Bridge address' }}
+                  >
+                    {facts.address}
+                  </Fact>
+                  {facts.source && (
+                    <Fact name="Name on the bridge" mono>
+                      {facts.source}
                     </Fact>
-                    {facts.source && (
-                      <Fact name="Name on the bridge" mono>
-                        {facts.source}
-                      </Fact>
-                    )}
-                  </Facts>
-                </CardBody>
-                <EncryptionRow
-                  encrypted={facts.encrypted}
-                  staged={Boolean(settings.data?.transport.pending_key_id)}
-                />
-              </Card>
-              <Reception source={facts.source} address={facts.address} />
-              <Delivery />
-            </>
-          ) : (
-            <NoBridge />
-          )}
-        </div>
+                  )}
+                </Facts>
+              </CardBody>
+              <EncryptionRow
+                encrypted={facts.encrypted}
+                staged={Boolean(settings.data?.transport.pending_key_id)}
+              />
+            </Card>
+            <Reception source={facts.source} address={facts.address} />
+            <Delivery />
+          </>
+        ) : (
+          <NoBridge />
+        )}
       </Content>
     </>
   );
@@ -152,7 +150,6 @@ function Delivery() {
       <CardBody>
         {lossCalloutVisible.value && (
           <Notice
-            className="mb-4"
             tone="warn"
             title={`${episodeDrops.value} packets of audio were lost recently.`}
             description="A listener hears these as gaps. The counters below say where they went."
@@ -223,7 +220,7 @@ function NoBridge() {
             value={install}
             onValueChange={setInstall}
           />
-          {install && <p className="mt-4 text-sm">{INSTALL[install].steps}</p>}
+          {install && <p className="text-sm">{INSTALL[install].steps}</p>}
         </CardBody>
       </Card>
     </>

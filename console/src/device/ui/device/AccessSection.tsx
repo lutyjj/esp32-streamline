@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   Card,
   CardBody,
@@ -64,14 +65,14 @@ function AdminKeyCard() {
         {next === null && <Button onClick={start}>Replace admin key</Button>}
       </CardHead>
       {next !== null && (
-        <CardBody className="grid gap-4">
+        <CardBody>
           <ShownOnce
             title="New admin key"
+            description="Keep it in a password manager, then save it here."
             label="New admin key"
             secret={next}
             copyLabel="Copy key"
             lost="Until it is saved the old key stays in use. Once saved, a lost key needs a reflash."
-            description="Keep it in a password manager, then save it here."
           />
           <Checkbox checked={kept} onCheckedChange={setKept}>
             I saved the new key outside this console
@@ -82,14 +83,14 @@ function AdminKeyCard() {
           {change.error && (
             <WriteFailure failed="The device kept its admin key." error={change.error} />
           )}
-          <div className="flex flex-wrap justify-end gap-2">
+          <Actions className="justify-end">
             <Button disabled={change.isPending} onClick={() => setNext(null)}>
               Cancel
             </Button>
             <Button variant="primary" busy={change.isPending} onClick={save}>
               Save new key
             </Button>
-          </div>
+          </Actions>
         </CardBody>
       )}
     </Card>

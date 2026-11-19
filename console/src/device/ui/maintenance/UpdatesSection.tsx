@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   Card,
   CardBody,
@@ -52,10 +53,10 @@ export function UpdatesSection() {
   const known = status.value;
   if (!known) return null;
   return (
-    <div className="grid gap-4">
+    <>
       <FirmwareCard known={known} />
       <CustomImageCard signingKey={known.ota.signing_key_sha256} busy={known.ota.busy} />
-    </div>
+    </>
   );
 }
 
@@ -93,7 +94,7 @@ function FirmwareCard({ known }: { known: StatusResponse }) {
           Check for updates
         </Button>
       </CardHead>
-      <CardBody className="grid gap-4">
+      <CardBody>
         <Facts>
           <Fact name="Running" mono>
             {known.firmware_version}
@@ -211,13 +212,17 @@ function CustomImageCard({ signingKey, busy }: { signingKey: string; busy: boole
         title="Install a custom image"
         description="For development: an image signed with the key this firmware trusts, pinned by its SHA-256. A different key needs a serial flash."
       />
-      <CardBody className="grid gap-4">
-        <Facts>
-          <Fact name="Signing key SHA-256" mono copy={{ value: signingKey, label: 'Signing key' }}>
-            {signingKey || 'Unknown'}
-          </Fact>
-        </Facts>
-        <Form errors={errors} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
+      <Form errors={errors} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
+        <CardBody>
+          <Facts>
+            <Fact
+              name="Signing key SHA-256"
+              mono
+              copy={{ value: signingKey, label: 'Signing key' }}
+            >
+              {signingKey || 'Unknown'}
+            </Fact>
+          </Facts>
           <TextField
             label="Image address"
             name="url"
@@ -242,13 +247,13 @@ function CustomImageCard({ signingKey, busy }: { signingKey: string; busy: boole
           {start.error && Object.keys(errors).length === 0 && (
             <WriteFailure failed="The device did not start the install." error={start.error} />
           )}
-          <div className="mt-4 flex justify-end">
+          <Actions className="justify-end">
             <Button type="submit" variant="primary" busy={start.isPending} disabled={busy}>
               Install
             </Button>
-          </div>
-        </Form>
-      </CardBody>
+          </Actions>
+        </CardBody>
+      </Form>
     </Card>
   );
 }

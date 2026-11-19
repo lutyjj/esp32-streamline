@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/preact-query';
-import { Button, Content, EmptyState } from 'linen';
+import { Actions, Button, Content, EmptyState } from 'linen';
 import { useState } from 'react';
 import type { BridgeStatus, RecordingCapabilities, RecordingList } from '../../../generated/bridge';
 import { requestCredential } from '../../../shared/credentialGate';
@@ -68,7 +68,7 @@ function Recordings({
   const [adding, setAdding] = useState(false);
   const room = recordingRoom(list, capabilities);
   return (
-    <div className="grid gap-4">
+    <>
       {list.active.map((session) => (
         <Session key={session.id} session={session} room={room} />
       ))}
@@ -81,11 +81,11 @@ function Recordings({
           onStarted={() => setAdding(false)}
         />
       ) : (
-        <div>
+        <Actions>
           <Button onClick={() => setAdding(true)}>New recording</Button>
-        </div>
+        </Actions>
       )}
       <Library saved={list.saved} />
-    </div>
+    </>
   );
 }

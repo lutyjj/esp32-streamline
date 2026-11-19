@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   Card,
   CardBody,
@@ -75,7 +76,7 @@ function TargetForm({ target }: { target: SavedTarget }) {
   useUnsavedChanges(unsaved, { name: 'the bridge', pending: save.isPending });
 
   return (
-    <div className="grid gap-4">
+    <>
       {searchOffered.value && (
         <FoundBridges draft={draft} onUse={(bridge) => setDraft(adoptFound(draft, bridge))} />
       )}
@@ -88,8 +89,8 @@ function TargetForm({ target }: { target: SavedTarget }) {
               : 'The bridge the device sends its audio to.'
           }
         />
-        <CardBody>
-          <Form errors={errors} onSubmit={() => save.mutateAsync().catch(() => undefined)}>
+        <Form errors={errors} onSubmit={() => save.mutateAsync().catch(() => undefined)}>
+          <CardBody>
             <TextField
               label="Bridge address"
               name="target_host"
@@ -127,13 +128,9 @@ function TargetForm({ target }: { target: SavedTarget }) {
               onChange={(event) => setDraft({ ...draft, console: event.currentTarget.value })}
             />
             {save.error && Object.keys(errors).length === 0 && (
-              <WriteFailure
-                className="mt-3"
-                failed="The device did not save the bridge."
-                error={save.error}
-              />
+              <WriteFailure failed="The device did not save the bridge." error={save.error} />
             )}
-            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <Actions className="justify-end">
               {held && <p className="mr-auto text-sm text-text-secondary">{held}</p>}
               <Button
                 type="submit"
@@ -143,11 +140,11 @@ function TargetForm({ target }: { target: SavedTarget }) {
               >
                 Save
               </Button>
-            </div>
-          </Form>
-        </CardBody>
+            </Actions>
+          </CardBody>
+        </Form>
       </Card>
-    </div>
+    </>
   );
 }
 

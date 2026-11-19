@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   Card,
   CardBody,
@@ -73,7 +74,7 @@ function Profiles({ catalog, known }: { catalog: AudioProfileCatalog; known: Sta
     </Button>
   );
   return (
-    <div className="grid gap-4">
+    <>
       <Card>
         <CardHead
           title="Saved profiles"
@@ -100,13 +101,13 @@ function Profiles({ catalog, known }: { catalog: AudioProfileCatalog; known: Sta
                 }
                 description={levelsWords(profile.audio, lines)}
               >
-                <div className="flex flex-wrap gap-2">
+                <Actions>
                   <Button onClick={() => setAsk({ kind: 'rename', profile })}>Rename</Button>
                   <Button onClick={() => setAsk({ kind: 'update', profile })}>Update</Button>
                   <Button variant="destructive" onClick={() => setAsk({ kind: 'delete', profile })}>
                     Delete
                   </Button>
-                </div>
+                </Actions>
               </SettingRow>
             ))}
           </div>
@@ -123,7 +124,7 @@ function Profiles({ catalog, known }: { catalog: AudioProfileCatalog; known: Sta
         saved={catalog.profiles.length}
         onDone={() => setAsk(null)}
       />
-    </div>
+    </>
   );
 }
 

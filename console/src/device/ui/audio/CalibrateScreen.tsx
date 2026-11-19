@@ -1,4 +1,5 @@
 import {
+  Actions,
   Button,
   buttonClass,
   Card,
@@ -99,7 +100,7 @@ function Guide({ known }: { known: StatusResponse }) {
   const leaving = step === null || step === 'done';
   return (
     <Card>
-      <CardBody className="grid gap-4">
+      <CardBody>
         {step && <Steps label="Calibration" steps={CALIBRATION_STEPS} current={step} />}
         <Swap view={state.phase} stepped>
           <Phase
@@ -112,10 +113,10 @@ function Guide({ known }: { known: StatusResponse }) {
           />
         </Swap>
         {!leaving && (
-          <div className="flex flex-wrap justify-end gap-2">
+          <Actions className="justify-end">
             <Button onClick={() => void cancel()}>Cancel</Button>
             <Next state={state} measure={measure} listen={listen} held={held} />
-          </div>
+          </Actions>
         )}
       </CardBody>
     </Card>
@@ -236,12 +237,12 @@ function Phase({
           title="The attenuation was not put back."
           description={state.reason}
           action={
-            <div className="flex flex-wrap gap-2">
+            <Actions>
               <Button onClick={retry}>Try again</Button>
               <Link href="/audio" className={buttonClass()}>
                 Leave it
               </Link>
-            </div>
+            </Actions>
           }
         />
       );

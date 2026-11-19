@@ -51,7 +51,7 @@ export function Onboarding() {
       <Conditions conditions={deviceConditions()} />
       <TopBar title="Set up StreamLine" />
       <Content>
-        <Form className="grid gap-4" errors={errors} onSubmit={submit}>
+        <Form className="flex flex-col gap-4" errors={errors} onSubmit={submit}>
           <Card>
             <CardHead
               title="Your Wi-Fi"
@@ -75,19 +75,18 @@ export function Onboarding() {
               {setupKey.value && (
                 <ShownOnce
                   title="Admin key"
+                  description="Keep it in a password manager before the device joins your Wi-Fi."
                   label="Admin key"
                   secret={setupKey.value}
                   copyLabel="Copy key"
                   lost="A lost key needs a reflash: no screen shows it again."
-                  description="Keep it in a password manager before the device joins your Wi-Fi."
                 />
               )}
-              <Checkbox className="mt-4" checked={keySaved} onCheckedChange={setKeySaved}>
+              <Checkbox checked={keySaved} onCheckedChange={setKeySaved}>
                 I saved the key outside this console
               </Checkbox>
               {keyAsked && keyUnconfirmed(keySaved) && (
                 <Notice
-                  className="mt-3"
                   tone="danger"
                   title="Confirm the admin key is saved outside this console."
                 />

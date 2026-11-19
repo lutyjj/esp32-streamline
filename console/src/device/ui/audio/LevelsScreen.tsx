@@ -7,6 +7,7 @@ import {
   CardBody,
   CardHead,
   Content,
+  FieldRow,
   Form,
   NumberField,
   Select,
@@ -33,6 +34,10 @@ import { ScreenTop } from '../ScreenTop';
 import { InputMeter } from './InputMeter';
 
 const TRAIL = [{ href: '/audio', label: 'Audio' }];
+
+/** A level's control, and the line's: two levels and the 16 px between them. */
+const LEVEL_WIDTH = 32;
+const PAIR_WIDTH = LEVEL_WIDTH * 2 + 4;
 
 /** Adjust input: the line, gain and attenuation as one draft, under its own live meter. */
 export function LevelsScreen() {
@@ -97,36 +102,44 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
         />
         <Form onSubmit={() => save.mutateAsync().catch(() => undefined)}>
           <CardBody>
-            {lines.length > 1 && (
-              <Select
-                label="Input line"
-                width={64}
-                choices={lines.map((entry) => ({ value: String(entry.line), label: entry.label }))}
-                value={String(draft.input_line.value)}
-                disabled={saving}
-                onValueChange={(next) => edit('input_line')(Number(next))}
-              />
-            )}
-            <NumberField
-              label="Gain"
-              width={32}
-              min={0}
-              max={input_gain_max}
-              value={draft.input_gain.value}
-              disabled={saving}
-              onValueChange={edit('input_gain')}
-            />
-            <NumberField
-              label="Attenuation"
-              width={32}
-              unit="dB"
-              min={0}
-              max={adc_atten_max_db}
-              largeStep={3}
-              value={draft.adc_attenuation_db.value}
-              disabled={saving}
-              onValueChange={edit('adc_attenuation_db')}
-            />
+            <FieldRow>
+              {lines.length > 1 && (
+                <Select
+                  label="Input line"
+                  width={PAIR_WIDTH}
+                  choices={lines.map((entry) => ({
+                    value: String(entry.line),
+                    label: entry.label,
+                  }))}
+                  value={String(draft.input_line.value)}
+                  disabled={saving}
+                  onValueChange={(next) => edit('input_line')(Number(next))}
+                />
+              )}
+              {/* Gain and attenuation wrap as a pair, under the line as wide as it is. */}
+              <div className="flex gap-4 *:flex-1">
+                <NumberField
+                  label="Gain"
+                  width={LEVEL_WIDTH}
+                  min={0}
+                  max={input_gain_max}
+                  value={draft.input_gain.value}
+                  disabled={saving}
+                  onValueChange={edit('input_gain')}
+                />
+                <NumberField
+                  label="Attenuation"
+                  width={LEVEL_WIDTH}
+                  unit="dB"
+                  min={0}
+                  max={adc_atten_max_db}
+                  largeStep={3}
+                  value={draft.adc_attenuation_db.value}
+                  disabled={saving}
+                  onValueChange={edit('adc_attenuation_db')}
+                />
+              </div>
+            </FieldRow>
             {save.error && (
               <WriteFailure failed="The device did not save the levels." error={save.error} />
             )}

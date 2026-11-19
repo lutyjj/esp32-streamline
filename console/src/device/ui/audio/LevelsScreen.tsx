@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   buttonClass,
   Card,
@@ -71,7 +72,7 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
   };
 
   return (
-    <div className="grid gap-4">
+    <>
       <Card>
         <CardHead
           title="Input"
@@ -94,8 +95,8 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
           title="Levels"
           description="Attenuation lowers the input before it is captured, so loud material stays under the clipping mark."
         />
-        <CardBody>
-          <Form onSubmit={() => save.mutateAsync().catch(() => undefined)}>
+        <Form onSubmit={() => save.mutateAsync().catch(() => undefined)}>
+          <CardBody>
             {lines.length > 1 && (
               <Select
                 label="Input line"
@@ -111,8 +112,6 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
               width={32}
               min={0}
               max={input_gain_max}
-              step={1}
-              largeStep={10}
               value={draft.input_gain.value}
               disabled={saving}
               onValueChange={edit('input_gain')}
@@ -123,20 +122,15 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
               unit="dB"
               min={0}
               max={adc_atten_max_db}
-              step={1}
               largeStep={3}
               value={draft.adc_attenuation_db.value}
               disabled={saving}
               onValueChange={edit('adc_attenuation_db')}
             />
             {save.error && (
-              <WriteFailure
-                className="mt-3"
-                failed="The device did not save the levels."
-                error={save.error}
-              />
+              <WriteFailure failed="The device did not save the levels." error={save.error} />
             )}
-            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <Actions className="justify-end">
               {held && <p className="mr-auto text-sm text-text-secondary">{held}</p>}
               <Button
                 disabled={!unsaved || saving}
@@ -152,10 +146,10 @@ function LevelsEditor({ known }: { known: StatusResponse }) {
               >
                 Save
               </Button>
-            </div>
-          </Form>
-        </CardBody>
+            </Actions>
+          </CardBody>
+        </Form>
       </Card>
-    </div>
+    </>
   );
 }

@@ -56,7 +56,6 @@ export function WifiFields({
       </Checkbox>
       {entry.open && (
         <Notice
-          className="mt-3"
           tone="warn"
           title="Anyone in range can join an open network."
           description="They can read what the device sends and change the console it serves. Choose it only for a network you trust."

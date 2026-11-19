@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   Card,
   CardBody,
@@ -67,19 +68,17 @@ export function EncryptionScreen() {
     <>
       <ScreenTop title="Encryption" trail={TRAIL} />
       <Content>
-        <div className="grid gap-4">
-          <ReadNotice read={settings} name="device settings" />
-          {transport &&
-            (transport.mode === 'tls-psk' && !transport.pending_key_id ? (
-              <EncryptionOn transport={transport} />
-            ) : (
-              <Guide transport={transport} target={target} />
-            ))}
-          {transport &&
-            (transport.mode === 'tls-psk' ||
-              transport.pending_key_id ||
-              transport.rollback_key_id) && <Advanced transport={transport} />}
-        </div>
+        <ReadNotice read={settings} name="device settings" />
+        {transport &&
+          (transport.mode === 'tls-psk' && !transport.pending_key_id ? (
+            <EncryptionOn transport={transport} />
+          ) : (
+            <Guide transport={transport} target={target} />
+          ))}
+        {transport &&
+          (transport.mode === 'tls-psk' ||
+            transport.pending_key_id ||
+            transport.rollback_key_id) && <Advanced transport={transport} />}
       </Content>
     </>
   );
@@ -105,7 +104,7 @@ function Guide({ transport, target }: { transport: TransportStatus; target: stri
         title={replacing ? 'Replace the credential' : 'Set up encryption'}
         description="The device and the bridge share a credential, so the bridge knows which device sends and nobody else reads the audio. Both consoles take part."
       />
-      <CardBody className="grid gap-4">
+      <CardBody>
         <Steps label="Encryption" steps={STEPS} current={step} />
         <Swap view={step} stepped>
           <div className="grid gap-4">
@@ -188,7 +187,7 @@ function Guide({ transport, target }: { transport: TransportStatus; target: stri
             )}
           </div>
         </Swap>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <Actions className="justify-end">
           {held && step === 'activate' && (
             <p className="mr-auto text-sm text-text-secondary">{held}</p>
           )}
@@ -222,7 +221,7 @@ function Guide({ transport, target }: { transport: TransportStatus; target: stri
               Turn on encryption
             </Button>
           )}
-        </div>
+        </Actions>
       </CardBody>
       <WriteConfirm
         open={discardAsked}
@@ -241,7 +240,7 @@ function Guide({ transport, target }: { transport: TransportStatus; target: stri
 /** The key id and the PSK, which the bridge needs both of. */
 function Credential({ shown }: { shown: RevealedKey }) {
   return (
-    <div className="grid gap-3">
+    <>
       <Facts>
         <Fact name="Key id" mono copy={{ value: shown.key_id, label: 'Key id' }}>
           {shown.key_id}
@@ -249,13 +248,13 @@ function Credential({ shown }: { shown: RevealedKey }) {
       </Facts>
       <ShownOnce
         title="PSK"
+        description="Give the bridge both, now."
         label="PSK"
         secret={shown.psk}
         copyLabel="Copy PSK"
         lost="No screen shows it again; a lost one is replaced under Advanced security."
-        description="Give the bridge both, now."
       />
-    </div>
+    </>
   );
 }
 
@@ -316,7 +315,7 @@ function Advanced({ transport }: { transport: TransportStatus }) {
         </SettingRow>
       )}
       {replace.error && (
-        <CardBody className="pt-0">
+        <CardBody>
           <WriteFailure failed="The device made no credential." error={replace.error} />
         </CardBody>
       )}
@@ -330,7 +329,7 @@ function Advanced({ transport }: { transport: TransportStatus }) {
               : 'Kept from encrypted audio. Retire it on both sides before making another.'
           }
         >
-          <div className="flex flex-wrap gap-2">
+          <Actions>
             {/* In the clear, going back only swaps the two keys. */}
             {encrypted && (
               <Button disabled={rollbackHeld !== null} onClick={() => setAsked('rollback')}>
@@ -338,7 +337,7 @@ function Advanced({ transport }: { transport: TransportStatus }) {
               </Button>
             )}
             <Button onClick={() => setAsked('retire')}>Retire</Button>
-          </div>
+          </Actions>
         </SettingRow>
       )}
       <SettingRow

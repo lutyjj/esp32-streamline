@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/preact-query';
-import { Button, Card, CardHead, Count, Nothing, SettingRow, useToast } from 'linen';
+import { Actions, Button, Card, CardHead, Count, Nothing, SettingRow, useToast } from 'linen';
 import { useState } from 'react';
 import type { RecordingSnapshot } from '../../../generated/bridge';
 import { bytes, duration } from '../../../shared/format';
@@ -58,7 +58,7 @@ export function Library({ saved }: { saved: readonly RecordingSnapshot[] }) {
               title={recording.title}
               description={about(recording)}
             >
-              <div className="flex flex-wrap gap-2">
+              <Actions>
                 <Button
                   busy={take.isPending && take.variables === recording.id}
                   onClick={() => take.mutate(recording.id)}
@@ -68,7 +68,7 @@ export function Library({ saved }: { saved: readonly RecordingSnapshot[] }) {
                 <Button variant="destructive" onClick={() => setDeleting(recording)}>
                   Delete
                 </Button>
-              </div>
+              </Actions>
             </SettingRow>
           ))}
         </div>

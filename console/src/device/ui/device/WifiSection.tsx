@@ -1,5 +1,15 @@
 import { useQuery } from '@tanstack/preact-query';
-import { Button, Card, CardBody, CardHead, Fact, Facts, Form, useUnsavedChanges } from 'linen';
+import {
+  Actions,
+  Button,
+  Card,
+  CardBody,
+  CardHead,
+  Fact,
+  Facts,
+  Form,
+  useUnsavedChanges,
+} from 'linen';
 import { useRef, useState } from 'react';
 import { getSetWifiUrl, type SettingsResponse } from '../../../generated/api';
 import { fieldErrors } from '../../../shared/http';
@@ -21,7 +31,7 @@ export function WifiSection() {
   const settings = useQuery(settingsQuery, queryClient);
   if (!wifi) return null;
   return (
-    <div className="grid gap-4">
+    <>
       <Card>
         <CardHead title="Wi-Fi" description="The network the device joins at every start." />
         <CardBody>
@@ -46,7 +56,7 @@ export function WifiSection() {
       ) : (
         <ReadNotice read={settings} name="device settings" />
       )}
-    </div>
+    </>
   );
 }
 
@@ -87,25 +97,25 @@ function ChangeWifi({ saved }: { saved: SettingsResponse }) {
         title="Change Wi-Fi"
         description="For a new password or another network. Audio, the bridge, profiles and the admin key stay as they are."
       />
-      <CardBody>
-        <Form
-          errors={errors}
-          onSubmit={() =>
-            new Promise<void>((done) => {
-              answered.current = done;
-              setAsking(true);
-            })
-          }
-        >
+      <Form
+        errors={errors}
+        onSubmit={() =>
+          new Promise<void>((done) => {
+            answered.current = done;
+            setAsking(true);
+          })
+        }
+      >
+        <CardBody>
           <WifiFields entry={entry} onChange={setEntry} storedPassword={storedPassword} />
-          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+          <Actions className="justify-end">
             {held && <p className="mr-auto text-sm text-text-secondary">{held}</p>}
             <Button type="submit" variant="primary" disabled={!unsaved || held !== null}>
               Join network
             </Button>
-          </div>
-        </Form>
-      </CardBody>
+          </Actions>
+        </CardBody>
+      </Form>
       <WriteConfirm
         open={asking}
         onOpenChange={(open) => {

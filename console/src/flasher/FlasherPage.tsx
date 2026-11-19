@@ -31,8 +31,8 @@ export function FlasherPage() {
   return (
     <LinenProvider>
       <main>
-        <Content className="grid max-w-3xl gap-4 md:py-10">
-          <header className="grid gap-2 pb-2">
+        <Content className="max-w-3xl md:py-10">
+          <header>
             <h1 className={classes('flex items-center gap-2', SCREEN_TITLE_CLASS)}>
               <img src={icon} alt="" className="size-6" />
               Install StreamLine
@@ -62,7 +62,7 @@ function Install() {
         title="Install the firmware"
         description="Installing erases the board and writes the latest release. Choose the board's serial port when the browser asks."
       />
-      <CardBody className="grid gap-4">
+      <CardBody>
         <Facts>
           <Fact name="Board">ESP32 audio board, 4 MB of flash, chip revision 3.0 or later</Fact>
           <Fact name="Cable">USB, one that carries data</Fact>
@@ -112,8 +112,8 @@ function SetUp() {
         title="Set up the device"
         description="The board starts a Wi-Fi network of its own, where its console sets it up."
       />
-      <CardBody className="grid gap-3 text-sm">
-        <ol className="grid list-decimal gap-2 pl-5">
+      <CardBody>
+        <ol className="grid list-decimal gap-2 pl-5 text-sm">
           <li>
             In the installer, choose Next, then Logs &amp; Console, then Reset Device. As the board
             starts, it prints its setup network,{' '}
@@ -126,7 +126,7 @@ function SetUp() {
           </li>
           <li>Choose your Wi-Fi and keep the admin key the console makes.</li>
         </ol>
-        <p className="text-text-secondary">
+        <p className="text-sm text-text-secondary">
           No password? Hold the board's first button (KEY1 on the ESP32 Audio Kit) while you plug it
           in, and the setup network opens without one for that start.
         </p>

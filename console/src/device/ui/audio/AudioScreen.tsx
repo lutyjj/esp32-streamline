@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   buttonClass,
   Card,
@@ -61,10 +62,8 @@ function AudioHome() {
     <>
       <ScreenTop title="Audio" meta={<ActivityStatus activity={activity} />} />
       <Content>
-        <div className="grid gap-4">
-          <InputCard />
-          <StreamCard activity={activity} />
-        </div>
+        <InputCard />
+        <StreamCard activity={activity} />
       </Content>
     </>
   );
@@ -86,7 +85,6 @@ function InputCard() {
         <InputMeter />
         {clipCalloutVisible.value && (
           <Notice
-            className="mt-4"
             tone="warn"
             title="The input clipped since its levels were set."
             description="Turn the source down, or let calibration find the attenuation that keeps the loudest part under the clipping mark."
@@ -134,7 +132,7 @@ function ProfileRow() {
           : 'None saved yet. A profile keeps the applied levels under a name.')
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <Actions>
         {saved && (
           <CellSelect
             aria-label="Profile"
@@ -151,7 +149,7 @@ function ProfileRow() {
         <Link href="/audio/profiles" className={buttonClass()}>
           Manage profiles
         </Link>
-      </div>
+      </Actions>
     </SettingRow>
   );
 }

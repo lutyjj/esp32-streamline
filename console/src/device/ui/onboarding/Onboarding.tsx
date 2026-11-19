@@ -74,7 +74,7 @@ export function Onboarding() {
             <CardBody>
               {setupKey.value && (
                 <ShownOnce
-                  title="Admin key"
+                  title="Generated key"
                   description="Keep it in a password manager before the device joins your Wi-Fi."
                   label="Admin key"
                   secret={setupKey.value}

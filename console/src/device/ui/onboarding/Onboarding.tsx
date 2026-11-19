@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/preact-query';
 import {
+  Actions,
   Button,
   Card,
   CardBody,
@@ -91,20 +92,20 @@ export function Onboarding() {
                   title="Confirm the admin key is saved outside this console."
                 />
               )}
+              {join.error && Object.keys(errors).length === 0 && (
+                <Notice
+                  tone="danger"
+                  title="The device did not save the network."
+                  description={errorMessage(join.error)}
+                />
+              )}
+              <Actions className="justify-end">
+                <Button type="submit" variant="primary" busy={join.isPending}>
+                  Join network
+                </Button>
+              </Actions>
             </CardBody>
           </Card>
-          {join.error && Object.keys(errors).length === 0 && (
-            <Notice
-              tone="danger"
-              title="The device did not save the network."
-              description={errorMessage(join.error)}
-            />
-          )}
-          <div className="flex justify-end">
-            <Button type="submit" variant="primary" busy={join.isPending}>
-              Join network
-            </Button>
-          </div>
         </Form>
       </Content>
     </>

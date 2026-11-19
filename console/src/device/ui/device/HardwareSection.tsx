@@ -5,10 +5,13 @@ import {
   CardBody,
   CardHead,
   CellSelect,
+  Fact,
+  Facts,
   FieldRow,
   Form,
   type FormErrors,
   SegmentedControl,
+  SettingNote,
   SettingRow,
   TextField,
   useToast,
@@ -141,13 +144,22 @@ function BoardCard() {
         title="Board"
         description="Its pins, codec, buttons and lights. The device reads them as it starts, so a change restarts it."
       />
-      <SettingRow
-        title={selected.board}
-        description={held ?? (builtIn ? 'Built into this firmware.' : 'Loaded from a board file.')}
-      >
-        {(boards.length > 1 || !builtIn) && (
+      <CardBody>
+        <Facts>
+          <Fact name="Model">{selected.board}</Fact>
+          <Fact name="From">{builtIn ? 'This firmware' : 'A board file'}</Fact>
+          <Fact name="Codec" mono>
+            {selected.codec.driver}
+          </Fact>
+        </Facts>
+      </CardBody>
+      {(boards.length > 1 || !builtIn) && (
+        <SettingRow
+          title="Built-in board"
+          description="Runs the device as another board this firmware lists."
+        >
           <CellSelect
-            aria-label="Board"
+            aria-label="Built-in board"
             placeholder="Choose a built-in board"
             choices={boards.map((board) => ({ value: board.board_id, label: board.board }))}
             value={builtIn ? selectedId : ''}
@@ -157,11 +169,8 @@ function BoardCard() {
               if (board) setAsked({ request: { board_id: id }, name: board.board });
             }}
           />
-        )}
-      </SettingRow>
-      <SettingRow title="Codec">
-        <span className="font-mono text-sm">{selected.codec.driver}</span>
-      </SettingRow>
+        </SettingRow>
+      )}
       <SettingRow
         title="Board file"
         description="Describes a board this firmware does not list, in the form of the built-in ones."
@@ -187,6 +196,7 @@ function BoardCard() {
           }}
         />
       </SettingRow>
+      {held && <SettingNote>{held}</SettingNote>}
       <WriteConfirm
         open={asked !== null}
         onOpenChange={(open) => {

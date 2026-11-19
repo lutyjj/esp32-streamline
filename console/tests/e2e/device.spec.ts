@@ -347,6 +347,28 @@ test('a factory reset ends on the setup network it names', async ({ page }) => {
   await expect(page.getByText('http://192.168.71.1/')).toBeVisible();
 });
 
+test('a loaded board file says where the board comes from and offers the built-in one back', async ({
+  page,
+}) => {
+  await page.goto('/#/device/hardware');
+  await expect(page.getByText('This firmware', { exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Built-in board' })).toHaveCount(0);
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'custom-board.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{}'),
+  });
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Restart' }).click();
+  await answerKey(page, mockAdminKey);
+  await expect(page.getByText('A board file', { exact: true })).toBeVisible();
+
+  await page.getByRole('combobox', { name: 'Built-in board' }).click();
+  await page.getByRole('option', { name: /Ai-Thinker/ }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Restart' }).click();
+  await expect(page.getByText('This firmware', { exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Built-in board' })).toHaveCount(0);
+});
+
 test('encryption is set up step by step, then a replacement can be discarded', async ({ page }) => {
   await page.goto('/#/bridge');
   await page.getByRole('link', { name: 'Set up encryption' }).click();

@@ -47,6 +47,8 @@ import { deviceConfig, deviceStatus, discoveredBridges, setupNetwork } from './f
  * entropy in a test key.
  */
 export const MOCK_ADMIN_KEY = 'a'.repeat(48);
+/** The id the catalog names while the device runs as a board file, which no built-in board has. */
+const BOARD_FILE_ID = 'board-file';
 
 /** The newest release the fake knows, and the version a custom image lands on. */
 const MOCK_UPDATED_VERSION = '0.5.0-mock';
@@ -177,6 +179,8 @@ export class FakeDevice {
   private otaSteps: Array<() => void> = [];
   /** The stored crash dump's bytes; null while none is stored. */
   private coredump: ArrayBuffer | null = null;
+  /** The device runs as a board file it was given, in place of its built-in board. */
+  private boardFile = false;
   /** The setup network's credentials, stable for the device's life. */
   private setupNetwork = setupNetwork();
   /** The live digest nonce and its accepted count, as the firmware tracks. */
@@ -349,6 +353,7 @@ export class FakeDevice {
     const boot = this.status ? this.status.system.boot : null;
     // A device in use has panicked once; a reset erases the dump with the rest.
     this.coredump = scenario === 'steady' ? elfImage(MOCK_COREDUMP_BYTES) : null;
+    this.boardFile = false;
     if (scenario === 'steady') {
       this.status = deviceStatus({ metrics: { playing: true } });
       this.config = deviceConfig();
@@ -692,7 +697,7 @@ export class FakeDevice {
     return {
       boards: [this.status.capabilities],
       selected_board: this.status.capabilities,
-      selected_board_id: this.status.capabilities.board_id,
+      selected_board_id: this.boardFile ? BOARD_FILE_ID : this.status.capabilities.board_id,
     };
   }
 
@@ -709,6 +714,7 @@ export class FakeDevice {
         return reject(400, 'invalid board descriptor: not valid JSON', 'descriptor');
       }
     }
+    this.boardFile = Boolean(body.descriptor);
     return { ok: true, rebooting: true };
   }
 

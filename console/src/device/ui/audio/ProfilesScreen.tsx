@@ -3,7 +3,6 @@ import {
   Actions,
   Button,
   Card,
-  CardBody,
   CardHead,
   Content,
   Nothing,
@@ -149,26 +148,23 @@ function MoveProfiles({
       <CardHead
         title="Profile file"
         description="Every profile in one file, to keep or to load on another device with this board. Loading one replaces the saved profiles and applies none of them."
-      />
-      <CardBody>
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={empty} onClick={download}>
-            Export
-          </Button>
-          <Button onClick={() => picker.current?.click()}>Import</Button>
-          <input
-            ref={picker}
-            type="file"
-            accept="application/json,.json"
-            hidden
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = '';
-              if (file) void file.text().then((text) => onImport(text, file.name));
-            }}
-          />
-        </div>
-      </CardBody>
+      >
+        <Button disabled={empty} onClick={download}>
+          Export
+        </Button>
+        <Button onClick={() => picker.current?.click()}>Import</Button>
+        <input
+          ref={picker}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (file) void file.text().then((text) => onImport(text, file.name));
+          }}
+        />
+      </CardHead>
     </Card>
   );
 }

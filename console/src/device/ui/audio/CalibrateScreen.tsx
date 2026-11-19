@@ -89,11 +89,11 @@ function Guide({ known }: { known: StatusResponse }) {
     await guide.close();
     const after = guide.state.value;
     if (after.phase === 'closed' && after.restored) {
-      toast.show({ text: `The attenuation is back at ${entry.adc_attenuation_db} dB.` });
+      toast.show({ text: `The attenuation is back at ${entry.adc_attenuation_db} dB.` });
     }
   };
   const finish = (attenuation: number) => {
-    toast.show({ text: `Attenuation set to ${attenuation} dB.` });
+    toast.show({ text: `Attenuation set to ${attenuation} dB.` });
     void guide.close();
   };
 
@@ -195,14 +195,12 @@ function Phase({
       );
     case 'play-loud':
       return (
-        <p className="text-sm text-text-secondary">
-          {held ? `${PLAY_LOUD} ${held}` : PLAY_LOUD}
-        </p>
+        <p className="text-sm text-text-secondary">{held ? `${PLAY_LOUD} ${held}` : PLAY_LOUD}</p>
       );
     case 'listening':
       return (
         <div className="grid gap-4">
-          <Progress label={`Listening at ${state.attenuation} dB of attenuation`} />
+          <Progress label={`Listening at ${state.attenuation} dB of attenuation`} />
           <InputMeter />
         </div>
       );
@@ -223,8 +221,8 @@ function Phase({
       return (
         <Notice
           tone="positive"
-          title={`The attenuation is ${state.attenuation} dB.`}
-          description={`The loudest peak reached ${state.peakDb} dBFS without clipping. The device keeps this level.`}
+          title={`The attenuation is ${state.attenuation} dB.`}
+          description={`The loudest peak reached ${state.peakDb} dBFS without clipping. The device keeps this level.`}
           action={
             <Button variant="primary" onClick={() => finish(state.attenuation)}>
               Done

@@ -25,11 +25,11 @@ describe('levelText', () => {
   });
 
   it('reads the clip threshold as 0.0 dB, without a sign', () => {
-    expect(levelText(levelDb(32760))).toBe('0.0 dB');
+    expect(levelText(levelDb(32760))).toBe('0.0 dB');
   });
 
   it('reads a level below full scale to a tenth', () => {
-    expect(levelText(levelDb(16384))).toBe('-6.0 dB');
+    expect(levelText(levelDb(16384))).toBe('-6.0 dB');
   });
 });
 

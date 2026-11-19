@@ -7,5 +7,5 @@ export function levelsWords(
 ): string {
   const line =
     lines.find((entry) => entry.line === audio.input_line)?.label ?? `Line ${audio.input_line}`;
-  return `${line} · gain ${audio.input_gain} · attenuation ${audio.adc_attenuation_db} dB`;
+  return `${line} · gain ${audio.input_gain} · attenuation ${audio.adc_attenuation_db} dB`;
 }

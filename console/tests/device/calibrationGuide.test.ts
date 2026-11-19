@@ -86,7 +86,7 @@ describe('the calibration guide', () => {
     await calibration.findLevel();
     expect(calibration.state.value).toMatchObject({
       phase: 'loud-refused',
-      reason: expect.stringContaining('12 dB'),
+      reason: expect.stringContaining('12 dB'),
     });
     await calibration.close();
     expect(calibration.state.value).toEqual({ phase: 'closed', restored: true });
@@ -117,7 +117,7 @@ describe('the calibration guide', () => {
     await calibration.close();
     expect(calibration.state.value).toMatchObject({
       phase: 'restore-failed',
-      reason: expect.stringContaining('not back at 6 dB'),
+      reason: expect.stringContaining('not back at 6 dB'),
     });
     source.failWrites = false;
     await calibration.close();

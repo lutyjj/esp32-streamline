@@ -160,7 +160,7 @@ export class CalibrationEngine {
         if (s.rms < gate) continue;
         waiting = false;
         windowStart = null;
-        this.deps.log('Hearing it. Checking 0 dB…');
+        this.deps.log('Hearing it. Checking 0 dB…');
       }
       if (windowStart === null) {
         // (Re)base the clip counter on this poll so samples clipped under the
@@ -189,12 +189,12 @@ export class CalibrationEngine {
           return { kind: 'apply-failed', message: errorMessage(error) };
         }
         if (this.interrupted(operation)) break;
-        this.deps.log(`Clipping — raising to ${atten} dB…`);
+        this.deps.log(`Clipping — raising to ${atten} dB…`);
         windowStart = null;
         continue;
       }
       if (count < CAL_WINDOW_SAMPLES) continue;
-      this.deps.log(`Clean at ${atten} dB — no clipping, peak ${dbfs(windowPeak)} dBFS.`, 'ok');
+      this.deps.log(`Clean at ${atten} dB — no clipping, peak ${dbfs(windowPeak)} dBFS.`, 'ok');
       return { kind: 'calibrated', atten, peak: windowPeak, peakDb: dbfs(windowPeak) };
     }
     return { kind: 'cancelled' };

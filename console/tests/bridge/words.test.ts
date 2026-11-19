@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { whereToSet } from '../../src/bridge/lib/deployment';
+import { listenerHeld, tokenNeeded, whereToSet } from '../../src/bridge/lib/deployment';
 import { musicAssistantStep } from '../../src/bridge/lib/musicAssistant';
 import { playbackUrl } from '../../src/bridge/lib/playback';
 import { quality, receptionAdvice, sourceState } from '../../src/bridge/lib/reception';
@@ -128,5 +128,19 @@ describe('the contract’s rules in the console’s words', () => {
     expect(whereToSet('token')).toBe(
       "api_token in the Home Assistant app's configuration, or STREAMLINE_API_TOKEN for a container",
     );
+  });
+});
+
+describe('what the bridge without a token or state cannot change', () => {
+  it('names the change and where its token is set', () => {
+    expect(tokenNeeded('Pairing')).toBe(
+      `Pairing needs the bridge API token. Set ${whereToSet('token')}, then restart the bridge.`,
+    );
+  });
+
+  it('says a missing state file before a missing token, which would not help', () => {
+    expect(listenerHeld(false, true)).toContain('--transport-state-file');
+    expect(listenerHeld(true, true)).toBe(tokenNeeded('Changing audio security'));
+    expect(listenerHeld(true, false)).toBe('');
   });
 });

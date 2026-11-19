@@ -19,5 +19,21 @@ export function whereToSet(option: DeploymentOption): string {
   return `${app} in the Home Assistant app's configuration, or ${container} for a container`;
 }
 
+/** Why `change` is not offered on a bridge whose deployment sets no token, and where it is set. */
+export function tokenNeeded(change: string): string {
+  return `${change} needs the bridge API token. Set ${whereToSet('token')}, then restart the bridge.`;
+}
+
 /** The container option that keeps audio security's state; the app always sets it. */
 export const TRANSPORT_STATE_OPTION = '--transport-state-file';
+
+/**
+ * Why the listener's mode cannot change here, or nothing where it can: a
+ * deployment that keeps no state for it says so before a missing token does,
+ * since a token would not help.
+ */
+export function listenerHeld(configurable: boolean, readOnly: boolean): string {
+  if (!configurable)
+    return `Audio security needs a place to keep its state. Set ${TRANSPORT_STATE_OPTION} for a container, then restart the bridge; the Home Assistant app sets it.`;
+  return readOnly ? tokenNeeded('Changing audio security') : '';
+}

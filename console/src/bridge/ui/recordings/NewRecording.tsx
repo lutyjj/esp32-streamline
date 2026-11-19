@@ -1,9 +1,9 @@
 import { useMutation } from '@tanstack/preact-query';
-import { Actions, Button, Card, CardBody, CardHead, Form, Select, TextField } from 'linen';
+import { Actions, Button, Card, CardBody, CardHead, Form, Nothing, Select, TextField } from 'linen';
 import { useEffect, useMemo, useState } from 'react';
 import type { BridgeStatus } from '../../../generated/bridge';
-import { duration } from '../../../shared/format';
 import { FIELD_WIDTH } from '../../../shared/fieldWidth';
+import { duration } from '../../../shared/format';
 import { fieldErrors } from '../../../shared/http';
 import { queryClient } from '../../../shared/queries';
 import { WriteFailure } from '../../../shared/WriteFailure';
@@ -65,11 +65,9 @@ export function NewRecording({
         description={`Start before the passage you want: the file begins with the first audio the bridge receives. The storage holds about ${duration(room)} more.`}
       />
       {sources.length === 0 ? (
-        <CardBody>
-          <p className="text-sm text-text-secondary">
-            No source to record. A device appears under Sources while it streams to this bridge.
-          </p>
-        </CardBody>
+        <Nothing>
+          No source to record. A device appears under Sources while it streams to this bridge.
+        </Nothing>
       ) : (
         <Form errors={shown} onSubmit={() => start.mutateAsync().catch(() => undefined)}>
           <CardBody>

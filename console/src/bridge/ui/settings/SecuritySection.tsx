@@ -22,7 +22,7 @@ import { fieldErrors } from '../../../shared/http';
 import { queryClient } from '../../../shared/queries';
 import { WriteConfirm } from '../../../shared/WriteConfirm';
 import { WriteFailure } from '../../../shared/WriteFailure';
-import { TRANSPORT_STATE_OPTION } from '../../lib/deployment';
+import { listenerHeld } from '../../lib/deployment';
 import { useReadOnly } from '../../state/access';
 import {
   enrollKey,
@@ -31,7 +31,6 @@ import {
   removeKey,
   setListenerMode,
 } from '../../state/security';
-import { NeedsToken } from '../NeedsToken';
 
 /** The listener mode every device meets, and the device credentials it accepts. */
 export function SecuritySection({ known }: { known: BridgeStatus }) {
@@ -53,6 +52,10 @@ function Listener({ known, readOnly }: { known: BridgeStatus; readOnly: boolean 
   const [asking, setAsking] = useState(false);
   const { mode, port, configurable, auth_successes, auth_failures } = known.transport;
   const encrypted = mode === 'tls-psk';
+  const how = encrypted
+    ? `Devices send audio on port ${port} over TLS 1.3, each with a credential enrolled here.`
+    : `Devices send audio on port ${port} in the clear. Requiring encryption applies to every device at once.`;
+  const held = listenerHeld(configurable, readOnly);
   return (
     <Card>
       <CardHead
@@ -62,11 +65,7 @@ function Listener({ known, readOnly }: { known: BridgeStatus; readOnly: boolean 
             {encrypted ? 'Encryption required' : 'Cleartext'}
           </Status>
         }
-        description={
-          encrypted
-            ? `Devices send audio on port ${port} over TLS 1.3, each with a credential enrolled here.`
-            : `Devices send audio on port ${port} in the clear. Requiring encryption applies to every device at once.`
-        }
+        description={held ? `${how} ${held}` : how}
       >
         {configurable && !readOnly && (
           <Button onClick={() => setAsking(true)}>
@@ -74,22 +73,14 @@ function Listener({ known, readOnly }: { known: BridgeStatus; readOnly: boolean 
           </Button>
         )}
       </CardHead>
-      <CardBody>
-        {configurable ? (
-          <>
-            {readOnly && <NeedsToken change="Changing audio security" />}
-            <Facts>
-              <Fact name="Accepted handshakes">{auth_successes}</Fact>
-              <Fact name="Refused handshakes">{auth_failures}</Fact>
-            </Facts>
-          </>
-        ) : (
-          <p className="text-sm text-text-secondary">
-            Audio security needs a place to keep its state. Set {TRANSPORT_STATE_OPTION} for a
-            container, then restart the bridge; the Home Assistant app sets it.
-          </p>
-        )}
-      </CardBody>
+      {configurable && (
+        <CardBody>
+          <Facts>
+            <Fact name="Accepted handshakes">{auth_successes}</Fact>
+            <Fact name="Refused handshakes">{auth_failures}</Fact>
+          </Facts>
+        </CardBody>
+      )}
       <WriteConfirm
         open={asking}
         onOpenChange={setAsking}

@@ -117,7 +117,11 @@ function Reception({ source, address }: { source: string | null; address: string
     <Card>
       <CardHead
         title="Reception"
-        description="The bridge console shows whether audio arrives, and the address a player opens."
+        description={
+          link
+            ? 'The bridge console shows whether audio arrives, and the address a player opens.'
+            : "The bridge console shows whether audio arrives, and the address a player opens. Add its address under Change bridge to link straight to this device's source there."
+        }
       >
         {link && (
           <a className={buttonClass()} href={link} target="_blank" rel="noreferrer">
@@ -125,14 +129,6 @@ function Reception({ source, address }: { source: string | null; address: string
           </a>
         )}
       </CardHead>
-      {!link && (
-        <CardBody>
-          <p className="text-sm text-text-secondary">
-            Add the bridge console's address under Change bridge to link straight to this device's
-            source there.
-          </p>
-        </CardBody>
-      )}
     </Card>
   );
 }

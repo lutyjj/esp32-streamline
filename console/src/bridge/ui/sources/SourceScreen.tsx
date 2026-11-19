@@ -25,7 +25,7 @@ import { Link, navigate } from '../../../shared/navigation';
 import { queryClient } from '../../../shared/queries';
 import { ReadNotice } from '../../../shared/ReadNotice';
 import { WriteFailure } from '../../../shared/WriteFailure';
-import { whereToSet } from '../../lib/deployment';
+import { tokenNeeded, whereToSet } from '../../lib/deployment';
 import { musicAssistantStep } from '../../lib/musicAssistant';
 import { playbackUrl } from '../../lib/playback';
 import { quality, receptionAdvice, sourceState } from '../../lib/reception';
@@ -33,10 +33,12 @@ import { useReadOnly } from '../../state/access';
 import { makePairingToken, revealedPairing } from '../../state/pairing';
 import { capabilitiesQuery, statusQuery } from '../../state/queries';
 import { record, titleProblem } from '../../state/recordings';
-import { NeedsToken } from '../NeedsToken';
 import { ScreenTop } from '../ScreenTop';
 
 const TRAIL = [{ href: '/sources', label: 'Sources' }] as const;
+
+const RECORD_WORDS =
+  'A lossless WAV of what the bridge receives from this source, kept on the bridge until you delete it.';
 
 /** One source: how it arrives, where a player opens it, Music Assistant, and recording it. */
 export function SourceScreen({ id }: { id: string }) {
@@ -181,7 +183,7 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
       <CardHead
         title="Music Assistant"
         aside={<Status tone={step.tone}>{step.label}</Status>}
-        description={step.detail}
+        description={readOnly ? `${step.detail} ${tokenNeeded('Pairing')}` : step.detail}
       >
         {readOnly ? null : shown === null ? (
           <Button
@@ -195,9 +197,8 @@ function MusicAssistant({ id, known }: { id: string; known: BridgeStatus }) {
           <Button onClick={() => (revealedPairing.value = null)}>Done</Button>
         )}
       </CardHead>
-      {(readOnly || make.error || shown) && (
+      {(make.error || shown) && (
         <CardBody>
-          {readOnly && <NeedsToken change="Pairing" />}
           {make.error && <WriteFailure failed="No pairing token was made." error={make.error} />}
           {shown && (
             <ShownOnce
@@ -233,15 +234,10 @@ function Record({ id }: { id: string }) {
     <Card>
       <CardHead
         title="Record"
-        description="A lossless WAV of what the bridge receives from this source, kept on the bridge until you delete it."
+        description={readOnly ? `${RECORD_WORDS} ${tokenNeeded('Recording')}` : RECORD_WORDS}
       >
         {!readOnly && <Button onClick={() => setAsking(true)}>Record this source</Button>}
       </CardHead>
-      {readOnly && (
-        <CardBody>
-          <NeedsToken change="Recording" />
-        </CardBody>
-      )}
       {asking && (
         <RecordDialog
           source={id}

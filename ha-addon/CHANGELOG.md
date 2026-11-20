@@ -1,6 +1,28 @@
 # Changelog
 
 Notable changes per release, grouped by type.
+## [0.22.0](https://github.com/lutyjj/esp32-streamline/compare/v0.21.0...v0.22.0) (2026-11-20)
+
+
+### Features
+
+* **console:** adopt linen 0.8.1, with guides that keep the focus ([#620](https://github.com/lutyjj/esp32-streamline/issues/620)) ([59bb77c](https://github.com/lutyjj/esp32-streamline/commit/59bb77c74eb7fc7bddde2ed594a3c7acd5c46154))
+
+
+### Bug Fixes
+
+* **console:** a locked log and crash dump is a card that unlocks ([7fa0091](https://github.com/lutyjj/esp32-streamline/commit/7fa0091a1da312e38b18533bac6906475f84d1c8))
+* **console:** adopt linen's one rhythm for cards and forms ([1f6bd86](https://github.com/lutyjj/esp32-streamline/commit/1f6bd86260dee9fb274b1fbd1e82e0f5e8b767eb))
+* **console:** calibration is built the way the encryption guide is ([c570ba7](https://github.com/lutyjj/esp32-streamline/commit/c570ba7ec176fe7228b0ab1a8f65d0d973cfc562))
+* **console:** export and import profiles from the card's head ([abae018](https://github.com/lutyjj/esp32-streamline/commit/abae018652c377cec43eb82bac88da4ab9dae412))
+* **console:** name each thing once on a screen ([9c5ede4](https://github.com/lutyjj/esp32-streamline/commit/9c5ede424b9dd8869cd4e47ad172f49147633f36))
+* **console:** no card holds a body of one sentence ([45d37e3](https://github.com/lutyjj/esp32-streamline/commit/45d37e34ffe168818dcf8a1a2e5b06a418f58560))
+* **console:** no number parts from its unit, nor Wi-Fi in running text ([d6ea708](https://github.com/lutyjj/esp32-streamline/commit/d6ea708821c73bb8906e4089e205fe75b86bacd8))
+* **console:** one width for every name, host and address field ([e157905](https://github.com/lutyjj/esp32-streamline/commit/e1579057be0cdd3764323c3a97b6f2350a92a270))
+* **console:** the board and its codec read as facts ([7231edb](https://github.com/lutyjj/esp32-streamline/commit/7231edbcececedd6e3b23e0103da7deb4fed8d0b))
+* **console:** the input line, gain and attenuation share one row ([29ffa5b](https://github.com/lutyjj/esp32-streamline/commit/29ffa5bb9aff5a2a74d5de39f75026a4237aa384))
+* **console:** the setup's Join network stands inside its card ([7421551](https://github.com/lutyjj/esp32-streamline/commit/742155151c63c972770e68e0392639623cddeb8e))
+
 ## [0.21.0](https://github.com/lutyjj/esp32-streamline/compare/v0.20.0...v0.21.0) (2026-11-17)
 
 
